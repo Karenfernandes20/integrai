@@ -1,0 +1,17 @@
+{
+  "name": "ViaMoveCar Admin",
+  "short_name": "ViaMoveCar",
+  "description": "ViaMoveCar Admin: painel central de gestão com CRM, financeiro, atendimento WhatsApp e dashboard.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#0b5ed7",
+  "icons": [
+    {
+      "src": "/favicon.ico",
+      "sizes": "32x32 48x48 64x64",
+      "type": "image/x-icon"
+    }
+  ]
+}
