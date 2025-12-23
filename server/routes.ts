@@ -6,6 +6,7 @@ import {
   deleteUser,
   clearUsers,
 } from './controllers/userController';
+import { getEvolutionQrCode } from './controllers/evolutionController';
 
 const router = express.Router();
 
@@ -16,6 +17,9 @@ router.put('/users/:id', updateUser);
 router.delete('/users/:id', deleteUser);
 router.delete('/users', clearUsers);
 
+// Evolution routes
+router.get('/evolution/qrcode', getEvolutionQrCode);
+
 // Placeholder for other routes
 router.get('/cities', (req, res) => res.json({ message: 'Cities endpoint' }));
 router.get('/rides', (req, res) => res.json({ message: 'Rides endpoint' }));
@@ -24,3 +28,4 @@ router.get('/financial', (req, res) => res.json({ message: 'Financial endpoint' 
 router.get('/whatsapp', (req, res) => res.json({ message: 'WhatsApp endpoint' }));
 
 export default router;
+
