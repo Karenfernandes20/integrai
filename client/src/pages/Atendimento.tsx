@@ -41,6 +41,42 @@ const AtendimentoPage = () => {
   const [phoneError, setPhoneError] = useState<string | null>(null);
   const newContactFormRef = useRef<HTMLFormElement | null>(null);
 
+  // DDDs brasileiros conhecidos (lista resumida, mas suficiente para validação básica)
+  const KNOWN_DDDS = new Set([
+    "11","12","13","14","15","16","17","18","19",
+    "21","22","24","27","28",
+    "31","32","33","34","35","37","38",
+    "41","42","43","44","45","46",
+    "47","48","49",
+    "51","53","54","55",
+    "61","62","63","64","65","66","67",
+    "68","69",
+    "71","73","74","75","77",
+    "79",
+    "81","82","83","84","85","86","87","88","89",
+    "91","92","93","94","95","96","97","98","99",
+  ]);
+
+  const formatBrazilianPhone = (raw: string): string => {
+    const digits = raw.replace(/\D/g, "").slice(0, 11);
+    if (digits.length <= 2) return digits;
+
+    const ddd = digits.slice(0, 2);
+    const rest = digits.slice(2);
+
+    if (digits.length <= 6) {
+      return `(${ddd}) ${rest}`;
+    }
+
+    if (digits.length <= 10) {
+      // Fixo: DDD + 4 + 4
+      return `(${ddd}) ${rest.slice(0, 4)}-${rest.slice(4)}`;
+    }
+
+    // Celular: DDD + 5 + 4
+    return `(${ddd}) ${rest.slice(0, 5)}-${rest.slice(5)}`;
+  };
+
   const validatePhone = (raw: string): string | null => {
     const digits = raw.replace(/\D/g, "");
 
@@ -50,11 +86,30 @@ const AtendimentoPage = () => {
     }
 
     const ddd = digits.slice(0, 2);
-    if (/^0/.test(ddd)) {
-      return "DDD inválido.";
+    const numberPart = digits.slice(2);
+
+    if (!KNOWN_DDDS.has(ddd)) {
+      return "DDD não reconhecido.";
+    }
+
+    if (digits.length === 11) {
+      // Celular: primeiro dígito após DDD deve ser 9
+      if (!numberPart.startsWith("9")) {
+        return "Celular deve começar com 9.";
+      }
+    } else {
+      // Fixo: primeiro dígito após DDD costuma ser 2–5
+      if (!/^[2-5]/.test(numberPart)) {
+        return "Telefone fixo inválido (verifique o número).";
+      }
     }
 
     return null;
+  };
+
+  const handlePhoneChange = (value: string) => {
+    setNewContactPhone(formatBrazilianPhone(value));
+    if (phoneError) setPhoneError(null);
   };
 
   const handleStartConversationFromContact = (contact: Contact) => {
@@ -250,7 +305,7 @@ const AtendimentoPage = () => {
                     placeholder="Telefone (DDD + número, apenas dígitos ou com máscara)"
                     className="h-8 text-xs"
                     value={newContactPhone}
-                    onChange={(e) => setNewContactPhone(e.target.value)}
+                    onChange={(e) => handlePhoneChange(e.target.value)}
                   />
                   {phoneError && (
                     <span className="text-[11px] text-destructive">{phoneError}</span>
