@@ -6,6 +6,7 @@ import { QrCode as QrIcon, RefreshCcw } from "lucide-react";
 
 const QrCodePage = () => {
   const [qrCode, setQrCode] = useState<string | null>(null);
+  const [debugData, setDebugData] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -32,6 +33,7 @@ const QrCodePage = () => {
 
       const data = JSON.parse(text);
       setQrCode(data.qrcode || null);
+      setDebugData(data.raw || data);
     } catch (err: any) {
       setError(err?.message || "Erro ao buscar QR Code");
       setQrCode(null);
@@ -111,6 +113,12 @@ const QrCodePage = () => {
                   <p className="max-w-xs text-center text-[11px]">
                     Nenhum QR Code disponível no momento. Clique em “Atualizar QR” para tentar novamente.
                   </p>
+                  <div className="w-full max-w-xs mt-4">
+                    <p className="text-[10px] font-mono mb-1">Debug: Resposta da API</p>
+                    <pre className="text-[10px] bg-muted/60 p-2 rounded overflow-auto max-h-32 text-left">
+                      {JSON.stringify(debugData, null, 2)}
+                    </pre>
+                  </div>
                 </div>
               )}
             </div>
