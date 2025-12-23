@@ -15,7 +15,7 @@ const QrCodePage = () => {
       setError(null);
 
       // Chama diretamente o backend Node/Express no Render
-      const response = await fetch("https://viamovecar-api.onrender.com/api/evolution/qrcode");
+      const response = await fetch("/api/evolution/qrcode");
       if (!response.ok) {
         const body = await response.text().catch(() => "");
         throw new Error(body || `Erro ${response.status} ao buscar QR Code`);
