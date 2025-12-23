@@ -107,11 +107,25 @@ const QrCodePage = () => {
                 </div>
               )}
 
-              {!isLoading && !error && !qrCode && (
+              {!isLoading && !error && !qrCode && debugData?.instance?.state === 'open' && (
+                <div className="flex flex-col items-center gap-2 text-green-600">
+                  <div className="h-12 w-12 rounded-full bg-green-100 flex items-center justify-center">
+                    <QrIcon className="h-6 w-6 text-green-600" />
+                  </div>
+                  <p className="font-semibold text-sm">WhatsApp Conectado!</p>
+                  <p className="max-w-xs text-center text-[11px] text-muted-foreground">
+                    A instância <strong>{debugData.instance.instanceName}</strong> já está ativa (state: open).
+                    Você não precisa escanear o QR Code novamente.
+                  </p>
+                </div>
+              )}
+
+              {!isLoading && !error && !qrCode && debugData?.instance?.state !== 'open' && (
                 <div className="flex flex-col items-center gap-2 text-muted-foreground">
                   <QrIcon className="h-10 w-10" />
                   <p className="max-w-xs text-center text-[11px]">
-                    Nenhum QR Code disponível no momento. Clique em “Atualizar QR” para tentar novamente.
+                    Nenhum QR Code disponível no momento (Estado: {debugData?.instance?.state || 'Desconhecido'}).
+                    Clique em “Atualizar QR” para tentar novamente.
                   </p>
                   <div className="w-full max-w-xs mt-4">
                     <p className="text-[10px] font-mono mb-1">Debug: Resposta da API</p>
