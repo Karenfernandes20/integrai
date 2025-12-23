@@ -1,14 +1,11 @@
-import { MessageCircleMore, Phone, Paperclip } from "lucide-react";
-import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
-import { Input } from "../components/ui/input";
-import { Button } from "../components/ui/button";
-
-import { useState, useEffect, useRef } from "react";
 import { MessageCircleMore, Phone, Paperclip, Send } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
 import { Input } from "../components/ui/input";
 import { Button } from "../components/ui/button";
 import { ScrollArea } from "../components/ui/scroll-area";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "../components/ui/tabs";
+import { useState, useEffect } from "react";
+import type { FormEvent } from "react";
 import { cn } from "../lib/utils";
 
 interface Conversation {
@@ -21,9 +18,15 @@ interface Conversation {
 
 interface Message {
   id: number;
-  direction: 'inbound' | 'outbound';
+  direction: "inbound" | "outbound";
   content: string;
   sent_at: string;
+}
+
+interface Contact {
+  id: number;
+  name: string;
+  phone: string;
 }
 
 const AtendimentoPage = () => {
@@ -31,6 +34,40 @@ const AtendimentoPage = () => {
   const [selectedConversation, setSelectedConversation] = useState<Conversation | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [isLoadingMessages, setIsLoadingMessages] = useState(false);
+  const [contacts, setContacts] = useState<Contact[]>([]);
+  const [activeTab, setActiveTab] = useState<"conversas" | "contatos">("conversas");
+  const [newContactName, setNewContactName] = useState("");
+  const [newContactPhone, setNewContactPhone] = useState("");
+
+  const handleAddContact = (e: FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    if (!newContactPhone.trim()) return;
+
+    setContacts((prev) => [
+      ...prev,
+      {
+        id: Date.now(),
+        name: newContactName || newContactPhone,
+        phone: newContactPhone,
+      },
+    ]);
+
+    setNewContactName("");
+    setNewContactPhone("");
+  };
+
+  const handleStartConversationFromContact = (contact: Contact) => {
+    const newConversation: Conversation = {
+      id: contact.id,
+      phone: contact.phone,
+      contact_name: contact.name,
+      last_message: "",
+      last_message_at: new Date().toISOString(),
+    };
+
+    setSelectedConversation(newConversation);
+    setMessages([]);
+  };
 
   // Polling para conversas
   useEffect(() => {
@@ -38,8 +75,28 @@ const AtendimentoPage = () => {
       try {
         const res = await fetch("/api/evolution/conversations");
         if (res.ok) {
-          const data = await res.json();
+          const data: Conversation[] = await res.json();
           setConversations(data);
+          setContacts((prev) => {
+            const map = new Map<string, Contact>();
+
+            prev.forEach((c) => {
+              map.set(c.phone, c);
+            });
+
+            data.forEach((conv) => {
+              const phone = conv.phone;
+              if (!map.has(phone)) {
+                map.set(phone, {
+                  id: conv.id,
+                  name: conv.contact_name || conv.phone,
+                  phone: conv.phone,
+                });
+              }
+            });
+
+            return Array.from(map.values());
+          });
         }
       } catch (error) {
         console.error("Erro ao buscar conversas", error);
@@ -83,54 +140,122 @@ const AtendimentoPage = () => {
     <div className="grid gap-4 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.6fr)] h-[calc(100vh-140px)] min-h-[500px]">
       {/* Lista de Conversas */}
       <Card className="flex flex-col overflow-hidden border-dashed bg-background/70">
-        <CardHeader className="flex-none flex-row items-center justify-between pb-3">
-          <div>
-            <CardTitle className="text-sm">Conversas</CardTitle>
-            <p className="text-xs text-muted-foreground">
-              Histórico do WhatsApp
-            </p>
-          </div>
-          <MessageCircleMore className="h-4 w-4 text-primary" />
-        </CardHeader>
-        <CardContent className="flex-1 overflow-hidden p-0">
-          <div className="px-4 pb-2">
-            <Input placeholder="Buscar..." className="h-8 text-xs" />
-          </div>
-
-          <ScrollArea className="h-full">
-            <div className="flex flex-col gap-1 p-2">
-              {conversations.length === 0 && (
-                <div className="text-center text-xs text-muted-foreground p-4">
-                  Nenhuma conversa encontrada.
-                </div>
-              )}
-              {conversations.map((conv) => (
-                <button
-                  key={conv.id}
-                  onClick={() => setSelectedConversation(conv)}
-                  className={cn(
-                    "flex flex-col items-start gap-1 rounded-lg border p-3 text-left text-sm transition-all hover:bg-accent",
-                    selectedConversation?.id === conv.id ? "bg-accent" : "bg-background"
-                  )}
-                >
-                  <div className="flex w-full flex-col gap-1">
-                    <div className="flex items-center">
-                      <div className="flex items-center gap-2">
-                        <div className="font-semibold">{conv.contact_name || conv.phone}</div>
-                      </div>
-                      <div className="ml-auto text-xs text-muted-foreground">
-                        {formatTime(conv.last_message_at!)}
-                      </div>
-                    </div>
-                    <div className="text-xs text-muted-foreground line-clamp-1">
-                      {conv.last_message || "Sem mensagens"}
-                    </div>
-                  </div>
-                </button>
-              ))}
+        <Tabs
+          value={activeTab}
+          onValueChange={(value) => setActiveTab(value as "conversas" | "contatos")}
+          className="flex flex-1 flex-col"
+        >
+          <CardHeader className="flex-none flex-row items-center justify-between pb-3">
+            <div>
+              <CardTitle className="text-sm">Atendimento</CardTitle>
+              <p className="text-xs text-muted-foreground">
+                Histórico e nova conversa do WhatsApp
+              </p>
             </div>
-          </ScrollArea>
-        </CardContent>
+            <div className="flex items-center gap-2">
+              <TabsList className="grid grid-cols-2 h-8">
+                <TabsTrigger value="conversas" className="text-xs">
+                  Conversas
+                </TabsTrigger>
+                <TabsTrigger value="contatos" className="text-xs">
+                  Nova conversa
+                </TabsTrigger>
+              </TabsList>
+              <MessageCircleMore className="h-4 w-4 text-primary" />
+            </div>
+          </CardHeader>
+          <CardContent className="flex-1 overflow-hidden p-0">
+            <TabsContent value="conversas" className="h-full flex flex-col">
+              <div className="px-4 pb-2">
+                <Input placeholder="Buscar..." className="h-8 text-xs" />
+              </div>
+
+              <ScrollArea className="h-full">
+                <div className="flex flex-col gap-1 p-2">
+                  {conversations.length === 0 && (
+                    <div className="text-center text-xs text-muted-foreground p-4">
+                      Nenhuma conversa encontrada.
+                    </div>
+                  )}
+                  {conversations.map((conv) => (
+                    <button
+                      key={conv.id}
+                      onClick={() => setSelectedConversation(conv)}
+                      className={cn(
+                        "flex flex-col items-start gap-1 rounded-lg border p-3 text-left text-sm transition-all hover:bg-accent",
+                        selectedConversation?.id === conv.id ? "bg-accent" : "bg-background"
+                      )}
+                    >
+                      <div className="flex w-full flex-col gap-1">
+                        <div className="flex items-center">
+                          <div className="flex items-center gap-2">
+                            <div className="font-semibold">{conv.contact_name || conv.phone}</div>
+                          </div>
+                          <div className="ml-auto text-xs text-muted-foreground">
+                            {formatTime(conv.last_message_at!)}
+                          </div>
+                        </div>
+                        <div className="text-xs text-muted-foreground line-clamp-1">
+                          {conv.last_message || "Sem mensagens"}
+                        </div>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              </ScrollArea>
+            </TabsContent>
+
+            <TabsContent value="contatos" className="h-full flex flex-col">
+              <form
+                onSubmit={handleAddContact}
+                className="px-4 pb-2 flex flex-wrap gap-2 items-center"
+              >
+                <Input
+                  placeholder="Nome do contato"
+                  className="h-8 text-xs flex-1 min-w-[120px]"
+                  value={newContactName}
+                  onChange={(e) => setNewContactName(e.target.value)}
+                />
+                <Input
+                  placeholder="Telefone (WhatsApp)"
+                  className="h-8 text-xs flex-1 min-w-[120px]"
+                  value={newContactPhone}
+                  onChange={(e) => setNewContactPhone(e.target.value)}
+                />
+                <Button type="submit" size="sm" variant="outline">
+                  Adicionar contato
+                </Button>
+              </form>
+
+              <ScrollArea className="h-full">
+                <div className="flex flex-col gap-1 p-2">
+                  {contacts.length === 0 && (
+                    <div className="text-center text-xs text-muted-foreground p-4">
+                      Nenhum contato salvo.
+                    </div>
+                  )}
+                  {contacts.map((contact) => (
+                    <div
+                      key={contact.id}
+                      className="flex items-center justify-between rounded-lg border p-3 text-sm"
+                    >
+                      <div className="flex flex-col">
+                        <span className="font-semibold">{contact.name}</span>
+                        <span className="text-xs text-muted-foreground">{contact.phone}</span>
+                      </div>
+                      <Button
+                        size="sm"
+                        onClick={() => handleStartConversationFromContact(contact)}
+                      >
+                        Iniciar conversa
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              </ScrollArea>
+            </TabsContent>
+          </CardContent>
+        </Tabs>
       </Card>
 
       {/* Chat */}
