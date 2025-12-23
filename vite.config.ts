@@ -20,6 +20,10 @@ export default defineConfig(({ mode }) => ({
     alias: {
       "@": path.resolve(__dirname, "./client/src"),
     },
+    dedupe: ["react", "react-dom"],
   },
   publicDir: path.resolve(__dirname, "./client/public"),
+  optimizeDeps: {
+    include: ["react", "react-dom", "@tanstack/react-query"],
+  },
 }));
