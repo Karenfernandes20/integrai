@@ -14,8 +14,8 @@ const QrCodePage = () => {
       setIsLoading(true);
       setError(null);
 
-      // Usa diretamente o backend público no Render
-      const response = await fetch("https://viamovecar-hub.onrender.com/api/evolution/qrcode");
+      // Chama diretamente o backend Node/Express no Render
+      const response = await fetch("https://viamovecar-api.onrender.com/api/evolution/qrcode");
       if (!response.ok) {
         const body = await response.text().catch(() => "");
         throw new Error(body || `Erro ${response.status} ao buscar QR Code`);
@@ -23,10 +23,10 @@ const QrCodePage = () => {
 
       const text = await response.text();
       const trimmed = text.trim().toLowerCase();
-      // Se o backend devolver HTML (ex.: está apontando para o frontend e não para a API), evita quebrar no JSON.parse
+      // Se o backend devolver HTML (ex.: erro de configuração no Render), evita quebrar no JSON.parse
       if (trimmed.startsWith("<!doctype") || trimmed.startsWith("<html")) {
         throw new Error(
-          "Resposta do servidor não é JSON, e sim HTML. Provavelmente a URL https://viamovecar-hub.onrender.com está servindo apenas o frontend e a rota /api/evolution/qrcode não existe no backend."
+          "Resposta do servidor não é JSON, e sim HTML. Verifique se o serviço Node/Express no Render está online e expondo /api/evolution/qrcode."
         );
       }
 
