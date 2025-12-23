@@ -233,7 +233,7 @@ const AtendimentoPage = () => {
               <p className="text-xs text-muted-foreground">Histórico e nova conversa do WhatsApp</p>
             </div>
             <div className="flex items-center gap-2">
-              <TabsList className="grid grid-cols-2 h-8">
+              <TabsList className="grid grid-cols-2 h-8 gap-2">
                 <TabsTrigger value="conversas" className="text-xs">
                   Conversas
                 </TabsTrigger>

@@ -21,7 +21,7 @@ import {
   useSortable,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { KanbanSquare, Plus } from "lucide-react";
+import { KanbanSquare, Plus, Trash2 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
 import { Button } from "../components/ui/button";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "../components/ui/dialog";
@@ -233,6 +233,26 @@ const CrmPage = () => {
     }
   };
 
+  const deleteStage = async (stageId: number) => {
+    const stage = stages.find((s) => s.id === stageId);
+    if (!stage || stage.name === "Leads") return;
+
+    try {
+      const res = await fetch(`/api/crm/stages/${stageId}`, {
+        method: "DELETE",
+      });
+
+      if (!res.ok) {
+        console.error("Erro ao excluir fase do funil no backend, removendo apenas do layout.");
+      }
+    } catch (error) {
+      console.error("Erro ao excluir fase do funil, removendo apenas do layout.", error);
+    } finally {
+      setStages((prev) => prev.filter((s) => s.id !== stageId));
+      setLeads((prev) => prev.filter((l) => l.stage_id !== stageId));
+    }
+  };
+
   // Sensores para Drag & Drop
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -425,7 +445,20 @@ const CrmPage = () => {
                     {leadsByStage(column.id).length}
                   </span>
                 </CardTitle>
-                <KanbanSquare className="h-4 w-4 text-primary" />
+                <div className="flex items-center gap-1">
+                  {column.name !== "Leads" && (
+                    <Button
+                      type="button"
+                      size="icon"
+                      variant="ghost"
+                      className="h-7 w-7 text-muted-foreground hover:text-destructive"
+                      onClick={() => deleteStage(column.id)}
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </Button>
+                  )}
+                  <KanbanSquare className="h-4 w-4 text-primary" />
+                </div>
               </CardHeader>
 
               <CardContent className="space-y-2 text-xs flex-1 p-2">
