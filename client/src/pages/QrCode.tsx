@@ -14,13 +14,20 @@ const QrCodePage = () => {
       setIsLoading(true);
       setError(null);
 
-      const response = await fetch(`/api/evolution/qrcode`);
+      // Usa diretamente o backend público no Render
+      const response = await fetch("https://viamovecar-hub.onrender.com/api/evolution/qrcode");
       if (!response.ok) {
         const body = await response.text().catch(() => "");
         throw new Error(body || `Erro ${response.status} ao buscar QR Code`);
       }
 
-      const data = await response.json();
+      const text = await response.text();
+      // Se o backend devolver HTML (ex.: erro de rota/deploy), evita quebrar no JSON.parse
+      if (text.trim().startsWith("<!DOCTYPE") || text.trim().startsWith("<html")) {
+        throw new Error("Resposta do servidor não é JSON (provavelmente HTML). Verifique a rota /api/evolution/qrcode no backend.");
+      }
+
+      const data = JSON.parse(text);
       setQrCode(data.qrcode || null);
     } catch (err: any) {
       setError(err?.message || "Erro ao buscar QR Code");
