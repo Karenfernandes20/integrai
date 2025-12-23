@@ -7,6 +7,7 @@ import {
   clearUsers,
 } from './controllers/userController';
 import { getEvolutionQrCode, deleteEvolutionInstance } from './controllers/evolutionController';
+import { handleWebhook, getConversations, getMessages } from './controllers/webhookController';
 
 const router = express.Router();
 
@@ -20,6 +21,9 @@ router.delete('/users', clearUsers);
 // Evolution routes
 router.get('/evolution/qrcode', getEvolutionQrCode);
 router.delete('/evolution/disconnect', deleteEvolutionInstance);
+router.post('/evolution/webhook', handleWebhook);
+router.get('/evolution/conversations', getConversations);
+router.get('/evolution/messages/:conversationId', getMessages);
 
 // Placeholder for other routes
 router.get('/cities', (req, res) => res.json({ message: 'Cities endpoint' }));

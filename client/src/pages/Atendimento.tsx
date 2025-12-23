@@ -3,63 +3,195 @@ import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card"
 import { Input } from "../components/ui/input";
 import { Button } from "../components/ui/button";
 
+import { useState, useEffect, useRef } from "react";
+import { MessageCircleMore, Phone, Paperclip, Send } from "lucide-react";
+import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
+import { Input } from "../components/ui/input";
+import { Button } from "../components/ui/button";
+import { ScrollArea } from "../components/ui/scroll-area";
+import { cn } from "../lib/utils";
+
+interface Conversation {
+  id: number;
+  phone: string;
+  contact_name: string;
+  last_message?: string;
+  last_message_at?: string;
+}
+
+interface Message {
+  id: number;
+  direction: 'inbound' | 'outbound';
+  content: string;
+  sent_at: string;
+}
+
 const AtendimentoPage = () => {
+  const [conversations, setConversations] = useState<Conversation[]>([]);
+  const [selectedConversation, setSelectedConversation] = useState<Conversation | null>(null);
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [isLoadingMessages, setIsLoadingMessages] = useState(false);
+
+  // Polling para conversas
+  useEffect(() => {
+    const fetchConversations = async () => {
+      try {
+        const res = await fetch("/api/evolution/conversations");
+        if (res.ok) {
+          const data = await res.json();
+          setConversations(data);
+        }
+      } catch (error) {
+        console.error("Erro ao buscar conversas", error);
+      }
+    };
+
+    fetchConversations();
+    const interval = setInterval(fetchConversations, 5000); // 5s
+    return () => clearInterval(interval);
+  }, []);
+
+  // Polling para mensagens quando uma conversa está selecionada
+  useEffect(() => {
+    if (!selectedConversation) return;
+
+    const fetchMessages = async () => {
+      try {
+        const res = await fetch(`/api/evolution/messages/${selectedConversation.id}`);
+        if (res.ok) {
+          const data = await res.json();
+          setMessages(data);
+        }
+      } catch (error) {
+        console.error("Erro ao buscar mensagens", error);
+      }
+    };
+
+    setIsLoadingMessages(true);
+    fetchMessages().finally(() => setIsLoadingMessages(false));
+
+    const interval = setInterval(fetchMessages, 3000); // 3s
+    return () => clearInterval(interval);
+  }, [selectedConversation]);
+
+  const formatTime = (dateString: string) => {
+    if (!dateString) return "";
+    return new Date(dateString).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  };
+
   return (
-    <div className="grid gap-4 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.6fr)]">
-      <Card className="h-[540px] overflow-hidden border-dashed bg-background/70">
-        <CardHeader className="flex flex-row items-center justify-between pb-3">
+    <div className="grid gap-4 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.6fr)] h-[calc(100vh-140px)] min-h-[500px]">
+      {/* Lista de Conversas */}
+      <Card className="flex flex-col overflow-hidden border-dashed bg-background/70">
+        <CardHeader className="flex-none flex-row items-center justify-between pb-3">
           <div>
             <CardTitle className="text-sm">Conversas</CardTitle>
             <p className="text-xs text-muted-foreground">
-              Assim que a integração com o WhatsApp estiver ativa, todas as conversas reais aparecerão aqui.
+              Histórico do WhatsApp
             </p>
           </div>
           <MessageCircleMore className="h-4 w-4 text-primary" />
         </CardHeader>
-        <CardContent className="flex h-full flex-col gap-3">
-          <Input placeholder="Buscar por nome, número ou cidade" className="h-8 text-xs" />
-          <div className="mt-1 flex-1 rounded-lg border border-dashed border-muted-foreground/20 bg-background/60 p-4 text-xs text-muted-foreground">
-            Nenhuma conversa simulada é exibida. As conversas só aparecerão quando forem recebidas
-            da sua integração real com o WhatsApp (Evolution API).
+        <CardContent className="flex-1 overflow-hidden p-0">
+          <div className="px-4 pb-2">
+            <Input placeholder="Buscar..." className="h-8 text-xs" />
           </div>
+
+          <ScrollArea className="h-full">
+            <div className="flex flex-col gap-1 p-2">
+              {conversations.length === 0 && (
+                <div className="text-center text-xs text-muted-foreground p-4">
+                  Nenhuma conversa encontrada.
+                </div>
+              )}
+              {conversations.map((conv) => (
+                <button
+                  key={conv.id}
+                  onClick={() => setSelectedConversation(conv)}
+                  className={cn(
+                    "flex flex-col items-start gap-1 rounded-lg border p-3 text-left text-sm transition-all hover:bg-accent",
+                    selectedConversation?.id === conv.id ? "bg-accent" : "bg-background"
+                  )}
+                >
+                  <div className="flex w-full flex-col gap-1">
+                    <div className="flex items-center">
+                      <div className="flex items-center gap-2">
+                        <div className="font-semibold">{conv.contact_name || conv.phone}</div>
+                      </div>
+                      <div className="ml-auto text-xs text-muted-foreground">
+                        {formatTime(conv.last_message_at!)}
+                      </div>
+                    </div>
+                    <div className="text-xs text-muted-foreground line-clamp-1">
+                      {conv.last_message || "Sem mensagens"}
+                    </div>
+                  </div>
+                </button>
+              ))}
+            </div>
+          </ScrollArea>
         </CardContent>
       </Card>
 
-      <Card className="h-[540px] overflow-hidden border-dashed bg-background/70">
-        <CardHeader className="flex flex-row items-center justify-between pb-3">
-          <div>
-            <CardTitle className="text-sm">Chat selecionado</CardTitle>
-            <p className="text-xs text-muted-foreground">
-              Este painel exibirá, em tempo real, as mensagens reais da conversa selecionada.
-            </p>
+      {/* Chat */}
+      <Card className="flex flex-col overflow-hidden border-dashed bg-background/70">
+        {!selectedConversation ? (
+          <div className="flex h-full flex-col items-center justify-center p-8 text-center text-muted-foreground">
+            <MessageCircleMore className="h-10 w-10 mb-4 opacity-20" />
+            <p className="text-sm">Selecione uma conversa para visualizar</p>
           </div>
-          <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
-            <Phone className="h-3.5 w-3.5" />
-            WhatsApp Evolution API
-          </div>
-        </CardHeader>
-        <CardContent className="flex h-full flex-col">
-          <div className="flex-1 rounded-lg border border-dashed border-muted-foreground/20 bg-background/60 p-4 text-xs text-muted-foreground">
-            Nenhuma mensagem fictícia é mostrada. Assim que a integração estiver configurada, você verá aqui o histórico
-            real de mensagens com passageiros e motoristas.
-          </div>
+        ) : (
+          <>
+            <CardHeader className="flex-none flex-row items-center justify-between pb-3 bg-muted/20">
+              <div>
+                <CardTitle className="text-sm">{selectedConversation.contact_name || selectedConversation.phone}</CardTitle>
+                <p className="text-xs text-muted-foreground">
+                  {selectedConversation.phone} · via WhatsApp
+                </p>
+              </div>
+            </CardHeader>
 
-          <form className="mt-3 flex items-center gap-2 rounded-xl border bg-background px-2 py-1.5 text-xs">
-            <button
-              type="button"
-              className="flex h-7 w-7 items-center justify-center rounded-full bg-muted text-muted-foreground"
-            >
-              <Paperclip className="h-3.5 w-3.5" />
-            </button>
-            <Input
-              className="h-8 flex-1 border-0 bg-transparent text-xs focus-visible:ring-0"
-              placeholder="Digite a mensagem para o passageiro ou motorista"
-            />
-            <Button type="button" size="sm" className="h-8 px-3 text-[11px]">
-              Enviar
-            </Button>
-          </form>
-        </CardContent>
+            <CardContent className="flex flex-1 flex-col overflow-hidden p-0">
+              <ScrollArea className="flex-1 p-4">
+                <div className="flex flex-col gap-4">
+                  {messages.map((msg) => (
+                    <div
+                      key={msg.id}
+                      className={cn(
+                        "flex w-max max-w-[75%] flex-col gap-1 rounded-2xl px-4 py-2 text-sm",
+                        msg.direction === "outbound"
+                          ? "ml-auto bg-primary text-primary-foreground"
+                          : "bg-muted"
+                      )}
+                    >
+                      {msg.content}
+                      <span className={cn("text-[10px]", msg.direction === 'outbound' ? "text-primary-foreground/70" : "text-muted-foreground")}>
+                        {formatTime(msg.sent_at)}
+                      </span>
+                    </div>
+                  ))}
+                  {messages.length === 0 && (
+                    <div className="text-center text-xs text-muted-foreground mt-10">
+                      Nenhuma mensagem carregada.
+                    </div>
+                  )}
+                </div>
+              </ScrollArea>
+
+              <div className="p-4 bg-background border-t">
+                <form className="flex items-center gap-2">
+                  <Input
+                    className="flex-1"
+                    placeholder="Digite a mensagem..."
+                  />
+                  <Button type="submit" size="icon">
+                    <Send className="h-4 w-4" />
+                  </Button>
+                </form>
+              </div>
+            </CardContent>
+          </>
+        )}
       </Card>
     </div>
   );
