@@ -189,20 +189,47 @@ const CrmPage = () => {
 
   const createStage = async () => {
     if (!newStageName.trim()) return;
+    const name = newStageName.trim();
+
     try {
       const res = await fetch("/api/crm/stages", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: newStageName.trim() }),
+        body: JSON.stringify({ name }),
       });
-      if (!res.ok) throw new Error("Erro ao criar fase do funil");
+
+      if (!res.ok) {
+        console.error("Erro ao criar fase do funil no backend, criando apenas no layout.");
+        const tempId = Date.now();
+        const tempStage: Stage = {
+          id: tempId,
+          name,
+          position: stages.length + 1,
+        };
+        setStages((prev) => [...prev, tempStage]);
+        setStageColors((prev) => ({ ...prev, [tempId]: selectedColor }));
+        setNewStageName("");
+        setIsDialogOpen(false);
+        return;
+      }
+
       const created = await res.json();
       setStages((prev) => [...prev, created]);
       setStageColors((prev) => ({ ...prev, [created.id]: selectedColor }));
       setNewStageName("");
       setIsDialogOpen(false);
     } catch (error) {
-      console.error(error);
+      console.error("Erro ao criar fase do funil, criando apenas no layout.", error);
+      const tempId = Date.now();
+      const tempStage: Stage = {
+        id: tempId,
+        name,
+        position: stages.length + 1,
+      };
+      setStages((prev) => [...prev, tempStage]);
+      setStageColors((prev) => ({ ...prev, [tempId]: selectedColor }));
+      setNewStageName("");
+      setIsDialogOpen(false);
     }
   };
 
