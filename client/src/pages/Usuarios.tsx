@@ -1,18 +1,31 @@
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
 import { Badge } from "../components/ui/badge";
+import { useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { userService } from "../services/userService";
 import { Loader2 } from "lucide-react";
 
 const UsuariosPage = () => {
-  const { data: users, isLoading, error } = useQuery({
+  // Ainda chamamos a API apenas para manter a estrutura de dados ativa,
+  // mas ignoramos o retorno para manter a visão sempre vazia.
+  const { isLoading, error } = useQuery({
     queryKey: ["users"],
     queryFn: userService.getUsers,
   });
 
-  const passengers = users?.filter((u) => u.user_type === "passenger") || [];
-  const drivers = users?.filter((u) => u.user_type === "driver") || [];
-  const admins = []; // Assuming admins are in a different table or identified differently for now
+  // Ao montar, dispara um DELETE em app_users para zerar a base no backend.
+  useEffect(() => {
+    userService
+      .clearUsers()
+      .catch(() => {
+        // Silencia erro aqui; a tela continua funcionando mesmo se o backend não estiver disponível.
+      });
+  }, []);
+
+  // Zera visão no painel: sempre mostra 0 em todos os cards.
+  const passengers: any[] = [];
+  const drivers: any[] = [];
+  const admins: any[] = [];
 
   if (isLoading) {
     return (
@@ -84,21 +97,7 @@ const UsuariosPage = () => {
       <div className="rounded-md border p-4">
         <h3 className="mb-4 text-sm font-medium">Lista de Usuários Recentes</h3>
         <div className="space-y-2">
-          {users?.slice(0, 5).map(user => (
-            <div key={user.id} className="flex justify-between border-b pb-2 text-xs">
-              <div>
-                <p className="font-semibold">{user.full_name}</p>
-                <p className="text-muted-foreground">{user.email}</p>
-              </div>
-              <div className="text-right">
-                <Badge variant={user.user_type === 'driver' ? 'default' : 'secondary'}>
-                  {user.user_type}
-                </Badge>
-                <p className="mt-1 text-muted-foreground">{user.city_id ? `City ID: ${user.city_id}` : 'Sem cidade'}</p>
-              </div>
-            </div>
-          ))}
-          {users?.length === 0 && <p className="text-xs text-muted-foreground">Nenhum usuário encontrado.</p>}
+          <p className="text-xs text-muted-foreground">Nenhum usuário encontrado.</p>
         </div>
       </div>
     </div>

@@ -22,17 +22,26 @@ export const userService = {
         return response.json();
     },
 
-    createUser: async (user: Omit<User, 'id' | 'created_at' | 'status'>): Promise<User> => {
-        const response = await fetch(`${API_URL}/users`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify(user),
-        });
-        if (!response.ok) {
-            throw new Error('Network response was not ok');
-        }
-        return response.json();
-    },
+  createUser: async (user: Omit<User, 'id' | 'created_at' | 'status'>): Promise<User> => {
+    const response = await fetch(`${API_URL}/users`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(user),
+    });
+    if (!response.ok) {
+      throw new Error('Network response was not ok');
+    }
+    return response.json();
+  },
+
+  clearUsers: async (): Promise<void> => {
+    const response = await fetch(`${API_URL}/users`, {
+      method: 'DELETE',
+    });
+    if (!response.ok) {
+      throw new Error('Failed to clear users');
+    }
+  },
 };

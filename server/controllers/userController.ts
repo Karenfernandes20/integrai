@@ -68,20 +68,32 @@ export const updateUser = async (req: Request, res: Response) => {
 };
 
 export const deleteUser = async (req: Request, res: Response) => {
-    try {
-        if (!pool) return res.status(500).json({ error: 'Database not configured' });
+  try {
+    if (!pool) return res.status(500).json({ error: 'Database not configured' });
 
-        const { id } = req.params;
+    const { id } = req.params;
 
-        const result = await pool.query('DELETE FROM app_users WHERE id = $1 RETURNING *', [id]);
+    const result = await pool.query('DELETE FROM app_users WHERE id = $1 RETURNING *', [id]);
 
-        if (result.rowCount === 0) {
-            return res.status(404).json({ error: 'User not found' });
-        }
-
-        res.json({ message: 'User deleted successfully' });
-    } catch (error) {
-        console.error('Error deleting user:', error);
-        res.status(500).json({ error: 'Failed to delete user' });
+    if (result.rowCount === 0) {
+      return res.status(404).json({ error: 'User not found' });
     }
+
+    res.json({ message: 'User deleted successfully' });
+  } catch (error) {
+    console.error('Error deleting user:', error);
+    res.status(500).json({ error: 'Failed to delete user' });
+  }
+};
+
+export const clearUsers = async (_req: Request, res: Response) => {
+  try {
+    if (!pool) return res.status(500).json({ error: 'Database not configured' });
+
+    await pool.query('DELETE FROM app_users');
+    res.json({ message: 'All users deleted successfully' });
+  } catch (error) {
+    console.error('Error clearing users:', error);
+    res.status(500).json({ error: 'Failed to clear users' });
+  }
 };

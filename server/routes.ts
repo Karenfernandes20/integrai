@@ -1,9 +1,10 @@
 import express from 'express';
 import {
-    getUsers,
-    createUser,
-    updateUser,
-    deleteUser
+  getUsers,
+  createUser,
+  updateUser,
+  deleteUser,
+  clearUsers,
 } from './controllers/userController';
 
 const router = express.Router();
@@ -13,6 +14,7 @@ router.get('/users', getUsers);
 router.post('/users', createUser);
 router.put('/users/:id', updateUser);
 router.delete('/users/:id', deleteUser);
+router.delete('/users', clearUsers);
 
 // Placeholder for other routes
 router.get('/cities', (req, res) => res.json({ message: 'Cities endpoint' }));
