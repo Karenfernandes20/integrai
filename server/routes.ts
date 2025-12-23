@@ -34,6 +34,7 @@ router.post('/cities', createCity);
 
 // CRM routes
 router.get('/crm/stages', getStages);
+router.post('/crm/stages', createStage);
 router.get('/crm/leads', getLeads);
 router.put('/crm/leads/:id/move', updateLeadStage);
 

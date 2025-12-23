@@ -77,3 +77,28 @@ export const updateLeadStage = async (req: Request, res: Response) => {
         res.status(500).json({ error: 'Failed to update lead' });
     }
 };
+
+export const createStage = async (req: Request, res: Response) => {
+    try {
+        if (!pool) return res.status(500).json({ error: 'Database not configured' });
+
+        const { name } = req.body;
+        if (!name || !name.trim()) {
+            return res.status(400).json({ error: 'name is required' });
+        }
+
+        // Define próxima posição após a última fase existente
+        const posResult = await pool.query('SELECT COALESCE(MAX(position), 0) + 1 AS next_pos FROM crm_stages');
+        const nextPos = posResult.rows[0].next_pos as number;
+
+        const insertResult = await pool.query(
+            'INSERT INTO crm_stages (name, position) VALUES ($1, $2) RETURNING *',
+            [name.trim(), nextPos]
+        );
+
+        res.status(201).json(insertResult.rows[0]);
+    } catch (error) {
+        console.error('Error creating stage:', error);
+        res.status(500).json({ error: 'Failed to create stage' });
+    }
+};

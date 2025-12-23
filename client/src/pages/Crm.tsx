@@ -120,6 +120,10 @@ const CrmPage = () => {
 
   useEffect(() => {
     fetchData();
+
+    // Atualização periódica para refletir novas mensagens/leads quase em tempo real
+    const interval = setInterval(fetchData, 5000);
+    return () => clearInterval(interval);
   }, []);
 
   const loadFallbackData = () => {
