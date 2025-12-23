@@ -9,6 +9,8 @@ import {
 import { getStages, getLeads, updateLeadStage } from './controllers/crmController';
 import { getEvolutionQrCode, deleteEvolutionInstance } from './controllers/evolutionController';
 import { handleWebhook, getConversations, getMessages } from './controllers/webhookController';
+import { getCities, createCity } from './controllers/cityController';
+import { getPayables, getReceivablesByCity, getCashFlow, createExpense } from './controllers/financialController';
 
 const router = express.Router();
 
@@ -26,13 +28,23 @@ router.post('/evolution/webhook', handleWebhook);
 router.get('/evolution/conversations', getConversations);
 router.get('/evolution/messages/:conversationId', getMessages);
 
-// Placeholder for other routes
-router.get('/cities', (req, res) => res.json({ message: 'Cities endpoint' }));
-router.get('/rides', (req, res) => res.json({ message: 'Rides endpoint' }));
+// Cities routes
+router.get('/cities', getCities);
+router.post('/cities', createCity);
+
+// CRM routes
 router.get('/crm/stages', getStages);
 router.get('/crm/leads', getLeads);
 router.put('/crm/leads/:id/move', updateLeadStage);
-router.get('/financial', (req, res) => res.json({ message: 'Financial endpoint' }));
+
+// Financial routes
+router.get('/financial/payables', getPayables);
+router.get('/financial/receivables-by-city', getReceivablesByCity);
+router.get('/financial/cashflow', getCashFlow);
+router.post('/financial/expenses', createExpense);
+
+// Placeholder for other routes
+router.get('/rides', (req, res) => res.json({ message: 'Rides endpoint' }));
 router.get('/whatsapp', (req, res) => res.json({ message: 'WhatsApp endpoint' }));
 
 export default router;
