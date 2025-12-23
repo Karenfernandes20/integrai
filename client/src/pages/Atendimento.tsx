@@ -38,7 +38,24 @@ const AtendimentoPage = () => {
   const [activeTab, setActiveTab] = useState<"conversas" | "contatos">("conversas");
   const [newContactName, setNewContactName] = useState("");
   const [newContactPhone, setNewContactPhone] = useState("");
+  const [phoneError, setPhoneError] = useState<string | null>(null);
   const newContactFormRef = useRef<HTMLFormElement | null>(null);
+
+  const validatePhone = (raw: string): string | null => {
+    const digits = raw.replace(/\D/g, "");
+
+    if (!digits) return "Informe o telefone com DDD.";
+    if (digits.length < 10 || digits.length > 11) {
+      return "Telefone deve ter DDD + número (10 ou 11 dígitos).";
+    }
+
+    const ddd = digits.slice(0, 2);
+    if (/^0/.test(ddd)) {
+      return "DDD inválido.";
+    }
+
+    return null;
+  };
 
   const handleStartConversationFromContact = (contact: Contact) => {
     const newConversation: Conversation = {
@@ -55,12 +72,19 @@ const AtendimentoPage = () => {
 
   const handleAddContact = (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    if (!newContactPhone.trim()) return;
+
+    const error = validatePhone(newContactPhone);
+    if (error) {
+      setPhoneError(error);
+      return;
+    }
+
+    setPhoneError(null);
 
     const newContact: Contact = {
       id: Date.now(),
       name: newContactName || newContactPhone,
-      phone: newContactPhone,
+      phone: newContactPhone.replace(/\D/g, ""),
     };
 
     setContacts((prev) => [...prev, newContact]);
@@ -221,12 +245,17 @@ const AtendimentoPage = () => {
                   value={newContactName}
                   onChange={(e) => setNewContactName(e.target.value)}
                 />
-                <Input
-                  placeholder="Telefone (WhatsApp)"
-                  className="h-8 text-xs flex-1 min-w-[120px]"
-                  value={newContactPhone}
-                  onChange={(e) => setNewContactPhone(e.target.value)}
-                />
+                <div className="flex flex-1 min-w-[120px] flex-col gap-1">
+                  <Input
+                    placeholder="Telefone (DDD + número, apenas dígitos ou com máscara)"
+                    className="h-8 text-xs"
+                    value={newContactPhone}
+                    onChange={(e) => setNewContactPhone(e.target.value)}
+                  />
+                  {phoneError && (
+                    <span className="text-[11px] text-destructive">{phoneError}</span>
+                  )}
+                </div>
                 <Button type="submit" size="sm" variant="outline">
                   Adicionar contato
                 </Button>
