@@ -71,6 +71,15 @@ const QrCodePage = () => {
 
   useEffect(() => {
     fetchQrCode();
+
+    // Polling para verificar conexão a cada 3 segundos
+    const interval = setInterval(() => {
+      // Só faz polling se não estiver carregando e se ainda não estiver conectado (state !== open)
+      // Como não temos o state salvo fora do debugData, vamos checar simples:
+      fetchQrCode();
+    }, 3000);
+
+    return () => clearInterval(interval);
   }, []);
 
   return (

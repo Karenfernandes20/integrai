@@ -1,49 +1,45 @@
 import { Request, Response } from 'express';
-import pkg from 'pg';
-const { Pool } = pkg;
-
-const databaseUrl = process.env.DATABASE_URL;
-const pool = databaseUrl ? new Pool({ connectionString: databaseUrl }) : null;
+import { pool } from "../db";
 
 export const getUsers = async (req: Request, res: Response) => {
-    try {
-        if (!pool) return res.status(500).json({ error: 'Database not configured' });
+  try {
+    if (!pool) return res.status(500).json({ error: 'Database not configured' });
 
-        const result = await pool.query('SELECT * FROM app_users ORDER BY created_at DESC');
-        res.json(result.rows);
-    } catch (error) {
-        console.error('Error fetching users:', error);
-        res.status(500).json({ error: 'Failed to fetch users' });
-    }
+    const result = await pool.query('SELECT * FROM app_users ORDER BY created_at DESC');
+    res.json(result.rows);
+  } catch (error) {
+    console.error('Error fetching users:', error);
+    res.status(500).json({ error: 'Failed to fetch users' });
+  }
 };
 
 export const createUser = async (req: Request, res: Response) => {
-    try {
-        if (!pool) return res.status(500).json({ error: 'Database not configured' });
+  try {
+    if (!pool) return res.status(500).json({ error: 'Database not configured' });
 
-        const { full_name, email, phone, user_type, city_id, state } = req.body;
+    const { full_name, email, phone, user_type, city_id, state } = req.body;
 
-        const result = await pool.query(
-            'INSERT INTO app_users (full_name, email, phone, user_type, city_id, state) VALUES ($1, $2, $3, $4, $5, $6) RETURNING *',
-            [full_name, email, phone, user_type, city_id, state]
-        );
+    const result = await pool.query(
+      'INSERT INTO app_users (full_name, email, phone, user_type, city_id, state) VALUES ($1, $2, $3, $4, $5, $6) RETURNING *',
+      [full_name, email, phone, user_type, city_id, state]
+    );
 
-        res.status(201).json(result.rows[0]);
-    } catch (error) {
-        console.error('Error creating user:', error);
-        res.status(500).json({ error: 'Failed to create user' });
-    }
+    res.status(201).json(result.rows[0]);
+  } catch (error) {
+    console.error('Error creating user:', error);
+    res.status(500).json({ error: 'Failed to create user' });
+  }
 };
 
 export const updateUser = async (req: Request, res: Response) => {
-    try {
-        if (!pool) return res.status(500).json({ error: 'Database not configured' });
+  try {
+    if (!pool) return res.status(500).json({ error: 'Database not configured' });
 
-        const { id } = req.params;
-        const { full_name, email, phone, user_type, city_id, state, status } = req.body;
+    const { id } = req.params;
+    const { full_name, email, phone, user_type, city_id, state, status } = req.body;
 
-        const result = await pool.query(
-            `UPDATE app_users 
+    const result = await pool.query(
+      `UPDATE app_users 
          SET full_name = COALESCE($1, full_name), 
              email = COALESCE($2, email), 
              phone = COALESCE($3, phone), 
@@ -53,18 +49,18 @@ export const updateUser = async (req: Request, res: Response) => {
              status = COALESCE($7, status)
          WHERE id = $8 
          RETURNING *`,
-            [full_name, email, phone, user_type, city_id, state, status, id]
-        );
+      [full_name, email, phone, user_type, city_id, state, status, id]
+    );
 
-        if (result.rowCount === 0) {
-            return res.status(404).json({ error: 'User not found' });
-        }
-
-        res.json(result.rows[0]);
-    } catch (error) {
-        console.error('Error updating user:', error);
-        res.status(500).json({ error: 'Failed to update user' });
+    if (result.rowCount === 0) {
+      return res.status(404).json({ error: 'User not found' });
     }
+
+    res.json(result.rows[0]);
+  } catch (error) {
+    console.error('Error updating user:', error);
+    res.status(500).json({ error: 'Failed to update user' });
+  }
 };
 
 export const deleteUser = async (req: Request, res: Response) => {

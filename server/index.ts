@@ -1,22 +1,12 @@
 import express from "express";
 import cors from "cors";
-import pkg from "pg";
+import { pool } from "./db";
 import routes from "./routes";
-
-const { Pool } = pkg;
 
 const app = express();
 const port = process.env.PORT || 3000;
 
-const databaseUrl = process.env.DATABASE_URL;
-
-if (!databaseUrl) {
-  console.warn("DATABASE_URL não definida. Configure-a no Render para conectar ao Postgres/PgHero.");
-}
-
-const pool = databaseUrl
-  ? new Pool({ connectionString: databaseUrl })
-  : null;
+// Database connection is now handled in ./db/index.ts
 
 app.use(cors());
 app.use(express.json());
