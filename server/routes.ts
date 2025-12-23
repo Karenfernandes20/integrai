@@ -6,7 +6,7 @@ import {
   deleteUser,
   clearUsers,
 } from './controllers/userController';
-import { getStages, getLeads, updateLeadStage } from './controllers/crmController';
+import { getStages, getLeads, updateLeadStage, createStage } from './controllers/crmController';
 import { getEvolutionQrCode, deleteEvolutionInstance } from './controllers/evolutionController';
 import { handleWebhook, getConversations, getMessages } from './controllers/webhookController';
 import { getCities, createCity } from './controllers/cityController';
