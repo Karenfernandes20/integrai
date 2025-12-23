@@ -40,23 +40,6 @@ const AtendimentoPage = () => {
   const [newContactPhone, setNewContactPhone] = useState("");
   const newContactFormRef = useRef<HTMLFormElement | null>(null);
 
-  const handleAddContact = (e: FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    if (!newContactPhone.trim()) return;
-
-    setContacts((prev) => [
-      ...prev,
-      {
-        id: Date.now(),
-        name: newContactName || newContactPhone,
-        phone: newContactPhone,
-      },
-    ]);
-
-    setNewContactName("");
-    setNewContactPhone("");
-  };
-
   const handleStartConversationFromContact = (contact: Contact) => {
     const newConversation: Conversation = {
       id: contact.id,
@@ -68,6 +51,25 @@ const AtendimentoPage = () => {
 
     setSelectedConversation(newConversation);
     setMessages([]);
+  };
+
+  const handleAddContact = (e: FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    if (!newContactPhone.trim()) return;
+
+    const newContact: Contact = {
+      id: Date.now(),
+      name: newContactName || newContactPhone,
+      phone: newContactPhone,
+    };
+
+    setContacts((prev) => [...prev, newContact]);
+
+    // Já abre a conversa com o contato recém-criado
+    handleStartConversationFromContact(newContact);
+
+    setNewContactName("");
+    setNewContactPhone("");
   };
 
   // Polling para conversas
