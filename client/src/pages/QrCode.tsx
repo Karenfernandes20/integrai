@@ -3,7 +3,6 @@ import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card"
 import { Button } from "../components/ui/button";
 import { QrCode as QrIcon, RefreshCcw } from "lucide-react";
 
-const API_URL = "http://localhost:3000/api";
 
 const QrCodePage = () => {
   const [qrCode, setQrCode] = useState<string | null>(null);
@@ -15,7 +14,7 @@ const QrCodePage = () => {
       setIsLoading(true);
       setError(null);
 
-      const response = await fetch(`${API_URL}/evolution/qrcode`);
+      const response = await fetch(`/api/evolution/qrcode`);
       if (!response.ok) {
         const body = await response.text().catch(() => "");
         throw new Error(body || `Erro ${response.status} ao buscar QR Code`);
