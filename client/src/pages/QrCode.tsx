@@ -126,7 +126,7 @@ const QrCodePage = () => {
                   <img
                     src={qrCode}
                     alt="QR Code para conexão Evolution via WhatsApp"
-                    className="w-full max-w-[260px] rounded-lg border bg-background"
+                    className="w-full max-w-[260px] rounded-lg border bg-white p-2"
                   />
                   <p className="max-w-xs text-center text-[11px] text-muted-foreground">
                     Aponte a câmera do dispositivo conectado ao WhatsApp para este código para finalizar a conexão.
