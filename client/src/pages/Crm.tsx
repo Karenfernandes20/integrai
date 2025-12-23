@@ -122,6 +122,25 @@ const CrmPage = () => {
     fetchData();
   }, []);
 
+  const loadFallbackData = () => {
+    const defaultStages: Stage[] = [
+      { id: 1, name: "Leads", position: 1 },
+      { id: 2, name: "Em contato", position: 2 },
+      { id: 3, name: "Agendamento", position: 3 },
+      { id: 4, name: "Venda realizada", position: 4 },
+      { id: 5, name: "Perdido", position: 5 },
+    ];
+
+    setStages(defaultStages);
+    setLeads([]);
+    setStageColors({
+      1: pastelOptions[0],
+      2: pastelOptions[1],
+      3: pastelOptions[2],
+      4: pastelOptions[3],
+    });
+  };
+
   const fetchData = async () => {
     try {
       const [stagesRes, leadsRes] = await Promise.all([
@@ -129,20 +148,26 @@ const CrmPage = () => {
         fetch("/api/crm/leads"),
       ]);
 
-      if (stagesRes.ok && leadsRes.ok) {
-        const stagesData = await stagesRes.json();
-        const leadsData = await leadsRes.json();
-        setStages(stagesData);
-        setLeads(
-          leadsData.map((l: any) => ({
-            ...l,
-            id: l.id.toString(),
-            columnId: l.stage_id?.toString(),
-          }))
-        );
+      if (!stagesRes.ok || !leadsRes.ok) {
+        console.error("CRM API retornou erro, usando layout padrão.");
+        loadFallbackData();
+        return;
       }
+
+      const stagesData = await stagesRes.json();
+      const leadsData = await leadsRes.json();
+
+      setStages(stagesData);
+      setLeads(
+        leadsData.map((l: any) => ({
+          ...l,
+          id: l.id.toString(),
+          columnId: l.stage_id?.toString(),
+        }))
+      );
     } catch (error) {
       console.error("Failed to fetch CRM data", error);
+      loadFallbackData();
     }
   };
 
