@@ -1,5 +1,6 @@
 import "./env";
 import path from "path";
+import fs from "fs";
 import express from "express";
 import cors from "cors";
 import { pool } from "./db";
@@ -52,7 +53,12 @@ app.use((req, res, next) => {
 
   // Para qualquer outra rota GET, devolve o index.html da SPA
   if (req.method === "GET") {
-    return res.sendFile(path.join(distPath, "index.html"));
+    const indexPath = path.join(distPath, "index.html");
+    if (!fs.existsSync(indexPath)) {
+      console.error(`Frontend not found at: ${indexPath}`);
+      return res.status(404).send("Frontend not built. Please run 'npm run build' and ensure the dist folder exists.");
+    }
+    return res.sendFile(indexPath);
   }
 
   return next();
