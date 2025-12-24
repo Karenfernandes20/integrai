@@ -1,5 +1,7 @@
+import { useEffect, useState } from "react";
 import { ArrowUpRight, MapPin, Users, Wallet2 } from "lucide-react";
 import { useSearchParams } from "react-router-dom";
+import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
 import {
   ChartContainer,
@@ -19,19 +21,86 @@ const chartConfig = {
   },
 } satisfies ChartConfig;
 
+interface CompanySummary {
+  id: string;
+  name: string;
+  city: string | null;
+  state: string | null;
+  logo_url: string | null;
+}
+
 const DashboardPage = () => {
   const [searchParams] = useSearchParams();
   const companyId = searchParams.get("companyId");
+
+  const [company, setCompany] = useState<CompanySummary | null>(null);
+  const [isLoadingCompany, setIsLoadingCompany] = useState(false);
+  const [companyError, setCompanyError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const loadCompany = async () => {
+      if (!companyId) {
+        setCompany(null);
+        setCompanyError(null);
+        return;
+      }
+
+      setIsLoadingCompany(true);
+      setCompanyError(null);
+
+      const { data, error } = await supabase
+        .from("companies")
+        .select("id, name, city, state, logo_url")
+        .eq("id", companyId)
+        .maybeSingle();
+
+      if (error) {
+        console.error("Erro ao buscar empresa no Dashboard", error);
+        setCompany(null);
+        setCompanyError("Não foi possível carregar os dados da empresa.");
+      } else {
+        setCompany((data as CompanySummary | null) ?? null);
+      }
+
+      setIsLoadingCompany(false);
+    };
+
+    void loadCompany();
+  }, [companyId]);
 
   return (
     <div className="space-y-5 sm:space-y-6">
       {companyId && (
         <section className="mb-2 rounded-lg border border-primary-soft bg-primary-soft/20 px-3 py-2 text-xs sm:mb-3">
-          <p className="text-muted-foreground">
-            Exibindo visão para a empresa selecionada (ID:
-            <span className="ml-1 font-mono text-foreground">{companyId}</span>). Todos os dados reais serão filtrados
-            por esta empresa quando a integração estiver ativa.
-          </p>
+          {isLoadingCompany ? (
+            <p className="text-muted-foreground">Carregando dados da empresa selecionada...</p>
+          ) : company ? (
+            <div className="flex items-center gap-3">
+              {company.logo_url && (
+                <div className="flex h-9 w-9 items-center justify-center overflow-hidden rounded-full border border-border bg-background">
+                  <img
+                    src={company.logo_url}
+                    alt={`Logo da empresa ${company.name}`}
+                    className="h-full w-full object-cover"
+                  />
+                </div>
+              )}
+              <div className="space-y-0.5">
+                <p className="text-xs font-medium text-foreground">
+                  Visão atual: <span className="font-semibold text-primary">{company.name}</span>
+                </p>
+                <p className="text-[11px] text-muted-foreground">
+                  {company.city || company.state
+                    ? [company.city, company.state].filter(Boolean).join("/")
+                    : "Cidade/UF não informados"}
+                </p>
+              </div>
+            </div>
+          ) : (
+            <p className="text-muted-foreground">
+              {companyError ?? "Empresa não encontrada ou você não tem acesso a ela."}
+            </p>
+          )}
         </section>
       )}
 
