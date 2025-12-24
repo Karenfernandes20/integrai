@@ -23,11 +23,11 @@ const QrCodePage = () => {
       }
 
       const text = await response.text();
-      const trimmed = text.trim().toLowerCase();
-      // Se o backend devolver HTML (ex.: erro de configuração no Render), evita quebrar no JSON.parse
-      if (trimmed.startsWith("<!doctype") || trimmed.startsWith("<html")) {
+      const isHtmlResponse = /^;?\s*<!doctype/i.test(text) || /^;?\s*<html/i.test(text);
+      // Se o backend devolver HTML (ex.: erro de configuração ou proxy redirecionando), evita quebrar no JSON.parse
+      if (isHtmlResponse) {
         throw new Error(
-          "Resposta do servidor não é JSON, e sim HTML. Verifique se o serviço Node/Express no Render está online e expondo /api/evolution/qrcode."
+          "Resposta do servidor não é JSON, e sim HTML. Verifique se o serviço backend está respondendo em /api/evolution/qrcode."
         );
       }
 
