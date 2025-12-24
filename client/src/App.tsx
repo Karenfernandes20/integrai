@@ -14,6 +14,8 @@ import UsuariosPage from "./pages/Usuarios";
 import CidadesPage from "./pages/Cidades";
 import QrCodePage from "./pages/QrCode";
 import ConfiguracoesPage from "./pages/Configuracoes";
+import ForgotPasswordPage from "./pages/ForgotPassword";
+import ResetPasswordPage from "./pages/ResetPassword";
 
 const queryClient = new QueryClient();
 
@@ -25,6 +27,8 @@ const App = () => (
       <BrowserRouter>
         <Routes>
           <Route path="/" element={<Index />} />
+          <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+          <Route path="/reset-password" element={<ResetPasswordPage />} />
 
           <Route path="/app" element={<AdminLayout />}>
             <Route index element={<DashboardPage />} />

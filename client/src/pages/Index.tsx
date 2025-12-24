@@ -34,12 +34,8 @@ const Index = () => {
   };
 
   const handleForgotPassword = () => {
-    toast({
-      title: "Recuperação de senha",
-      description: "A redefinição de senha será configurada em breve.",
-    });
+    navigate("/forgot-password");
   };
-
   return (
     <div className="flex min-h-screen items-stretch bg-gradient-to-br from-primary-soft via-background to-primary/5 px-4 py-6">
       <main className="mx-auto flex w-full max-w-5xl flex-col items-stretch gap-8 md:flex-row md:items-stretch md:gap-10">
