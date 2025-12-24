@@ -33,6 +33,13 @@ const Index = () => {
     navigate("/app/dashboard");
   };
 
+  const handleForgotPassword = () => {
+    toast({
+      title: "Recuperação de senha",
+      description: "A redefinição de senha será configurada em breve.",
+    });
+  };
+
   return (
     <div className="flex min-h-screen items-stretch bg-gradient-to-br from-primary-soft via-background to-primary/5 px-4 py-6">
       <main className="mx-auto flex w-full max-w-5xl flex-col items-stretch gap-8 md:flex-row md:items-stretch md:gap-10">
@@ -92,6 +99,17 @@ const Index = () => {
                 <div className="space-y-1.5">
                   <Label htmlFor="password">Senha</Label>
                   <Input id="password" name="password" type="password" autoComplete="current-password" required />
+                  <div className="flex justify-end">
+                    <Button
+                      type="button"
+                      variant="link"
+                      size="sm"
+                      className="px-0 text-primary"
+                      onClick={handleForgotPassword}
+                    >
+                      Esqueci minha senha
+                    </Button>
+                  </div>
                 </div>
                 <Button
                   type="submit"
