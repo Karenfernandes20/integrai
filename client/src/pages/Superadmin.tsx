@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { z } from "zod";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
@@ -41,6 +42,7 @@ interface Company {
 
 const SuperadminPage = () => {
   const { toast } = useToast();
+  const navigate = useNavigate();
   const [companies, setCompanies] = useState<Company[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -95,6 +97,10 @@ const SuperadminPage = () => {
       phone: company.phone ?? "",
       logo_url: company.logo_url ?? "",
     });
+  };
+
+  const handleOpenDashboard = (company: Company) => {
+    navigate(`/app/dashboard?companyId=${company.id}`);
   };
 
   const resetForm = () => {
@@ -260,7 +266,13 @@ const SuperadminPage = () => {
                         key={company.id}
                         className="grid grid-cols-6 items-center gap-3 px-3 py-2 text-[11px] sm:text-xs"
                       >
-                        <span className="font-medium text-foreground">{company.name}</span>
+                        <button
+                          type="button"
+                          onClick={() => handleOpenDashboard(company)}
+                          className="truncate text-left font-medium text-primary hover:underline"
+                        >
+                          {company.name}
+                        </button>
                         <span className="truncate text-muted-foreground">{company.cnpj || "-"}</span>
                         <span className="truncate text-muted-foreground">
                           {company.city || company.state ? `${company.city ?? ""}/${company.state ?? ""}` : "-"}

@@ -1,4 +1,5 @@
 import { ArrowUpRight, MapPin, Users, Wallet2 } from "lucide-react";
+import { useSearchParams } from "react-router-dom";
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
 import {
   ChartContainer,
@@ -19,8 +20,21 @@ const chartConfig = {
 } satisfies ChartConfig;
 
 const DashboardPage = () => {
+  const [searchParams] = useSearchParams();
+  const companyId = searchParams.get("companyId");
+
   return (
     <div className="space-y-5 sm:space-y-6">
+      {companyId && (
+        <section className="mb-2 rounded-lg border border-primary-soft bg-primary-soft/20 px-3 py-2 text-xs sm:mb-3">
+          <p className="text-muted-foreground">
+            Exibindo visão para a empresa selecionada (ID:
+            <span className="ml-1 font-mono text-foreground">{companyId}</span>). Todos os dados reais serão filtrados
+            por esta empresa quando a integração estiver ativa.
+          </p>
+        </section>
+      )}
+
       {/* Indicadores principais sem números fictícios */}
       <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <Card className="elevated-card animate-card-fade-up border-none bg-card/90">
