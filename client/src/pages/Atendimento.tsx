@@ -39,22 +39,23 @@ const AtendimentoPage = () => {
   const [newContactName, setNewContactName] = useState("");
   const [newContactPhone, setNewContactPhone] = useState("");
   const [phoneError, setPhoneError] = useState<string | null>(null);
+  const [newMessage, setNewMessage] = useState("");
   const newContactFormRef = useRef<HTMLFormElement | null>(null);
 
-  // DDDs brasileiros conhecidos (lista resumida, mas suficiente para validação básica)
+  // DDDs brasileiros conhecidos
   const KNOWN_DDDS = new Set([
-    "11","12","13","14","15","16","17","18","19",
-    "21","22","24","27","28",
-    "31","32","33","34","35","37","38",
-    "41","42","43","44","45","46",
-    "47","48","49",
-    "51","53","54","55",
-    "61","62","63","64","65","66","67",
-    "68","69",
-    "71","73","74","75","77",
+    "11", "12", "13", "14", "15", "16", "17", "18", "19",
+    "21", "22", "24", "27", "28",
+    "31", "32", "33", "34", "35", "37", "38",
+    "41", "42", "43", "44", "45", "46",
+    "47", "48", "49",
+    "51", "53", "54", "55",
+    "61", "62", "63", "64", "65", "66", "67",
+    "68", "69",
+    "71", "73", "74", "75", "77",
     "79",
-    "81","82","83","84","85","86","87","88","89",
-    "91","92","93","94","95","96","97","98","99",
+    "81", "82", "83", "84", "85", "86", "87", "88", "89",
+    "91", "92", "93", "94", "95", "96", "97", "98", "99",
   ]);
 
   const formatBrazilianPhone = (raw: string): string => {
@@ -69,11 +70,9 @@ const AtendimentoPage = () => {
     }
 
     if (digits.length <= 10) {
-      // Fixo: DDD + 4 + 4
       return `(${ddd}) ${rest.slice(0, 4)}-${rest.slice(4)}`;
     }
 
-    // Celular: DDD + 5 + 4
     return `(${ddd}) ${rest.slice(0, 5)}-${rest.slice(5)}`;
   };
 
@@ -93,12 +92,10 @@ const AtendimentoPage = () => {
     }
 
     if (digits.length === 11) {
-      // Celular: primeiro dígito após DDD deve ser 9
       if (!numberPart.startsWith("9")) {
         return "Celular deve começar com 9.";
       }
     } else {
-      // Fixo: primeiro dígito após DDD costuma ser 2–5
       if (!/^[2-5]/.test(numberPart)) {
         return "Telefone fixo inválido (verifique o número).";
       }
@@ -123,6 +120,38 @@ const AtendimentoPage = () => {
 
     setSelectedConversation(newConversation);
     setMessages([]);
+  };
+
+  const handleSendMessage = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!newMessage.trim() || !selectedConversation) return;
+
+    try {
+      const res = await fetch("/api/evolution/messages/send", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          phone: selectedConversation.phone,
+          message: newMessage,
+        }),
+      });
+
+      if (res.ok) {
+        // Opcional: Adicionar mensagem otimisticamente
+        const sentMsg: Message = {
+          id: Date.now(),
+          direction: "outbound",
+          content: newMessage,
+          sent_at: new Date().toISOString(),
+        };
+        setMessages((prev) => [...prev, sentMsg]);
+        setNewMessage("");
+      } else {
+        console.error("Falha ao enviar mensagem");
+      }
+    } catch (err) {
+      console.error("Erro ao enviar mensagem", err);
+    }
   };
 
   const handleAddContact = (e: FormEvent<HTMLFormElement>) => {
@@ -408,9 +437,17 @@ const AtendimentoPage = () => {
               </ScrollArea>
 
               <div className="p-4 bg-background border-t">
-                <form className="flex items-center gap-2">
-                  <Input className="flex-1" placeholder="Digite a mensagem..." />
-                  <Button type="submit" size="icon">
+                <form
+                  className="flex items-center gap-2"
+                  onSubmit={handleSendMessage}
+                >
+                  <Input
+                    className="flex-1"
+                    placeholder="Digite a mensagem..."
+                    value={newMessage}
+                    onChange={(e) => setNewMessage(e.target.value)}
+                  />
+                  <Button type="submit" size="icon" disabled={!newMessage.trim()}>
                     <Send className="h-4 w-4" />
                   </Button>
                 </form>

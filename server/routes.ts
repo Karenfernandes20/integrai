@@ -7,7 +7,7 @@ import {
   clearUsers,
 } from './controllers/userController';
 import { getStages, getLeads, updateLeadStage, createStage } from './controllers/crmController';
-import { getEvolutionQrCode, deleteEvolutionInstance } from './controllers/evolutionController';
+import { getEvolutionQrCode, deleteEvolutionInstance, sendEvolutionMessage } from './controllers/evolutionController';
 import { handleWebhook, getConversations, getMessages } from './controllers/webhookController';
 import { getCities, createCity } from './controllers/cityController';
 import { getPayables, getReceivablesByCity, getCashFlow, createExpense } from './controllers/financialController';
@@ -24,6 +24,7 @@ router.delete('/users', clearUsers);
 // Evolution routes
 router.get('/evolution/qrcode', getEvolutionQrCode);
 router.delete('/evolution/disconnect', deleteEvolutionInstance);
+router.post('/evolution/messages/send', sendEvolutionMessage);
 router.post('/evolution/webhook', handleWebhook);
 router.get('/evolution/conversations', getConversations);
 router.get('/evolution/messages/:conversationId', getMessages);

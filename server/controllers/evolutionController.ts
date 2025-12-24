@@ -10,11 +10,22 @@ import { Request, Response } from "express";
  * e retorna o QR Code (base64) para o frontend.
  */
 
-const EVOLUTION_API_URL = process.env.EVOLUTION_API_URL;
-const EVOLUTION_API_KEY = process.env.EVOLUTION_API_KEY;
+/**
+ * Evolution API controller
+ *
+ * GET /api/evolution/qrcode
+ *
+ * Usa EVOLUTION_API_URL e EVOLUTION_API_KEY para chamar
+ * GET {EVOLUTION_API_URL}/instance/connect/integrai
+ * e retorna o QR Code (base64) para o frontend.
+ */
+
 const EVOLUTION_INSTANCE = "integrai"; // conforme instruído pelo usuário
 
 export const getEvolutionQrCode = async (_req: Request, res: Response) => {
+  const EVOLUTION_API_URL = process.env.EVOLUTION_API_URL;
+  const EVOLUTION_API_KEY = process.env.EVOLUTION_API_KEY;
+
   try {
     if (!EVOLUTION_API_URL || !EVOLUTION_API_KEY) {
       return res.status(500).json({
@@ -60,13 +71,20 @@ export const getEvolutionQrCode = async (_req: Request, res: Response) => {
       raw: data,
       qrcode: qrCode,
     });
-  } catch (error) {
+  } catch (error: any) {
     console.error("Erro ao obter QR Code da Evolution API:", error);
-    return res.status(500).json({ error: "Internal server error while fetching Evolution QR code" });
+    return res.status(500).json({
+      error: "Internal server error while fetching Evolution QR code",
+      details: error?.message || String(error),
+      cause: error?.cause ? String(error.cause) : undefined
+    });
   }
 };
 
 export const deleteEvolutionInstance = async (_req: Request, res: Response) => {
+  const EVOLUTION_API_URL = process.env.EVOLUTION_API_URL;
+  const EVOLUTION_API_KEY = process.env.EVOLUTION_API_KEY;
+
   try {
     if (!EVOLUTION_API_URL || !EVOLUTION_API_KEY) {
       return res.status(500).json({ error: "Evolution API not configured" });
@@ -98,8 +116,65 @@ export const deleteEvolutionInstance = async (_req: Request, res: Response) => {
 
     const data = await response.json();
     return res.status(200).json(data);
-  } catch (error) {
+  } catch (error: any) {
     console.error("Erro ao desconectar instância Evolution:", error);
-    return res.status(500).json({ error: "Internal server error while disconnecting instance" });
+    return res.status(500).json({
+      error: "Internal server error while disconnecting instance",
+      details: error?.message || String(error)
+    });
+  }
+};
+
+export const sendEvolutionMessage = async (req: Request, res: Response) => {
+  const EVOLUTION_API_URL = process.env.EVOLUTION_API_URL;
+  const EVOLUTION_API_KEY = process.env.EVOLUTION_API_KEY;
+
+  try {
+    if (!EVOLUTION_API_URL || !EVOLUTION_API_KEY) {
+      return res.status(500).json({ error: "Evolution API not configured" });
+    }
+
+    const { phone, message } = req.body;
+    if (!phone || !message) {
+      return res.status(400).json({ error: "Phone and message are required" });
+    }
+
+    const url = `${EVOLUTION_API_URL.replace(/\/$/, "")}/message/sendText/${EVOLUTION_INSTANCE}`;
+
+    const response = await fetch(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        apikey: EVOLUTION_API_KEY,
+      },
+      body: JSON.stringify({
+        number: phone,
+        options: {
+          delay: 1200,
+          presence: "composing",
+        },
+        textMessage: {
+          text: message,
+        },
+      }),
+    });
+
+    if (!response.ok) {
+      const text = await response.text().catch(() => undefined);
+      return res.status(response.status).json({
+        error: "Failed to send message",
+        status: response.status,
+        body: text,
+      });
+    }
+
+    const data = await response.json();
+    return res.status(200).json(data);
+  } catch (error: any) {
+    console.error("Erro ao enviar mensagem Evolution:", error);
+    return res.status(500).json({
+      error: "Internal server error while sending message",
+      details: error?.message || String(error)
+    });
   }
 };

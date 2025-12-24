@@ -10,8 +10,10 @@ if (!databaseUrl) {
 export const pool = databaseUrl
     ? new Pool({
         connectionString: databaseUrl,
-        // Configurações recomendadas para produção
-        max: 20, // maximo de conexões
+        ssl: {
+            rejectUnauthorized: false,
+        },
+        max: 20,
         idleTimeoutMillis: 30000,
         connectionTimeoutMillis: 2000,
     })
