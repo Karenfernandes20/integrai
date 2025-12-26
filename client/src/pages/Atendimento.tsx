@@ -1,4 +1,12 @@
-import { MessageCircleMore, Phone, Paperclip, Send } from "lucide-react";
+import {
+  MessageCircleMore,
+  Phone,
+  Paperclip,
+  Send,
+  MoreVertical,
+  Search,
+  CheckCheck,
+} from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
 import { Input } from "../components/ui/input";
 import { Button } from "../components/ui/button";
@@ -7,6 +15,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "../components/ui/tabs"
 import { useState, useEffect, useRef } from "react";
 import type { FormEvent } from "react";
 import { cn } from "../lib/utils";
+import { Avatar, AvatarFallback, AvatarImage } from "../components/ui/avatar";
 
 interface Conversation {
   id: number;
@@ -41,6 +50,14 @@ const AtendimentoPage = () => {
   const [phoneError, setPhoneError] = useState<string | null>(null);
   const [newMessage, setNewMessage] = useState("");
   const newContactFormRef = useRef<HTMLFormElement | null>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
+
+  // Auto-scroll to bottom when messages change
+  useEffect(() => {
+    if (scrollRef.current) {
+      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    }
+  }, [messages, selectedConversation]);
 
   // DDDs brasileiros conhecidos
   const KNOWN_DDDS = new Set([
@@ -248,18 +265,24 @@ const AtendimentoPage = () => {
   };
 
   return (
-    <div className="grid gap-4 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.6fr)] h-[calc(100vh-140px)] min-h-[500px]">
-      {/* Lista de Conversas / Contatos */}
-      <Card className="flex flex-col overflow-hidden border-dashed bg-background/70">
+    <div className="flex h-[calc(100vh-2rem)] overflow-hidden bg-background rounded-xl border shadow-sm">
+      {/* Sidebar - Lista de Conversas / Contatos */}
+      <div className="w-[400px] flex flex-col border-r bg-white dark:bg-zinc-950">
         <Tabs
           value={activeTab}
           onValueChange={(value) => setActiveTab(value as "conversas" | "contatos")}
           className="flex flex-1 flex-col"
         >
-          <CardHeader className="flex-none flex-row items-center justify-between pb-3">
-            <div>
-              <CardTitle className="text-sm">Atendimento</CardTitle>
-              <p className="text-xs text-muted-foreground">Histórico e nova conversa do WhatsApp</p>
+          {/* Header da Sidebar */}
+          <div className="flex items-center justify-between p-4 bg-zinc-100/50 dark:bg-zinc-900/50 border-b">
+            <div className="flex items-center gap-3">
+              <Avatar className="h-10 w-10">
+                <AvatarFallback>EU</AvatarFallback>
+              </Avatar>
+              <div>
+                <CardTitle className="text-sm font-bold">Atendimentos</CardTitle>
+                <p className="text-xs text-muted-foreground">instancia: integrai</p>
+              </div>
             </div>
             <div className="flex items-center gap-2">
               <TabsList className="grid grid-cols-2 h-8 gap-2">
@@ -267,24 +290,26 @@ const AtendimentoPage = () => {
                   Conversas
                 </TabsTrigger>
                 <TabsTrigger value="contatos" className="text-xs">
-                  Nova conversa
+                  Novo +
                 </TabsTrigger>
               </TabsList>
-              <MessageCircleMore className="h-4 w-4 text-primary" />
             </div>
-          </CardHeader>
+          </div>
+
+          <div className="px-3 py-2">
+            <div className="relative">
+              <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+              <Input placeholder="Pesquisar ou começar uma nova conversa" className="pl-9 h-9 bg-zinc-100 dark:bg-zinc-900 border-none rounded-lg text-sm" />
+            </div>
+          </div>
 
           <CardContent className="flex-1 overflow-hidden p-0">
             {/* Aba CONVERSAS */}
-            <TabsContent value="conversas" className="h-full flex flex-col">
-              <div className="px-4 pb-2">
-                <Input placeholder="Buscar..." className="h-8 text-xs" />
-              </div>
-
+            <TabsContent value="conversas" className="h-full flex flex-col m-0">
               <ScrollArea className="h-full">
-                <div className="flex flex-col gap-1 p-2">
+                <div className="flex flex-col">
                   {conversations.length === 0 && (
-                    <div className="text-center text-xs text-muted-foreground p-4">
+                    <div className="text-center text-xs text-muted-foreground p-8">
                       Nenhuma conversa encontrada.
                     </div>
                   )}
@@ -293,22 +318,26 @@ const AtendimentoPage = () => {
                       key={conv.id}
                       onClick={() => setSelectedConversation(conv)}
                       className={cn(
-                        "flex flex-col items-start gap-1 rounded-lg border p-3 text-left text-sm transition-all hover:bg-accent",
-                        selectedConversation?.id === conv.id ? "bg-accent" : "bg-background"
+                        "flex items-center gap-3 px-4 py-3 hover:bg-zinc-100 dark:hover:bg-zinc-900 transition-colors border-b border-transparent hover:border-border",
+                        selectedConversation?.id === conv.id ? "bg-zinc-100 dark:bg-zinc-900" : ""
                       )}
                     >
-                      <div className="flex w-full flex-col gap-1">
-                        <div className="flex items-center">
-                          <div className="flex items-center gap-2">
-                            <div className="font-semibold">{conv.contact_name || conv.phone}</div>
-                          </div>
-                          <div className="ml-auto text-xs text-muted-foreground">
+                      <Avatar className="h-12 w-12">
+                        <AvatarImage src={`https://api.dicebear.com/7.x/initials/svg?seed=${conv.contact_name || conv.phone}`} />
+                        <AvatarFallback>{(conv.contact_name?.[0] || conv.phone?.[0] || "?").toUpperCase()}</AvatarFallback>
+                      </Avatar>
+                      <div className="flex-1 min-w-0 text-left">
+                        <div className="flex justify-between items-baseline mb-1">
+                          <span className="font-medium truncate text-zinc-900 dark:text-zinc-100">
+                            {conv.contact_name || conv.phone}
+                          </span>
+                          <span className="text-[11px] text-muted-foreground whitespace-nowrap ml-2">
                             {formatTime(conv.last_message_at!)}
-                          </div>
+                          </span>
                         </div>
-                        <div className="text-xs text-muted-foreground line-clamp-1">
+                        <p className="text-sm text-muted-foreground truncate line-clamp-1">
                           {conv.last_message || "Sem mensagens"}
-                        </div>
+                        </p>
                       </div>
                     </button>
                   ))}
@@ -317,62 +346,60 @@ const AtendimentoPage = () => {
             </TabsContent>
 
             {/* Aba NOVA CONVERSA / CONTATOS */}
-            <TabsContent value="contatos" className="h-full flex flex-col">
-              <form
-                ref={newContactFormRef}
-                onSubmit={handleAddContact}
-                className="px-4 pb-2 flex flex-wrap gap-2 items-center"
-              >
-                <Input
-                  placeholder="Nome do contato"
-                  className="h-8 text-xs flex-1 min-w-[120px]"
-                  value={newContactName}
-                  onChange={(e) => setNewContactName(e.target.value)}
-                />
-                <div className="flex flex-1 min-w-[120px] flex-col gap-1">
+            <TabsContent value="contatos" className="h-full flex flex-col m-0">
+              <div className="p-4 bg-zinc-50 dark:bg-zinc-900/30 border-b">
+                <h3 className="text-xs font-semibold mb-3 text-muted-foreground uppercase tracking-wider">Novo Contato</h3>
+                <form
+                  ref={newContactFormRef}
+                  onSubmit={handleAddContact}
+                  className="flex flex-col gap-3"
+                >
                   <Input
-                    placeholder="Telefone (DDD + número, apenas dígitos ou com máscara)"
-                    className="h-8 text-xs"
-                    value={newContactPhone}
-                    onChange={(e) => handlePhoneChange(e.target.value)}
+                    placeholder="Nome do contato"
+                    className="h-9 text-sm"
+                    value={newContactName}
+                    onChange={(e) => setNewContactName(e.target.value)}
                   />
-                  {phoneError && (
-                    <span className="text-[11px] text-destructive">{phoneError}</span>
-                  )}
-                </div>
-                <Button type="submit" size="sm" variant="outline">
-                  Adicionar contato
-                </Button>
-              </form>
+                  <div className="flex flex-col gap-1">
+                    <Input
+                      placeholder="Telefone (11) 99999-9999"
+                      className="h-9 text-sm"
+                      value={newContactPhone}
+                      onChange={(e) => handlePhoneChange(e.target.value)}
+                    />
+                    {phoneError && (
+                      <span className="text-[11px] text-red-500 font-medium">{phoneError}</span>
+                    )}
+                  </div>
+                  <Button type="submit" size="sm" className="w-full">
+                    Salvar e Conversar
+                  </Button>
+                </form>
+              </div>
 
               <ScrollArea className="h-full">
-                <div className="flex flex-col gap-1 p-2">
+                <div className="px-2 py-2">
+                  <h3 className="px-2 py-2 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Contatos Salvos</h3>
                   {contacts.length === 0 && (
-                    <div className="flex flex-col items-center gap-2 text-center text-xs text-muted-foreground p-4">
-                      <span>Nenhum contato salvo.</span>
-                      <Button
-                        size="sm"
-                        onClick={() => {
-                          newContactFormRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
-                        }}
-                      >
-                        Incluir novo contato
-                      </Button>
-                    </div>
+                    <p className="text-center text-xs text-muted-foreground py-4">Sua lista está vazia.</p>
                   )}
 
                   {contacts.map((contact) => (
                     <div
                       key={contact.id}
-                      className="flex items-center justify-between rounded-lg border p-3 text-sm"
+                      className="flex items-center justify-between p-2 rounded-lg hover:bg-zinc-100 dark:hover:bg-zinc-900 transition-colors cursor-pointer"
+                      onClick={() => handleStartConversationFromContact(contact)}
                     >
-                      <div className="flex flex-col">
-                        <span className="font-semibold">{contact.name}</span>
-                        <span className="text-xs text-muted-foreground">{contact.phone}</span>
+                      <div className="flex items-center gap-3">
+                        <Avatar className="h-9 w-9">
+                          <AvatarImage src={`https://api.dicebear.com/7.x/initials/svg?seed=${contact.name}`} />
+                          <AvatarFallback>{contact.name[0].toUpperCase()}</AvatarFallback>
+                        </Avatar>
+                        <div className="flex flex-col">
+                          <span className="text-sm font-medium text-zinc-900 dark:text-zinc-100">{contact.name}</span>
+                          <span className="text-xs text-muted-foreground">{contact.phone}</span>
+                        </div>
                       </div>
-                      <Button size="sm" onClick={() => handleStartConversationFromContact(contact)}>
-                        Iniciar conversa
-                      </Button>
                     </div>
                   ))}
                 </div>
@@ -380,82 +407,136 @@ const AtendimentoPage = () => {
             </TabsContent>
           </CardContent>
         </Tabs>
-      </Card>
+      </div>
 
-      {/* Chat */}
-      <Card className="flex flex-col overflow-hidden border-dashed bg-background/70">
+      {/* Area do Chat */}
+      <div className="flex-1 flex flex-col min-w-0 bg-[#efeae2] dark:bg-[#0b141a]">
+        {/* Chat Background Pattern */}
+        <div className="absolute inset-0 z-0 opacity-[0.06] pointer-events-none" style={{
+          backgroundImage: "url('https://user-images.githubusercontent.com/15075759/28719144-86dc0f70-73b1-11e7-911d-60d70fcded21.png')",
+          backgroundRepeat: "repeat",
+          backgroundSize: "400px"
+        }}></div>
+
         {!selectedConversation ? (
-          <div className="flex h-full flex-col items-center justify-center p-8 text-center text-muted-foreground">
-            <MessageCircleMore className="h-10 w-10 mb-4 opacity-20" />
-            <p className="text-sm">Selecione uma conversa para visualizar</p>
+          <div className="relative z-10 flex h-full flex-col items-center justify-center p-8 text-center text-muted-foreground bg-zinc-50 dark:bg-zinc-950 border-l">
+            <div className="w-64 h-64 bg-zinc-100 dark:bg-zinc-900 rounded-full flex items-center justify-center mb-6">
+              <MessageCircleMore className="h-32 w-32 text-zinc-300 dark:text-zinc-700" />
+            </div>
+            <h2 className="text-2xl font-light text-zinc-600 dark:text-zinc-300 mb-2">WhatsApp Web</h2>
+            <p className="text-sm text-zinc-500 max-w-md">
+              Envie e receba mensagens sem precisar manter seu celular conectado.
+              Use o WhatsApp em até 4 aparelhos e 1 celular ao mesmo tempo.
+            </p>
+            <div className="mt-8 flex items-center gap-2 text-xs text-zinc-400">
+              <Phone className="h-3 w-3" /> Protegido com criptografia de ponta a ponta
+            </div>
           </div>
         ) : (
           <>
-            <CardHeader className="flex-none flex-row items-center justify-between pb-3 bg-muted/20">
-              <div>
-                <CardTitle className="text-sm">
-                  {selectedConversation.contact_name || selectedConversation.phone}
-                </CardTitle>
-                <p className="text-xs text-muted-foreground">
-                  {selectedConversation.phone} · via WhatsApp
-                </p>
+            {/* Chat Header */}
+            <div className="relative z-10 flex-none h-[60px] bg-zinc-100 dark:bg-zinc-800 flex items-center justify-between px-4 border-l border-b border-zinc-200 dark:border-zinc-700">
+              <div className="flex items-center gap-3">
+                <Avatar className="cursor-pointer">
+                  <AvatarImage src={`https://api.dicebear.com/7.x/initials/svg?seed=${selectedConversation.contact_name || selectedConversation.phone}`} />
+                  <AvatarFallback>{(selectedConversation.contact_name?.[0] || "?").toUpperCase()}</AvatarFallback>
+                </Avatar>
+                <div className="flex flex-col cursor-pointer">
+                  <span className="font-medium text-sm text-zinc-900 dark:text-zinc-100">
+                    {selectedConversation.contact_name || selectedConversation.phone}
+                  </span>
+                  <span className="text-[10px] text-muted-foreground">
+                    {selectedConversation.phone}
+                  </span>
+                </div>
               </div>
-            </CardHeader>
+              <div className="flex items-center gap-4 text-zinc-500">
+                <Search className="h-5 w-5 cursor-pointer hover:text-zinc-700" />
+                <MoreVertical className="h-5 w-5 cursor-pointer hover:text-zinc-700" />
+              </div>
+            </div>
 
-            <CardContent className="flex flex-1 flex-col overflow-hidden p-0">
-              <ScrollArea className="flex-1 p-4">
-                <div className="flex flex-col gap-4">
-                  {messages.map((msg) => (
+            {/* Chat Messages Area */}
+            <div className="relative z-10 flex-1 overflow-hidden">
+              <div
+                ref={scrollRef}
+                className="h-full overflow-y-auto p-4 sm:p-8 space-y-2 scroll-smooth"
+                style={{
+                  backgroundImage: "url('https://user-images.githubusercontent.com/15075759/28719144-86dc0f70-73b1-11e7-911d-60d70fcded21.png')",
+                  backgroundRepeat: "repeat",
+                  backgroundSize: "400px",
+                  backgroundBlendMode: "overlay"
+                }}
+              >
+                {messages.length === 0 && (
+                  <div className="flex justify-center my-4">
+                    <span className="bg-[#ffeecd] dark:bg-[#1f2c34] text-zinc-800 dark:text-[#ffd279] text-xs px-3 py-1.5 rounded shadow-sm text-center max-w-[90%]">
+                      As mensagens e as chamadas são protegidas com a criptografia de ponta a ponta e ficam somente entre você e os participantes dessa conversa. Nem mesmo o WhatsApp pode ler ou ouvi-las.
+                    </span>
+                  </div>
+                )}
+
+                {messages.map((msg) => (
+                  <div
+                    key={msg.id}
+                    className={cn(
+                      "flex w-full",
+                      msg.direction === "outbound" ? "justify-end" : "justify-start"
+                    )}
+                  >
                     <div
-                      key={msg.id}
                       className={cn(
-                        "flex w-max max-w-[75%] flex-col gap-1 rounded-2xl px-4 py-2 text-sm",
+                        "relative max-w-[85%] sm:max-w-[65%] px-3 py-1.5 shadow-sm text-sm break-words",
                         msg.direction === "outbound"
-                          ? "ml-auto bg-primary text-primary-foreground"
-                          : "bg-muted"
+                          ? "bg-[#d9fdd3] dark:bg-[#005c4b] text-zinc-900 dark:text-zinc-100 rounded-lg rounded-tr-none"
+                          : "bg-white dark:bg-[#202c33] text-zinc-900 dark:text-zinc-100 rounded-lg rounded-tl-none"
                       )}
                     >
-                      {msg.content}
-                      <span
-                        className={cn(
-                          "text-[10px]",
-                          msg.direction === "outbound"
-                            ? "text-primary-foreground/70"
-                            : "text-muted-foreground"
-                        )}
-                      >
+                      {/* Tail CSS pseudo-element simulation could be more complex, but using rounded corners is decent for now */}
+                      <span className="block pr-12 pb-1 whitespace-pre-wrap">{msg.content}</span>
+                      <span className="absolute right-2 bottom-1 text-[10px] flex items-center gap-1 text-zinc-500 dark:text-zinc-400">
                         {formatTime(msg.sent_at)}
+                        {msg.direction === "outbound" && <CheckCheck className="h-3 w-3 text-[#53bdeb]" />}
                       </span>
                     </div>
-                  ))}
-                  {messages.length === 0 && (
-                    <div className="text-center text-xs text-muted-foreground mt-10">
-                      Nenhuma mensagem carregada.
-                    </div>
-                  )}
-                </div>
-              </ScrollArea>
-
-              <div className="p-4 bg-background border-t">
-                <form
-                  className="flex items-center gap-2"
-                  onSubmit={handleSendMessage}
-                >
-                  <Input
-                    className="flex-1"
-                    placeholder="Digite a mensagem..."
-                    value={newMessage}
-                    onChange={(e) => setNewMessage(e.target.value)}
-                  />
-                  <Button type="submit" size="icon" disabled={!newMessage.trim()}>
-                    <Send className="h-4 w-4" />
-                  </Button>
-                </form>
+                  </div>
+                ))}
               </div>
-            </CardContent>
+            </div>
+
+            {/* Chat Input Area */}
+            <div className="relative z-10 flex-none bg-zinc-100 dark:bg-zinc-800 px-4 py-2 flex items-end gap-2 border-l border-t border-zinc-200 dark:border-zinc-700">
+              <Button variant="ghost" size="icon" className="text-zinc-500 hover:text-zinc-600 hover:bg-transparent mb-1">
+                <span className="text-2xl">😊</span>
+              </Button>
+              <Button variant="ghost" size="icon" className="text-zinc-500 hover:text-zinc-600 hover:bg-transparent mb-1">
+                <Paperclip className="h-5 w-5" />
+              </Button>
+
+              <form
+                className="flex-1 flex items-center gap-2 mb-1"
+                onSubmit={handleSendMessage}
+              >
+                <Input
+                  className="flex-1 bg-white dark:bg-zinc-700 border-none focus-visible:ring-0 focus-visible:ring-offset-0 placeholder:text-zinc-400 min-h-[40px] py-2"
+                  placeholder="Digite uma mensagem"
+                  value={newMessage}
+                  onChange={(e) => setNewMessage(e.target.value)}
+                />
+                {newMessage.trim() ? (
+                  <Button type="submit" size="icon" className="h-10 w-10 shrink-0 bg-[#00a884] hover:bg-[#008f6f] text-white rounded-full">
+                    <Send className="h-5 w-5 ml-0.5" />
+                  </Button>
+                ) : (
+                  <Button type="button" size="icon" variant="ghost" className="h-10 w-10 shrink-0 text-zinc-500">
+                    <Phone className="h-6 w-6" /> {/* Placeholder for Mic */}
+                  </Button>
+                )}
+              </form>
+            </div>
           </>
         )}
-      </Card>
+      </div>
     </div>
   );
 };
