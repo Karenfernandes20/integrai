@@ -35,6 +35,9 @@ const LoginPage = () => {
             }
 
             if (!res.ok) {
+                if (res.status === 401) {
+                    throw new Error(data.error || "E-mail ou senha incorretos.");
+                }
                 throw new Error(data.error || "Falha no login. Tente novamente em alguns instantes.");
             }
 
