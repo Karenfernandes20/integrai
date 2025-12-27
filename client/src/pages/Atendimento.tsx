@@ -561,7 +561,7 @@ const AtendimentoPage = () => {
                 </div>
               </div>
 
-              <ScrollArea className="flex-1">
+              <div className="flex-1 overflow-y-auto">
                 {/* Botão de Sync / Importar - Explicitamente visível */}
                 <div
                   className="flex flex-row items-center gap-4 p-4 hover:bg-zinc-100 dark:hover:bg-zinc-900 cursor-pointer transition-colors border-b border-transparent"
@@ -646,7 +646,7 @@ const AtendimentoPage = () => {
                     </Button>
                   </div>
                 )}
-              </ScrollArea>
+              </div>
             </TabsContent>
           </CardContent>
         </Tabs>
