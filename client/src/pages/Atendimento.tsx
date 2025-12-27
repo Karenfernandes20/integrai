@@ -471,28 +471,6 @@ const AtendimentoPage = () => {
               </div>
             </div>
             <div className="flex items-center gap-2">
-              {activeTab === 'conversas' && (
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-8 w-8 text-muted-foreground"
-                  title="Sincronizar Conversas do WhatsApp"
-                  onClick={async (e) => {
-                    e.stopPropagation();
-                    // Call sync then refresh
-                    try {
-                      // Quick toast or state?
-                      const btn = e.currentTarget;
-                      btn.classList.add('animate-spin');
-                      await fetch("/api/evolution/conversations/sync", { method: "POST" });
-                      await fetchConversations();
-                      btn.classList.remove('animate-spin');
-                    } catch (err) { console.error(err); }
-                  }}
-                >
-                  <RefreshCcw className="h-4 w-4" />
-                </Button>
-              )}
               <TabsList className="grid grid-cols-2 h-8 gap-2">
                 <TabsTrigger value="conversas" className="text-xs">
                   Conversas

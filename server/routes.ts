@@ -50,8 +50,6 @@ router.delete('/evolution/disconnect', authenticateToken, deleteEvolutionInstanc
 router.post('/evolution/messages/send', authenticateToken, sendEvolutionMessage);
 router.post('/evolution/webhook', handleWebhook);
 router.get('/evolution/conversations', authenticateToken, getConversations);
-import { syncEvolutionConversations } from './controllers/evolutionController';
-router.post('/evolution/conversations/sync', authenticateToken, syncEvolutionConversations);
 router.get('/evolution/messages/:conversationId', authenticateToken, getMessages);
 
 // Cities routes
