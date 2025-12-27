@@ -18,6 +18,7 @@ import ForgotPasswordPage from "./pages/ForgotPassword";
 import ResetPasswordPage from "./pages/ResetPassword";
 import SuperadminPage from "./pages/Superadmin";
 import RelatoriosPage from "./pages/Relatorios";
+import ContatosPage from "./pages/Contatos";
 
 import { AuthProvider } from "./contexts/AuthContext";
 import AdminRoute from "./components/AdminRoute";
@@ -55,6 +56,7 @@ const App = () => (
               <Route path="cidades" element={<CidadesPage />} />
               <Route path="qr-code" element={<QrCodePage />} />
               <Route path="configuracoes" element={<ConfiguracoesPage />} />
+              <Route path="contatos" element={<ContatosPage />} />
 
               {/* SuperAdmin Routes */}
               <Route element={<AdminRoute roles={['SUPERADMIN', 'ADMIN']} />}>

@@ -28,6 +28,7 @@ import { useAuth } from "../contexts/AuthContext";
 const items = [
   { label: "Dashboard", icon: LayoutDashboard, to: "/app/dashboard" },
   { label: "Atendimento", icon: MessageCircle, to: "/app/atendimento" },
+  { label: "Contatos", icon: Users, to: "/app/contatos" },
   { label: "CRM", icon: KanbanSquare, to: "/app/crm" },
   { label: "Financeiro", icon: Wallet2, to: "/app/financeiro" },
   { label: "Usuários", icon: Users, to: "/app/usuarios" },

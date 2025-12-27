@@ -19,6 +19,9 @@ import { useState, useEffect, useRef } from "react";
 import type { FormEvent } from "react";
 import { cn } from "../lib/utils";
 import { Avatar, AvatarFallback, AvatarImage } from "../components/ui/avatar";
+import { useAuth } from "../contexts/AuthContext";
+
+// ... existing code ...
 
 interface Conversation {
   id: number | string;
@@ -47,6 +50,7 @@ interface Contact {
 }
 
 const AtendimentoPage = () => {
+  const { token } = useAuth();
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [selectedConversation, setSelectedConversation] = useState<Conversation | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
@@ -68,6 +72,7 @@ const AtendimentoPage = () => {
 
   // Socket status for debugging
   const [socketStatus, setSocketStatus] = useState<"connected" | "disconnected" | "connecting">("connecting");
+  const [whatsappStatus, setWhatsappStatus] = useState<"open" | "close" | "connecting" | "unknown">("unknown");
   const [apiError, setApiError] = useState<string | null>(null);
 
   // Auto-scroll logic
@@ -168,14 +173,24 @@ const AtendimentoPage = () => {
 
 
   const fetchEvolutionContacts = async () => {
+    // Check connection (basic check via socket status or just try sync)
+    if (socketStatus !== 'connected') {
+      // Warning if socket is dead, though HTTP might work. 
+      // User requested: "Caso não exista conexão ativa, exibir aviso"
+      // Better to check API status or just try and handle error.
+    }
+
     try {
       setIsLoadingContacts(true);
-      // Calls sync endpoint to fetch from evolution and save to DB
-      const res = await fetch("/api/evolution/contacts/sync", { method: "POST" });
+      const res = await fetch("/api/evolution/contacts/sync", {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${token}`
+        }
+      });
+
       if (res.ok) {
         const data = await res.json();
-        // data comes from DB now: { jid, name, profile_pic_url, ... }
-
         const mapped: Contact[] = data.map((c: any) => ({
           id: c.id,
           name: c.name || "Sem Nome",
@@ -186,11 +201,15 @@ const AtendimentoPage = () => {
 
         setImportedContacts(mapped);
         setFilteredContacts(mapped);
+        alert("Contatos sincronizados com sucesso!"); // Simple feedback for now
       } else {
-        console.error("Failed to sync contacts");
+        const err = await res.json();
+        console.error("Failed to sync contacts", err);
+        alert("Falha ao sincronizar: " + (err.error || "Erro desconhecido"));
       }
     } catch (error) {
       console.error("Error fetching contacts", error);
+      alert("Erro ao conectar com servidor.");
     } finally {
       setIsLoadingContacts(false);
     }
@@ -198,7 +217,11 @@ const AtendimentoPage = () => {
 
   const fetchConversations = async () => {
     try {
-      const res = await fetch("/api/evolution/conversations");
+      const res = await fetch("/api/evolution/conversations", {
+        headers: {
+          "Authorization": `Bearer ${token}`
+        }
+      });
       if (res.ok) {
         const data: Conversation[] = await res.json();
         setConversations(data);
@@ -247,7 +270,11 @@ const AtendimentoPage = () => {
     // Also fetch existing contacts from DB without syncing
     const loadLocal = async () => {
       try {
-        const res = await fetch("/api/evolution/contacts");
+        const res = await fetch("/api/evolution/contacts", {
+          headers: {
+            "Authorization": `Bearer ${token}`
+          }
+        });
         if (res.ok) {
           const data = await res.json();
           const mapped: Contact[] = data.map((c: any) => ({
@@ -262,7 +289,29 @@ const AtendimentoPage = () => {
       } catch (e) { }
     };
     loadLocal();
-  }, []);
+
+    // Poll Evolution status
+    const pollStatus = async () => {
+      try {
+        // In real app, socket event 'connection.update' is better. For now polling.
+        const res = await fetch("/api/evolution/status", {
+          headers: {
+            "Authorization": `Bearer ${token}`
+          }
+        });
+        if (res.ok) {
+          const data = await res.json();
+          // data.instance.state or just state
+          const state = data?.instance?.state || data?.state || 'unknown';
+          setWhatsappStatus(state);
+        }
+      } catch (e) { }
+    };
+    pollStatus();
+    const interval = setInterval(pollStatus, 10000);
+    return () => clearInterval(interval);
+
+  }, [token]);
 
 
   // Fetch messages on select
@@ -278,7 +327,11 @@ const AtendimentoPage = () => {
     const fetchMessages = async () => {
       try {
         setIsLoadingMessages(true);
-        const res = await fetch(`/api/evolution/messages/${selectedConversation.id}`);
+        const res = await fetch(`/api/evolution/messages/${selectedConversation.id}`, {
+          headers: {
+            "Authorization": `Bearer ${token}`
+          }
+        });
         if (res.ok) {
           const data = await res.json();
           setMessages(data);
@@ -387,7 +440,10 @@ const AtendimentoPage = () => {
     try {
       const res = await fetch("/api/evolution/messages/send", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${token}`
+        },
         body: JSON.stringify({
           phone: selectedConversation.phone,
           message: newMessage,
@@ -561,24 +617,34 @@ const AtendimentoPage = () => {
                 </div>
               </div>
 
-              <div className="flex-1 overflow-y-auto">
-                {/* Botão de Sync / Importar - Explicitamente visível */}
-                <div
-                  className="flex flex-row items-center gap-4 p-4 hover:bg-zinc-100 dark:hover:bg-zinc-900 cursor-pointer transition-colors border-b border-transparent"
-                  onClick={() => {
-                    console.log("Clicou em sincronizar");
-                    fetchEvolutionContacts();
-                  }}
-                  role="button"
-                  title="Clique para importar contatos"
-                >
-                  <div className="w-10 h-10 rounded-full bg-[#008069] flex items-center justify-center text-white shrink-0 shadow-sm">
-                    <RefreshCcw className={cn("h-5 w-5", isLoadingContacts && "animate-spin")} />
+              <div className="flex-1 overflow-y-auto flex flex-col">
+                {/* ... buttons ... */}
+                {/* List starts here */}
+
+                {filteredContacts.length === 0 && !contactSearchTerm && (
+                  <div className="text-center text-gray-400 text-sm mt-8">
+                    Nenhum contato sincronizado.<br />Clique em "Sincronizar" acima.
                   </div>
-                  <div className="flex flex-col text-left">
-                    <span className="text-sm font-semibold text-zinc-900 dark:text-zinc-100">Sincronizar Contatos</span>
-                    <span className="text-xs text-zinc-500">Importar do celular conectado</span>
-                  </div>
+                )}
+                <div className="p-4">
+                  <Button
+                    className={cn(
+                      "w-full bg-[#008069] hover:bg-[#006d59] text-white font-semibold shadow-md transition-all active:scale-95",
+                      (isLoadingContacts || whatsappStatus !== 'open') && "opacity-80 cursor-not-allowed"
+                    )}
+                    onClick={async () => {
+                      if (whatsappStatus !== 'open') return;
+                      await fetchEvolutionContacts();
+                    }}
+                    disabled={isLoadingContacts || whatsappStatus !== 'open'}
+                    title={whatsappStatus !== 'open' ? "WhatsApp não conectado" : "Sincronizar contatos"}
+                  >
+                    <RefreshCcw className={cn("mr-2 h-4 w-4", isLoadingContacts && "animate-spin")} />
+                    {isLoadingContacts ? "Sincronizando..." : "Sincronizar contatos"}
+                  </Button>
+                  {whatsappStatus !== 'open' && (
+                    <p className="text-xs text-red-500 text-center mt-2">WhatsApp desconectado. Conecte via QR Code.</p>
+                  )}
                 </div>
 
                 {/* Botão Novo Contato Manual (Não funcional no prompt do user, mas bom ter visualmente ou redirecionar a modal) */}
@@ -598,31 +664,34 @@ const AtendimentoPage = () => {
                   CONTATOS NO VIAMOVECAR
                 </div>
 
-                {filteredContacts.map((contact, idx) => (
-                  <div
-                    key={contact.id || idx}
-                    className="flex items-center gap-4 p-3 hover:bg-gray-100 dark:hover:bg-zinc-900 cursor-pointer transition-colors border-b border-gray-50 dark:border-zinc-800/50"
-                    onClick={() => handleStartConversationFromContact(contact)}
-                  >
-                    <Avatar className="h-10 w-10">
-                      {contact.profile_pic_url ? (
-                        <AvatarImage src={contact.profile_pic_url} className="object-cover" />
-                      ) : (
-                        <AvatarImage src={`https://api.dicebear.com/7.x/initials/svg?seed=${contact.name}`} />
-                      )}
-                      <AvatarFallback>{(contact.name?.[0] || "?").toUpperCase()}</AvatarFallback>
-                    </Avatar>
-
-                    <div className="flex flex-col flex-1 min-w-0">
-                      <span className="text-base font-normal text-gray-900 dark:text-gray-100 truncate">
+                {filteredContacts
+                  .sort((a, b) => (a.name || "").localeCompare(b.name || ""))
+                  .map((contact, idx) => (
+                    <div
+                      key={contact.id || idx}
+                      className="flex items-center p-2 border-b border-gray-100 dark:border-zinc-800 hover:bg-zinc-50 dark:hover:bg-zinc-900 transition-colors gap-2"
+                    >
+                      <span className="font-medium text-sm text-zinc-900 dark:text-zinc-100 whitespace-nowrap overflow-hidden text-ellipsis max-w-[120px]" title={contact.name}>
                         {contact.name}
                       </span>
-                      <span className="text-xs text-gray-500 truncate">
-                        {contact.push_name ? `~${contact.push_name} ` : ''}{contact.phone}
+                      <span className="text-xs text-zinc-500 font-mono whitespace-nowrap">
+                        {contact.phone}
                       </span>
+
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-6 w-6 text-[#008069] hover:bg-[#008069]/10 rounded-full ml-1"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleStartConversationFromContact(contact);
+                        }}
+                        title="Conversar"
+                      >
+                        <MessageCircleMore className="h-4 w-4" />
+                      </Button>
                     </div>
-                  </div>
-                ))}
+                  ))}
 
                 {filteredContacts.length === 0 && contactSearchTerm && (
                   <div className="p-8 text-center">

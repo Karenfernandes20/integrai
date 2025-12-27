@@ -326,25 +326,43 @@ export const syncEvolutionContacts = async (req: Request, res: Response) => {
 
   try {
     // 1. Fetch from Evolution
-    const url = `${EVOLUTION_API_URL.replace(/\/$/, "")}/chat/findContacts/${EVOLUTION_INSTANCE}`;
-    console.log(`[Evolution] Syncing contacts from: ${url}`);
+    // 1. Fetch from Evolution
+    // Try POST /chat/findContacts (common for V2 to sync/check DB)
+    let url = `${EVOLUTION_API_URL.replace(/\/$/, "")}/chat/findContacts/${EVOLUTION_INSTANCE}`;
+    console.log(`[Evolution] Syncing contacts from: ${url} (POST)`);
 
-    const response = await fetch(url, {
-      method: "GET",
+    let response = await fetch(url, {
+      method: "POST",
       headers: {
         "Content-Type": "application/json",
         apikey: EVOLUTION_API_KEY
-      }
+      },
+      body: JSON.stringify({})
     });
 
     if (!response.ok) {
+      console.warn(`[Evolution] POST /chat/findContacts failed (${response.status}). Trying fallback /contact/find...`);
+
+      // Fallback: POST /contact/find (V1 or alternative)
+      url = `${EVOLUTION_API_URL.replace(/\/$/, "")}/contact/find/${EVOLUTION_INSTANCE}`;
+      response = await fetch(url, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          apikey: EVOLUTION_API_KEY
+        },
+        body: JSON.stringify({})
+      });
+    }
+
+    if (!response.ok) {
       const text = await response.text();
-      console.warn(`[Evolution] Sync failed: ${text}`);
-      return res.status(response.status).json({ error: "Failed to fetch from Evolution", details: text });
+      console.warn(`[Evolution] Sync fallback failed: ${text}`);
+      return res.status(response.status).json({ error: "Failed to fetch from Evolution (both endpoints failed)", details: text });
     }
 
     const data: any[] = await response.json();
-    console.log(`[Evolution] Fetched ${data.length} contacts. Saving to DB...`);
+    console.log(`[Evolution] Fetched ${Array.isArray(data) ? data.length : 0} contacts. Saving to DB...`);
 
     // 2. Upsert to Database
     if (pool && Array.isArray(data)) {
@@ -381,5 +399,126 @@ export const syncEvolutionContacts = async (req: Request, res: Response) => {
   } catch (error: any) {
     console.error("Error syncing contacts:", error);
     return res.status(500).json({ error: "Sync failed", details: error.message });
+  }
+};
+// ... (previous code)
+
+// Handle Evolution Webhooks
+export const handleEvolutionWebhook = async (req: Request, res: Response) => {
+  try {
+    const body = req.body;
+    // console.log("[Evolution] Webhook received:", JSON.stringify(body, null, 2));
+
+    const { type, data, instance } = body;
+
+    // V2 structure compatibility: sometimes data is inside 'data' or top level depending on event
+    // Typical V2 TEXT_MESSAGE: type: "MESSAGES_UPSERT", data: { messages: [...] } OR directly messages: [...]
+
+    // We focus on MESSAGES_UPSERT or MESSAGES_UPDATE
+    // Check event type
+    const eventType = type || body.event;
+
+    if (eventType === "MESSAGES_UPSERT") {
+      const messages = data?.messages || body.messages || []; // V2 usually sends array
+
+      for (const msg of messages) {
+        if (!msg.key) continue;
+
+        const remoteJid = msg.key.remoteJid;
+        const fromMe = msg.key.fromMe;
+        const id = msg.key.id;
+        const pushName = msg.pushName;
+        const messageType = msg.messageType || Object.keys(msg.message)[0];
+
+        // Extract content
+        let content = "";
+        if (messageType === 'conversation') content = msg.message.conversation;
+        else if (messageType === 'extendedTextMessage') content = msg.message.extendedTextMessage.text;
+        else if (messageType === 'imageMessage') content = msg.message.imageMessage.caption || "[Imagem]";
+        else if (messageType === 'audioMessage') content = "[Áudio]";
+        else if (messageType === 'videoMessage') content = "[Vídeo]";
+        else content = JSON.stringify(msg.message); // Fallback
+
+        // Ignore status updates
+        if (remoteJid === "status@broadcast") continue;
+
+        // Ensure Conversation Exists
+        let conversationId: number | null = null;
+
+        if (pool) {
+          // 1. Upsert Conversation
+          // We need to check by external_id AND instance
+          // If it doesn't exist, create it.
+          // Also update last_message stuff.
+
+          // Helper: clean phone
+          const phone = remoteJid.split('@')[0];
+
+          const existing = await pool.query(
+            `SELECT id FROM whatsapp_conversations WHERE external_id = $1 AND instance = $2`,
+            [remoteJid, instance]
+          );
+
+          if (existing.rows.length > 0) {
+            conversationId = existing.rows[0].id;
+            // Update last message
+            await pool.query(
+              `UPDATE whatsapp_conversations SET 
+                                last_message = $1, 
+                                last_message_at = NOW(), 
+                                unread_count = unread_count + $3
+                             WHERE id = $2`,
+              [content, conversationId, fromMe ? 0 : 1]
+            );
+          } else {
+            // Create new
+            const newConv = await pool.query(
+              `INSERT INTO whatsapp_conversations 
+                                (external_id, phone, contact_name, instance, last_message, last_message_at, unread_count)
+                             VALUES ($1, $2, $3, $4, $5, NOW(), $6)
+                             RETURNING id`,
+              [remoteJid, phone, pushName || phone, instance, content, fromMe ? 0 : 1]
+            );
+            conversationId = newConv.rows[0].id;
+          }
+
+          // 2. Insert Message
+          // Check for duplicates first? (id is unique usually but let's trust uniqueness of id is not guaranteed globally unless we constrain it)
+          // Actually let's assume valid new message.
+          await pool.query(
+            `INSERT INTO whatsapp_messages 
+                            (conversation_id, direction, content, sent_at, status, message_type)
+                         VALUES ($1, $2, $3, NOW(), $4, $5)`,
+            [conversationId, fromMe ? 'outbound' : 'inbound', content, 'received', messageType]
+          );
+
+          // 3. Emit Socket Event
+          if ((global as any).io) {
+            const io = (global as any).io;
+            // Payload expected by frontend:
+            // { conversation_id, phone, contact_name, content, sent_at, direction, id, ... }
+
+            io.emit("message:received", {
+              id: Date.now(), // Temp ID for socket
+              conversation_id: conversationId,
+              platform: "whatsapp",
+              direction: fromMe ? "outbound" : "inbound",
+              content: content,
+              status: "received",
+              sent_at: new Date(),
+              phone: remoteJid, // Frontend uses phone to match conversation
+              contact_name: pushName || remoteJid,
+              remoteJid: remoteJid,
+              instance: instance
+            });
+          }
+        }
+      }
+    }
+
+    return res.status(200).send("OK");
+  } catch (e) {
+    console.error("Error processing webhook:", e);
+    return res.status(500).send("Error");
   }
 };
