@@ -41,9 +41,11 @@ router.post('/users/:id/reset-password', authenticateToken, authorizeRole(['SUPE
 
 // Evolution routes
 // Evolution routes
-import { getEvolutionQrCode, deleteEvolutionInstance, sendEvolutionMessage, getEvolutionConnectionState } from './controllers/evolutionController';
+import { getEvolutionQrCode, deleteEvolutionInstance, sendEvolutionMessage, getEvolutionConnectionState, getEvolutionContacts, syncEvolutionContacts } from './controllers/evolutionController';
 router.get('/evolution/qrcode', authenticateToken, getEvolutionQrCode);
 router.get('/evolution/status', authenticateToken, getEvolutionConnectionState);
+router.get('/evolution/contacts', authenticateToken, getEvolutionContacts);
+router.post('/evolution/contacts/sync', authenticateToken, syncEvolutionContacts);
 router.delete('/evolution/disconnect', authenticateToken, deleteEvolutionInstance);
 router.post('/evolution/messages/send', authenticateToken, sendEvolutionMessage);
 router.post('/evolution/webhook', handleWebhook);

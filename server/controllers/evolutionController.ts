@@ -296,3 +296,90 @@ export const sendEvolutionMessage = async (req: Request, res: Response) => {
     });
   }
 };
+
+export const getEvolutionContacts = async (req: Request, res: Response) => {
+  const config = await getEvolutionConfig((req as any).user, 'getContacts');
+  const EVOLUTION_INSTANCE = config.instance;
+
+  // Retrieve local contacts first
+  try {
+    const localContacts = await pool?.query(
+      `SELECT * FROM whatsapp_contacts WHERE instance = $1 ORDER BY name ASC`,
+      [EVOLUTION_INSTANCE]
+    );
+    return res.json(localContacts?.rows || []);
+  } catch (error) {
+    console.error("Error fetching local contacts:", error);
+    return res.status(500).json({ error: "DB Error" });
+  }
+};
+
+export const syncEvolutionContacts = async (req: Request, res: Response) => {
+  const config = await getEvolutionConfig((req as any).user, 'syncContacts');
+  const EVOLUTION_API_URL = config.url;
+  const EVOLUTION_API_KEY = config.apikey;
+  const EVOLUTION_INSTANCE = config.instance;
+
+  if (!EVOLUTION_API_URL || !EVOLUTION_API_KEY) {
+    return res.status(500).json({ error: "Evolution API not configured" });
+  }
+
+  try {
+    // 1. Fetch from Evolution
+    const url = `${EVOLUTION_API_URL.replace(/\/$/, "")}/chat/findContacts/${EVOLUTION_INSTANCE}`;
+    console.log(`[Evolution] Syncing contacts from: ${url}`);
+
+    const response = await fetch(url, {
+      method: "GET",
+      headers: {
+        "Content-Type": "application/json",
+        apikey: EVOLUTION_API_KEY
+      }
+    });
+
+    if (!response.ok) {
+      const text = await response.text();
+      console.warn(`[Evolution] Sync failed: ${text}`);
+      return res.status(response.status).json({ error: "Failed to fetch from Evolution", details: text });
+    }
+
+    const data: any[] = await response.json();
+    console.log(`[Evolution] Fetched ${data.length} contacts. Saving to DB...`);
+
+    // 2. Upsert to Database
+    if (pool && Array.isArray(data)) {
+      for (const contact of data) {
+        const jid = contact.id; // remoteJid
+        const name = contact.name || contact.pushName || contact.id?.split('@')[0];
+        const pushName = contact.pushName;
+        const profilePicUser = contact.profilePictureUrl;
+
+        if (!jid) continue;
+
+        // Safe upsert
+        await pool.query(`
+                INSERT INTO whatsapp_contacts (jid, name, push_name, profile_pic_url, instance, updated_at)
+                VALUES ($1, $2, $3, $4, $5, NOW())
+                ON CONFLICT (jid, instance) 
+                DO UPDATE SET 
+                    name = EXCLUDED.name,
+                    push_name = EXCLUDED.push_name,
+                    profile_pic_url = EXCLUDED.profile_pic_url,
+                    updated_at = NOW();
+            `, [jid, name, pushName, profilePicUser, EVOLUTION_INSTANCE]);
+      }
+    }
+
+    // 3. Return updated local list
+    const localContacts = await pool?.query(
+      `SELECT * FROM whatsapp_contacts WHERE instance = $1 ORDER BY name ASC`,
+      [EVOLUTION_INSTANCE]
+    );
+
+    return res.json(localContacts?.rows || []);
+
+  } catch (error: any) {
+    console.error("Error syncing contacts:", error);
+    return res.status(500).json({ error: "Sync failed", details: error.message });
+  }
+};

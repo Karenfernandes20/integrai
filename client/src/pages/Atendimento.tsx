@@ -6,6 +6,8 @@ import {
   MoreVertical,
   Search,
   CheckCheck,
+  RefreshCcw,
+  UserPlus
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
 import { Input } from "../components/ui/input";
@@ -19,7 +21,7 @@ import { cn } from "../lib/utils";
 import { Avatar, AvatarFallback, AvatarImage } from "../components/ui/avatar";
 
 interface Conversation {
-  id: number;
+  id: number | string;
   phone: string;
   contact_name: string;
   last_message?: string;
@@ -37,9 +39,11 @@ interface Message {
 }
 
 interface Contact {
-  id: number;
+  id: number | string;
   name: string;
   phone: string;
+  profile_pic_url?: string;
+  push_name?: string;
 }
 
 const AtendimentoPage = () => {
@@ -55,6 +59,12 @@ const AtendimentoPage = () => {
   const [newMessage, setNewMessage] = useState("");
   const newContactFormRef = useRef<HTMLFormElement | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+
+  // New states for contact import
+  const [importedContacts, setImportedContacts] = useState<Contact[]>([]);
+  const [isLoadingContacts, setIsLoadingContacts] = useState(false);
+  const [contactSearchTerm, setContactSearchTerm] = useState("");
+  const [filteredContacts, setFilteredContacts] = useState<Contact[]>([]);
 
   // Socket status for debugging
   const [socketStatus, setSocketStatus] = useState<"connected" | "disconnected" | "connecting">("connecting");
@@ -157,6 +167,35 @@ const AtendimentoPage = () => {
   }, [selectedConversation]); // Re-bind socket listeners if selectedConversation changes (to capture closure correctly) OR better: use refs
 
 
+  const fetchEvolutionContacts = async () => {
+    try {
+      setIsLoadingContacts(true);
+      // Calls sync endpoint to fetch from evolution and save to DB
+      const res = await fetch("/api/evolution/contacts/sync", { method: "POST" });
+      if (res.ok) {
+        const data = await res.json();
+        // data comes from DB now: { jid, name, profile_pic_url, ... }
+
+        const mapped: Contact[] = data.map((c: any) => ({
+          id: c.id,
+          name: c.name || "Sem Nome",
+          phone: c.jid ? c.jid.split('@')[0] : c.phone,
+          profile_pic_url: c.profile_pic_url,
+          push_name: c.push_name
+        }));
+
+        setImportedContacts(mapped);
+        setFilteredContacts(mapped);
+      } else {
+        console.error("Failed to sync contacts");
+      }
+    } catch (error) {
+      console.error("Error fetching contacts", error);
+    } finally {
+      setIsLoadingContacts(false);
+    }
+  };
+
   const fetchConversations = async () => {
     try {
       const res = await fetch("/api/evolution/conversations");
@@ -179,15 +218,62 @@ const AtendimentoPage = () => {
     }
   };
 
+  // Filtering logic
+  useEffect(() => {
+    // If we have imported (synced) contacts, use them.
+    // Otherwise fallback to 'contacts' (manual list).
+    // Ideally we merge them or just use one source of truth.
+    // For now, let's prefer importedContacts if available.
+
+    const listToFilter = importedContacts.length > 0 ? importedContacts : contacts;
+
+    if (!contactSearchTerm) {
+      setFilteredContacts(listToFilter);
+      return;
+    }
+
+    const term = contactSearchTerm.toLowerCase();
+    const filtered = listToFilter.filter(c =>
+      (c.name && c.name.toLowerCase().includes(term)) ||
+      (c.phone && c.phone.includes(term))
+    );
+    setFilteredContacts(filtered);
+  }, [contactSearchTerm, importedContacts, contacts]);
+
+
   // Initial Fetch logic
   useEffect(() => {
     fetchConversations();
+    // Also fetch existing contacts from DB without syncing
+    const loadLocal = async () => {
+      try {
+        const res = await fetch("/api/evolution/contacts");
+        if (res.ok) {
+          const data = await res.json();
+          const mapped: Contact[] = data.map((c: any) => ({
+            id: c.id,
+            name: c.name || "Sem Nome",
+            phone: c.jid ? c.jid.split('@')[0] : c.phone,
+            profile_pic_url: c.profile_pic_url,
+            push_name: c.push_name
+          }));
+          setImportedContacts(mapped);
+        }
+      } catch (e) { }
+    };
+    loadLocal();
   }, []);
 
 
   // Fetch messages on select
   useEffect(() => {
     if (!selectedConversation) return;
+
+    // Skip fetch if it's a temporary conversation (string ID)
+    if (typeof selectedConversation.id === 'string' && selectedConversation.id.toString().startsWith('temp')) {
+      setMessages([]);
+      return;
+    }
 
     const fetchMessages = async () => {
       try {
@@ -453,63 +539,113 @@ const AtendimentoPage = () => {
             </TabsContent>
 
             {/* Aba NOVA CONVERSA / CONTATOS */}
-            <TabsContent value="contatos" className="h-full flex flex-col m-0">
-              <div className="p-4 bg-zinc-50 dark:bg-zinc-900/30 border-b">
-                <h3 className="text-xs font-semibold mb-3 text-muted-foreground uppercase tracking-wider">Novo Contato</h3>
-                <form
-                  ref={newContactFormRef}
-                  onSubmit={handleAddContact}
-                  className="flex flex-col gap-3"
-                >
-                  <Input
-                    placeholder="Nome do contato"
-                    className="h-9 text-sm"
-                    value={newContactName}
-                    onChange={(e) => setNewContactName(e.target.value)}
-                  />
-                  <div className="flex flex-col gap-1">
-                    <Input
-                      placeholder="Telefone (11) 99999-9999"
-                      className="h-9 text-sm"
-                      value={newContactPhone}
-                      onChange={(e) => handlePhoneChange(e.target.value)}
-                    />
-                    {phoneError && (
-                      <span className="text-[11px] text-red-500 font-medium">{phoneError}</span>
-                    )}
-                  </div>
-                  <Button type="submit" size="sm" className="w-full">
-                    Salvar e Conversar
-                  </Button>
-                </form>
+            <TabsContent value="contatos" className="h-full flex flex-col m-0 bg-white dark:bg-zinc-950">
+              {/* Header de Nova Conversa (Estilo WhatsApp) */}
+              <div className="h-[60px] bg-[#008069] dark:bg-zinc-800 flex items-center px-4 gap-4 text-white shrink-0">
+                <button onClick={() => setActiveTab("conversas")} className="hover:bg-white/10 rounded-full p-1 -ml-2">
+                  <span className="text-xl">←</span>
+                </button>
+                <div className="font-medium text-base">Nova conversa</div>
               </div>
 
-              <ScrollArea className="h-full">
-                <div className="px-2 py-2">
-                  <h3 className="px-2 py-2 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Contatos Salvos</h3>
-                  {contacts.length === 0 && (
-                    <p className="text-center text-xs text-muted-foreground py-4">Sua lista está vazia.</p>
-                  )}
-
-                  {contacts.map((contact) => (
-                    <div
-                      key={contact.id}
-                      className="flex items-center justify-between p-2 rounded-lg hover:bg-zinc-100 dark:hover:bg-zinc-900 transition-colors cursor-pointer"
-                      onClick={() => handleStartConversationFromContact(contact)}
-                    >
-                      <div className="flex items-center gap-3">
-                        <Avatar className="h-9 w-9">
-                          <AvatarImage src={`https://api.dicebear.com/7.x/initials/svg?seed=${contact.name}`} />
-                          <AvatarFallback>{contact.name[0].toUpperCase()}</AvatarFallback>
-                        </Avatar>
-                        <div className="flex flex-col">
-                          <span className="text-sm font-medium text-zinc-900 dark:text-zinc-100">{contact.name}</span>
-                          <span className="text-xs text-muted-foreground">{contact.phone}</span>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
+              {/* Search Bar */}
+              <div className="p-3 bg-white dark:bg-zinc-950 border-b z-10">
+                <div className="relative">
+                  <Search className="absolute left-3 top-2.5 h-4 w-4 text-gray-500" />
+                  <Input
+                    placeholder="Pesquisar nome ou número"
+                    className="pl-10 bg-gray-100 dark:bg-zinc-800 border-none rounded-lg h-10 text-sm focus-visible:ring-0"
+                    value={contactSearchTerm}
+                    onChange={(e) => setContactSearchTerm(e.target.value)}
+                  />
                 </div>
+              </div>
+
+              <ScrollArea className="flex-1">
+                {/* Botão de Sync / Importar - Explicitamente visível */}
+                <div
+                  className="flex flex-row items-center gap-4 p-4 hover:bg-zinc-100 dark:hover:bg-zinc-900 cursor-pointer transition-colors border-b border-transparent"
+                  onClick={() => {
+                    console.log("Clicou em sincronizar");
+                    fetchEvolutionContacts();
+                  }}
+                  role="button"
+                  title="Clique para importar contatos"
+                >
+                  <div className="w-10 h-10 rounded-full bg-[#008069] flex items-center justify-center text-white shrink-0 shadow-sm">
+                    <RefreshCcw className={cn("h-5 w-5", isLoadingContacts && "animate-spin")} />
+                  </div>
+                  <div className="flex flex-col text-left">
+                    <span className="text-sm font-semibold text-zinc-900 dark:text-zinc-100">Sincronizar Contatos</span>
+                    <span className="text-xs text-zinc-500">Importar do celular conectado</span>
+                  </div>
+                </div>
+
+                {/* Botão Novo Contato Manual (Não funcional no prompt do user, mas bom ter visualmente ou redirecionar a modal) */}
+                <div className="flex items-center gap-4 p-4 hover:bg-gray-100 dark:hover:bg-zinc-900 cursor-pointer transition-colors" onClick={() => {
+                  // Logic for manual add
+                  // For now we can just focus on search bar entering number
+                }}>
+                  <div className="w-10 h-10 rounded-full bg-[#008069] flex items-center justify-center text-white shrink-0">
+                    <UserPlus className="h-5 w-5" />
+                  </div>
+                  <div className="flex flex-col text-left">
+                    <span className="text-base font-normal text-gray-900 dark:text-gray-100">Novo contato</span>
+                  </div>
+                </div>
+
+                <div className="px-4 py-3 text-[#008069] font-medium text-sm">
+                  CONTATOS NO VIAMOVECAR
+                </div>
+
+                {filteredContacts.map((contact, idx) => (
+                  <div
+                    key={contact.id || idx}
+                    className="flex items-center gap-4 p-3 hover:bg-gray-100 dark:hover:bg-zinc-900 cursor-pointer transition-colors border-b border-gray-50 dark:border-zinc-800/50"
+                    onClick={() => handleStartConversationFromContact(contact)}
+                  >
+                    <Avatar className="h-10 w-10">
+                      {contact.profile_pic_url ? (
+                        <AvatarImage src={contact.profile_pic_url} className="object-cover" />
+                      ) : (
+                        <AvatarImage src={`https://api.dicebear.com/7.x/initials/svg?seed=${contact.name}`} />
+                      )}
+                      <AvatarFallback>{(contact.name?.[0] || "?").toUpperCase()}</AvatarFallback>
+                    </Avatar>
+
+                    <div className="flex flex-col flex-1 min-w-0">
+                      <span className="text-base font-normal text-gray-900 dark:text-gray-100 truncate">
+                        {contact.name}
+                      </span>
+                      <span className="text-xs text-gray-500 truncate">
+                        {contact.push_name ? `~${contact.push_name} ` : ''}{contact.phone}
+                      </span>
+                    </div>
+                  </div>
+                ))}
+
+                {filteredContacts.length === 0 && contactSearchTerm && (
+                  <div className="p-8 text-center">
+                    <p className="text-gray-500 text-sm mb-4">Nenhum contato encontrado.</p>
+                    <Button
+                      variant="outline"
+                      className="w-full text-[#008069]"
+                      onClick={() => {
+                        // Start chat with raw number
+                        const raw = contactSearchTerm.replace(/\D/g, '');
+                        if (raw.length >= 10) {
+                          handleStartConversationFromContact({
+                            id: 'temp-' + Date.now(),
+                            name: contactSearchTerm,
+                            phone: raw,
+                          });
+                        }
+                      }}
+                    >
+                      Conversar com {contactSearchTerm}
+                    </Button>
+                  </div>
+                )}
               </ScrollArea>
             </TabsContent>
           </CardContent>

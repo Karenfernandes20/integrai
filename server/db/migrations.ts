@@ -131,6 +131,22 @@ const runWhatsappMigrations = async () => {
         await addColumn('whatsapp_messages', 'status', "VARCHAR(20) DEFAULT 'received'");
         await addColumn('whatsapp_conversations', 'instance', 'VARCHAR(100)');
 
+
+        // whatsapp_contacts
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS whatsapp_contacts (
+                id SERIAL PRIMARY KEY,
+                jid VARCHAR(100) NOT NULL,
+                name VARCHAR(100),
+                push_name VARCHAR(100),
+                profile_pic_url TEXT,
+                instance VARCHAR(100),
+                created_at TIMESTAMP DEFAULT NOW(),
+                updated_at TIMESTAMP DEFAULT NOW(),
+                UNIQUE(jid, instance)
+            );
+        `);
+
     } catch (error) {
         console.error("Error creating WhatsApp tables:", error);
     }
