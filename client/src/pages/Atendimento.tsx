@@ -620,10 +620,21 @@ const AtendimentoPage = () => {
         setMessages(prev => prev.filter(m => m.id !== tempMessageId));
         setNewMessage(messageContent); // Restore text
 
-        if (status === 502 || status === 504 || status === 500) {
-          alert("Serviço indisponível temporariamente. O backend pode estar offline ou reiniciando. Tente novamente em alguns instantes.");
-        } else {
-          alert(`Falha ao enviar mensagem. (Erro: ${status})`);
+        // Try parsing JSON
+        try {
+          const errJson = JSON.parse(errText);
+          const errorTitle = errJson.error || "Falha ao enviar";
+          const errorDetails = errJson.details || errJson.body || "";
+          alert(`${errorTitle}\n${errorDetails}`);
+        } catch {
+          // HTML or raw text
+          if (status === 502 || status === 504) {
+            alert("O backend está indisponível ou demorando muito para responder (Gateway Timeout). Tente novamente.");
+          } else if (status === 500) {
+            alert(`Erro interno do servidor (500). Verifique a conexão com a Evolution API.`);
+          } else {
+            alert(`Falha ao enviar mensagem. (Erro: ${status})`);
+          }
         }
       } else {
         console.log("Mensagem enviada com sucesso!");
