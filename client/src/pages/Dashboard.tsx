@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { ArrowUpRight, MapPin, Users, Wallet2 } from "lucide-react";
 import { useSearchParams } from "react-router-dom";
-import { supabase } from "@/integrations/supabase/client";
+// import { supabase } from "@/integrations/supabase/client"; // Removed direct access
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
 import {
   ChartContainer,
@@ -48,18 +48,25 @@ const DashboardPage = () => {
       setIsLoadingCompany(true);
       setCompanyError(null);
 
-      const { data, error } = await supabase
-        .from("companies")
-        .select("id, name, city, state, logo_url")
-        .eq("id", companyId)
-        .maybeSingle();
+      try {
+        const response = await fetch(`/api/companies/${companyId}`, {
+          headers: {
+            'Authorization': `Bearer ${localStorage.getItem('auth_token')}`
+          }
+        });
 
-      if (error) {
+        if (!response.ok) {
+          const err = await response.json();
+          throw new Error(err.error || 'Failed to fetch company');
+        }
+
+        const data: CompanySummary = await response.json();
+        setCompany(data);
+
+      } catch (error: any) {
         console.error("Erro ao buscar empresa no Dashboard", error);
         setCompany(null);
-        setCompanyError("Não foi possível carregar os dados da empresa.");
-      } else {
-        setCompany((data as CompanySummary | null) ?? null);
+        setCompanyError(error.message || "Não foi possível carregar os dados da empresa.");
       }
 
       setIsLoadingCompany(false);

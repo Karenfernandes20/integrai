@@ -13,7 +13,7 @@ import { getCities, createCity } from './controllers/cityController';
 import { getPayables, getReceivablesByCity, getCashFlow, createExpense } from './controllers/financialController';
 import { login, register } from './controllers/authController';
 import { authenticateToken, authorizeRole } from './middleware/authMiddleware';
-import { getCompanies, createCompany, updateCompany, deleteCompany, getCompanyUsers } from './controllers/companyController';
+import { getCompanies, createCompany, updateCompany, deleteCompany, getCompanyUsers, getCompany } from './controllers/companyController';
 
 const router = express.Router();
 
@@ -23,8 +23,9 @@ router.post('/auth/register', register);
 
 import { upload } from './middleware/uploadMiddleware';
 
-// Company routes (SuperAdmin only)
+// Company routes
 router.get('/companies', authenticateToken, authorizeRole(['SUPERADMIN']), getCompanies);
+router.get('/companies/:id', authenticateToken, getCompany);
 router.get('/companies/:id/users', authenticateToken, authorizeRole(['SUPERADMIN']), getCompanyUsers);
 router.post('/companies', authenticateToken, authorizeRole(['SUPERADMIN']), upload.single('logo'), createCompany);
 router.put('/companies/:id', authenticateToken, authorizeRole(['SUPERADMIN']), upload.single('logo'), updateCompany);
@@ -39,8 +40,6 @@ router.post('/users/:id/reset-password', authenticateToken, authorizeRole(['SUPE
 // router.delete('/users', clearUsers); // Disable dangerous bulk delete without stronger protection or manual only
 
 
-// Evolution routes
-// Evolution routes
 // Evolution routes
 import { getEvolutionQrCode, deleteEvolutionInstance, sendEvolutionMessage, getEvolutionConnectionState, getEvolutionContacts, syncEvolutionContacts, handleEvolutionWebhook } from './controllers/evolutionController';
 router.get('/evolution/qrcode', authenticateToken, getEvolutionQrCode);
@@ -81,4 +80,3 @@ router.get('/rides', (req, res) => res.json({ message: 'Rides endpoint' }));
 router.get('/whatsapp', (req, res) => res.json({ message: 'WhatsApp endpoint' }));
 
 export default router;
-

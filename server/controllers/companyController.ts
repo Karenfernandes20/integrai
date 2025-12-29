@@ -12,6 +12,33 @@ export const getCompanies = async (req: Request, res: Response) => {
     }
 };
 
+export const getCompany = async (req: Request, res: Response) => {
+    try {
+        if (!pool) return res.status(500).json({ error: 'Database not configured' });
+        const { id } = req.params;
+        const user = (req as any).user;
+
+        // Security check: Only SuperAdmin or the company's own users can view details
+        if (user.role !== 'SUPERADMIN') {
+            // Check if user belongs to this company
+            // user.company_id might be null or undefined if they are not bound yet
+            if (!user.company_id || Number(user.company_id) !== Number(id)) {
+                return res.status(403).json({ error: 'You are not authorized to view this company.' });
+            }
+        }
+
+        const result = await pool.query('SELECT * FROM companies WHERE id = $1', [id]);
+
+        if (result.rows.length === 0) {
+            return res.status(404).json({ error: 'Company not found' });
+        }
+        res.json(result.rows[0]);
+    } catch (error) {
+        console.error('Error fetching company:', error);
+        res.status(500).json({ error: 'Failed to fetch company' });
+    }
+};
+
 export const createCompany = async (req: Request, res: Response) => {
     try {
         if (!pool) return res.status(500).json({ error: 'Database not configured' });
