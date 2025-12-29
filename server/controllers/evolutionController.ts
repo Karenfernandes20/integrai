@@ -493,8 +493,8 @@ export const handleEvolutionWebhook = async (req: Request, res: Response) => {
           );
 
           // 3. Emit Socket Event
-          if ((global as any).io) {
-            const io = (global as any).io;
+          const io = req.app.get('io');
+          if (io) {
             // Payload expected by frontend:
             // { conversation_id, phone, contact_name, content, sent_at, direction, id, ... }
 
@@ -506,7 +506,7 @@ export const handleEvolutionWebhook = async (req: Request, res: Response) => {
               content: content,
               status: "received",
               sent_at: new Date(),
-              phone: remoteJid, // Frontend uses phone to match conversation
+              phone: phone, // Frontend uses phone to match conversation (using the clean phone variable)
               contact_name: pushName || remoteJid,
               remoteJid: remoteJid,
               instance: instance

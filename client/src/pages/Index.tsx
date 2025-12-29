@@ -25,7 +25,7 @@ const Index = () => {
             <Button
               variant="ghost"
               size="sm"
-              onClick={() => navigate("/app/empresas")}
+              onClick={() => navigate("/login")}
               className="text-red-500 hover:text-red-600 hover:bg-red-50 font-medium"
             >
               <ShieldCheck className="mr-2 h-4 w-4" />

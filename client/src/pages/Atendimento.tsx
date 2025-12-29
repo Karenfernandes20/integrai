@@ -49,10 +49,22 @@ interface Contact {
   push_name?: string;
 }
 
+import { useSearchParams } from "react-router-dom";
+
+import EmojiPicker, { EmojiClickData } from "emoji-picker-react";
+
+// ... (existing imports remain the same, ensure this replaces the imports area if needed or just adds to it. Best to be safe and overwrite component start)
+
 const AtendimentoPage = () => {
   const { token } = useAuth();
+  const [searchParams, setSearchParams] = useSearchParams();
+
   const [conversations, setConversations] = useState<Conversation[]>([]);
+  const [filteredConversations, setFilteredConversations] = useState<Conversation[]>([]);
   const [selectedConversation, setSelectedConversation] = useState<Conversation | null>(null);
+  const [isLoadingConversations, setIsLoadingConversations] = useState(true);
+
+  // ... (existing state)
   const [messages, setMessages] = useState<Message[]>([]);
   const [isLoadingMessages, setIsLoadingMessages] = useState(false);
   const [contacts, setContacts] = useState<Contact[]>([]);
@@ -61,8 +73,12 @@ const AtendimentoPage = () => {
   const [newContactPhone, setNewContactPhone] = useState("");
   const [phoneError, setPhoneError] = useState<string | null>(null);
   const [newMessage, setNewMessage] = useState("");
+  const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+  const [conversationSearchTerm, setConversationSearchTerm] = useState("");
+
   const newContactFormRef = useRef<HTMLFormElement | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // New states for contact import
   const [importedContacts, setImportedContacts] = useState<Contact[]>([]);
@@ -75,12 +91,112 @@ const AtendimentoPage = () => {
   const [whatsappStatus, setWhatsappStatus] = useState<"open" | "close" | "connecting" | "unknown">("unknown");
   const [apiError, setApiError] = useState<string | null>(null);
 
+  // Persistence: Save active conversation to localStorage
+  useEffect(() => {
+    if (selectedConversation) {
+      localStorage.setItem('last_active_phone', selectedConversation.phone);
+    }
+  }, [selectedConversation]);
+
   // Auto-scroll logic
   useEffect(() => {
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
   }, [messages, selectedConversation]);
+
+  // Filter Conversations Logic
+  useEffect(() => {
+    if (!conversationSearchTerm) {
+      setFilteredConversations(conversations);
+    } else {
+      const lower = conversationSearchTerm.toLowerCase();
+      const filtered = conversations.filter(c =>
+        (c.contact_name && c.contact_name.toLowerCase().includes(lower)) ||
+        (c.phone && c.phone.includes(lower))
+      );
+      setFilteredConversations(filtered);
+    }
+  }, [conversationSearchTerm, conversations]);
+
+  // Handle Query Params AND Persistence for Auto-Selection
+  useEffect(() => {
+    // If conversations are still loading, don't try to select yet unless it's a new temp chat
+    // But we need to know if loading finished to decide if we should create temp.
+    if (isLoadingConversations && conversations.length === 0) return;
+
+    const phoneParam = searchParams.get('phone');
+    const nameParam = searchParams.get('name');
+
+    // Priority: 1. URL Param, 2. LocalStorage Persistence
+    let targetPhone = phoneParam;
+    let targetName = nameParam;
+
+    if (!targetPhone) {
+      // Try persistence
+      const storedPhone = localStorage.getItem('last_active_phone');
+      if (storedPhone) {
+        targetPhone = storedPhone;
+        // We don't have name stored, but that's fine, we look up in conversations/contacts or it will be mapped later
+      }
+    }
+
+    if (targetPhone) {
+      // Check if already selected
+      if (selectedConversation?.phone === targetPhone) {
+        // Clean params if needed
+        if (phoneParam) {
+          setSearchParams(prev => {
+            const newParams = new URLSearchParams(prev);
+            newParams.delete('phone');
+            newParams.delete('name');
+            return newParams;
+          }, { replace: true });
+        }
+        return;
+      }
+
+      // Find existing in conversations
+      const existing = conversations.find(c => c.phone === targetPhone);
+
+      if (existing) {
+        setSelectedConversation(existing);
+      } else {
+        // Not found in conversations. 
+        // If we came from "Contatos", we have a nameParam. 
+        // If we came from persistence, we might not have a name, so we try to find it in importedContacts or contacts
+
+        if (!targetName) {
+          const foundContact = [...importedContacts, ...contacts].find(c => c.phone === targetPhone);
+          if (foundContact) targetName = foundContact.name;
+        }
+
+        // Create temp conversation
+        const newConv: Conversation = {
+          id: 'temp-' + Date.now(),
+          phone: targetPhone,
+          contact_name: targetName || targetPhone,
+          last_message: "",
+          last_message_at: new Date().toISOString()
+        };
+
+        setConversations(prev => [newConv, ...prev]);
+        setSelectedConversation(newConv);
+      }
+
+      // Clear params to keep URL clean
+      if (phoneParam) {
+        setSearchParams(prev => {
+          const newParams = new URLSearchParams(prev);
+          newParams.delete('phone');
+          newParams.delete('name');
+          return newParams;
+        }, { replace: true });
+      }
+    }
+  }, [searchParams, conversations, isLoadingConversations, importedContacts, contacts, setSearchParams]);
+
+  // ... (Rest of the component)
 
   // Socket.io Integration
   useEffect(() => {
@@ -191,13 +307,19 @@ const AtendimentoPage = () => {
 
       if (res.ok) {
         const data = await res.json();
-        const mapped: Contact[] = data.map((c: any) => ({
-          id: c.id,
-          name: c.name || "Sem Nome",
-          phone: c.jid ? c.jid.split('@')[0] : c.phone,
-          profile_pic_url: c.profile_pic_url,
-          push_name: c.push_name
-        }));
+        const mapped: Contact[] = data.map((c: any) => {
+          let rawPhone = c.jid ? c.jid.split('@')[0] : (c.phone || "");
+          if (rawPhone && typeof rawPhone === 'string' && rawPhone.includes('@')) {
+            rawPhone = rawPhone.split('@')[0];
+          }
+          return {
+            id: c.id,
+            name: c.name || "Sem Nome",
+            phone: rawPhone,
+            profile_pic_url: c.profile_pic_url,
+            push_name: c.push_name
+          };
+        });
 
         setImportedContacts(mapped);
         setFilteredContacts(mapped);
@@ -217,6 +339,7 @@ const AtendimentoPage = () => {
 
   const fetchConversations = async () => {
     try {
+      setIsLoadingConversations(true); // Start loading
       const res = await fetch("/api/evolution/conversations", {
         headers: {
           "Authorization": `Bearer ${token}`
@@ -238,6 +361,8 @@ const AtendimentoPage = () => {
     } catch (error) {
       console.error("Erro ao buscar conversas", error);
       setApiError("Falha ao carregar conversas.");
+    } finally {
+      setIsLoadingConversations(false); // Stop loading
     }
   };
 
@@ -277,13 +402,19 @@ const AtendimentoPage = () => {
         });
         if (res.ok) {
           const data = await res.json();
-          const mapped: Contact[] = data.map((c: any) => ({
-            id: c.id,
-            name: c.name || "Sem Nome",
-            phone: c.jid ? c.jid.split('@')[0] : c.phone,
-            profile_pic_url: c.profile_pic_url,
-            push_name: c.push_name
-          }));
+          const mapped: Contact[] = data.map((c: any) => {
+            let rawPhone = c.jid ? c.jid.split('@')[0] : (c.phone || "");
+            if (rawPhone && typeof rawPhone === 'string' && rawPhone.includes('@')) {
+              rawPhone = rawPhone.split('@')[0];
+            }
+            return {
+              id: c.id,
+              name: c.name || "Sem Nome",
+              phone: rawPhone,
+              profile_pic_url: c.profile_pic_url,
+              push_name: c.push_name
+            };
+          });
           setImportedContacts(mapped);
         }
       } catch (e) { }
@@ -437,7 +568,37 @@ const AtendimentoPage = () => {
     e.preventDefault();
     if (!newMessage.trim() || !selectedConversation) return;
 
+    console.log("Tentando enviar mensagem...");
+
+    // Safe extraction of phone number
+    let targetPhone = selectedConversation.phone || "";
+    if (targetPhone.includes('@')) {
+      targetPhone = targetPhone.split('@')[0];
+    }
+    targetPhone = targetPhone.replace(/\D/g, ""); // Ensure only numbers
+
+    if (!targetPhone) {
+      alert("Erro: Não foi possível identificar o número do telefone desta conversa.");
+      return;
+    }
+
+    const tempMessageId = Date.now();
+    const messageContent = newMessage; // Capture current state
+
     try {
+      // 1. Optimistic Update (Immediate Feedback)
+      const optimisticMsg: Message = {
+        id: tempMessageId,
+        direction: "outbound",
+        content: messageContent,
+        sent_at: new Date().toISOString(),
+        status: "pending"
+      };
+
+      setMessages((prev) => [...prev, optimisticMsg]);
+      setNewMessage(""); // Clear input immediately
+
+      // 2. Send to API
       const res = await fetch("/api/evolution/messages/send", {
         method: "POST",
         headers: {
@@ -445,26 +606,30 @@ const AtendimentoPage = () => {
           "Authorization": `Bearer ${token}`
         },
         body: JSON.stringify({
-          phone: selectedConversation.phone,
-          message: newMessage,
+          phone: targetPhone,
+          message: messageContent,
         }),
       });
 
-      if (res.ok) {
-        // Opcional: Adicionar mensagem otimisticamente
-        const sentMsg: Message = {
-          id: Date.now(),
-          direction: "outbound",
-          content: newMessage,
-          sent_at: new Date().toISOString(),
-        };
-        setMessages((prev) => [...prev, sentMsg]);
-        setNewMessage("");
+      if (!res.ok) {
+        const errText = await res.text();
+        console.error("Falha ao enviar mensagem:", errText);
+
+        // Revert optimistic update on failure
+        setMessages(prev => prev.filter(m => m.id !== tempMessageId));
+        setNewMessage(messageContent); // Restore text
+        alert("Falha ao enviar mensagem. Tente novamente.");
       } else {
-        console.error("Falha ao enviar mensagem");
+        console.log("Mensagem enviada com sucesso!");
+        // We could update the message ID here if the backend returns it, 
+        // but typically we wait for the socket event 'message:upsert' or 'message:received' to confirm.
       }
     } catch (err) {
-      console.error("Erro ao enviar mensagem", err);
+      console.error("Erro ao enviar mensagem (Network/Code):", err);
+      // Revert optimistic update on error
+      setMessages(prev => prev.filter(m => m.id !== tempMessageId));
+      setNewMessage(messageContent);
+      alert("Erro de conexão ao enviar mensagem.");
     }
   };
 
@@ -499,8 +664,25 @@ const AtendimentoPage = () => {
     return new Date(dateString).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
   };
 
+  const onEmojiClick = (emojiData: EmojiClickData) => {
+    setNewMessage((prev) => prev + emojiData.emoji);
+  };
+
+  const handleAttachmentClick = () => {
+    if (fileInputRef.current) {
+      fileInputRef.current.click();
+    }
+  };
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files.length > 0) {
+      alert(`Arquivo selecionado: ${e.target.files[0].name}. (Envio em breve)`);
+      e.target.value = "";
+    }
+  };
+
   return (
-    <div className="flex h-[calc(100vh-2rem)] overflow-hidden bg-background rounded-xl border shadow-sm">
+    <div className="flex h-[calc(100vh-2rem)] overflow-hidden bg-background rounded-xl border shadow-sm" onClick={() => setShowEmojiPicker(false)}>
       {/* Sidebar - Lista de Conversas / Contatos */}
       <div className="w-[400px] flex flex-col border-r bg-white dark:bg-zinc-950">
         <Tabs
@@ -541,7 +723,12 @@ const AtendimentoPage = () => {
           <div className="px-3 py-2">
             <div className="relative">
               <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-              <Input placeholder="Pesquisar ou começar uma nova conversa" className="pl-9 h-9 bg-zinc-100 dark:bg-zinc-900 border-none rounded-lg text-sm" />
+              <Input
+                placeholder="Pesquisar ou começar uma nova conversa"
+                className="pl-9 h-9 bg-zinc-100 dark:bg-zinc-900 border-none rounded-lg text-sm"
+                value={conversationSearchTerm}
+                onChange={(e) => setConversationSearchTerm(e.target.value)}
+              />
             </div>
           </div>
 
@@ -550,12 +737,12 @@ const AtendimentoPage = () => {
             <TabsContent value="conversas" className="h-full flex flex-col m-0">
               <ScrollArea className="h-full">
                 <div className="flex flex-col">
-                  {conversations.length === 0 && (
+                  {filteredConversations.length === 0 && (
                     <div className="text-center text-xs text-muted-foreground p-8">
-                      Nenhuma conversa encontrada.
+                      {conversations.length === 0 ? "Nenhuma conversa encontrada." : "Nenhuma conversa corresponde à pesquisa."}
                     </div>
                   )}
-                  {conversations.map((conv) => (
+                  {filteredConversations.map((conv) => (
                     <button
                       key={conv.id}
                       onClick={() => setSelectedConversation(conv)}
@@ -817,11 +1004,40 @@ const AtendimentoPage = () => {
             </div>
 
             {/* Chat Input Area */}
-            <div className="relative z-10 flex-none bg-zinc-100 dark:bg-zinc-800 px-4 py-2 flex items-end gap-2 border-l border-t border-zinc-200 dark:border-zinc-700">
-              <Button variant="ghost" size="icon" className="text-zinc-500 hover:text-zinc-600 hover:bg-transparent mb-1">
+            <div className="relative z-10 flex-none bg-zinc-100 dark:bg-zinc-800 px-4 py-2 flex items-end gap-2 border-l border-t border-zinc-200 dark:border-zinc-700" onClick={(e) => e.stopPropagation()}>
+
+              {/* Emoji Picker Popover */}
+              {showEmojiPicker && (
+                <div className="absolute bottom-16 left-4 z-50 shadow-xl border rounded-lg">
+                  <EmojiPicker onEmojiClick={onEmojiClick} width={300} height={400} />
+                </div>
+              )}
+
+              <Button
+                variant="ghost"
+                size="icon"
+                className={cn("text-zinc-500 hover:text-zinc-600 hover:bg-transparent mb-1", showEmojiPicker && "text-[#00a884]")}
+                disabled={!selectedConversation}
+                onClick={() => setShowEmojiPicker(!showEmojiPicker)}
+                type="button"
+              >
                 <span className="text-2xl">😊</span>
               </Button>
-              <Button variant="ghost" size="icon" className="text-zinc-500 hover:text-zinc-600 hover:bg-transparent mb-1">
+
+              <input
+                type="file"
+                ref={fileInputRef}
+                className="hidden"
+                onChange={handleFileChange}
+              />
+              <Button
+                variant="ghost"
+                size="icon"
+                className="text-zinc-500 hover:text-zinc-600 hover:bg-transparent mb-1"
+                disabled={!selectedConversation}
+                onClick={handleAttachmentClick}
+                type="button"
+              >
                 <Paperclip className="h-5 w-5" />
               </Button>
 
@@ -831,16 +1047,18 @@ const AtendimentoPage = () => {
               >
                 <Input
                   className="flex-1 bg-white dark:bg-zinc-700 border-none focus-visible:ring-0 focus-visible:ring-offset-0 placeholder:text-zinc-400 min-h-[40px] py-2"
-                  placeholder="Digite uma mensagem"
+                  placeholder={selectedConversation ? "Digite uma mensagem" : "Selecione um contato para iniciar a conversa"}
                   value={newMessage}
                   onChange={(e) => setNewMessage(e.target.value)}
+                  disabled={!selectedConversation}
+                  onFocus={() => setShowEmojiPicker(false)}
                 />
-                {newMessage.trim() ? (
+                {newMessage.trim() && selectedConversation ? (
                   <Button type="submit" size="icon" className="h-10 w-10 shrink-0 bg-[#00a884] hover:bg-[#008f6f] text-white rounded-full">
                     <Send className="h-5 w-5 ml-0.5" />
                   </Button>
                 ) : (
-                  <Button type="button" size="icon" variant="ghost" className="h-10 w-10 shrink-0 text-zinc-500">
+                  <Button type="button" size="icon" variant="ghost" className="h-10 w-10 shrink-0 text-zinc-500" disabled={!selectedConversation}>
                     <Phone className="h-6 w-6" /> {/* Placeholder for Mic */}
                   </Button>
                 )}

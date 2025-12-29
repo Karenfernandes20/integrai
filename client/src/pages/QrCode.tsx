@@ -166,7 +166,7 @@ const QrCodePage = () => {
                       <img
                         src={qrCode}
                         alt="QR Code"
-                        className="w-full max-w-[260px] rounded-lg border bg-white p-2"
+                        className="w-full max-w-[260px] rounded-lg border bg-white p-2 grayscale contrast-125"
                       />
                       <p className="max-w-xs text-center text-[11px] text-muted-foreground">
                         Aponte a câmera do WhatsApp para conectar.
