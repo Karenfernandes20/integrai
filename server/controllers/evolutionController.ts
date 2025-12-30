@@ -389,6 +389,10 @@ export const syncEvolutionContacts = async (req: Request, res: Response) => {
     }
 
     if (!response.ok) {
+      if (response.status === 403) {
+        console.error(`[Evolution] Authentication failed (403). Check API Key.`);
+        return res.status(403).json({ error: "Evolution API Authentication Failed", details: "Check your API Key and URL." });
+      }
       const text = await response.text();
       console.error(`[Evolution] Sync fallback failed: Status ${response.status}. Body: ${text}`);
       return res.status(response.status).json({ error: "Failed to fetch from Evolution (both endpoints failed)", details: text });

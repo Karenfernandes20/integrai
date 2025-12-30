@@ -5,6 +5,9 @@ export const runMigrations = async () => {
     if (!pool) return;
     try {
         console.log("Running migrations...");
+        console.log("*************************************************");
+        console.log("STARTING DB MIGRATIONS - CHECKING BASE TABLES");
+        console.log("*************************************************");
 
         // 0. Base Tables
 
