@@ -18,7 +18,7 @@ export const createUser = async (req: Request, res: Response) => {
   try {
     if (!pool) return res.status(500).json({ error: 'Database not configured' });
 
-    const { full_name, email, phone, user_type, city_id, state, company_id, password, role } = req.body;
+    const { full_name, email, phone, user_type, city_id, state, company_id, password, role, permissions } = req.body;
 
     // Optional: hash password if provided, otherwise default
     let hash = null;
@@ -28,8 +28,8 @@ export const createUser = async (req: Request, res: Response) => {
     }
 
     const result = await pool.query(
-      'INSERT INTO app_users (full_name, email, phone, user_type, city_id, state, company_id, password_hash, role) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING *',
-      [full_name, email, phone, user_type, city_id, state, company_id, hash, role || 'USUARIO']
+      'INSERT INTO app_users (full_name, email, phone, user_type, city_id, state, company_id, password_hash, role, permissions) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING *',
+      [full_name, email, phone, user_type, city_id, state, company_id, hash, role || 'USUARIO', JSON.stringify(permissions || [])]
     );
 
     res.status(201).json(result.rows[0]);
@@ -44,7 +44,7 @@ export const updateUser = async (req: Request, res: Response) => {
     if (!pool) return res.status(500).json({ error: 'Database not configured' });
 
     const { id } = req.params;
-    const { full_name, email, phone, user_type, city_id, state, role, is_active } = req.body;
+    const { full_name, email, phone, user_type, city_id, state, role, is_active, permissions } = req.body;
 
     const result = await pool.query(
       `UPDATE app_users 
@@ -55,10 +55,11 @@ export const updateUser = async (req: Request, res: Response) => {
              city_id = COALESCE($5, city_id), 
              state = COALESCE($6, state),
              role = COALESCE($7, role),
-             is_active = COALESCE($8, is_active)
-         WHERE id = $9 
+             is_active = COALESCE($8, is_active),
+             permissions = COALESCE($9, permissions)
+         WHERE id = $10
          RETURNING *`,
-      [full_name, email, phone, user_type, city_id, state, role, is_active, id]
+      [full_name, email, phone, user_type, city_id, state, role, is_active, permissions ? JSON.stringify(permissions) : null, id]
     );
 
     if (result.rowCount === 0) {

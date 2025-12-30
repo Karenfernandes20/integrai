@@ -16,8 +16,14 @@ import { Input } from "../components/ui/input";
 import { Button } from "../components/ui/button";
 import { ScrollArea } from "../components/ui/scroll-area";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "../components/ui/tabs";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "../components/ui/dropdown-menu";
 import { io } from "socket.io-client";
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import type { FormEvent } from "react";
 import { cn } from "../lib/utils";
 import { Avatar, AvatarFallback, AvatarImage } from "../components/ui/avatar";
@@ -33,6 +39,10 @@ interface Conversation {
   last_message_at?: string;
   unread_count?: number;
   profile_pic_url?: string;
+  status?: 'PENDING' | 'OPEN' | 'CLOSED';
+  user_id?: number; // ID do atendente responsável
+  started_at?: string;
+  closed_at?: string;
 }
 
 interface Message {
@@ -58,10 +68,11 @@ import EmojiPicker, { EmojiClickData } from "emoji-picker-react";
 // ... (existing imports remain the same, ensure this replaces the imports area if needed or just adds to it. Best to be safe and overwrite component start)
 
 const AtendimentoPage = () => {
-  const { token } = useAuth();
+  const { token, user } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
 
   const [conversations, setConversations] = useState<Conversation[]>([]);
+  const [statusFilter, setStatusFilter] = useState<'PENDING' | 'OPEN' | 'CLOSED'>('OPEN');
   const [filteredConversations, setFilteredConversations] = useState<Conversation[]>([]);
   const [selectedConversation, setSelectedConversation] = useState<Conversation | null>(null);
   const [isLoadingConversations, setIsLoadingConversations] = useState(true);
@@ -109,17 +120,30 @@ const AtendimentoPage = () => {
 
   // Filter Conversations Logic
   useEffect(() => {
-    if (!conversationSearchTerm) {
-      setFilteredConversations(conversations);
-    } else {
+    let filtered = conversations;
+
+    // 1. Filter by Status
+    // Se filtro for OPEN, mostra Abertos (meus e outros) ou talvez separar?
+    // O requisito diz: "Abertos" (exibir nome do atendente).
+    // Vamos filtrar estritamente pelo status do DB.
+    // Se status for indefinido (legado), tratamos como PENDING ou OPEN? Vamos assumir PENDING se null.
+
+    // Fallback: se status null, considera PENDING para aparecer em algum lugar
+    filtered = filtered.filter(c => {
+      const s = c.status || 'PENDING';
+      return s === statusFilter;
+    });
+
+    // 2. Filter by Search
+    if (conversationSearchTerm) {
       const lower = conversationSearchTerm.toLowerCase();
-      const filtered = conversations.filter(c =>
-        (c.contact_name && c.contact_name.toLowerCase().includes(lower)) ||
+      filtered = filtered.filter(c =>
+        (getDisplayName(c).toLowerCase().includes(lower)) ||
         (c.phone && c.phone.includes(lower))
       );
-      setFilteredConversations(filtered);
     }
-  }, [conversationSearchTerm, conversations]);
+    setFilteredConversations(filtered);
+  }, [conversationSearchTerm, conversations, statusFilter, importedContacts]); // importedContacts dependency added for getDisplayName updates
 
   // Handle Query Params AND Persistence for Auto-Selection
   useEffect(() => {
@@ -135,12 +159,11 @@ const AtendimentoPage = () => {
     let targetName = nameParam;
 
     if (!targetPhone) {
-      // Try persistence
-      const storedPhone = localStorage.getItem('last_active_phone');
-      if (storedPhone) {
-        targetPhone = storedPhone;
-        // We don't have name stored, but that's fine, we look up in conversations/contacts or it will be mapped later
-      }
+      // Try persistence - DISABLED BY USER REQUEST to prevent auto-opening
+      // const storedPhone = localStorage.getItem('last_active_phone');
+      // if (storedPhone) {
+      //   targetPhone = storedPhone;
+      // }
     }
 
     if (targetPhone) {
@@ -159,7 +182,11 @@ const AtendimentoPage = () => {
       }
 
       // Find existing in conversations
-      const existing = conversations.find(c => c.phone === targetPhone);
+      // Robust matching: strip non-numeric and match
+      const normalize = (p: string) => (p || '').replace(/\D/g, '');
+      const targetClean = normalize(targetPhone);
+
+      const existing = conversations.find(c => normalize(c.phone) === targetClean);
 
       if (existing) {
         setSelectedConversation(existing);
@@ -169,7 +196,7 @@ const AtendimentoPage = () => {
         // If we came from persistence, we might not have a name, so we try to find it in importedContacts or contacts
 
         if (!targetName) {
-          const foundContact = [...importedContacts, ...contacts].find(c => c.phone === targetPhone);
+          const foundContact = [...importedContacts, ...contacts].find(c => normalize(c.phone) === targetClean);
           if (foundContact) targetName = foundContact.name;
         }
 
@@ -283,6 +310,30 @@ const AtendimentoPage = () => {
         return updatedList;
       });
     });
+
+    socket.on("contact:update", (data: any) => {
+      setImportedContacts(prev => {
+        const exists = prev.find(c => c.phone && c.phone.includes(data.phone));
+        if (exists) {
+          return prev.map(c => c.phone && c.phone.includes(data.phone) ? { ...c, name: data.name } : c);
+        } else {
+          return [...prev, { id: data.phone, name: data.name, phone: data.phone }];
+        }
+      });
+      setConversations(prev => prev.map(c => c.id == data.conversationId ? { ...c, contact_name: data.name } : c));
+      setSelectedConversation(curr => curr && curr.id == data.conversationId ? { ...curr, contact_name: data.name } : curr);
+    });
+
+    socket.on("conversation:update", (data: any) => {
+      setConversations(prev => prev.map(c => c.id == data.id ? { ...c, status: data.status, user_id: data.user_id } : c));
+      setSelectedConversation(curr => curr && curr.id == data.id ? { ...curr, status: data.status, user_id: data.user_id } : curr);
+    });
+
+    socket.on("conversation:delete", (data: any) => {
+      setConversations(prev => prev.filter(c => c.id != data.id));
+      setSelectedConversation(curr => curr && curr.id == data.id ? null : curr);
+    });
+
 
     return () => {
       socket.disconnect();
@@ -587,6 +638,38 @@ const AtendimentoPage = () => {
     }
   };
 
+  const handleRenameContact = async () => {
+    if (!selectedConversation) return;
+    const currentName = getDisplayName(selectedConversation);
+    const newName = prompt("Novo nome para o contato:", currentName);
+    if (!newName || newName === currentName) return;
+
+    try {
+      const res = await fetch(`/api/crm/conversations/${selectedConversation.id}/name`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify({ name: newName })
+      });
+      if (!res.ok) alert("Erro ao atualizar nome");
+    } catch (e) { alert("Erro ao conectar"); }
+  };
+
+  const handleDeleteConversation = async () => {
+    if (!selectedConversation) return;
+    if (!confirm("Tem certeza? Isso apagará a conversa para TODOS os usuários.")) return;
+
+    try {
+      const res = await fetch(`/api/crm/conversations/${selectedConversation.id}`, {
+        method: 'DELETE',
+        headers: { "Authorization": `Bearer ${token}` }
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        alert(err.error || "Erro ao deletar");
+      }
+    } catch (e) { alert("Erro ao conectar"); }
+  };
+
   const handleEditMessage = async (msg: Message) => {
     const newContent = prompt("Editar mensagem:", msg.content);
     if (newContent === null || newContent === msg.content) return; // Cancelled or same
@@ -755,6 +838,99 @@ const AtendimentoPage = () => {
     }
   };
 
+  const handleStartAtendimento = async () => {
+    if (!selectedConversation) return;
+    try {
+      const res = await fetch(`/api/crm/conversations/${selectedConversation.id}/start`, {
+        method: "POST",
+        headers: { "Authorization": `Bearer ${token}` }
+      });
+      if (res.ok) {
+        const userId = user?.id ? Number(user.id) : undefined;
+        // Atualiza localmente
+        setConversations(prev => prev.map(c =>
+          c.id === selectedConversation.id ? { ...c, status: 'OPEN', user_id: userId } : c
+        ));
+        setSelectedConversation(prev => prev ? { ...prev, status: 'OPEN', user_id: userId } : null);
+        setStatusFilter('OPEN'); // Move para a tab Open para o usuário ver
+      } else {
+        const err = await res.json();
+        alert(err.error || "Erro ao iniciar atendimento");
+      }
+    } catch (e) { console.error(e); alert("Erro ao conectar."); }
+  };
+
+  const handleCloseAtendimento = async () => {
+    if (!selectedConversation) return;
+    if (!confirm("Deseja realmente encerrar este atendimento?")) return;
+
+    try {
+      const res = await fetch(`/api/crm/conversations/${selectedConversation.id}/close`, {
+        method: "POST",
+        headers: { "Authorization": `Bearer ${token}` }
+      });
+      if (res.ok) {
+        setConversations(prev => prev.map(c =>
+          c.id === selectedConversation.id ? { ...c, status: 'CLOSED' } : c
+        ));
+        setStatusFilter('CLOSED'); // Move view
+        setSelectedConversation(null); // Deselect or keep? keep for review
+      } else {
+        const err = await res.json();
+        alert(err.error || "Erro ao encerrar atendimento");
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  // Check Permissions
+  const isMyAttendance = selectedConversation?.user_id === user?.id;
+  const isPending = !selectedConversation?.status || selectedConversation?.status === 'PENDING';
+  const isClosed = selectedConversation?.status === 'CLOSED';
+
+  // Read Only Mode: 
+  // - Closed conversations
+  // - Open conversations assigned to someone else (and I am not admin? Requirement says "Read only").
+  // - Pending: Can I type? Usually no, must start first.
+  const isReadOnly = isClosed || (selectedConversation?.status === 'OPEN' && !isMyAttendance) || isPending;
+
+
+
+  // Helper para resolver o nome do contato baseado no banco de dados sincronizado
+  // Otimizado com useMemo para não recalcular o mapa a cada render
+  const contactMap = useMemo(() => {
+    const map = new Map<string, string>();
+    importedContacts.forEach(c => {
+      if (!c.phone) return;
+      const raw = c.phone.replace(/\D/g, "");
+      if (c.name && c.name.trim() !== "" && c.name !== c.phone) {
+        map.set(raw, c.name);
+      }
+    });
+    return map;
+  }, [importedContacts]);
+
+  const getDisplayName = (conv: Conversation | null): string => {
+    if (!conv) return "";
+
+    // 1. Tenta encontrar no mapa de contatos sincronizados
+    const raw = conv.phone.replace(/\D/g, "");
+    const contactName = contactMap.get(raw);
+
+    if (contactName) {
+      return contactName;
+    }
+
+    // 2. Fallback para o nome que veio na conversa (se existir e não for o número)
+    if (conv.contact_name && conv.contact_name !== conv.phone) {
+      return conv.contact_name;
+    }
+
+    // 3. Exibe o número formatado (ou como veio)
+    return conv.phone;
+  };
+
   return (
     <div className="flex h-[calc(100vh-2rem)] overflow-hidden bg-background rounded-xl border shadow-sm" onClick={() => setShowEmojiPicker(false)}>
       {/* Sidebar - Lista de Conversas / Contatos */}
@@ -809,6 +985,11 @@ const AtendimentoPage = () => {
           <CardContent className="flex-1 overflow-hidden p-0">
             {/* Aba CONVERSAS */}
             <TabsContent value="conversas" className="h-full flex flex-col m-0">
+              <div className="flex items-center gap-2 px-3 py-2 border-b bg-muted/20">
+                <button onClick={() => setStatusFilter('OPEN')} className={cn("text-xs px-2 py-1 rounded transition-colors", statusFilter === 'OPEN' ? "bg-[#008069] text-white" : "hover:bg-zinc-200 dark:hover:bg-zinc-800")}>Abertos</button>
+                <button onClick={() => setStatusFilter('PENDING')} className={cn("text-xs px-2 py-1 rounded transition-colors", statusFilter === 'PENDING' ? "bg-[#008069] text-white" : "hover:bg-zinc-200 dark:hover:bg-zinc-800")}>Pendentes</button>
+                <button onClick={() => setStatusFilter('CLOSED')} className={cn("text-xs px-2 py-1 rounded transition-colors", statusFilter === 'CLOSED' ? "bg-[#008069] text-white" : "hover:bg-zinc-200 dark:hover:bg-zinc-800")}>Fechados</button>
+              </div>
               <ScrollArea className="h-full">
                 <div className="flex flex-col">
                   {filteredConversations.length === 0 && (
@@ -826,13 +1007,13 @@ const AtendimentoPage = () => {
                       )}
                     >
                       <Avatar className="h-12 w-12">
-                        <AvatarImage src={`https://api.dicebear.com/7.x/initials/svg?seed=${conv.contact_name || conv.phone}`} />
-                        <AvatarFallback>{(conv.contact_name?.[0] || conv.phone?.[0] || "?").toUpperCase()}</AvatarFallback>
+                        <AvatarImage src={`https://api.dicebear.com/7.x/initials/svg?seed=${getDisplayName(conv)}`} />
+                        <AvatarFallback>{(getDisplayName(conv)?.[0] || "?").toUpperCase()}</AvatarFallback>
                       </Avatar>
                       <div className="flex-1 min-w-0 text-left">
                         <div className="flex justify-between items-baseline mb-1">
                           <span className="font-medium truncate text-zinc-900 dark:text-zinc-100">
-                            {conv.contact_name || conv.phone}
+                            {getDisplayName(conv)}
                           </span>
                           <span className="text-[11px] text-muted-foreground whitespace-nowrap ml-2">
                             {formatTime(conv.last_message_at!)}
@@ -996,21 +1177,48 @@ const AtendimentoPage = () => {
             <div className="relative z-10 flex-none h-[60px] bg-zinc-100 dark:bg-zinc-800 flex items-center justify-between px-4 border-l border-b border-zinc-200 dark:border-zinc-700">
               <div className="flex items-center gap-3">
                 <Avatar className="cursor-pointer">
-                  <AvatarImage src={`https://api.dicebear.com/7.x/initials/svg?seed=${selectedConversation.contact_name || selectedConversation.phone}`} />
-                  <AvatarFallback>{(selectedConversation.contact_name?.[0] || "?").toUpperCase()}</AvatarFallback>
+                  <AvatarImage src={`https://api.dicebear.com/7.x/initials/svg?seed=${getDisplayName(selectedConversation)}`} />
+                  <AvatarFallback>{(getDisplayName(selectedConversation)?.[0] || "?").toUpperCase()}</AvatarFallback>
                 </Avatar>
                 <div className="flex flex-col cursor-pointer">
-                  <span className="font-medium text-sm text-zinc-900 dark:text-zinc-100">
-                    {selectedConversation.contact_name || selectedConversation.phone}
+                  <span className="font-medium text-sm text-zinc-900 dark:text-zinc-100 flex items-center gap-2">
+                    {getDisplayName(selectedConversation)}
+                    {selectedConversation.status === 'CLOSED' && <span className="px-1.5 py-0.5 rounded bg-red-100 text-red-600 text-[9px] uppercase border border-red-200">Fechado</span>}
+                    {selectedConversation.status === 'OPEN' && <span className="px-1.5 py-0.5 rounded bg-green-100 text-green-600 text-[9px] uppercase border border-green-200">Aberto</span>}
                   </span>
-                  <span className="text-[10px] text-muted-foreground">
+                  <span className="text-[10px] text-muted-foreground flex gap-1">
                     {selectedConversation.phone}
+                    {selectedConversation.user_id && <span className="font-bold">• Atendente: {selectedConversation.user_id === user?.id ? "Você" : `ID ${selectedConversation.user_id}`}</span>}
                   </span>
                 </div>
               </div>
               <div className="flex items-center gap-4 text-zinc-500">
+                {isPending && (
+                  <Button size="sm" onClick={handleStartAtendimento} className="bg-[#008069] hover:bg-[#006d59] text-white h-8 text-xs">
+                    INICIAR
+                  </Button>
+                )}
+                {selectedConversation.status === 'OPEN' && isMyAttendance && (
+                  <Button size="sm" variant="destructive" onClick={handleCloseAtendimento} className="h-8 text-xs">
+                    ENCERRAR
+                  </Button>
+                )}
                 <Search className="h-5 w-5 cursor-pointer hover:text-zinc-700" />
-                <MoreVertical className="h-5 w-5 cursor-pointer hover:text-zinc-700" />
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <MoreVertical className="h-5 w-5 cursor-pointer hover:text-zinc-700" />
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end">
+                    <DropdownMenuItem onClick={handleRenameContact}>
+                      Editar nome do contato
+                    </DropdownMenuItem>
+                    {(selectedConversation.user_id === user?.id || user?.role === 'SUPERADMIN' || user?.role === 'ADMIN') && (
+                      <DropdownMenuItem onClick={handleDeleteConversation} className="text-red-600 focus:text-red-600">
+                        Deletar conversa
+                      </DropdownMenuItem>
+                    )}
+                  </DropdownMenuContent>
+                </DropdownMenu>
               </div>
             </div>
 
@@ -1127,7 +1335,8 @@ const AtendimentoPage = () => {
                   placeholder={selectedConversation ? "Digite uma mensagem" : "Selecione um contato para iniciar a conversa"}
                   value={newMessage}
                   onChange={(e) => setNewMessage(e.target.value)}
-                  disabled={!selectedConversation}
+                  disabled={!selectedConversation || isReadOnly}
+                  title={isReadOnly ? "Inicie o atendimento para responder" : ""}
                   onFocus={() => setShowEmojiPicker(false)}
                 />
                 {newMessage.trim() && selectedConversation ? (

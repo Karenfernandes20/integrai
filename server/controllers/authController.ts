@@ -89,6 +89,7 @@ export const login = async (req: Request, res: Response) => {
                 user_type: user.user_type,
                 company: companyDetails,
                 company_id: user.company_id,
+                permissions: user.permissions || [],
                 profile_pic_url: user.profile_pic_url // Assuming this column exists or will exist logic
             },
         });

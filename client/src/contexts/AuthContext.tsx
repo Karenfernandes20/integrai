@@ -14,6 +14,7 @@ interface User {
         logo_url: string;
     };
     profile_pic_url?: string;
+    permissions?: string[];
 }
 
 interface AuthContextType {

@@ -62,6 +62,32 @@ export function AppSidebar() {
     navItems.push({ label: "Relatórios", icon: FileText, to: "/app/relatorios" });
   }
 
+  // Permission Logic
+  const filteredNavItems = navItems.filter(item => {
+    if (user?.role === 'SUPERADMIN') return true;
+
+    // Legacy support: if no permissions array, show all (or assume migrated to [])
+    // Ideally we assume [] means nothing, but for safety let's check if undefined
+    if (user?.permissions === undefined) return true;
+
+    let requiredPerm = "";
+    switch (item.label) {
+      case "Dashboard": requiredPerm = "dashboard"; break;
+      case "Atendimento": requiredPerm = "atendimentos"; break;
+      case "Contatos": requiredPerm = "atendimentos"; break;
+      case "CRM": requiredPerm = "crm"; break;
+      case "Financeiro": requiredPerm = "financeiro"; break;
+      case "Relatórios": requiredPerm = "relatorios"; break; // Explicit permission
+      case "Configurações": requiredPerm = "configuracoes"; break;
+      case "Usuários": requiredPerm = "configuracoes"; break;
+      case "Cidades": requiredPerm = "configuracoes"; break;
+      case "QR Code": requiredPerm = "configuracoes"; break;
+      default: return true;
+    }
+
+    return user.permissions.includes(requiredPerm);
+  });
+
 
 
   return (
@@ -95,7 +121,7 @@ export function AppSidebar() {
           </SidebarGroupLabel>
           <SidebarGroupContent>
             <nav className="mt-1 flex flex-col gap-1 text-sm">
-              {navItems.map((item) => {
+              {filteredNavItems.map((item) => {
                 const isActive = currentPath.startsWith(item.to);
                 const Icon = item.icon;
                 return (

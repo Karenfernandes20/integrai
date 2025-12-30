@@ -14,6 +14,7 @@ import { getPayables, getReceivablesByCity, getCashFlow, createExpense } from '.
 import { login, register } from './controllers/authController';
 import { authenticateToken, authorizeRole } from './middleware/authMiddleware';
 import { getCompanies, createCompany, updateCompany, deleteCompany, getCompanyUsers, getCompany } from './controllers/companyController';
+import { startConversation, closeConversation, updateContactNameWithAudit, deleteConversation } from './controllers/conversationController';
 
 const router = express.Router();
 
@@ -61,6 +62,10 @@ router.get('/evolution/messages/:conversationId', authenticateToken, getMessages
 // CRM Routes
 // CRM Routes
 router.get('/crm/dashboard', authenticateToken, getCrmDashboardStats);
+router.post('/crm/conversations/:id/start', authenticateToken, startConversation);
+router.post('/crm/conversations/:id/close', authenticateToken, closeConversation);
+router.put('/crm/conversations/:id/name', authenticateToken, updateContactNameWithAudit);
+router.delete('/crm/conversations/:id', authenticateToken, deleteConversation);
 
 // Cities routes
 router.get('/cities', getCities);

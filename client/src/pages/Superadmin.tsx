@@ -36,6 +36,16 @@ import {
   SelectValue,
 } from "../components/ui/select";
 import { Pencil, Trash2, Upload, Users, KeyRound } from "lucide-react";
+import { Checkbox } from "../components/ui/checkbox";
+
+const AVAILABLE_PERMISSIONS = [
+  { id: "dashboard", label: "Dashboard" },
+  { id: "crm", label: "CRM" },
+  { id: "atendimentos", label: "Atendimentos" },
+  { id: "financeiro", label: "Financeiro" },
+  { id: "relatorios", label: "Relatórios" },
+  { id: "configuracoes", label: "Configurações" }
+];
 
 // Schema now only validates text fields; file validation is manual or via input accept
 const companySchema = z.object({
@@ -107,6 +117,7 @@ const SuperadminPage = () => {
     full_name: "",
     email: "",
     password: "",
+    permissions: [] as string[],
   });
   const [creatingUser, setCreatingUser] = useState(false);
 
@@ -294,7 +305,8 @@ const SuperadminPage = () => {
     setSelectedCompanyId(company.id);
     setLoadingUsers(true);
     setCompanyUsers([]);
-    setNewUser({ full_name: "", email: "", password: "" }); // Reset form
+    setCompanyUsers([]);
+    setNewUser({ full_name: "", email: "", password: "", permissions: [] }); // Reset form
     try {
       const res = await fetch(`/api/companies/${company.id}/users`, {
         headers: { Authorization: `Bearer ${token}` },
@@ -382,7 +394,7 @@ const SuperadminPage = () => {
 
       const createdUser = await res.json();
       setCompanyUsers((prev) => [createdUser, ...prev]);
-      setNewUser({ full_name: "", email: "", password: "" });
+      setNewUser({ full_name: "", email: "", password: "", permissions: [] });
       toast({ title: "Usuário adicionado com sucesso!" });
     } catch (err: any) {
       toast({ title: err.message, variant: "destructive" });
@@ -543,6 +555,35 @@ const SuperadminPage = () => {
                                           >
                                             Adicionar
                                           </Button>
+                                        </div>
+                                      </div>
+
+                                      <div className="pt-2">
+                                        <label className="text-xs font-medium mb-2 block">Permissões de Acesso</label>
+                                        <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+                                          {AVAILABLE_PERMISSIONS.map((perm) => (
+                                            <div key={perm.id} className="flex items-center space-x-2">
+                                              <Checkbox
+                                                id={`perm-${perm.id}`}
+                                                checked={newUser.permissions.includes(perm.id)}
+                                                onCheckedChange={(checked) => {
+                                                  setNewUser(prev => {
+                                                    if (checked) {
+                                                      return { ...prev, permissions: [...prev.permissions, perm.id] };
+                                                    } else {
+                                                      return { ...prev, permissions: prev.permissions.filter(p => p !== perm.id) };
+                                                    }
+                                                  })
+                                                }}
+                                              />
+                                              <label
+                                                htmlFor={`perm-${perm.id}`}
+                                                className="text-xs font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer"
+                                              >
+                                                {perm.label}
+                                              </label>
+                                            </div>
+                                          ))}
                                         </div>
                                       </div>
                                     </div>
@@ -754,7 +795,7 @@ const SuperadminPage = () => {
           </Card>
         </section>
       </main>
-    </div>
+    </div >
   );
 };
 

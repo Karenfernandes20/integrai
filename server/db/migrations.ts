@@ -91,6 +91,13 @@ export const runMigrations = async () => {
             console.error("Error adding operation_type to companies:", e);
         }
 
+        // 6. User Permissions
+        try {
+            await pool.query(`ALTER TABLE app_users ADD COLUMN permissions JSONB DEFAULT '[]'`);
+        } catch (e: any) {
+            // Ignore if exists
+        }
+
         await runWhatsappMigrations();
         console.log("Migrations finished.");
     } catch (e) {
@@ -144,7 +151,23 @@ const runWhatsappMigrations = async () => {
         await addColumn('whatsapp_conversations', 'unread_count', 'INTEGER DEFAULT 0');
         await addColumn('whatsapp_messages', 'status', "VARCHAR(20) DEFAULT 'received'");
         await addColumn('whatsapp_conversations', 'instance', 'VARCHAR(100)');
+        await addColumn('whatsapp_conversations', 'status', "VARCHAR(20) DEFAULT 'PENDING'");
+        await addColumn('whatsapp_conversations', 'user_id', 'INTEGER REFERENCES app_users(id)');
+        await addColumn('whatsapp_conversations', 'started_at', 'TIMESTAMP');
+        await addColumn('whatsapp_conversations', 'closed_at', 'TIMESTAMP');
+        await addColumn('whatsapp_conversations', 'last_message', 'TEXT');
 
+        // Audit Logs
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS whatsapp_audit_logs (
+                id SERIAL PRIMARY KEY,
+                conversation_id INTEGER REFERENCES whatsapp_conversations(id),
+                user_id INTEGER REFERENCES app_users(id),
+                action VARCHAR(50) NOT NULL,
+                details TEXT, -- using TEXT for simplicity over JSONB if pg version varies, but JSONB usually fine.
+                created_at TIMESTAMP DEFAULT NOW()
+            );
+        `);
 
         // whatsapp_contacts
         await pool.query(`
