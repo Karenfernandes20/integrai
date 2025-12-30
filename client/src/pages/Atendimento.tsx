@@ -147,9 +147,8 @@ const AtendimentoPage = () => {
 
   // Handle Query Params AND Persistence for Auto-Selection
   useEffect(() => {
-    // If conversations are still loading, don't try to select yet unless it's a new temp chat
-    // But we need to know if loading finished to decide if we should create temp.
-    if (isLoadingConversations && conversations.length === 0) return;
+    // We allow processing params even if loading hasn't finished to show something fast.
+    // if (isLoadingConversations && conversations.length === 0) return;
 
     const phoneParam = searchParams.get('phone');
     const nameParam = searchParams.get('name');
@@ -190,6 +189,13 @@ const AtendimentoPage = () => {
 
       if (existing) {
         setSelectedConversation(existing);
+        // Force status filter to match the found conversation if it's not OPEN
+        if (existing.status && existing.status !== statusFilter) {
+          setStatusFilter(existing.status as any);
+        } else if (!existing.status && statusFilter !== 'PENDING') {
+          // If legacy status is null and we are not in PENDING, maybe switch?
+          // For now let's just make it visible
+        }
       } else {
         // Not found in conversations. 
         // If we came from "Contatos", we have a nameParam. 
@@ -206,9 +212,12 @@ const AtendimentoPage = () => {
           phone: targetPhone,
           contact_name: targetName || targetPhone,
           last_message: "",
-          last_message_at: new Date().toISOString()
+          last_message_at: new Date().toISOString(),
+          status: 'OPEN' // Make it visible in OPEN tab
         };
 
+        // Switch to OPEN tab to ensure it's visible
+        setStatusFilter('OPEN');
         setConversations(prev => [newConv, ...prev]);
         setSelectedConversation(newConv);
       }
