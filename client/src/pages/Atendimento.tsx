@@ -229,13 +229,11 @@ const AtendimentoPage = () => {
 
       if (existing) {
         setSelectedConversation(existing);
-        // Force status filter to match the found conversation if it's not OPEN
-        if (existing.status && existing.status !== viewMode) {
-          setViewMode(existing.status as any);
-        } else if (!existing.status && viewMode !== 'PENDING') {
-          // If legacy status is null and we are not in PENDING, maybe switch?
-          // For now let's just make it visible
+        // Force status to OPEN if it's not already, assigning it to the user
+        if (existing.status !== 'OPEN') {
+          handleStartAtendimento(existing);
         }
+        setViewMode('OPEN');
       } else {
         // Not found in conversations. 
         // If we came from "Contatos", we have a nameParam. 
@@ -680,6 +678,24 @@ const AtendimentoPage = () => {
   };
 
   const handleStartConversationFromContact = (contact: Contact) => {
+    const normalize = (p: string) => (p || '').replace(/\D/g, '');
+    const targetClean = normalize(contact.phone);
+
+    // 1. Search in existing conversations first to avoid duplicates
+    const existing = conversations.find(c => normalize(c.phone) === targetClean);
+
+    if (existing) {
+      // If found, auto-open it if it's not already open
+      if (existing.status !== 'OPEN') {
+        handleStartAtendimento(existing);
+      }
+      setSelectedConversation(existing);
+      setViewMode('OPEN');
+      setActiveTab('conversas');
+      return;
+    }
+
+    // 2. If not found, create a temp conversation
     const newConversation: Conversation = {
       id: 'temp-' + Date.now(), // Fixed: use temp id to avoid confusion with DB ids
       phone: contact.phone,
@@ -690,13 +706,8 @@ const AtendimentoPage = () => {
       user_id: user?.id ? Number(user.id) : undefined
     };
 
-    // Add to list if not already there
-    setConversations(prev => {
-      const normalize = (p: string) => (p || '').replace(/\D/g, '');
-      const exists = prev.find(c => normalize(c.phone) === normalize(contact.phone));
-      if (exists) return prev;
-      return [newConversation, ...prev];
-    });
+    // Add to list
+    setConversations(prev => [newConversation, ...prev]);
 
     setSelectedConversation(newConversation);
     setMessages([]);
