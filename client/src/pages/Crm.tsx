@@ -49,6 +49,7 @@ import { useNavigate } from "react-router-dom";
 import { Textarea } from "../components/ui/textarea";
 import { Badge } from "../components/ui/badge";
 import { Label } from "../components/ui/label";
+import { useAuth } from "../contexts/AuthContext";
 
 // Tipos
 type Lead = {
@@ -181,6 +182,7 @@ function SortableLeadCard({ lead, onEdit, onChat }: { lead: Lead; onEdit: (l: Le
 }
 
 const CrmPage = () => {
+  const { token } = useAuth();
   const navigate = useNavigate();
   const [leads, setLeads] = useState<Lead[]>([]);
   const [stages, setStages] = useState<Stage[]>([]);
@@ -199,13 +201,13 @@ const CrmPage = () => {
     fetchData();
     const interval = setInterval(fetchData, 10000);
     return () => clearInterval(interval);
-  }, []);
+  }, [token]);
 
   const fetchData = async () => {
     try {
       const [stagesRes, leadsRes] = await Promise.all([
-        fetch("/api/crm/stages"),
-        fetch("/api/crm/leads"),
+        fetch("/api/crm/stages", { headers: { "Authorization": `Bearer ${token}` } }),
+        fetch("/api/crm/leads", { headers: { "Authorization": `Bearer ${token}` } }),
       ]);
 
       if (!stagesRes.ok || !leadsRes.ok) return;
@@ -214,6 +216,10 @@ const CrmPage = () => {
       const leadsData = await leadsRes.json();
 
       if (Array.isArray(stagesData)) setStages(stagesData);
+
+      // Prevent overwriting local state while dragging
+      if (activeDragId) return;
+
       if (Array.isArray(leadsData)) {
         setLeads(
           leadsData.map((l: any) => ({
@@ -243,7 +249,10 @@ const CrmPage = () => {
     try {
       const res = await fetch(`/api/crm/leads/${editingLead.id}`, {
         method: "PUT",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${token}`
+        },
         body: JSON.stringify(editingLead),
       });
 
@@ -269,13 +278,22 @@ const CrmPage = () => {
 
   const updateLeadStage = async (leadId: string, stageId: number) => {
     try {
-      await fetch(`/api/crm/leads/${leadId}/move`, {
+      const res = await fetch(`/api/crm/leads/${leadId}/move`, {
         method: "PUT",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${token}`
+        },
         body: JSON.stringify({ stageId }),
       });
+
+      if (!res.ok) {
+        console.error("Failed to update lead stage in backend");
+        fetchData(); // Reset state on failure
+      }
     } catch (error) {
       console.error("Failed to update lead stage", error);
+      fetchData(); // Reset state on error
     }
   };
 
@@ -334,27 +352,33 @@ const CrmPage = () => {
 
     const isOverALead = over.data.current?.type === "Lead";
     if (isOverALead) {
-      setLeads((leads) => {
-        const activeIndex = leads.findIndex((l) => l.id === activeId);
-        const overIndex = leads.findIndex((l) => l.id === overId);
-        if (leads[activeIndex].columnId !== leads[overIndex].columnId) {
-          leads[activeIndex].columnId = leads[overIndex].columnId;
-          return arrayMove(leads, activeIndex, overIndex - 1);
+      setLeads((prevLeads) => {
+        const activeIndex = prevLeads.findIndex((l) => l.id === activeId);
+        const overIndex = prevLeads.findIndex((l) => l.id === overId);
+
+        if (activeIndex === -1 || overIndex === -1) return prevLeads;
+
+        if (prevLeads[activeIndex].columnId !== prevLeads[overIndex].columnId) {
+          const newLeads = [...prevLeads];
+          newLeads[activeIndex] = { ...newLeads[activeIndex], columnId: newLeads[overIndex].columnId };
+          return arrayMove(newLeads, activeIndex, overIndex);
         }
-        return arrayMove(leads, activeIndex, overIndex);
+        return arrayMove(prevLeads, activeIndex, overIndex);
       });
     }
 
     const isOverAColumn = stages.some((col) => col.id.toString() === overId);
     if (isOverAColumn) {
-      setLeads((leads) => {
-        const activeIndex = leads.findIndex((l) => l.id === activeId);
-        if (leads[activeIndex].columnId !== overId) {
-          const newLeads = [...leads];
-          newLeads[activeIndex].columnId = overId as string;
+      setLeads((prevLeads) => {
+        const activeIndex = prevLeads.findIndex((l) => l.id === activeId);
+        if (activeIndex === -1) return prevLeads;
+
+        if (prevLeads[activeIndex].columnId !== overId) {
+          const newLeads = [...prevLeads];
+          newLeads[activeIndex] = { ...newLeads[activeIndex], columnId: overId as string };
           return arrayMove(newLeads, activeIndex, activeIndex);
         }
-        return leads;
+        return prevLeads;
       });
     }
   };
@@ -366,19 +390,35 @@ const CrmPage = () => {
 
     const activeId = active.id as string;
     const overId = over.id as string;
-    const activeLead = leads.find((l) => l.id === activeId);
-    if (!activeLead) return;
 
-    let newStageId: string | undefined;
-    if (stages.some((c) => c.id.toString() === overId)) newStageId = overId;
-    else {
-      const overLead = leads.find((l) => l.id === overId);
-      if (overLead) newStageId = overLead.columnId;
-    }
+    // We need the latest lead state
+    let targetStageId: number | null = null;
 
-    if (newStageId && newStageId !== activeLead.stage_id?.toString()) {
-      setLeads(leads.map((l) => l.id === activeId ? { ...l, columnId: newStageId, stage_id: Number(newStageId) } : l));
-      await updateLeadStage(activeId, Number(newStageId));
+    setLeads((prevLeads) => {
+      const activeLead = prevLeads.find((l) => l.id === activeId);
+      if (!activeLead) return prevLeads;
+
+      let newStageId: string | undefined;
+      if (stages.some((c) => c.id.toString() === overId)) {
+        newStageId = overId;
+      } else {
+        const overLead = prevLeads.find((l) => l.id === overId);
+        if (overLead) newStageId = overLead.columnId;
+      }
+
+      if (newStageId && newStageId !== activeLead.stage_id?.toString()) {
+        targetStageId = Number(newStageId);
+        return prevLeads.map((l) =>
+          l.id === activeId
+            ? { ...l, columnId: newStageId, stage_id: Number(newStageId) }
+            : l
+        );
+      }
+      return prevLeads;
+    });
+
+    if (targetStageId !== null) {
+      await updateLeadStage(activeId, targetStageId);
     }
   };
 
