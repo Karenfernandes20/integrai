@@ -76,8 +76,8 @@ const AtendimentoPage = () => {
   const { token, user } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
 
+  const [viewMode, setViewMode] = useState<'ALL' | 'PENDING' | 'OPEN' | 'CLOSED'>('PENDING');
   const [conversations, setConversations] = useState<Conversation[]>([]);
-  const [statusFilter, setStatusFilter] = useState<'PENDING' | 'OPEN' | 'CLOSED'>('OPEN');
   const [pendingConversations, setPendingConversations] = useState<Conversation[]>([]);
   const [openConversations, setOpenConversations] = useState<Conversation[]>([]);
   const [closedConversations, setClosedConversations] = useState<Conversation[]>([]);
@@ -230,9 +230,9 @@ const AtendimentoPage = () => {
       if (existing) {
         setSelectedConversation(existing);
         // Force status filter to match the found conversation if it's not OPEN
-        if (existing.status && existing.status !== statusFilter) {
-          setStatusFilter(existing.status as any);
-        } else if (!existing.status && statusFilter !== 'PENDING') {
+        if (existing.status && existing.status !== viewMode) {
+          setViewMode(existing.status as any);
+        } else if (!existing.status && viewMode !== 'PENDING') {
           // If legacy status is null and we are not in PENDING, maybe switch?
           // For now let's just make it visible
         }
@@ -258,7 +258,7 @@ const AtendimentoPage = () => {
         };
 
         // Switch to OPEN tab to ensure it's visible
-        setStatusFilter('OPEN');
+        setViewMode('OPEN');
         setConversations(prev => [newConv, ...prev]);
         setSelectedConversation(newConv);
       }
@@ -273,7 +273,7 @@ const AtendimentoPage = () => {
         }, { replace: true });
       }
     }
-  }, [searchParams, conversations, isLoadingConversations, importedContacts, contacts, setSearchParams, selectedConversation, statusFilter, user?.id]);
+  }, [searchParams, conversations, isLoadingConversations, importedContacts, contacts, setSearchParams, selectedConversation, viewMode, user?.id]);
 
   // ... (Rest of the component)
 
@@ -429,6 +429,37 @@ const AtendimentoPage = () => {
       }
     } catch (error) {
       console.error("Error fetching live contacts", error);
+    } finally {
+      setIsLoadingContacts(false);
+    }
+  };
+
+  const syncContacts = async () => {
+    try {
+      setIsLoadingContacts(true);
+      const res = await fetch("/api/evolution/contacts/sync", {
+        method: "POST",
+        headers: { "Authorization": `Bearer ${token}` }
+      });
+      if (res.ok) {
+        // After sync, API returns the updated list from DB
+        const data = await res.json();
+        const mapped: Contact[] = data.map((c: any) => {
+          let rawPhone = c.jid ? c.jid.split('@')[0] : (c.phone || "");
+          return {
+            id: c.id,
+            name: c.name || "Sem Nome",
+            phone: rawPhone,
+            profile_pic_url: c.profile_pic_url,
+            push_name: c.push_name
+          };
+        });
+        setImportedContacts(mapped);
+      } else {
+        alert("Falha ao sincronizar contatos.");
+      }
+    } catch (error) {
+      console.error("Error syncing contacts:", error);
     } finally {
       setIsLoadingContacts(false);
     }
@@ -669,7 +700,7 @@ const AtendimentoPage = () => {
 
     setSelectedConversation(newConversation);
     setMessages([]);
-    setStatusFilter('OPEN');
+    setViewMode('OPEN');
     setActiveTab('conversas');
   };
 
@@ -1002,7 +1033,7 @@ const AtendimentoPage = () => {
     }
   };
 
-  const [viewMode, setViewMode] = useState<'ALL' | 'PENDING' | 'OPEN' | 'CLOSED'>('PENDING');
+
 
   // Check Permissions
   const isMyAttendance = selectedConversation?.user_id === user?.id;
@@ -1275,6 +1306,17 @@ const AtendimentoPage = () => {
                   <span className="text-xl">←</span>
                 </button>
                 <div className="font-medium text-base">Nova conversa</div>
+                <div className="flex-1"></div>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="h-8 w-8 p-0 text-white hover:bg-white/10"
+                  onClick={() => syncContacts()}
+                  disabled={isLoadingContacts}
+                  title="Sincronizar contatos do WhatsApp"
+                >
+                  <RefreshCcw className={cn("h-4 w-4", isLoadingContacts && "animate-spin")} />
+                </Button>
               </div>
 
               {/* Search Bar */}
