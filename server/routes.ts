@@ -7,7 +7,7 @@ import {
   clearUsers,
   resetUserPassword,
 } from './controllers/userController';
-import { getStages, getLeads, updateLeadStage, createStage, deleteStage, getCrmDashboardStats } from './controllers/crmController';
+import { getStages, getLeads, updateLeadStage, updateLead, createStage, deleteStage, getCrmDashboardStats } from './controllers/crmController';
 import { handleWebhook, getConversations, getMessages } from './controllers/webhookController';
 import { getCities, createCity } from './controllers/cityController';
 import { login, register } from './controllers/authController';
@@ -75,6 +75,7 @@ router.get('/crm/stages', getStages);
 router.post('/crm/stages', createStage);
 router.delete('/crm/stages/:id', deleteStage);
 router.get('/crm/leads', getLeads);
+router.put('/crm/leads/:id', updateLead);
 router.put('/crm/leads/:id/move', updateLeadStage);
 
 // Reports routes

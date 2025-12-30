@@ -68,7 +68,7 @@ export const updateLeadStage = async (req: Request, res: Response) => {
         if (!pool) return res.status(500).json({ error: 'Database not configured' });
 
         const { id } = req.params;
-        const { stageId } = req.body; // Expecting stage_id (integer) OR stageId (integer)
+        const { stageId } = req.body;
 
         if (!stageId) {
             return res.status(400).json({ error: 'stageId is required' });
@@ -86,6 +86,38 @@ export const updateLeadStage = async (req: Request, res: Response) => {
         res.json(result.rows[0]);
     } catch (error) {
         console.error('Error updating lead stage:', error);
+        res.status(500).json({ error: 'Failed to update lead' });
+    }
+};
+
+export const updateLead = async (req: Request, res: Response) => {
+    try {
+        if (!pool) return res.status(500).json({ error: 'Database not configured' });
+
+        const { id } = req.params;
+        const { name, email, phone, stage_id, description, value, origin } = req.body;
+
+        const result = await pool.query(
+            `UPDATE crm_leads 
+             SET name = COALESCE($1, name),
+                 email = COALESCE($2, email),
+                 phone = COALESCE($3, phone),
+                 stage_id = COALESCE($4, stage_id),
+                 description = COALESCE($5, description),
+                 value = COALESCE($6, value),
+                 origin = COALESCE($7, origin),
+                 updated_at = NOW()
+             WHERE id = $8 RETURNING *`,
+            [name, email, phone, stage_id, description, value, origin, id]
+        );
+
+        if (result.rowCount === 0) {
+            return res.status(404).json({ error: 'Lead not found' });
+        }
+
+        res.json(result.rows[0]);
+    } catch (error) {
+        console.error('Error updating lead:', error);
         res.status(500).json({ error: 'Failed to update lead' });
     }
 };

@@ -21,22 +21,47 @@ import {
   useSortable,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { KanbanSquare, Plus, Trash2 } from "lucide-react";
+import {
+  Pencil,
+  MessageSquare,
+  MapPin,
+  ClipboardList,
+  KanbanSquare,
+  Plus,
+  Trash2,
+  Save,
+  User,
+  Phone as PhoneIcon,
+  Mail,
+  DollarSign,
+  MessageCircle,
+  Clock,
+  ChevronRight,
+  ExternalLink
+} from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
 import { Button } from "../components/ui/button";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "../components/ui/dialog";
 import { Input } from "../components/ui/input";
 import { cn } from "../lib/utils";
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription, SheetFooter } from "../components/ui/sheet";
+import { useNavigate } from "react-router-dom";
+import { Textarea } from "../components/ui/textarea";
+import { Badge } from "../components/ui/badge";
+import { Label } from "../components/ui/label";
 
 // Tipos
 type Lead = {
   id: string; // Phone number or UUID
   name: string;
   phone: string;
-  city: string;
-  state: string;
-  origin: string;
+  email?: string;
+  city?: string;
+  state?: string;
+  origin?: string;
   stage_id: number;
+  description?: string;
+  value?: number;
   columnId?: string; // Mapeado de stage_id para lógica de frontend
 };
 
@@ -60,7 +85,7 @@ const pastelOptions = [
 ];
 
 // Componente Sortable Item (Card)
-function SortableLeadCard({ lead }: { lead: Lead }) {
+function SortableLeadCard({ lead, onEdit, onChat }: { lead: Lead; onEdit: (l: Lead) => void; onChat: (l: Lead) => void }) {
   const {
     attributes,
     listeners,
@@ -86,7 +111,7 @@ function SortableLeadCard({ lead }: { lead: Lead }) {
       <div
         ref={setNodeRef}
         style={style}
-        className="opacity-50 bg-background border rounded-lg h-[80px] w-full"
+        className="opacity-50 bg-background border rounded-lg h-[90px] w-full border-primary/50 shadow-lg"
       />
     );
   }
@@ -95,27 +120,68 @@ function SortableLeadCard({ lead }: { lead: Lead }) {
     <div
       ref={setNodeRef}
       style={style}
-      className="group relative cursor-grab rounded-lg bg-background px-3 py-2 text-left shadow-soft transition-all hover:shadow-md border"
+      className="group relative cursor-grab rounded-lg bg-background px-3 py-2 text-left shadow-sm transition-all hover:shadow-md border border-border"
       {...attributes}
       {...listeners}
     >
-      <div className="flex items-start justify-between">
-        <div>
-          <p className="text-[13px] font-medium text-foreground">{lead.name || lead.phone}</p>
-          <div className="mt-1 flex items-center gap-1">
-            <span className="h-1.5 w-1.5 rounded-full bg-primary" />
-            <p className="text-[11px] text-muted-foreground">
+      <div className="flex items-start justify-between gap-2">
+        <div className="flex-1 min-w-0">
+          <p className="text-[13px] font-semibold text-foreground truncate">{lead.name || lead.phone}</p>
+          <div className="mt-1 flex items-center gap-1.5 overflow-hidden">
+            <MapPin className="h-3 w-3 text-muted-foreground flex-shrink-0" />
+            <p className="text-[11px] text-muted-foreground truncate">
               {lead.city && lead.state ? `${lead.city}/${lead.state}` : lead.phone}
             </p>
           </div>
-          <p className="mt-0.5 text-[11px] text-muted-foreground">Origem: {lead.origin}</p>
+          {lead.value && (
+            <p className="mt-1 text-[11px] font-medium text-emerald-600">
+              R$ {Number(lead.value).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+            </p>
+          )}
+        </div>
+
+        <div className="flex flex-col gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+          <Button
+            size="icon"
+            variant="ghost"
+            className="h-6 w-6 hover:bg-primary/10 hover:text-primary"
+            onPointerDown={(e) => e.stopPropagation()}
+            onClick={(e) => {
+              e.stopPropagation();
+              onChat(lead);
+            }}
+          >
+            <MessageSquare className="h-3.5 w-3.5" />
+          </Button>
+          <Button
+            size="icon"
+            variant="ghost"
+            className="h-6 w-6 hover:bg-primary/10 hover:text-primary"
+            onPointerDown={(e) => e.stopPropagation()}
+            onClick={(e) => {
+              e.stopPropagation();
+              onEdit(lead);
+            }}
+          >
+            <Pencil className="h-3.5 w-3.5" />
+          </Button>
         </div>
       </div>
+
+      {lead.description && (
+        <div className="mt-2 pt-2 border-t border-dashed flex gap-1.5 items-start">
+          <ClipboardList className="h-3 w-3 text-amber-500 mt-0.5 flex-shrink-0" />
+          <p className="text-[10px] text-muted-foreground line-clamp-1 italic">
+            {lead.description}
+          </p>
+        </div>
+      )}
     </div>
   );
 }
 
 const CrmPage = () => {
+  const navigate = useNavigate();
   const [leads, setLeads] = useState<Lead[]>([]);
   const [stages, setStages] = useState<Stage[]>([]);
   const [activeDragId, setActiveDragId] = useState<string | null>(null);
@@ -124,32 +190,16 @@ const CrmPage = () => {
   const [selectedColor, setSelectedColor] = useState(pastelOptions[0]);
   const [stageColors, setStageColors] = useState<Record<number, string>>({});
 
+  // Lead Editing State
+  const [isSheetOpen, setIsSheetOpen] = useState(false);
+  const [editingLead, setEditingLead] = useState<Lead | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
+
   useEffect(() => {
     fetchData();
-
-    // Atualização periódica para refletir novas mensagens/leads quase em tempo real
-    const interval = setInterval(fetchData, 5000);
+    const interval = setInterval(fetchData, 10000);
     return () => clearInterval(interval);
   }, []);
-
-  const loadFallbackData = () => {
-    const defaultStages: Stage[] = [
-      { id: 1, name: "Leads", position: 1 },
-      { id: 2, name: "Em contato", position: 2 },
-      { id: 3, name: "Agendamento", position: 3 },
-      { id: 4, name: "Venda realizada", position: 4 },
-      { id: 5, name: "Perdido", position: 5 },
-    ];
-
-    setStages(defaultStages);
-    setLeads([]);
-    setStageColors({
-      1: pastelOptions[0],
-      2: pastelOptions[1],
-      3: pastelOptions[2],
-      4: pastelOptions[3],
-    });
-  };
 
   const fetchData = async () => {
     try {
@@ -158,20 +208,12 @@ const CrmPage = () => {
         fetch("/api/crm/leads"),
       ]);
 
-      if (!stagesRes.ok || !leadsRes.ok) {
-        console.error("CRM API retornou erro.");
-        // loadFallbackData(); // DONT LOAD FALLBACK, IT RESURRECTS DELETED ITEMS
-        return;
-      }
+      if (!stagesRes.ok || !leadsRes.ok) return;
 
       const stagesData = await stagesRes.json();
       const leadsData = await leadsRes.json();
 
-      // Basic validation
-      if (Array.isArray(stagesData)) {
-        setStages(stagesData);
-      }
-
+      if (Array.isArray(stagesData)) setStages(stagesData);
       if (Array.isArray(leadsData)) {
         setLeads(
           leadsData.map((l: any) => ({
@@ -183,7 +225,45 @@ const CrmPage = () => {
       }
     } catch (error) {
       console.error("Failed to fetch CRM data", error);
-      // loadFallbackData(); // DONT LOAD FALLBACK
+    }
+  };
+
+  const handleEditLead = (lead: Lead) => {
+    setEditingLead({ ...lead });
+    setIsSheetOpen(true);
+  };
+
+  const handleChatLead = (lead: Lead) => {
+    navigate(`/app/atendimento?phone=${lead.phone}&name=${lead.name || lead.phone}`);
+  };
+
+  const saveLeadDetails = async () => {
+    if (!editingLead) return;
+    setIsSaving(true);
+    try {
+      const res = await fetch(`/api/crm/leads/${editingLead.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(editingLead),
+      });
+
+      if (res.ok) {
+        const updated = await res.json();
+        setLeads((prev) =>
+          prev.map((l) => l.id === updated.id.toString() ? {
+            ...updated,
+            id: updated.id.toString(),
+            columnId: updated.stage_id.toString()
+          } : l)
+        );
+        setIsSheetOpen(false);
+      } else {
+        alert("Erro ao salvar card.");
+      }
+    } catch (error) {
+      console.error("Error saving lead", error);
+    } finally {
+      setIsSaving(false);
     }
   };
 
@@ -210,115 +290,63 @@ const CrmPage = () => {
         body: JSON.stringify({ name }),
       });
 
-      if (!res.ok) {
-        console.error("Erro ao criar fase do funil no backend, criando apenas no layout.");
-        const tempId = Date.now();
-        const tempStage: Stage = {
-          id: tempId,
-          name,
-          position: stages.length + 1,
-        };
-        setStages((prev) => [...prev, tempStage]);
-        setStageColors((prev) => ({ ...prev, [tempId]: selectedColor }));
+      if (res.ok) {
+        const created = await res.json();
+        setStages((prev) => [...prev, created]);
         setNewStageName("");
         setIsDialogOpen(false);
-        return;
       }
-
-      const created = await res.json();
-      setStages((prev) => [...prev, created]);
-      setStageColors((prev) => ({ ...prev, [created.id]: selectedColor }));
-      setNewStageName("");
-      setIsDialogOpen(false);
     } catch (error) {
-      console.error("Erro ao criar fase do funil, criando apenas no layout.", error);
-      const tempId = Date.now();
-      const tempStage: Stage = {
-        id: tempId,
-        name,
-        position: stages.length + 1,
-      };
-      setStages((prev) => [...prev, tempStage]);
-      setStageColors((prev) => ({ ...prev, [tempId]: selectedColor }));
-      setNewStageName("");
-      setIsDialogOpen(false);
+      console.error("Erro ao criar fase", error);
     }
   };
 
   const deleteStage = async (stageId: number) => {
     const stage = stages.find((s) => s.id === stageId);
-    if (!stage || stage.name === "Leads") return; // Prevent deleting default stage
+    if (!stage || stage.name === "Leads") return;
 
-    // Optimistic remove
-    setStages((prev) => prev.filter((s) => s.id !== stageId));
+    if (!confirm(`Deseja excluir a fase "${stage.name}"? Os leads serão movidos para "Leads".`)) return;
 
     try {
-      const res = await fetch(`/api/crm/stages/${stageId}`, {
-        method: "DELETE",
-      });
-
-      if (!res.ok) {
-        const err = await res.json();
-        alert(`Erro ao excluir: ${err.error || 'Falha desconhecida'}`);
-        fetchData(); // Revert optimistic
-      } else {
-        // Success: refresh to see where leads went (if moved)
-        fetchData();
-      }
+      const res = await fetch(`/api/crm/stages/${stageId}`, { method: "DELETE" });
+      if (res.ok) fetchData();
     } catch (error) {
-      console.error("Erro ao excluir fase do funil", error);
-      alert("Erro ao conectar com o servidor.");
-      fetchData(); // Revert
+      console.error("Erro ao excluir fase", error);
     }
   };
 
-  // Sensores para Drag & Drop
   const sensors = useSensors(
-    useSensor(PointerSensor, {
-      activationConstraint: {
-        distance: 5,
-      },
-    }),
-    useSensor(KeyboardSensor, {
-      coordinateGetter: sortableKeyboardCoordinates,
-    })
+    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
   );
 
-  // Drag & Drop Handlers
-  const handleDragStart = (event: DragStartEvent) => {
-    setActiveDragId(event.active.id as string);
-  };
+  const handleDragStart = (event: DragStartEvent) => setActiveDragId(event.active.id as string);
 
   const handleDragOver = (event: DragOverEvent) => {
     const { active, over } = event;
     if (!over) return;
-
     const activeId = active.id;
     const overId = over.id;
-
     if (activeId === overId) return;
 
     const isActiveALead = active.data.current?.type === "Lead";
-    const isOverALead = over.data.current?.type === "Lead";
-
     if (!isActiveALead) return;
 
-    if (isActiveALead && isOverALead) {
+    const isOverALead = over.data.current?.type === "Lead";
+    if (isOverALead) {
       setLeads((leads) => {
         const activeIndex = leads.findIndex((l) => l.id === activeId);
         const overIndex = leads.findIndex((l) => l.id === overId);
-
         if (leads[activeIndex].columnId !== leads[overIndex].columnId) {
           leads[activeIndex].columnId = leads[overIndex].columnId;
           return arrayMove(leads, activeIndex, overIndex - 1);
         }
-
         return arrayMove(leads, activeIndex, overIndex);
       });
     }
 
     const isOverAColumn = stages.some((col) => col.id.toString() === overId);
-    if (isActiveALead && isOverAColumn) {
+    if (isOverAColumn) {
       setLeads((leads) => {
         const activeIndex = leads.findIndex((l) => l.id === activeId);
         if (leads[activeIndex].columnId !== overId) {
@@ -338,166 +366,83 @@ const CrmPage = () => {
 
     const activeId = active.id as string;
     const overId = over.id as string;
-
     const activeLead = leads.find((l) => l.id === activeId);
     if (!activeLead) return;
 
     let newStageId: string | undefined;
-
-    // Se soltou em uma coluna
-    if (stages.some((c) => c.id.toString() === overId)) {
-      newStageId = overId;
-    }
-    // Se soltou sobre outro lead
+    if (stages.some((c) => c.id.toString() === overId)) newStageId = overId;
     else {
       const overLead = leads.find((l) => l.id === overId);
-      if (overLead) {
-        newStageId = overLead.columnId;
-      }
+      if (overLead) newStageId = overLead.columnId;
     }
 
     if (newStageId && newStageId !== activeLead.stage_id?.toString()) {
-      // Optimistic update
-      setLeads(
-        leads.map((l) =>
-          l.id === activeId ? { ...l, columnId: newStageId, stage_id: Number(newStageId) } : l
-        )
-      );
+      setLeads(leads.map((l) => l.id === activeId ? { ...l, columnId: newStageId, stage_id: Number(newStageId) } : l));
       await updateLeadStage(activeId, Number(newStageId));
     }
   };
 
   const dropAnimation: DropAnimation = {
-    sideEffects: defaultDropAnimationSideEffects({
-      styles: {
-        active: {
-          opacity: "0.5",
-        },
-      },
-    }),
+    sideEffects: defaultDropAnimationSideEffects({ styles: { active: { opacity: "0.5" } } }),
   };
 
-  const getColumnClasses = (stage: Stage) => {
-    const base = "min-h-[300px] border-dashed flex flex-col transition-colors";
-    const colorClasses = stageColors[stage.id] || "bg-muted/10 hover:bg-muted/20";
-    return cn(base, colorClasses);
-  };
-
-  const leadsByStage = (stageId: number) =>
-    leads.filter((l) => l.columnId === stageId.toString());
+  const leadsByStage = (stageId: number) => leads.filter((l) => l.columnId === stageId.toString());
 
   return (
     <div className="space-y-4 max-w-full overflow-x-hidden">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h2 className="text-base font-semibold tracking-tight">Funil de relacionamento</h2>
-          <p className="text-xs text-muted-foreground">
-            Visualização em Kanban dos contatos oriundos do WhatsApp e outros canais.
-          </p>
+          <p className="text-xs text-muted-foreground">Arraste os cards para mover entre as fases.</p>
         </div>
         <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
           <DialogTrigger asChild>
             <Button size="sm" className="gap-1 text-[11px]">
-              <Plus className="h-3.5 w-3.5" /> Incluir filtro / fase
+              <Plus className="h-3.5 w-3.5" /> Adicionar Fase
             </Button>
           </DialogTrigger>
           <DialogContent className="max-w-sm">
-            <DialogHeader>
-              <DialogTitle>Novo funil</DialogTitle>
-            </DialogHeader>
-            <div className="space-y-3 py-2 text-xs">
+            <DialogHeader><DialogTitle>Nova fase</DialogTitle></DialogHeader>
+            <div className="space-y-3 py-2">
               <div className="space-y-1">
-                <label className="text-[11px] text-muted-foreground">Nome do funil</label>
-                <Input
-                  value={newStageName}
-                  onChange={(e) => setNewStageName(e.target.value)}
-                  placeholder="Ex: Em contato, Agendamento..."
-                  className="h-8 text-xs"
-                />
-              </div>
-              <div className="space-y-1">
-                <p className="text-[11px] text-muted-foreground">Cor do card (tons pastéis)</p>
-                <div className="grid grid-cols-5 gap-2">
-                  {pastelOptions.map((opt) => (
-                    <button
-                      key={opt}
-                      type="button"
-                      onClick={() => setSelectedColor(opt)}
-                      className={cn(
-                        "h-8 w-full rounded-full border transition-all hover:scale-110",
-                        opt,
-                        selectedColor === opt ? "ring-2 ring-primary ring-offset-2 border-transparent" : "border-transparent"
-                      )}
-                    >
-                      {selectedColor === opt && <span className="text-[10px] font-bold">✓</span>}
-                    </button>
-                  ))}
-                </div>
+                <Label className="text-xs">Nome da fase</Label>
+                <Input value={newStageName} onChange={(e) => setNewStageName(e.target.value)} placeholder="Ex: Proposta" className="h-8 text-xs" />
               </div>
             </div>
             <DialogFooter>
-              <Button type="button" size="sm" variant="outline" onClick={() => setIsDialogOpen(false)}>
-                Cancelar
-              </Button>
-              <Button type="button" size="sm" onClick={createStage}>
-                Salvar
-              </Button>
+              <Button size="sm" variant="outline" onClick={() => setIsDialogOpen(false)}>Cancelar</Button>
+              <Button size="sm" onClick={createStage}>Salvar</Button>
             </DialogFooter>
           </DialogContent>
         </Dialog>
       </div>
 
-      <DndContext
-        sensors={sensors}
-        collisionDetection={closestCorners}
-        onDragStart={handleDragStart}
-        onDragOver={handleDragOver}
-        onDragEnd={handleDragEnd}
-      >
-        <div className="grid gap-3 md:grid-cols-4 items-start">
+      <DndContext sensors={sensors} collisionDetection={closestCorners} onDragStart={handleDragStart} onDragOver={handleDragOver} onDragEnd={handleDragEnd}>
+        <div className="grid gap-3 md:grid-cols-4 lg:grid-cols-5 items-start">
           {stages.map((column) => (
-            <Card key={column.id} className={getColumnClasses(column)}>
-              <CardHeader className="flex flex-row items-center justify-between pb-2">
-                <CardTitle className="text-sm">
+            <Card key={column.id} className="min-h-[400px] flex flex-col bg-slate-50/50 border-slate-200">
+              <CardHeader className="flex flex-row items-center justify-between p-3 border-b bg-white rounded-t-xl">
+                <CardTitle className="text-xs font-bold uppercase tracking-wider text-slate-500">
                   {column.name}
-                  <span className="ml-2 text-[11px] font-normal text-muted-foreground">
-                    {leadsByStage(column.id).length}
-                  </span>
+                  <Badge variant="secondary" className="ml-2 bg-slate-100 text-slate-600 border-none h-5 px-1.5">{leadsByStage(column.id).length}</Badge>
                 </CardTitle>
                 <div className="flex items-center gap-1">
                   {column.name !== "Leads" && (
-                    <Button
-                      type="button"
-                      size="icon"
-                      variant="ghost"
-                      className="h-7 w-7 text-muted-foreground hover:text-destructive"
-                      onClick={() => deleteStage(column.id)}
-                    >
-                      <Trash2 className="h-3.5 w-3.5" />
+                    <Button size="icon" variant="ghost" className="h-6 w-6 text-muted-foreground hover:text-destructive" onClick={() => deleteStage(column.id)}>
+                      <Trash2 className="h-3 w-3" />
                     </Button>
                   )}
-                  <KanbanSquare className="h-4 w-4 text-primary" />
                 </div>
               </CardHeader>
 
-              <CardContent className="space-y-2 text-xs flex-1 p-2">
-                <SortableContext
-                  id={column.id.toString()}
-                  items={leadsByStage(column.id).map((l) => l.id)}
-                  strategy={verticalListSortingStrategy}
-                >
-                  <div className="flex flex-col gap-2 min-h-[100px]">
+              <CardContent className="flex-1 p-2">
+                <SortableContext id={column.id.toString()} items={leadsByStage(column.id).map((l) => l.id)} strategy={verticalListSortingStrategy}>
+                  <div className="flex flex-col gap-2 min-h-[150px]">
                     {leadsByStage(column.id).map((lead) => (
-                      <SortableLeadCard key={lead.id} lead={lead} />
+                      <SortableLeadCard key={lead.id} lead={lead} onEdit={handleEditLead} onChat={handleChatLead} />
                     ))}
                   </div>
                 </SortableContext>
-
-                {leadsByStage(column.id).length === 0 && (
-                  <div className="text-center p-4 text-muted-foreground/50 border-2 border-dashed border-transparent hover:border-muted-foreground/20 rounded transition-all">
-                    Arraste aqui
-                  </div>
-                )}
               </CardContent>
             </Card>
           ))}
@@ -505,20 +450,72 @@ const CrmPage = () => {
 
         <DragOverlay dropAnimation={dropAnimation}>
           {activeDragId ? (
-            <div className="bg-background border rounded-lg shadow-xl p-3 w-[250px] rotate-3 cursor-grabbing">
-              <p className="font-medium">
-                {leads.find((l) => l.id === activeDragId)?.name ||
-                  leads.find((l) => l.id === activeDragId)?.phone}
+            <div className="bg-white border-2 border-primary rounded-lg shadow-2xl p-3 w-[240px] rotate-2 cursor-grabbing scale-105 transition-transform">
+              <p className="font-bold text-sm text-primary">
+                {leads.find((l) => l.id === activeDragId)?.name || leads.find((l) => l.id === activeDragId)?.phone}
               </p>
+              <p className="text-[10px] text-muted-foreground mt-1">Movendo entre fases...</p>
             </div>
           ) : null}
         </DragOverlay>
       </DndContext>
 
-      <p className="text-[11px] text-muted-foreground">
-        A coluna "Leads" é fixa à esquerda e receberá automaticamente novos contatos do WhatsApp quando a
-        integração estiver ativa. Você pode arrastar os cards para qualquer fase criada.
-      </p>
+      {/* Editing Sheet */}
+      <Sheet open={isSheetOpen} onOpenChange={setIsSheetOpen}>
+        <SheetContent className="sm:max-w-md">
+          <SheetHeader>
+            <SheetTitle>Detalhes do Card</SheetTitle>
+            <SheetDescription>Edite as informações e adicione comentários internos.</SheetDescription>
+          </SheetHeader>
+
+          {editingLead && (
+            <div className="space-y-4 py-4">
+              <div className="space-y-2">
+                <Label>Nome do Contato</Label>
+                <Input value={editingLead.name} onChange={(e) => setEditingLead({ ...editingLead, name: e.target.value })} />
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label>Telefone</Label>
+                  <Input value={editingLead.phone} disabled />
+                </div>
+                <div className="space-y-2">
+                  <Label>Valor Estimado (R$)</Label>
+                  <Input type="number" value={editingLead.value || ""} onChange={(e) => setEditingLead({ ...editingLead, value: parseFloat(e.target.value) })} />
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label>Origem / Canal</Label>
+                <Input value={editingLead.origin || ""} onChange={(e) => setEditingLead({ ...editingLead, origin: e.target.value })} />
+              </div>
+
+              <div className="space-y-2">
+                <Label>Histórico / Comentários Internos</Label>
+                <Textarea
+                  placeholder="Adicione notas sobre o atendimento, negociação ou observações..."
+                  className="min-h-[150px] bg-amber-50/30 border-amber-200/50"
+                  value={editingLead.description || ""}
+                  onChange={(e) => setEditingLead({ ...editingLead, description: e.target.value })}
+                />
+              </div>
+
+              <div className="flex gap-2 pt-2">
+                <Button className="flex-1 gap-2" variant="outline" onClick={() => handleChatLead(editingLead)}>
+                  <MessageCircle className="h-4 w-4" /> Abrir Conversa
+                </Button>
+              </div>
+            </div>
+          )}
+
+          <SheetFooter className="absolute bottom-0 left-0 w-full p-6 bg-white border-t">
+            <Button className="w-full gap-2" onClick={saveLeadDetails} disabled={isSaving}>
+              {isSaving ? "Salvando..." : <><Save className="h-4 w-4" /> Salvar Alterações</>}
+            </Button>
+          </SheetFooter>
+        </SheetContent>
+      </Sheet>
     </div>
   );
 };
