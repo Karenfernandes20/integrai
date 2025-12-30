@@ -7,49 +7,59 @@ export const runMigrations = async () => {
         console.log("Running migrations...");
 
         // 0. Base Tables
-        await pool.query(`
-            CREATE TABLE IF NOT EXISTS cities (
-                id SERIAL PRIMARY KEY,
-                name VARCHAR(255) NOT NULL,
-                state VARCHAR(2) NOT NULL,
-                active BOOLEAN DEFAULT TRUE
-            );
-        `);
 
-        await pool.query(`
-            CREATE TABLE IF NOT EXISTS companies (
-                id SERIAL PRIMARY KEY,
-                name VARCHAR(255) NOT NULL,
-                cnpj VARCHAR(50),
-                city VARCHAR(100),
-                state VARCHAR(2),
-                phone VARCHAR(50),
-                logo_url TEXT,
-                evolution_instance VARCHAR(100),
-                evolution_apikey VARCHAR(255),
-                operation_type VARCHAR(20) DEFAULT 'clientes',
-                created_at TIMESTAMP DEFAULT NOW()
-            );
-        `);
+        try {
+            await pool.query(`
+                CREATE TABLE IF NOT EXISTS cities (
+                    id SERIAL PRIMARY KEY,
+                    name VARCHAR(255) NOT NULL,
+                    state VARCHAR(2) NOT NULL,
+                    active BOOLEAN DEFAULT TRUE
+                );
+            `);
+            console.log("Verified table: cities");
+        } catch (e) { console.error("Error creating cities:", e); }
 
-        await pool.query(`
-             CREATE TABLE IF NOT EXISTS app_users (
-                id SERIAL PRIMARY KEY,
-                full_name VARCHAR(255),
-                email VARCHAR(255) UNIQUE,
-                phone VARCHAR(50),
-                password_hash TEXT,
-                role VARCHAR(20) DEFAULT 'USUARIO',
-                company_id INTEGER REFERENCES companies(id),
-                city_id INTEGER REFERENCES cities(id),
-                state VARCHAR(2),
-                user_type VARCHAR(50),
-                email_validated BOOLEAN DEFAULT FALSE,
-                is_active BOOLEAN DEFAULT TRUE,
-                last_login TIMESTAMP,
-                created_at TIMESTAMP DEFAULT NOW()
-            );
-        `);
+        try {
+            await pool.query(`
+                CREATE TABLE IF NOT EXISTS companies (
+                    id SERIAL PRIMARY KEY,
+                    name VARCHAR(255) NOT NULL,
+                    cnpj VARCHAR(50),
+                    city VARCHAR(100),
+                    state VARCHAR(2),
+                    phone VARCHAR(50),
+                    logo_url TEXT,
+                    evolution_instance VARCHAR(100),
+                    evolution_apikey VARCHAR(255),
+                    operation_type VARCHAR(20) DEFAULT 'clientes',
+                    created_at TIMESTAMP DEFAULT NOW()
+                );
+            `);
+            console.log("Verified table: companies");
+        } catch (e) { console.error("Error creating companies:", e); }
+
+        try {
+            await pool.query(`
+                 CREATE TABLE IF NOT EXISTS app_users (
+                    id SERIAL PRIMARY KEY,
+                    full_name VARCHAR(255),
+                    email VARCHAR(255) UNIQUE,
+                    phone VARCHAR(50),
+                    password_hash TEXT,
+                    role VARCHAR(20) DEFAULT 'USUARIO',
+                    company_id INTEGER REFERENCES companies(id),
+                    city_id INTEGER REFERENCES cities(id),
+                    state VARCHAR(2),
+                    user_type VARCHAR(50),
+                    email_validated BOOLEAN DEFAULT FALSE,
+                    is_active BOOLEAN DEFAULT TRUE,
+                    last_login TIMESTAMP,
+                    created_at TIMESTAMP DEFAULT NOW()
+                );
+            `);
+            console.log("Verified table: app_users");
+        } catch (e) { console.error("Error creating app_users:", e); }
 
         // 1. Create financial_transactions table
         await pool.query(`

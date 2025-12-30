@@ -500,7 +500,10 @@ export const syncEvolutionContacts = async (req: Request, res: Response) => {
 
   } catch (error: any) {
     console.error("Error syncing contacts:", error);
-    return res.status(500).json({ error: "Sync failed", details: error.message });
+    return res.status(500).json({
+      error: "Sync failed",
+      details: (error as any).message || String(error)
+    });
   }
 };
 

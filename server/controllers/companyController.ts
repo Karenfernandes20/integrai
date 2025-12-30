@@ -8,7 +8,10 @@ export const getCompanies = async (req: Request, res: Response) => {
         res.json(result.rows);
     } catch (error) {
         console.error('Error fetching companies:', error);
-        res.status(500).json({ error: 'Failed to fetch companies' });
+        res.status(500).json({
+            error: 'Failed to fetch companies',
+            details: (error as any).message
+        });
     }
 };
 
