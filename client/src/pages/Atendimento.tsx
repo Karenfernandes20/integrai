@@ -153,6 +153,10 @@ const AtendimentoPage = () => {
     const phoneParam = searchParams.get('phone');
     const nameParam = searchParams.get('name');
 
+    if (phoneParam) {
+      console.log(`[Atendimento] URL Param detected: phone=${phoneParam}, name=${nameParam}`);
+    }
+
     // Priority: 1. URL Param, 2. LocalStorage Persistence
     let targetPhone = phoneParam;
     let targetName = nameParam;
@@ -232,7 +236,7 @@ const AtendimentoPage = () => {
         }, { replace: true });
       }
     }
-  }, [searchParams, conversations, isLoadingConversations, importedContacts, contacts, setSearchParams]);
+  }, [searchParams, conversations, isLoadingConversations, importedContacts, contacts, setSearchParams, selectedConversation, statusFilter]);
 
   // ... (Rest of the component)
 

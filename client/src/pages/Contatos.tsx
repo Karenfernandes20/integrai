@@ -214,6 +214,7 @@ const ContatosPage = () => {
     const [newContactPhone, setNewContactPhone] = useState("");
     const [isCreating, setIsCreating] = useState(false);
     const { token } = useAuth();
+    const navigate = useNavigate();
     const [editingContact, setEditingContact] = useState<Contact | null>(null);
     const [editDialogOpen, setEditDialogOpen] = useState(false);
     const [editName, setEditName] = useState("");
