@@ -217,7 +217,8 @@ const AtendimentoPage = () => {
           contact_name: targetName || targetPhone,
           last_message: "",
           last_message_at: new Date().toISOString(),
-          status: 'OPEN' // Make it visible in OPEN tab
+          status: 'OPEN', // Make it visible in OPEN tab
+          user_id: user?.id ? Number(user.id) : undefined
         };
 
         // Switch to OPEN tab to ensure it's visible
@@ -612,15 +613,27 @@ const AtendimentoPage = () => {
 
   const handleStartConversationFromContact = (contact: Contact) => {
     const newConversation: Conversation = {
-      id: contact.id,
+      id: 'temp-' + Date.now(), // Fixed: use temp id to avoid confusion with DB ids
       phone: contact.phone,
       contact_name: contact.name,
       last_message: "",
       last_message_at: new Date().toISOString(),
+      status: 'OPEN',
+      user_id: user?.id ? Number(user.id) : undefined
     };
+
+    // Add to list if not already there
+    setConversations(prev => {
+      const normalize = (p: string) => (p || '').replace(/\D/g, '');
+      const exists = prev.find(c => normalize(c.phone) === normalize(contact.phone));
+      if (exists) return prev;
+      return [newConversation, ...prev];
+    });
 
     setSelectedConversation(newConversation);
     setMessages([]);
+    setStatusFilter('OPEN');
+    setActiveTab('conversas');
   };
 
 
@@ -904,9 +917,11 @@ const AtendimentoPage = () => {
 
   // Read Only Mode: 
   // - Closed conversations
-  // - Open conversations assigned to someone else (and I am not admin? Requirement says "Read only").
-  // - Pending: Can I type? Usually no, must start first.
-  const isReadOnly = isClosed || (selectedConversation?.status === 'OPEN' && !isMyAttendance) || isPending;
+  // - Open conversations assigned to someone else
+  // - Pending: Normally read-only unless we want to allow quick replies
+  const isReadOnly = isClosed || (selectedConversation?.status === 'OPEN' && selectedConversation?.user_id && selectedConversation.user_id !== user?.id);
+  // Note: if user_id is null/undefined on an OPEN chat, it's effectively unassigned but open, so allow messaging.
+  // if it's PENDING, we also allow messaging now as requested.
 
 
 
@@ -1011,39 +1026,62 @@ const AtendimentoPage = () => {
                     </div>
                   )}
                   {filteredConversations.map((conv) => (
-                    <button
+                    <div
                       key={conv.id}
                       onClick={() => setSelectedConversation(conv)}
                       className={cn(
-                        "flex items-center gap-3 px-4 py-3 hover:bg-zinc-100 dark:hover:bg-zinc-900 transition-colors border-b border-transparent hover:border-border",
-                        selectedConversation?.id === conv.id ? "bg-zinc-100 dark:bg-zinc-900" : ""
+                        "group mx-3 my-1 p-3 rounded-xl cursor-pointer transition-all duration-200 border border-transparent",
+                        selectedConversation?.id === conv.id
+                          ? "bg-[#e7fce3] dark:bg-[#005c4b]/30 border-[#00a884]/20 shadow-sm"
+                          : "hover:bg-zinc-50 dark:hover:bg-zinc-900 border-zinc-100/50 dark:border-zinc-800/50"
                       )}
                     >
-                      <Avatar className="h-12 w-12">
-                        <AvatarImage src={`https://api.dicebear.com/7.x/initials/svg?seed=${getDisplayName(conv)}`} />
-                        <AvatarFallback>{(getDisplayName(conv)?.[0] || "?").toUpperCase()}</AvatarFallback>
-                      </Avatar>
-                      <div className="flex-1 min-w-0 text-left">
-                        <div className="flex justify-between items-baseline mb-1">
-                          <span className="font-medium truncate text-zinc-900 dark:text-zinc-100">
-                            {getDisplayName(conv)}
-                          </span>
-                          <span className="text-[11px] text-muted-foreground whitespace-nowrap ml-2">
-                            {formatTime(conv.last_message_at!)}
-                          </span>
+                      <div className="flex items-center gap-3">
+                        <div className="relative shrink-0">
+                          <Avatar className="h-12 w-12 border-2 border-white dark:border-zinc-900 shadow-sm">
+                            <AvatarImage src={`https://api.dicebear.com/7.x/initials/svg?seed=${getDisplayName(conv)}`} />
+                            <AvatarFallback className="bg-zinc-200 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 font-bold">
+                              {(getDisplayName(conv)?.[0] || "?").toUpperCase()}
+                            </AvatarFallback>
+                          </Avatar>
+                          {/* Online status indicator placeholder */}
+                          <div className="absolute bottom-0 right-0 w-3.5 h-3.5 bg-green-500 border-2 border-white dark:border-zinc-900 rounded-full"></div>
                         </div>
-                        <div className="flex justify-between items-center">
-                          <p className="text-sm text-muted-foreground truncate line-clamp-1 flex-1">
-                            {conv.last_message || "Sem mensagens"}
-                          </p>
-                          {conv.unread_count && conv.unread_count > 0 ? (
-                            <span className="ml-2 flex h-5 w-5 items-center justify-center rounded-full bg-green-500 text-[10px] font-bold text-white">
-                              {conv.unread_count}
+
+                        <div className="flex-1 min-w-0">
+                          <div className="flex justify-between items-center mb-0.5">
+                            <span className={cn(
+                              "font-semibold truncate text-[15px]",
+                              selectedConversation?.id === conv.id ? "text-[#008069] dark:text-[#00a884]" : "text-zinc-900 dark:text-zinc-100"
+                            )}>
+                              {getDisplayName(conv)}
                             </span>
-                          ) : null}
+                            <span className="text-[10px] font-medium text-muted-foreground whitespace-nowrap ml-2 opacity-80">
+                              {conv.last_message_at ? formatTime(conv.last_message_at) : ""}
+                            </span>
+                          </div>
+
+                          <div className="flex justify-between items-center gap-2">
+                            <div className="flex items-center gap-1 flex-1 min-w-0">
+                              {conv.status === 'OPEN' && conv.user_id && (
+                                <div className="shrink-0 h-1.5 w-1.5 rounded-full bg-[#00a884] animate-pulse" title="Em atendimento"></div>
+                              )}
+                              <p className="text-[13px] text-muted-foreground truncate leading-snug">
+                                {conv.last_message || <span className="italic opacity-60">Iniciar conversa...</span>}
+                              </p>
+                            </div>
+
+                            {conv.unread_count && conv.unread_count > 0 ? (
+                              <div className="shrink-0 min-w-[20px] h-5 px-1.5 flex items-center justify-center rounded-full bg-[#25D366] shadow-sm animate-in fade-in zoom-in duration-300">
+                                <span className="text-[10px] font-bold text-white">
+                                  {conv.unread_count}
+                                </span>
+                              </div>
+                            ) : null}
+                          </div>
                         </div>
                       </div>
-                    </button>
+                    </div>
                   ))}
                 </div>
               </ScrollArea>
