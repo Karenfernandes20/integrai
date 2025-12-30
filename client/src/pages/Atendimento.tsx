@@ -1009,12 +1009,11 @@ const AtendimentoPage = () => {
   const isClosed = selectedConversation?.status === 'CLOSED';
 
   // Read Only Mode: 
-  // - Closed conversations
+  // - Closed conversations (Strictly read-only)
+  // - Pending conversations (Cannot reply before starting - spec 2.4)
   // - Open conversations assigned to someone else
-  // - Pending: Normally read-only unless we want to allow quick replies
-  const isReadOnly = isClosed || (selectedConversation?.status === 'OPEN' && selectedConversation?.user_id && selectedConversation.user_id !== user?.id);
-  // Note: if user_id is null/undefined on an OPEN chat, it's effectively unassigned but open, so allow messaging.
-  // if it's PENDING, we also allow messaging now as requested.
+  const isReadOnly = isClosed || isPending || (selectedConversation?.status === 'OPEN' && selectedConversation?.user_id && selectedConversation.user_id !== user?.id);
+  // Note: if user_id is null/undefined on an OPEN chat, we allow messaging as it's the 'unclaimed' state.
 
 
 
@@ -1084,21 +1083,34 @@ const AtendimentoPage = () => {
         selectedConversation?.id === conv.id && "opacity-100"
       )}>
         {(conv.status === 'PENDING' || !conv.status) && (
-          <Button
-            size="sm"
-            variant="ghost"
-            className="h-7 px-2 text-[10px] gap-1 text-[#008069] hover:bg-[#008069]/10"
-            onClick={(e) => { e.stopPropagation(); handleStartAtendimento(conv); }}
-          >
-            <Play className="h-3 w-3 fill-current" /> INICIAR
-          </Button>
+          <div className="flex gap-1">
+            <Button
+              size="sm"
+              variant="ghost"
+              className="h-7 px-2 text-[10px] gap-1 text-[#008069] hover:bg-[#008069]/10 font-bold"
+              onClick={(e) => { e.stopPropagation(); handleStartAtendimento(conv); }}
+              title="Iniciar Atendimento"
+            >
+              <Play className="h-3 w-3 fill-current" /> INICIAR
+            </Button>
+            <Button
+              size="sm"
+              variant="ghost"
+              className="h-7 px-2 text-[10px] gap-1 text-red-500 hover:bg-red-50 font-bold"
+              onClick={(e) => { e.stopPropagation(); handleCloseAtendimento(conv); }}
+              title="Fechar Conversa"
+            >
+              <XCircle className="h-3 w-3" /> FECHAR
+            </Button>
+          </div>
         )}
         {conv.status === 'OPEN' && (
           <Button
             size="sm"
             variant="ghost"
-            className="h-7 px-2 text-[10px] gap-1 text-red-500 hover:bg-red-50"
+            className="h-7 px-2 text-[10px] gap-1 text-red-500 hover:bg-red-50 font-bold"
             onClick={(e) => { e.stopPropagation(); handleCloseAtendimento(conv); }}
+            title="Encerrar Atendimento"
           >
             <CheckCircle2 className="h-3 w-3" /> ENCERRAR
           </Button>
@@ -1107,8 +1119,9 @@ const AtendimentoPage = () => {
           <Button
             size="sm"
             variant="ghost"
-            className="h-7 px-2 text-[10px] gap-1 text-blue-500 hover:bg-blue-50"
+            className="h-7 px-2 text-[10px] gap-1 text-blue-500 hover:bg-blue-50 font-bold"
             onClick={(e) => { e.stopPropagation(); handleStartAtendimento(conv); }}
+            title="Reabrir Atendimento"
           >
             <RotateCcw className="h-3 w-3" /> REABRIR
           </Button>
@@ -1435,9 +1448,14 @@ const AtendimentoPage = () => {
               </div>
               <div className="flex items-center gap-4 text-zinc-500">
                 {isPending && (
-                  <Button size="sm" onClick={() => handleStartAtendimento()} className="bg-[#008069] hover:bg-[#006d59] text-white h-8 text-xs">
-                    INICIAR
-                  </Button>
+                  <div className="flex gap-2">
+                    <Button size="sm" onClick={() => handleStartAtendimento()} className="bg-[#008069] hover:bg-[#006d59] text-white h-8 text-xs font-bold gap-2">
+                      <Play className="h-3 w-3 fill-current" /> INICIAR ATENDIMENTO
+                    </Button>
+                    <Button size="sm" variant="outline" onClick={() => handleCloseAtendimento()} className="text-red-600 border-red-200 hover:bg-red-50 h-8 text-xs font-bold gap-2">
+                      <XCircle className="h-3 w-3" /> FECHAR
+                    </Button>
+                  </div>
                 )}
                 <Search className="h-5 w-5 cursor-pointer hover:text-zinc-700" />
                 <DropdownMenu>
@@ -1568,7 +1586,12 @@ const AtendimentoPage = () => {
               >
                 <Input
                   className="flex-1 bg-white dark:bg-zinc-700 border-none focus-visible:ring-0 focus-visible:ring-offset-0 placeholder:text-zinc-400 min-h-[40px] py-2"
-                  placeholder={selectedConversation ? "Digite uma mensagem" : "Selecione um contato para iniciar a conversa"}
+                  placeholder={
+                    !selectedConversation ? "Selecione um contato" :
+                      isPending ? "Inicie o atendimento para responder" :
+                        isClosed ? "Esta conversa está encerrada (Somente Leitura)" :
+                          isReadOnly ? "Aguardando resposta de outro atendente" : "Digite uma mensagem"
+                  }
                   value={newMessage}
                   onChange={(e) => setNewMessage(e.target.value)}
                   disabled={!selectedConversation || isReadOnly}
