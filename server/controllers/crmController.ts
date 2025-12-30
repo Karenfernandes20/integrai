@@ -50,12 +50,25 @@ export const getLeads = async (req: Request, res: Response) => {
     try {
         if (!pool) return res.status(500).json({ error: 'Database not configured' });
 
-        const result = await pool.query(`
+        const user = (req as any).user;
+        const companyId = user?.company_id;
+
+        let query = `
             SELECT l.*, s.name as stage_name, s.position as stage_position 
             FROM crm_leads l
             LEFT JOIN crm_stages s ON l.stage_id = s.id
-            ORDER BY l.updated_at DESC
-        `);
+            WHERE 1=1
+        `;
+        const params: any[] = [];
+
+        if (user.role !== 'SUPERADMIN' || companyId) {
+            query += ` AND l.company_id = $1`;
+            params.push(companyId);
+        }
+
+        query += ` ORDER BY l.updated_at DESC`;
+
+        const result = await pool.query(query, params);
         res.json(result.rows);
     } catch (error) {
         console.error('Error fetching leads:', error);
@@ -200,17 +213,21 @@ export const getCrmDashboardStats = async (req: Request, res: Response) => {
     try {
         if (!pool) return res.status(500).json({ error: 'Database not configured' });
 
+        const user = (req as any).user;
+        const companyId = user?.company_id;
+        const filterClause = (user.role !== 'SUPERADMIN' || companyId) ? 'WHERE company_id = $1' : 'WHERE 1=1';
+        const filterParams = (user.role !== 'SUPERADMIN' || companyId) ? [companyId] : [];
+
         // 1. Funnel Data (Stages + Lead Counts)
         const funnelRes = await pool.query(`
             SELECT s.name as label, COUNT(l.id) as count, s.position
             FROM crm_stages s
-            LEFT JOIN crm_leads l ON s.id = l.stage_id
+            LEFT JOIN crm_leads l ON s.id = l.stage_id ${filterClause.replace('WHERE', 'AND')}
             GROUP BY s.id, s.name, s.position
             ORDER BY s.position ASC
-        `);
+        `, filterParams);
 
         const funnelData = funnelRes.rows.map((row, idx) => {
-            // Simple color cycle
             const colors = [
                 { border: "border-blue-500", bg: "bg-blue-50" },
                 { border: "border-indigo-500", bg: "bg-indigo-50" },
@@ -223,37 +240,43 @@ export const getCrmDashboardStats = async (req: Request, res: Response) => {
             return {
                 label: row.label,
                 count: parseInt(row.count),
-                value: "R$ 0", // Placeholder for value
+                value: "R$ 0",
                 color: theme.border,
                 bg: theme.bg
             };
         });
 
         // 2. Overview Stats
-        const activeConvsRes = await pool.query(`SELECT COUNT(*) FROM whatsapp_conversations`);
+        const activeConvsRes = await pool.query(`SELECT COUNT(*) FROM whatsapp_conversations ${filterClause}`, filterParams);
         const msgsTodayRes = await pool.query(`
-            SELECT COUNT(*) FROM whatsapp_messages 
-            WHERE direction = 'inbound' 
-            AND sent_at::date = CURRENT_DATE
-        `);
+            SELECT COUNT(*) FROM whatsapp_messages m
+            JOIN whatsapp_conversations c ON m.conversation_id = c.id
+            ${filterClause.replace('WHERE', 'WHERE c.')}
+            AND m.direction = 'inbound' 
+            AND m.sent_at::date = CURRENT_DATE
+        `, filterParams);
         const newLeadsRes = await pool.query(`
             SELECT COUNT(*) FROM crm_leads 
-            WHERE created_at::date = CURRENT_DATE
-        `);
+            ${filterClause}
+            AND created_at::date = CURRENT_DATE
+        `, filterParams);
         const attendedClientsRes = await pool.query(`
-             SELECT COUNT(DISTINCT conversation_id) 
-             FROM whatsapp_messages 
-             WHERE direction = 'outbound' AND sent_at::date = CURRENT_DATE
-        `);
+             SELECT COUNT(DISTINCT m.conversation_id) 
+             FROM whatsapp_messages m
+             JOIN whatsapp_conversations c ON m.conversation_id = c.id
+             ${filterClause.replace('WHERE', 'WHERE c.')}
+             AND m.direction = 'outbound' AND m.sent_at::date = CURRENT_DATE
+        `, filterParams);
 
         // 3. Realtime Activities
         const recentMsgsRes = await pool.query(`
              SELECT m.content as text, m.sent_at, m.direction, c.phone, c.contact_name
              FROM whatsapp_messages m
              JOIN whatsapp_conversations c ON m.conversation_id = c.id
+             ${filterClause.replace('WHERE', 'WHERE c.')}
              ORDER BY m.sent_at DESC
              LIMIT 5
-        `);
+        `, filterParams);
 
         const recentActivities = recentMsgsRes.rows.map(m => ({
             type: m.direction === 'inbound' ? 'msg_in' : 'msg_out',

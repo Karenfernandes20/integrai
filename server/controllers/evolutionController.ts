@@ -286,6 +286,9 @@ export const sendEvolutionMessage = async (req: Request, res: Response) => {
         // Find or create conversation
         let conversationId: number;
 
+        const user = (req as any).user;
+        const companyId = user?.company_id;
+
         // CHECK INSTANCE
         const checkConv = await pool.query(
           'SELECT id, status, user_id FROM whatsapp_conversations WHERE external_id = $1 AND instance = $2',
@@ -297,16 +300,16 @@ export const sendEvolutionMessage = async (req: Request, res: Response) => {
           // Update status to OPEN if it was PENDING/null, assign user if unassigned, and update last_message metadata
           await pool.query(
             `UPDATE whatsapp_conversations 
-             SET last_message = $1, last_message_at = NOW(), status = 'OPEN', user_id = COALESCE(user_id, $2)
-             WHERE id = $3`,
-            [messageContent, (req as any).user.id, conversationId]
+             SET last_message = $1, last_message_at = NOW(), status = 'OPEN', user_id = COALESCE(user_id, $2), company_id = COALESCE(company_id, $3)
+             WHERE id = $4`,
+            [messageContent, user.id, companyId, conversationId]
           );
         } else {
           // Create new conversation as OPEN and assigned to the sender
           const newConv = await pool.query(
-            `INSERT INTO whatsapp_conversations (external_id, phone, contact_name, instance, status, user_id, last_message, last_message_at) 
-             VALUES ($1, $2, $3, $4, 'OPEN', $5, $6, NOW()) RETURNING id`,
-            [remoteJid, safePhone, safePhone, EVOLUTION_INSTANCE, (req as any).user.id, messageContent]
+            `INSERT INTO whatsapp_conversations (external_id, phone, contact_name, instance, status, user_id, last_message, last_message_at, company_id) 
+             VALUES ($1, $2, $3, $4, 'OPEN', $5, $6, NOW(), $7) RETURNING id`,
+            [remoteJid, safePhone, safePhone, EVOLUTION_INSTANCE, user.id, messageContent, companyId]
           );
           conversationId = newConv.rows[0].id;
         }
@@ -346,14 +349,24 @@ export const sendEvolutionMessage = async (req: Request, res: Response) => {
 export const getEvolutionContacts = async (req: Request, res: Response) => {
   const config = await getEvolutionConfig((req as any).user, 'getContacts');
   const EVOLUTION_INSTANCE = config.instance;
+  const user = (req as any).user;
+  const companyId = user?.company_id;
 
   // Retrieve local contacts first
   try {
-    console.log(`[Evolution] Fetching local contacts for instance: ${EVOLUTION_INSTANCE}`);
-    const localContacts = await pool?.query(
-      `SELECT * FROM whatsapp_contacts WHERE instance = $1 ORDER BY name ASC`,
-      [EVOLUTION_INSTANCE]
-    );
+    console.log(`[Evolution] Fetching local contacts for instance: ${EVOLUTION_INSTANCE} (Company: ${companyId})`);
+
+    let query = `SELECT * FROM whatsapp_contacts WHERE instance = $1`;
+    const params = [EVOLUTION_INSTANCE];
+
+    if (user.role !== 'SUPERADMIN' || companyId) {
+      query += ` AND (company_id = $2 OR company_id IS NULL)`;
+      params.push(companyId);
+    }
+
+    query += ` ORDER BY name ASC`;
+
+    const localContacts = await pool?.query(query, params);
     console.log(`[Evolution] Found ${localContacts?.rows?.length || 0} local contacts.`);
     return res.json(localContacts?.rows || []);
   } catch (error) {
@@ -490,17 +503,21 @@ export const syncEvolutionContacts = async (req: Request, res: Response) => {
         const profilePicUser = contact.profilePictureUrl || contact.profilePicture;
 
         try {
+          const user = (req as any).user;
+          const companyId = user?.company_id;
+
           // Safe upsert
           await pool.query(`
-                        INSERT INTO whatsapp_contacts (jid, name, push_name, profile_pic_url, instance, updated_at)
-                        VALUES ($1, $2, $3, $4, $5, NOW())
+                        INSERT INTO whatsapp_contacts (jid, name, push_name, profile_pic_url, instance, updated_at, company_id)
+                        VALUES ($1, $2, $3, $4, $5, NOW(), $6)
                         ON CONFLICT (jid, instance) 
                         DO UPDATE SET 
                             name = EXCLUDED.name,
                             push_name = EXCLUDED.push_name,
                             profile_pic_url = EXCLUDED.profile_pic_url,
-                            updated_at = NOW();
-                    `, [jid, name, pushName || null, profilePicUser || null, EVOLUTION_INSTANCE]);
+                            updated_at = NOW(),
+                            company_id = COALESCE(whatsapp_contacts.company_id, EXCLUDED.company_id);
+                    `, [jid, name, pushName || null, profilePicUser || null, EVOLUTION_INSTANCE, companyId]);
           savedCount++;
         } catch (dbErr) {
           console.error(`[Evolution] DB Save error for ${jid}:`, dbErr);
@@ -513,11 +530,20 @@ export const syncEvolutionContacts = async (req: Request, res: Response) => {
     }
 
     // 3. Return updated local list
-    // 3. Return updated local list
-    const localContacts = await pool?.query(
-      `SELECT * FROM whatsapp_contacts WHERE instance = $1 ORDER BY name ASC`,
-      [EVOLUTION_INSTANCE]
-    );
+    const user = (req as any).user;
+    const companyId = user?.company_id;
+
+    let localQuery = `SELECT * FROM whatsapp_contacts WHERE instance = $1`;
+    const localParams = [EVOLUTION_INSTANCE];
+
+    if (user.role !== 'SUPERADMIN' || companyId) {
+      localQuery += ` AND (company_id = $2 OR company_id IS NULL)`;
+      localParams.push(companyId);
+    }
+
+    localQuery += ` ORDER BY name ASC`;
+
+    const localContacts = await pool?.query(localQuery, localParams);
 
     return res.json(localContacts?.rows || []);
 
@@ -623,13 +649,16 @@ export const createEvolutionContact = async (req: Request, res: Response) => {
   try {
     if (!pool) return res.status(500).json({ error: "Database not configured" });
 
+    const user = (req as any).user;
+    const companyId = user?.company_id;
+
     // Insert into DB
     await pool.query(`
-          INSERT INTO whatsapp_contacts (jid, name, instance, updated_at)
-          VALUES ($1, $2, $3, NOW())
+          INSERT INTO whatsapp_contacts (jid, name, instance, updated_at, company_id)
+          VALUES ($1, $2, $3, NOW(), $4)
           ON CONFLICT (jid, instance) 
-          DO UPDATE SET name = EXCLUDED.name, updated_at = NOW()
-      `, [jid, name, EVOLUTION_INSTANCE]);
+          DO UPDATE SET name = EXCLUDED.name, updated_at = NOW(), company_id = COALESCE(whatsapp_contacts.company_id, EXCLUDED.company_id)
+      `, [jid, name, EVOLUTION_INSTANCE, companyId]);
 
     return res.status(201).json({
       id: jid,

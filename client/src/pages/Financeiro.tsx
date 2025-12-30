@@ -213,6 +213,15 @@ const FinanceiroPage = () => {
     fetchData();
   }, [mainTab, startDate, endDate, statusFilter, categoryFilter]);
 
+  // Effect to handle default view for each tab
+  useEffect(() => {
+    if (mainTab === 'revenues') {
+      setActiveView('charts');
+    } else {
+      setActiveView('table');
+    }
+  }, [mainTab]);
+
   const handleSave = async () => {
     if (!formData.description || !formData.amount) {
       alert("Preencha os campos obrigatórios.");
@@ -318,6 +327,232 @@ const FinanceiroPage = () => {
       return false;
     }
   };
+
+  // -------------------------------------------------------------------------
+  // RENDER BLOCKS
+  // -------------------------------------------------------------------------
+
+  const renderTable = () => (
+    <div className="rounded-xl border shadow-sm bg-white overflow-hidden">
+      <Table>
+        <TableHeader className="bg-zinc-50/50">
+          <TableRow>
+            <TableHead className="w-[300px] text-[10px] font-bold uppercase">Descrição / Origem</TableHead>
+            <TableHead className="text-[10px] font-bold uppercase">Categoria</TableHead>
+            <TableHead className="text-center text-[10px] font-bold uppercase">Emissão</TableHead>
+            <TableHead className="text-center text-[10px] font-bold uppercase">
+              {mainTab === 'revenues' ? 'Recebimento' : 'Vencimento'}
+            </TableHead>
+            <TableHead className="text-right text-[10px] font-bold uppercase">Valor</TableHead>
+            <TableHead className="text-center text-[10px] font-bold uppercase">Status</TableHead>
+            <TableHead className="text-center text-[10px] font-bold uppercase w-[150px]">Ações</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {isLoading ? (
+            <TableRow>
+              <TableCell colSpan={7} className="h-48 text-center text-zinc-400 font-medium font-bold animate-pulse">Sincronizando dados...</TableCell>
+            </TableRow>
+          ) : filteredData.length === 0 ? (
+            <TableRow>
+              <TableCell colSpan={7} className="h-48 text-center text-zinc-400 font-medium">
+                Nenhum registro encontrado para este período.
+              </TableCell>
+            </TableRow>
+          ) : (
+            filteredData.map((t) => (
+              <TableRow
+                key={t.id}
+                className="cursor-pointer hover:bg-zinc-50/80 group transition-colors"
+                onClick={() => { setSelectedTransaction(t); setIsSheetOpen(true); }}
+              >
+                <TableCell>
+                  <div className="flex items-center gap-3">
+                    <div className={cn(
+                      "p-2.5 rounded-xl shadow-sm",
+                      t.type === 'receivable' ? "bg-emerald-50 text-emerald-600" : "bg-red-50 text-red-600"
+                    )}>
+                      {t.type === 'receivable' ? <ArrowUpRight className="h-4 w-4" /> : <ArrowDownRight className="h-4 w-4" />}
+                    </div>
+                    <div className="flex flex-col">
+                      <span className="font-bold text-sm text-zinc-900">{t.description}</span>
+                      <span className="text-[10px] text-zinc-400 font-medium">#{t.id} • {t.notes || "Sem observações"}</span>
+                    </div>
+                  </div>
+                </TableCell>
+                <TableCell>
+                  <Badge variant="outline" className="text-[10px] font-extrabold border-zinc-200 text-zinc-600 px-2 py-0 h-5">
+                    {t.category || "Outros"}
+                  </Badge>
+                </TableCell>
+                <TableCell className="text-center font-mono text-[11px] font-medium text-zinc-600">
+                  {safeFormat(t.issue_date, "dd/MM/yyyy")}
+                </TableCell>
+                <TableCell className={cn(
+                  "text-center font-mono text-[11px] font-bold",
+                  isOverdue(t.due_date) && t.status !== 'paid' ? "text-red-500" : "text-zinc-600"
+                )}>
+                  {safeFormat(t.due_date, "dd/MM/yyyy")}
+                </TableCell>
+                <TableCell className={cn(
+                  "text-right font-black text-sm",
+                  t.type === 'receivable' ? "text-emerald-700" : "text-zinc-900"
+                )}>
+                  R$ {Number(t.amount).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+                </TableCell>
+                <TableCell className="text-center">
+                  {getStatusBadge(t)}
+                </TableCell>
+                <TableCell className="text-center w-[150px]" onClick={e => e.stopPropagation()}>
+                  <div className="flex items-center justify-center gap-1">
+                    {t.status !== 'paid' && (
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        className="h-8 w-8 text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 shrink-0"
+                        onClick={() => handleMarkAsReceivedOrPaid(t.id)}
+                        title={t.type === 'receivable' ? "Receber" : "Pagar"}
+                      >
+                        {t.type === 'receivable' ? <ArrowUpRight className="h-4 w-4" /> : <CheckCircle2 className="h-4 w-4" />}
+                      </Button>
+                    )}
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      className="h-8 w-8 text-blue-600 hover:text-blue-700 hover:bg-blue-50 shrink-0"
+                      onClick={() => { setFormData(t); setIsDialogOpen(true); }}
+                      title="Editar"
+                    >
+                      <Pencil className="h-4 w-4" />
+                    </Button>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0"><MoreVertical className="h-4 w-4 text-zinc-400" /></Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuItem onClick={() => handleMarkAsReceivedOrPaid(t.id)}>
+                          {t.type === 'receivable' ? 'Marcar como Recebido' : 'Marcar como Pago'}
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => { setFormData(t); setIsDialogOpen(true); }}>Editar</DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => handleDelete(t.id)} className="text-red-600">Excluir</DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </div>
+                </TableCell>
+              </TableRow>
+            ))
+          )}
+        </TableBody>
+        <TableFooter className="bg-zinc-50 border-t-2">
+          <TableRow>
+            <TableCell colSpan={4} className="py-5 px-6">
+              <div className="flex gap-6">
+                <div className="flex flex-col">
+                  <span className="text-[10px] font-bold text-zinc-400 uppercase">Total de Itens</span>
+                  <span className="text-sm font-black text-zinc-900">{filteredData.length} registros</span>
+                </div>
+                <div className="flex flex-col">
+                  <span className="text-[10px] font-bold text-amber-500 uppercase">Pendente</span>
+                  <span className="text-sm font-black text-amber-600">R$ {totals.pending.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}</span>
+                </div>
+                <div className="flex flex-col">
+                  <span className="text-[10px] font-bold text-red-500 uppercase">Vencido</span>
+                  <span className="text-sm font-black text-red-600">R$ {totals.overdue.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}</span>
+                </div>
+              </div>
+            </TableCell>
+            <TableCell className="text-right py-5 pr-6" colSpan={3}>
+              <div className="flex flex-col items-end">
+                <span className="text-[10px] font-bold text-zinc-400 uppercase">Resumo Filtrado</span>
+                <span className="text-xl font-black text-zinc-900">
+                  Total: R$ {totals.total.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+                </span>
+              </div>
+            </TableCell>
+          </TableRow>
+        </TableFooter>
+      </Table>
+    </div>
+  );
+
+  const renderCharts = () => (
+    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 pb-10">
+      <Card className="border-none shadow-sm h-[450px]">
+        <CardHeader className="pb-2">
+          <CardTitle className="text-xs font-black uppercase tracking-widest flex items-center justify-between text-zinc-500">
+            {mainTab === 'cashflow' ? 'Fluxo Diário x Acumulado' : 'Volume por Data'}
+            <TrendingUp className="h-4 w-4 text-zinc-400" />
+          </CardTitle>
+          <CardDescription className="text-[11px]">Análise temporal do período selecionado</CardDescription>
+        </CardHeader>
+        <CardContent className="h-[350px]">
+          <ResponsiveContainer width="100%" height="100%">
+            {mainTab === 'cashflow' ? (
+              <BarChart data={cashFlowDailyData}>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} opacity={0.2} />
+                <XAxis dataKey="date" fontSize={10} axisLine={false} tickLine={false} />
+                <YAxis fontSize={10} axisLine={false} tickLine={false} tickFormatter={(v) => `R$${v}`} />
+                <Tooltip
+                  contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}
+                  formatter={(v: any) => `R$ ${v.toLocaleString("pt-BR")}`}
+                />
+                <Legend iconType="circle" wrapperStyle={{ paddingTop: '20px', fontSize: '10px', fontWeight: 'bold' }} />
+                <Bar dataKey="entrada" fill="#10b981" radius={[4, 4, 0, 0]} name="Entradas" />
+                <Bar dataKey="saida" fill="#ef4444" radius={[4, 4, 0, 0]} name="Saídas" />
+                <Line type="monotone" dataKey="acumulado" stroke="#6366f1" strokeWidth={3} dot={{ r: 4 }} name="Acumulado" />
+              </BarChart>
+            ) : (
+              <LineChart data={lineChartData}>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} opacity={0.2} />
+                <XAxis dataKey="date" fontSize={10} axisLine={false} tickLine={false} />
+                <YAxis fontSize={10} axisLine={false} tickLine={false} tickFormatter={(v) => `R$${v}`} />
+                <Tooltip
+                  contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}
+                  formatter={(v: any) => `R$ ${v.toLocaleString("pt-BR")}`}
+                />
+                <Legend iconType="circle" wrapperStyle={{ paddingTop: '20px', fontSize: '10px', fontWeight: 'bold' }} />
+                <Line type="monotone" dataKey="pago" stroke="#008069" strokeWidth={3} dot={{ r: 4 }} name={mainTab === 'revenues' ? 'Recebido' : 'Pago'} />
+                <Line type="monotone" dataKey="pendente" stroke="#f59e0b" strokeWidth={3} dot={{ r: 4 }} name={mainTab === 'revenues' ? 'A Receber' : 'Pendente'} />
+              </LineChart>
+            )}
+          </ResponsiveContainer>
+        </CardContent>
+      </Card>
+
+      <Card className="border-none shadow-sm h-[450px]">
+        <CardHeader className="pb-2">
+          <CardTitle className="text-xs font-black uppercase tracking-widest flex items-center justify-between text-zinc-500">
+            Distribuição por Categoria
+            <PieChartIcon className="h-4 w-4 text-zinc-400" />
+          </CardTitle>
+          <CardDescription className="text-[11px]">Concentração financeira por tipo de registro</CardDescription>
+        </CardHeader>
+        <CardContent className="h-[350px]">
+          <ResponsiveContainer width="100%" height="100%">
+            <PieChart>
+              <Pie
+                data={pieChartData}
+                innerRadius={80}
+                outerRadius={110}
+                paddingAngle={5}
+                dataKey="value"
+                label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
+              >
+                {pieChartData.map((entry, index) => (
+                  <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} strokeWidth={0} />
+                ))}
+              </Pie>
+              <Tooltip
+                contentStyle={{ borderRadius: '12px', border: 'none' }}
+                formatter={(v: any) => `R$ ${v.toLocaleString("pt-BR")}`}
+              />
+              <Legend iconType="circle" layout="vertical" align="right" verticalAlign="middle" wrapperStyle={{ fontSize: '10px', fontWeight: 'bold' }} />
+            </PieChart>
+          </ResponsiveContainer>
+        </CardContent>
+      </Card>
+    </div>
+  );
 
   const filteredData = useMemo(() => {
     if (!Array.isArray(transactions)) return [];
@@ -815,231 +1050,59 @@ const FinanceiroPage = () => {
           </Button>
         </div>
 
-        {/* TAB CONTENT: TABLE VIEW */}
-        {activeView === 'table' && (
-          <div className="mt-6 space-y-6">
-            <div className="rounded-xl border shadow-sm bg-white overflow-hidden">
-              <Table>
-                <TableHeader className="bg-zinc-50/50">
-                  <TableRow>
-                    <TableHead className="w-[300px] text-[10px] font-bold uppercase">Descrição / Origem</TableHead>
-                    <TableHead className="text-[10px] font-bold uppercase">Categoria</TableHead>
-                    <TableHead className="text-center text-[10px] font-bold uppercase">Emissão</TableHead>
-                    <TableHead className="text-center text-[10px] font-bold uppercase">
-                      {mainTab === 'revenues' ? 'Vencimento' : 'Vencimento'}
-                    </TableHead>
-                    <TableHead className="text-right text-[10px] font-bold uppercase">Valor</TableHead>
-                    <TableHead className="text-center text-[10px] font-bold uppercase">Status</TableHead>
-                    <TableHead className="text-center text-[10px] font-bold uppercase w-[150px]">Ações</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {isLoading ? (
-                    <TableRow>
-                      <TableCell colSpan={7} className="h-48 text-center text-zinc-400 font-medium">Sincronizando dados...</TableCell>
-                    </TableRow>
-                  ) : filteredData.length === 0 ? (
-                    <TableRow>
-                      <TableCell colSpan={7} className="h-48 text-center text-zinc-400 font-medium">
-                        Nenhum registro encontrado para este período.
-                      </TableCell>
-                    </TableRow>
-                  ) : (
-                    filteredData.map((t) => (
-                      <TableRow
-                        key={t.id}
-                        className="cursor-pointer hover:bg-zinc-50/80 group transition-colors"
-                        onClick={() => { setSelectedTransaction(t); setIsSheetOpen(true); }}
-                      >
-                        <TableCell>
-                          <div className="flex items-center gap-3">
-                            <div className={cn(
-                              "p-2.5 rounded-xl shadow-sm",
-                              t.type === 'receivable' ? "bg-emerald-50 text-emerald-600" : "bg-red-50 text-red-600"
-                            )}>
-                              {t.type === 'receivable' ? <ArrowUpRight className="h-4 w-4" /> : <ArrowDownRight className="h-4 w-4" />}
-                            </div>
-                            <div className="flex flex-col">
-                              <span className="font-bold text-sm text-zinc-900">{t.description}</span>
-                              <span className="text-[10px] text-zinc-400 font-medium">#{t.id} • {t.notes || "Sem observações"}</span>
-                            </div>
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          <Badge variant="outline" className="text-[10px] font-extrabold border-zinc-200 text-zinc-600 px-2 py-0 h-5">
-                            {t.category || "Outros"}
-                          </Badge>
-                        </TableCell>
-                        <TableCell className="text-center font-mono text-[11px] font-medium text-zinc-600">
-                          {safeFormat(t.issue_date, "dd/MM/yyyy")}
-                        </TableCell>
-                        <TableCell className={cn(
-                          "text-center font-mono text-[11px] font-bold",
-                          isOverdue(t.due_date) && t.status !== 'paid' ? "text-red-500" : "text-zinc-600"
-                        )}>
-                          {safeFormat(t.due_date, "dd/MM/yyyy")}
-                        </TableCell>
-                        <TableCell className={cn(
-                          "text-right font-black text-sm",
-                          t.type === 'receivable' ? "text-emerald-700" : "text-zinc-900"
-                        )}>
-                          R$ {Number(t.amount).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
-                        </TableCell>
-                        <TableCell className="text-center">
-                          {getStatusBadge(t)}
-                        </TableCell>
-                        <TableCell className="text-center w-[150px]" onClick={e => e.stopPropagation()}>
-                          <div className="flex items-center justify-center gap-1">
-                            {t.status !== 'paid' && (
-                              <Button
-                                size="icon"
-                                variant="ghost"
-                                className="h-8 w-8 text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 shrink-0"
-                                onClick={() => handleMarkAsReceivedOrPaid(t.id)}
-                                title={t.type === 'receivable' ? "Receber" : "Pagar"}
-                              >
-                                {t.type === 'receivable' ? <ArrowUpRight className="h-4 w-4" /> : <CheckCircle2 className="h-4 w-4" />}
-                              </Button>
-                            )}
-                            <Button
-                              size="icon"
-                              variant="ghost"
-                              className="h-8 w-8 text-blue-600 hover:text-blue-700 hover:bg-blue-50 shrink-0"
-                              onClick={() => { setFormData(t); setIsDialogOpen(true); }}
-                              title="Editar"
-                            >
-                              <Pencil className="h-4 w-4" />
-                            </Button>
-                            <DropdownMenu>
-                              <DropdownMenuTrigger asChild>
-                                <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0"><MoreVertical className="h-4 w-4 text-zinc-400" /></Button>
-                              </DropdownMenuTrigger>
-                              <DropdownMenuContent align="end">
-                                <DropdownMenuItem onClick={() => handleMarkAsReceivedOrPaid(t.id)}>
-                                  {t.type === 'receivable' ? 'Marcar como Recebido' : 'Marcar como Pago'}
-                                </DropdownMenuItem>
-                                <DropdownMenuItem onClick={() => { setFormData(t); setIsDialogOpen(true); }}>Editar</DropdownMenuItem>
-                                <DropdownMenuItem onClick={() => handleDelete(t.id)} className="text-red-600">Excluir</DropdownMenuItem>
-                              </DropdownMenuContent>
-                            </DropdownMenu>
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                    ))
-                  )}
-                </TableBody>
-                <TableFooter className="bg-zinc-50 border-t-2">
-                  <TableRow>
-                    <TableCell colSpan={4} className="py-5 px-6">
-                      <div className="flex gap-6">
-                        <div className="flex flex-col">
-                          <span className="text-[10px] font-bold text-zinc-400 uppercase">Total de Itens</span>
-                          <span className="text-sm font-black text-zinc-900">{filteredData.length} registros</span>
-                        </div>
-                        <div className="flex flex-col">
-                          <span className="text-[10px] font-bold text-amber-500 uppercase">Pendente</span>
-                          <span className="text-sm font-black text-amber-600">R$ {totals.pending.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}</span>
-                        </div>
-                        <div className="flex flex-col">
-                          <span className="text-[10px] font-bold text-red-500 uppercase">Vencido</span>
-                          <span className="text-sm font-black text-red-600">R$ {totals.overdue.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}</span>
-                        </div>
-                      </div>
-                    </TableCell>
-                    <TableCell className="text-right py-5 pr-6" colSpan={3}>
-                      <div className="flex flex-col items-end">
-                        <span className="text-[10px] font-bold text-zinc-400 uppercase">Resumo Filtrado</span>
-                        <span className="text-xl font-black text-zinc-900">
-                          Total: R$ {totals.total.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
-                        </span>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                </TableFooter>
-              </Table>
-            </div>
+        <TabsContent value="expenses" className="mt-6">
+          <div className="space-y-6">
+            {activeView === 'table' ? renderTable() : renderCharts()}
           </div>
-        )}
+        </TabsContent>
 
-        {/* TAB CONTENT: CHARTS VIEW */}
-        {activeView === 'charts' && (
-          <div className="mt-6 grid grid-cols-1 lg:grid-cols-2 gap-6 pb-10">
-            <Card className="border-none shadow-sm h-[450px]">
-              <CardHeader className="pb-2">
-                <CardTitle className="text-xs font-black uppercase tracking-widest flex items-center justify-between text-zinc-500">
-                  {mainTab === 'cashflow' ? 'Fluxo Diário x Acumulado' : 'Volume por Data'}
-                  <TrendingUp className="h-4 w-4 text-zinc-400" />
-                </CardTitle>
-                <CardDescription className="text-[11px]">Análise temporal do período selecionado</CardDescription>
-              </CardHeader>
-              <CardContent className="h-[350px]">
-                <ResponsiveContainer width="100%" height="100%">
-                  {mainTab === 'cashflow' ? (
-                    <BarChart data={cashFlowDailyData}>
-                      <CartesianGrid strokeDasharray="3 3" vertical={false} opacity={0.2} />
-                      <XAxis dataKey="date" fontSize={10} axisLine={false} tickLine={false} />
-                      <YAxis fontSize={10} axisLine={false} tickLine={false} tickFormatter={(v) => `R$${v}`} />
-                      <Tooltip
-                        contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}
-                        formatter={(v: any) => `R$ ${v.toLocaleString("pt-BR")}`}
-                      />
-                      <Legend iconType="circle" wrapperStyle={{ paddingTop: '20px', fontSize: '10px', fontWeight: 'bold' }} />
-                      <Bar dataKey="entrada" fill="#10b981" radius={[4, 4, 0, 0]} name="Entradas" />
-                      <Bar dataKey="saida" fill="#ef4444" radius={[4, 4, 0, 0]} name="Saídas" />
-                      <Line type="monotone" dataKey="acumulado" stroke="#6366f1" strokeWidth={3} dot={{ r: 4 }} name="Acumulado" />
-                    </BarChart>
-                  ) : (
-                    <LineChart data={lineChartData}>
-                      <CartesianGrid strokeDasharray="3 3" vertical={false} opacity={0.2} />
-                      <XAxis dataKey="date" fontSize={10} axisLine={false} tickLine={false} />
-                      <YAxis fontSize={10} axisLine={false} tickLine={false} tickFormatter={(v) => `R$${v}`} />
-                      <Tooltip
-                        contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}
-                        formatter={(v: any) => `R$ ${v.toLocaleString("pt-BR")}`}
-                      />
-                      <Legend iconType="circle" wrapperStyle={{ paddingTop: '20px', fontSize: '10px', fontWeight: 'bold' }} />
-                      <Line type="monotone" dataKey="pago" stroke="#10b981" strokeWidth={3} dot={{ r: 4 }} name={mainTab === 'revenues' ? 'Recebido' : 'Pago'} />
-                      <Line type="monotone" dataKey="pendente" stroke="#f59e0b" strokeWidth={3} dot={{ r: 4 }} name={mainTab === 'revenues' ? 'A Receber' : 'Pendente'} />
-                    </LineChart>
-                  )}
-                </ResponsiveContainer>
-              </CardContent>
-            </Card>
-
-            <Card className="border-none shadow-sm h-[450px]">
-              <CardHeader className="pb-2">
-                <CardTitle className="text-xs font-black uppercase tracking-widest flex items-center justify-between text-zinc-500">
-                  Distribuição por Categoria
-                  <PieChartIcon className="h-4 w-4 text-zinc-400" />
-                </CardTitle>
-                <CardDescription className="text-[11px]">Concentração financeira por tipo de registro</CardDescription>
-              </CardHeader>
-              <CardContent className="h-[350px]">
-                <ResponsiveContainer width="100%" height="100%">
-                  <PieChart>
-                    <Pie
-                      data={pieChartData}
-                      innerRadius={80}
-                      outerRadius={110}
-                      paddingAngle={5}
-                      dataKey="value"
-                      label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
-                    >
-                      {pieChartData.map((entry, index) => (
-                        <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} strokeWidth={0} />
-                      ))}
-                    </Pie>
-                    <Tooltip
-                      contentStyle={{ borderRadius: '12px', border: 'none' }}
-                      formatter={(v: any) => `R$ ${v.toLocaleString("pt-BR")}`}
-                    />
-                    <Legend iconType="circle" layout="vertical" align="right" verticalAlign="middle" wrapperStyle={{ fontSize: '10px', fontWeight: 'bold' }} />
-                  </PieChart>
-                </ResponsiveContainer>
-              </CardContent>
-            </Card>
+        <TabsContent value="revenues" className="mt-6">
+          <div className="space-y-6">
+            {activeView === 'charts' ? (
+              <>
+                {/* Revenue Focused Dashboard Summary */}
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+                  <Card className="bg-[#008069] text-white border-none shadow-lg">
+                    <CardHeader className="p-4 pb-0">
+                      <CardDescription className="text-white/70 text-[10px] font-bold uppercase">Total Recebido</CardDescription>
+                      <CardTitle className="text-2xl font-black">R$ {stats.received.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}</CardTitle>
+                    </CardHeader>
+                    <CardContent className="p-4 pt-2">
+                      <div className="text-[10px] font-medium text-white/50">Recursos em caixa</div>
+                    </CardContent>
+                  </Card>
+                  <Card className="bg-amber-500 text-white border-none shadow-lg">
+                    <CardHeader className="p-4 pb-0">
+                      <CardDescription className="text-white/70 text-[10px] font-bold uppercase">A Receber</CardDescription>
+                      <CardTitle className="text-2xl font-black">R$ {stats.receivables.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}</CardTitle>
+                    </CardHeader>
+                    <CardContent className="p-4 pt-2">
+                      <div className="text-[10px] font-medium text-white/50">Fluxo futuro estimado</div>
+                    </CardContent>
+                  </Card>
+                  <Card className="bg-zinc-900 text-white border-none shadow-lg">
+                    <CardHeader className="p-4 pb-0">
+                      <CardDescription className="text-white/70 text-[10px] font-bold uppercase">Previsto Total</CardDescription>
+                      <CardTitle className="text-2xl font-black">R$ {(stats.received + stats.receivables).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}</CardTitle>
+                    </CardHeader>
+                    <CardContent className="p-4 pt-2">
+                      <div className="text-[10px] font-medium text-white/50">Entrada total no período</div>
+                    </CardContent>
+                  </Card>
+                </div>
+                {renderCharts()}
+              </>
+            ) : (
+              renderTable()
+            )}
           </div>
-        )}
+        </TabsContent>
+
+        <TabsContent value="cashflow" className="mt-6">
+          <div className="space-y-6">
+            {activeView === 'table' ? renderTable() : renderCharts()}
+          </div>
+        </TabsContent>
       </Tabs>
 
       {/* DETAIL SHEET (SAME AS PREVIOUS BUT UPDATED) */}

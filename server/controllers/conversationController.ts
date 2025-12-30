@@ -4,7 +4,6 @@ import { pool } from '../db';
 
 interface AuthenticatedRequest extends Request {
     user?: any;
-    app?: any; // for io
 }
 
 // Helper to audit
@@ -26,24 +25,30 @@ export const startConversation = async (req: AuthenticatedRequest, res: Response
         if (!pool) return res.status(500).json({ error: "DB not configured" });
 
         const { id } = req.params;
-        const userId = req.user.id; // From authenticateToken middleware
+        const userId = req.user.id;
+        const companyId = req.user.company_id;
+        const isAdmin = req.user.role === 'SUPERADMIN' || req.user.role === 'ADMIN';
 
-        // Check current status
-        const check = await pool.query('SELECT status, user_id, phone, instance FROM whatsapp_conversations WHERE id = $1', [id]);
+        // Check current status and company
+        const check = await pool.query('SELECT status, user_id, phone, instance, company_id FROM whatsapp_conversations WHERE id = $1', [id]);
         if (check.rows.length === 0) return res.status(404).json({ error: "Conversation not found" });
 
         const conv = check.rows[0];
 
+        // Multi-tenancy check
+        if (req.user.role !== 'SUPERADMIN' && conv.company_id && conv.company_id !== companyId) {
+            return res.status(403).json({ error: "Você não tem permissão para acessar esta conversa." });
+        }
+
         // If already open by someone else?
         if (conv.status === 'OPEN' && conv.user_id && conv.user_id !== userId) {
-            // Get user name for nice error?
             return res.status(409).json({ error: "Conversa já está em atendimento por outro usuário." });
         }
 
         // Lock it
         await pool.query(
-            `UPDATE whatsapp_conversations SET status = 'OPEN', user_id = $1, started_at = NOW() WHERE id = $2`,
-            [userId, id]
+            `UPDATE whatsapp_conversations SET status = 'OPEN', user_id = $1, started_at = NOW(), company_id = COALESCE(company_id, $2) WHERE id = $3`,
+            [userId, companyId, id]
         );
 
         // Audit
@@ -66,12 +71,18 @@ export const closeConversation = async (req: AuthenticatedRequest, res: Response
 
         const { id } = req.params;
         const userId = req.user.id;
+        const companyId = req.user.company_id;
         const isAdmin = req.user.role === 'SUPERADMIN' || req.user.role === 'ADMIN';
 
-        const check = await pool.query('SELECT status, user_id FROM whatsapp_conversations WHERE id = $1', [id]);
+        const check = await pool.query('SELECT status, user_id, company_id FROM whatsapp_conversations WHERE id = $1', [id]);
         if (check.rows.length === 0) return res.status(404).json({ error: "Conversation not found" });
 
         const conv = check.rows[0];
+
+        // Multi-tenancy check
+        if (req.user.role !== 'SUPERADMIN' && conv.company_id && conv.company_id !== companyId) {
+            return res.status(403).json({ error: "Você não tem permissão para acessar esta conversa." });
+        }
 
         // Permission Check
         if (conv.user_id && conv.user_id !== userId && !isAdmin) {
@@ -80,8 +91,8 @@ export const closeConversation = async (req: AuthenticatedRequest, res: Response
 
         // Close it
         await pool.query(
-            `UPDATE whatsapp_conversations SET status = 'CLOSED', closed_at = NOW() WHERE id = $1`,
-            [id]
+            `UPDATE whatsapp_conversations SET status = 'CLOSED', closed_at = NOW(), company_id = COALESCE(company_id, $1) WHERE id = $2`,
+            [companyId, id]
         );
 
         await auditLog(Number(id), userId, 'CLOSE');
@@ -102,22 +113,28 @@ export const updateContactNameWithAudit = async (req: AuthenticatedRequest, res:
         const { id } = req.params; // Conversation ID
         const { name } = req.body;
         const userId = req.user.id;
+        const companyId = req.user.company_id;
 
         // Verify conversation
-        const check = await pool.query('SELECT phone, external_id, instance FROM whatsapp_conversations WHERE id = $1', [id]);
+        const check = await pool.query('SELECT phone, external_id, instance, company_id FROM whatsapp_conversations WHERE id = $1', [id]);
         if (check.rows.length === 0) return res.status(404).json({ error: "Conversation not found" });
 
-        const { phone, external_id, instance } = check.rows[0];
+        const { phone, external_id, instance, company_id: convCompanyId } = check.rows[0];
+
+        // Multi-tenancy check
+        if (req.user.role !== 'SUPERADMIN' && convCompanyId && convCompanyId !== companyId) {
+            return res.status(403).json({ error: "Você não tem permissão para editar este contato." });
+        }
 
         // Update Local DB (Conversation + Contacts)
-        await pool.query('UPDATE whatsapp_conversations SET contact_name = $1 WHERE id = $2', [name, id]);
+        await pool.query('UPDATE whatsapp_conversations SET contact_name = $1, company_id = COALESCE(company_id, $2) WHERE id = $3', [name, companyId, id]);
 
         // Also update the global contacts table
         const jid = external_id || `${phone}@s.whatsapp.net`;
         await pool.query(`
-            INSERT INTO whatsapp_contacts (jid, name, instance) VALUES ($1, $2, $3)
-            ON CONFLICT (jid, instance) DO UPDATE SET name = $2
-        `, [jid, name, instance]);
+            INSERT INTO whatsapp_contacts (jid, name, instance, company_id) VALUES ($1, $2, $3, $4)
+            ON CONFLICT (jid, instance) DO UPDATE SET name = $2, company_id = COALESCE(whatsapp_contacts.company_id, EXCLUDED.company_id)
+        `, [jid, name, instance, companyId]);
 
         // Audit
         await auditLog(Number(id), userId, 'EDIT_CONTACT', { new_name: name });
@@ -143,11 +160,17 @@ export const deleteConversation = async (req: AuthenticatedRequest, res: Respons
 
         const { id } = req.params;
         const userId = req.user.id;
+        const companyId = req.user.company_id;
         const isAdmin = req.user.role === 'SUPERADMIN' || req.user.role === 'ADMIN';
 
-        const check = await pool.query('SELECT external_id, instance, user_id FROM whatsapp_conversations WHERE id = $1', [id]);
+        const check = await pool.query('SELECT external_id, instance, user_id, company_id FROM whatsapp_conversations WHERE id = $1', [id]);
         if (check.rows.length === 0) return res.status(404).json({ error: "Conversation not found" });
-        const { external_id, instance, user_id } = check.rows[0];
+        const { external_id, instance, user_id, company_id: convCompanyId } = check.rows[0];
+
+        // Multi-tenancy check
+        if (req.user.role !== 'SUPERADMIN' && convCompanyId && convCompanyId !== companyId) {
+            return res.status(403).json({ error: "Você não tem permissão para excluir esta conversa." });
+        }
 
         // Permission: Only Assignee or Admin
         if (user_id && user_id !== userId && !isAdmin) {
