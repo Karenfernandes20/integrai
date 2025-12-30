@@ -1182,11 +1182,11 @@ const AtendimentoPage = () => {
   );
 
   return (
-    <div className="flex h-[calc(100vh-2rem)] overflow-hidden bg-background rounded-xl border shadow-sm" onClick={() => setShowEmojiPicker(false)}>
+    <div className="flex h-[calc(100vh-4rem)] overflow-hidden bg-background shadow-none border-none" onClick={() => setShowEmojiPicker(false)}>
       {/* Sidebar - Lista de Conversas / Contatos */}
       <div className={cn(
-        "flex flex-col border-r bg-white dark:bg-zinc-950 transition-all duration-300",
-        selectedConversation ? "w-[600px]" : "flex-1"
+        "flex flex-col border-r bg-white dark:bg-zinc-950 transition-all duration-300 shadow-sm z-20",
+        selectedConversation ? "w-[380px]" : "flex-1"
       )}>
         <Tabs
           value={activeTab}
@@ -1555,7 +1555,7 @@ const AtendimentoPage = () => {
                     )}
                     <div
                       className={cn(
-                        "relative max-w-[85%] sm:max-w-[65%] px-3 py-1.5 shadow-sm text-sm break-words",
+                        "relative max-w-[90%] sm:max-w-[75%] px-3 py-1.5 shadow-sm text-sm break-words",
                         msg.direction === "outbound"
                           ? "bg-[#d9fdd3] dark:bg-[#005c4b] text-zinc-900 dark:text-zinc-100 rounded-lg rounded-tr-none"
                           : "bg-white dark:bg-[#202c33] text-zinc-900 dark:text-zinc-100 rounded-lg rounded-tl-none"

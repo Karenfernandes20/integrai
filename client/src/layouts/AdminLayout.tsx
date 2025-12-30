@@ -108,9 +108,15 @@ export const AdminLayout = () => {
               </div>
             </header>
 
-            <main className={cn("flex-1 bg-gradient-to-b from-background via-background to-primary-soft/10 px-4 pb-8 pt-4")}
-            >
-              <div className="mx-auto flex max-w-6xl flex-col gap-6">
+            <main className={cn(
+              "flex-1 bg-gradient-to-b from-background via-background to-primary-soft/10",
+              location.pathname.startsWith("/app/atendimento") ? "p-0 overflow-hidden" : "px-4 pb-8 pt-4"
+            )}>
+              <div className={cn(
+                "mx-auto flex flex-col h-full",
+                location.pathname.startsWith("/app/atendimento") ? "max-w-full gap-0" :
+                  location.pathname.startsWith("/app/crm") ? "max-w-full gap-4 p-4" : "max-w-6xl gap-6"
+              )}>
                 <Outlet />
               </div>
             </main>
