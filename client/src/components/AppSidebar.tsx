@@ -44,8 +44,13 @@ export function AppSidebar() {
   const currentPath = location.pathname;
 
   const handleLogout = () => {
+    const role = user?.role;
     logout();
-    navigate("/login");
+    if (role === 'SUPERADMIN') {
+      navigate("/superlogin");
+    } else {
+      navigate("/login");
+    }
   };
 
   const navItems = [...items];

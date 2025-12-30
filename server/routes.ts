@@ -7,7 +7,7 @@ import {
   clearUsers,
   resetUserPassword,
 } from './controllers/userController';
-import { getStages, getLeads, updateLeadStage, createStage, deleteStage } from './controllers/crmController';
+import { getStages, getLeads, updateLeadStage, createStage, deleteStage, getCrmDashboardStats } from './controllers/crmController';
 import { handleWebhook, getConversations, getMessages } from './controllers/webhookController';
 import { getCities, createCity } from './controllers/cityController';
 import { getPayables, getReceivablesByCity, getCashFlow, createExpense } from './controllers/financialController';
@@ -41,17 +41,26 @@ router.post('/users/:id/reset-password', authenticateToken, authorizeRole(['SUPE
 
 
 // Evolution routes
-import { getEvolutionQrCode, deleteEvolutionInstance, sendEvolutionMessage, getEvolutionConnectionState, getEvolutionContacts, syncEvolutionContacts, handleEvolutionWebhook, getEvolutionContactsLive } from './controllers/evolutionController';
+import { getEvolutionQrCode, deleteEvolutionInstance, sendEvolutionMessage, getEvolutionConnectionState, getEvolutionContacts, createEvolutionContact, updateEvolutionContact, deleteEvolutionContact, editEvolutionMessage, syncEvolutionContacts, handleEvolutionWebhook, getEvolutionContactsLive, deleteEvolutionMessage } from './controllers/evolutionController';
 router.get('/evolution/qrcode', authenticateToken, getEvolutionQrCode);
 router.get('/evolution/status', authenticateToken, getEvolutionConnectionState);
 router.get('/evolution/contacts', authenticateToken, getEvolutionContacts);
+router.post('/evolution/contacts', authenticateToken, createEvolutionContact);
 router.get('/evolution/contacts/live', authenticateToken, getEvolutionContactsLive);
 router.post('/evolution/contacts/sync', authenticateToken, syncEvolutionContacts);
+router.put('/evolution/contacts/:id', authenticateToken, updateEvolutionContact);
+router.delete('/evolution/contacts/:id', authenticateToken, deleteEvolutionContact);
 router.delete('/evolution/disconnect', authenticateToken, deleteEvolutionInstance);
 router.post('/evolution/messages/send', authenticateToken, sendEvolutionMessage);
+router.put('/evolution/messages/:conversationId/:messageId', authenticateToken, editEvolutionMessage);
+router.delete('/evolution/messages/:conversationId/:messageId', authenticateToken, deleteEvolutionMessage);
 router.post('/evolution/webhook', handleEvolutionWebhook); // Using new handler
 router.get('/evolution/conversations', authenticateToken, getConversations);
 router.get('/evolution/messages/:conversationId', authenticateToken, getMessages);
+
+// CRM Routes
+// CRM Routes
+router.get('/crm/dashboard', authenticateToken, getCrmDashboardStats);
 
 // Cities routes
 router.get('/cities', getCities);

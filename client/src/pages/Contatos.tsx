@@ -6,12 +6,25 @@ import {
     Phone,
     MoreVertical,
     User,
-    MessageCircle
+    MessageCircle,
+    UserPlus,
+    Pencil,
+    Trash2
 } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
 import { Avatar, AvatarFallback, AvatarImage } from "../components/ui/avatar";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "../components/ui/dialog";
+import { Label } from "../components/ui/label";
+import {
+    DropdownMenu,
+    DropdownMenuContent,
+    DropdownMenuItem,
+    DropdownMenuLabel,
+    DropdownMenuSeparator,
+    DropdownMenuTrigger,
+} from "../components/ui/dropdown-menu";
 import { cn } from "../lib/utils";
 import { useAuth } from "../contexts/AuthContext";
 import { useNavigate } from "react-router-dom";
@@ -85,7 +98,17 @@ const BarraPesquisaContatos = ({
     );
 };
 
-const ListaContatos = ({ contacts, onSelectContact }: { contacts: Contact[], onSelectContact: (contact: Contact) => void }) => {
+const ListaContatos = ({
+    contacts,
+    onSelectContact,
+    onEditContact,
+    onDeleteContact
+}: {
+    contacts: Contact[],
+    onSelectContact: (contact: Contact) => void,
+    onEditContact: (contact: Contact) => void,
+    onDeleteContact: (contact: Contact) => void
+}) => {
     if (contacts.length === 0) {
         return (
             <div className="flex flex-col items-center justify-center p-12 text-muted-foreground">
@@ -97,11 +120,11 @@ const ListaContatos = ({ contacts, onSelectContact }: { contacts: Contact[], onS
 
     return (
         <div className="bg-white dark:bg-zinc-900 rounded-lg border border-zinc-200 dark:border-zinc-800 shadow-sm overflow-hidden">
-            {/* Header da Lista */}
+            {/* Header da Lista - 3 Colunas: Nome, Telefone, Ações */}
             <div className="hidden md:grid grid-cols-12 gap-4 p-4 border-b bg-zinc-50 dark:bg-zinc-800/50 text-xs font-medium text-muted-foreground uppercase tracking-wider">
                 <div className="col-span-5 pl-2">Nome</div>
                 <div className="col-span-4">Telefone</div>
-                <div className="col-span-3 text-right pr-2">Ações</div>
+                <div className="col-span-3 text-right pr-4">Ações</div>
             </div>
 
             <div className="divide-y divide-zinc-100 dark:divide-zinc-800">
@@ -111,7 +134,7 @@ const ListaContatos = ({ contacts, onSelectContact }: { contacts: Contact[], onS
                         className="group flex flex-col md:grid md:grid-cols-12 gap-2 md:gap-4 p-4 items-center hover:bg-zinc-50 dark:hover:bg-zinc-900/50 transition-colors cursor-pointer"
                         onClick={() => onSelectContact(contact)}
                     >
-                        {/* Nome e Avatar */}
+                        {/* 1. Coluna Nome */}
                         <div className="col-span-5 flex items-center gap-3 w-full">
                             <Avatar className="h-10 w-10 border border-zinc-100 dark:border-zinc-800">
                                 {contact.profile_pic_url ? (
@@ -133,25 +156,43 @@ const ListaContatos = ({ contacts, onSelectContact }: { contacts: Contact[], onS
                             </div>
                         </div>
 
-                        {/* Telefone */}
+                        {/* 2. Coluna Telefone */}
                         <div className="col-span-4 flex items-center text-sm text-zinc-500 w-full md:w-auto mt-1 md:mt-0">
                             <Phone className="h-3.5 w-3.5 mr-2 opacity-70" />
-                            <span className="truncate font-mono">{contact.phone}</span>
+                            <span className="truncate font-mono tracking-wide">{contact.phone}</span>
                         </div>
 
-                        {/* Ações */}
-                        <div className="col-span-3 flex items-center justify-end w-full md:w-auto mt-2 md:mt-0">
+                        {/* 3. Coluna Ações (WhatsApp + Menu) */}
+                        <div className="col-span-3 flex items-center justify-end gap-2 w-full md:w-auto mt-2 md:mt-0">
                             <Button
                                 size="sm"
-                                className="bg-[#25D366] hover:bg-[#128C7E] text-white gap-2 shadow-sm rounded-full md:rounded-md w-full md:w-auto"
+                                className="bg-[#25D366] hover:bg-[#128C7E] text-white rounded-full h-8 w-8 p-0 shadow-sm"
+                                title="Iniciar conversa no WhatsApp"
                                 onClick={(e) => {
                                     e.stopPropagation();
                                     onSelectContact(contact);
                                 }}
                             >
                                 <MessageCircle className="h-4 w-4" />
-                                <span className="md:inline">Conversar</span>
                             </Button>
+
+                            <DropdownMenu>
+                                <DropdownMenuTrigger asChild>
+                                    <Button variant="ghost" size="sm" className="h-8 w-8 p-0 rounded-full hover:bg-zinc-200 dark:hover:bg-zinc-800" onClick={(e) => e.stopPropagation()}>
+                                        <MoreVertical className="h-4 w-4 text-muted-foreground" />
+                                    </Button>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent align="end">
+                                    <DropdownMenuItem onClick={(e) => { e.stopPropagation(); onEditContact(contact); }}>
+                                        <Pencil className="mr-2 h-4 w-4" />
+                                        Editar
+                                    </DropdownMenuItem>
+                                    <DropdownMenuItem className="text-red-500 focus:text-red-600" onClick={(e) => { e.stopPropagation(); onDeleteContact(contact); }}>
+                                        <Trash2 className="mr-2 h-4 w-4" />
+                                        Excluir
+                                    </DropdownMenuItem>
+                                </DropdownMenuContent>
+                            </DropdownMenu>
                         </div>
                     </div>
                 ))}
@@ -168,8 +209,110 @@ const ContatosPage = () => {
     const [isLoading, setIsLoading] = useState(false);
     const [searchTerm, setSearchTerm] = useState("");
     const [whatsappStatus, setWhatsappStatus] = useState<string>("unknown");
+    const [newContactOpen, setNewContactOpen] = useState(false);
+    const [newContactName, setNewContactName] = useState("");
+    const [newContactPhone, setNewContactPhone] = useState("");
+    const [isCreating, setIsCreating] = useState(false);
     const { token } = useAuth();
-    const navigate = useNavigate();
+    const [editingContact, setEditingContact] = useState<Contact | null>(null);
+    const [editDialogOpen, setEditDialogOpen] = useState(false);
+    const [editName, setEditName] = useState("");
+
+    const handleEditContact = (contact: Contact) => {
+        setEditingContact(contact);
+        setEditName(contact.name);
+        setEditDialogOpen(true);
+    };
+
+    const handleSaveEditContact = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!editingContact || !editName) return;
+
+        try {
+            const res = await fetch(`/api/evolution/contacts/${editingContact.id}`, {
+                method: "PUT",
+                headers: {
+                    "Content-Type": "application/json",
+                    "Authorization": `Bearer ${token}`
+                },
+                body: JSON.stringify({ name: editName })
+            });
+
+            if (res.ok) {
+                alert("Contato atualizado!");
+                setEditDialogOpen(false);
+                setEditingContact(null);
+                fetchLocalContacts();
+            } else {
+                alert("Erro ao atualizar contato");
+            }
+        } catch (error) {
+            console.error(error);
+            alert("Erro de conexão");
+        }
+    };
+
+    const handleDeleteContact = async (contact: Contact) => {
+        if (!confirm(`Tem certeza que deseja excluir ${contact.name}?`)) return;
+
+        try {
+            const res = await fetch(`/api/evolution/contacts/${contact.id}`, {
+                method: "DELETE",
+                headers: {
+                    "Authorization": `Bearer ${token}`
+                }
+            });
+
+            if (res.ok) {
+                alert("Contato excluído!");
+                fetchLocalContacts();
+            } else {
+                alert("Erro ao excluir contato");
+            }
+        } catch (error) {
+            console.error(error);
+            alert("Erro de conexão");
+        }
+    };
+
+    const handleCreateContact = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!newContactName || !newContactPhone) return;
+
+        try {
+            setIsCreating(true);
+            const res = await fetch("/api/evolution/contacts", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    "Authorization": `Bearer ${token}`
+                },
+                body: JSON.stringify({
+                    name: newContactName,
+                    phone: newContactPhone
+                })
+            });
+
+            if (res.ok) {
+                const newContact = await res.json();
+                // Optimistically add to list or re-fetch
+                // We'll just re-fetch or append locally
+                alert(`Contato ${newContact.name} criado com sucesso!`);
+                setNewContactName("");
+                setNewContactPhone("");
+                setNewContactOpen(false);
+                fetchLocalContacts(); // Refresh list
+            } else {
+                const err = await res.json();
+                alert("Erro ao criar contato: " + (err.error || "Desconhecido"));
+            }
+        } catch (error) {
+            console.error("Erro ao criar contato:", error);
+            alert("Erro de conexão ao criar contato.");
+        } finally {
+            setIsCreating(false);
+        }
+    };
 
     // Load local contacts
     const fetchLocalContacts = async () => {
@@ -196,8 +339,13 @@ const ContatosPage = () => {
                     };
                 });
                 // Sort by name
-                mapped.sort((a, b) => a.name.localeCompare(b.name));
-                setContacts(mapped);
+                const validContacts = mapped.filter(c => {
+                    // Check if it's a valid number (digits) or standard format, NOT a Cuid (alphanumeric long)
+                    if (c.phone.length > 15 && /[a-z]/i.test(c.phone)) return false;
+                    return true;
+                });
+                validContacts.sort((a, b) => a.name.localeCompare(b.name));
+                setContacts(validContacts);
             }
         } catch (e) {
             console.error("Failed to load contacts", e);
@@ -231,8 +379,12 @@ const ContatosPage = () => {
                     };
                 });
                 // Sort by name
-                mapped.sort((a, b) => a.name.localeCompare(b.name));
-                setContacts(mapped);
+                const validContacts = mapped.filter(c => {
+                    if (c.phone.length > 15 && /[a-z]/i.test(c.phone)) return false;
+                    return true;
+                });
+                validContacts.sort((a, b) => a.name.localeCompare(b.name));
+                setContacts(validContacts);
                 alert("Contatos sincronizados com sucesso!");
             } else {
                 const status = res.status;
@@ -332,12 +484,90 @@ const ContatosPage = () => {
             </div>
 
             <div className="flex flex-col gap-4 flex-1 min-h-0">
-                <BarraPesquisaContatos value={searchTerm} onChange={setSearchTerm} />
+                <div className="flex flex-col md:flex-row gap-4 items-center justify-between">
+                    <div className="w-full md:w-1/2">
+                        <BarraPesquisaContatos value={searchTerm} onChange={setSearchTerm} />
+                    </div>
+
+                    <div className="flex items-center gap-2 w-full md:w-auto">
+                        <Dialog open={newContactOpen} onOpenChange={setNewContactOpen}>
+                            <DialogTrigger asChild>
+                                <Button className="w-full md:w-auto bg-[#00a884] hover:bg-[#008f6f] text-white">
+                                    <UserPlus className="h-4 w-4 mr-2" />
+                                    Novo Contato
+                                </Button>
+                            </DialogTrigger>
+                            <DialogContent>
+                                <DialogHeader>
+                                    <DialogTitle>Adicionar Novo Contato</DialogTitle>
+                                </DialogHeader>
+                                <form onSubmit={handleCreateContact} className="space-y-4 py-2">
+                                    <div className="space-y-2">
+                                        <Label htmlFor="name">Nome</Label>
+                                        <Input
+                                            id="name"
+                                            placeholder="Ex: João da Silva"
+                                            value={newContactName}
+                                            onChange={(e) => setNewContactName(e.target.value)}
+                                            required
+                                        />
+                                    </div>
+                                    <div className="space-y-2">
+                                        <Label htmlFor="phone">Telefone (DDD + Número)</Label>
+                                        <Input
+                                            id="phone"
+                                            placeholder="Ex: 5511999999999"
+                                            value={newContactPhone}
+                                            onChange={(e) => setNewContactPhone(e.target.value.replace(/\D/g, ''))}
+                                            required
+                                        />
+                                        <p className="text-xs text-muted-foreground">Insira apenas números com DDD (Ex: 5511988887777)</p>
+                                    </div>
+                                    <DialogFooter>
+                                        <Button type="button" variant="outline" onClick={() => setNewContactOpen(false)}>Cancelar</Button>
+                                        <Button type="submit" disabled={isCreating}>
+                                            {isCreating ? "Salvando..." : "Salvar Contato"}
+                                        </Button>
+                                    </DialogFooter>
+                                </form>
+                            </DialogContent>
+                        </Dialog>
+                    </div>
+                </div>
 
                 <div className="flex-1 overflow-y-auto min-h-0 pb-10">
-                    <ListaContatos contacts={filteredContacts} onSelectContact={handleSelectContact} />
+                    <ListaContatos
+                        contacts={filteredContacts}
+                        onSelectContact={handleSelectContact}
+                        onEditContact={handleEditContact}
+                        onDeleteContact={handleDeleteContact}
+                    />
                 </div>
             </div>
+
+            {/* Edit Dialog */}
+            <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
+                <DialogContent>
+                    <DialogHeader>
+                        <DialogTitle>Editar Contato</DialogTitle>
+                    </DialogHeader>
+                    <form onSubmit={handleSaveEditContact} className="space-y-4 py-2">
+                        <div className="space-y-2">
+                            <Label htmlFor="edit-name">Nome</Label>
+                            <Input
+                                id="edit-name"
+                                value={editName}
+                                onChange={(e) => setEditName(e.target.value)}
+                                required
+                            />
+                        </div>
+                        <DialogFooter>
+                            <Button type="button" variant="outline" onClick={() => setEditDialogOpen(false)}>Cancelar</Button>
+                            <Button type="submit">Atualizar</Button>
+                        </DialogFooter>
+                    </form>
+                </DialogContent>
+            </Dialog>
         </div>
     );
 };

@@ -24,6 +24,19 @@ const DashboardPage = () => {
     const loadCompany = async () => {
       // If we still don't have an ID, we can't fetch anything
       if (!effectiveCompanyId) {
+        if (user?.role === 'SUPERADMIN') {
+          setCompany({
+            id: 'superadmin-view',
+            name: 'Visão Geral SuperAdmin',
+            city: null,
+            state: null,
+            logo_url: null,
+            operation_type: 'clientes',
+          });
+          setCompanyError(null);
+          return;
+        }
+
         setCompany(null);
         setCompanyError(null);
         return;
@@ -57,7 +70,7 @@ const DashboardPage = () => {
     };
 
     void loadCompany();
-  }, [effectiveCompanyId]);
+  }, [effectiveCompanyId, user]);
 
   if (!company && isLoadingCompany) {
     return <div className="p-8 text-center text-muted-foreground">Carregando painel...</div>;

@@ -2,14 +2,18 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Filter, MoreHorizontal, ArrowRight } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 
-export const CrmFunnel = () => {
-    const funnelSteps = [
-        { label: "Novo Contato", count: 15, value: "R$ 0", color: "border-blue-500", bg: "bg-blue-50" },
-        { label: "Em Atendimento", count: 8, value: "R$ 0", color: "border-indigo-500", bg: "bg-indigo-50" },
-        { label: "Proposta Enviada", count: 5, value: "R$ 12.5k", color: "border-purple-500", bg: "bg-purple-50" },
-        { label: "Em Negociação", count: 3, value: "R$ 8.2k", color: "border-orange-500", bg: "bg-orange-50" },
-        { label: "Venda Concluída", count: 12, value: "R$ 24.5k", color: "border-green-500", bg: "bg-green-50" },
+export const CrmFunnel = ({ data }: { data?: any[] }) => {
+    // Default structure with 0 values if no data provided
+    // User requested "Leads" phase to be fixed
+    const defaultSteps = [
+        { label: "Leads", count: 0, value: "R$ 0", color: "border-blue-500", bg: "bg-blue-50" },
+        { label: "Em Atendimento", count: 0, value: "R$ 0", color: "border-indigo-500", bg: "bg-indigo-50" },
+        { label: "Proposta Enviada", count: 0, value: "R$ 0", color: "border-purple-500", bg: "bg-purple-50" },
+        { label: "Em Negociação", count: 0, value: "R$ 0", color: "border-orange-500", bg: "bg-orange-50" },
+        { label: "Venda Concluída", count: 0, value: "R$ 0", color: "border-green-500", bg: "bg-green-50" },
     ];
+
+    const funnelSteps = data && data.length > 0 ? data : defaultSteps;
 
     return (
         <Card className="h-full border-none shadow-sm">

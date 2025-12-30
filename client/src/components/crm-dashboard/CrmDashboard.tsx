@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { CompanySummary } from "../../types";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -22,6 +22,29 @@ interface CrmDashboardProps {
 
 export const CrmDashboard = ({ company }: CrmDashboardProps) => {
     const [dateRange, setDateRange] = useState<any>(null); // Placeholder for date state
+    const [dashboardData, setDashboardData] = useState<any>(null);
+    const [loading, setLoading] = useState(false);
+
+    useEffect(() => {
+        const fetchDashboard = async () => {
+            try {
+                setLoading(true);
+                const token = localStorage.getItem("auth_token");
+                const res = await fetch("/api/crm/dashboard", {
+                    headers: { "Authorization": `Bearer ${token}` }
+                });
+                if (res.ok) {
+                    const data = await res.json();
+                    setDashboardData(data);
+                }
+            } catch (e) {
+                console.error("Failed to fetch dashboard", e);
+            } finally {
+                setLoading(false);
+            }
+        };
+        fetchDashboard();
+    }, []);
 
     return (
         <div className="space-y-6 animate-in fade-in duration-500">
@@ -36,6 +59,7 @@ export const CrmDashboard = ({ company }: CrmDashboardProps) => {
                 </div>
 
                 <div className="flex flex-wrap items-center gap-2">
+                    {/* Filters preserved... */}
                     <div className="flex items-center gap-2 bg-background p-1 rounded-md border shadow-sm">
                         <Select defaultValue="all">
                             <SelectTrigger className="w-[140px] h-8 text-xs">
@@ -43,8 +67,6 @@ export const CrmDashboard = ({ company }: CrmDashboardProps) => {
                             </SelectTrigger>
                             <SelectContent>
                                 <SelectItem value="all">Todos Atendentes</SelectItem>
-                                <SelectItem value="user1">Ana Silva</SelectItem>
-                                <SelectItem value="user2">Carlos Souza</SelectItem>
                             </SelectContent>
                         </Select>
 
@@ -60,7 +82,12 @@ export const CrmDashboard = ({ company }: CrmDashboardProps) => {
                             </SelectContent>
                         </Select>
 
-                        <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-primary">
+                        <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8 text-muted-foreground hover:text-primary"
+                            onClick={() => window.location.reload()}
+                        >
                             <RefreshCw className="h-4 w-4" />
                         </Button>
                     </div>
@@ -70,7 +97,7 @@ export const CrmDashboard = ({ company }: CrmDashboardProps) => {
             <CrmAiInsights />
 
             {/* 1. VISÃO GERAL */}
-            <CrmOverviewCards />
+            <CrmOverviewCards data={dashboardData?.overview} />
 
             <Tabs defaultValue="overview" className="space-y-4">
                 <TabsList className="w-full justify-start overflow-x-auto bg-transparent p-0 border-b rounded-none h-auto">
@@ -84,7 +111,7 @@ export const CrmDashboard = ({ company }: CrmDashboardProps) => {
                     {/* 2. FUNIL & 3. PERFORMANCE */}
                     <div className="grid lg:grid-cols-3 gap-6">
                         <div className="lg:col-span-2">
-                            <CrmFunnel />
+                            <CrmFunnel data={dashboardData?.funnel} />
                         </div>
                         <div>
                             <CrmPerformance />
@@ -97,7 +124,7 @@ export const CrmDashboard = ({ company }: CrmDashboardProps) => {
                             <CrmLeadSources />
                         </div>
                         <div className="lg:col-span-2">
-                            <CrmRealTime />
+                            <CrmRealTime activities={dashboardData?.activities} />
                         </div>
                     </div>
 

@@ -258,6 +258,8 @@ export const sendEvolutionMessage = async (req: Request, res: Response) => {
         textMessage: {
           text: messageContent,
         },
+        text: messageContent, // Fallback for some versions/endpoints requiring root text
+        message: messageContent // Fallback for older versions
       }),
     });
 
@@ -275,9 +277,11 @@ export const sendEvolutionMessage = async (req: Request, res: Response) => {
     // Persist sent message to database immediately
     if (pool) {
       try {
-        console.log(`[Evolution] Attempting to save sent message to DB for ${phone} (Instance: ${EVOLUTION_INSTANCE})`);
+        console.log(`[Evolution] Attempting to save sent message to DB for ${targetPhone} (Instance: ${EVOLUTION_INSTANCE})`);
+
         // Basic normalization of remoteJid
-        const remoteJid = phone.includes('@') ? phone : `${phone}@s.whatsapp.net`;
+        const safePhone = targetPhone || "";
+        const remoteJid = safePhone.includes('@') ? safePhone : `${safePhone}@s.whatsapp.net`;
 
         // Find or create conversation
         let conversationId: number;
@@ -293,7 +297,7 @@ export const sendEvolutionMessage = async (req: Request, res: Response) => {
         } else {
           const newConv = await pool.query(
             'INSERT INTO whatsapp_conversations (external_id, phone, contact_name, instance) VALUES ($1, $2, $3, $4) RETURNING id',
-            [remoteJid, phone, phone, EVOLUTION_INSTANCE]
+            [remoteJid, safePhone, safePhone, EVOLUTION_INSTANCE]
           );
           conversationId = newConv.rows[0].id;
         }
@@ -301,7 +305,7 @@ export const sendEvolutionMessage = async (req: Request, res: Response) => {
         // Insert message
         await pool.query(
           'INSERT INTO whatsapp_messages (conversation_id, direction, content, sent_at, status) VALUES ($1, $2, $3, NOW(), $4)',
-          [conversationId, 'outbound', message, 'sent']
+          [conversationId, 'outbound', messageContent, 'sent']
         );
         console.log(`[Evolution] Saved message to DB successfully.`);
 
@@ -326,10 +330,12 @@ export const getEvolutionContacts = async (req: Request, res: Response) => {
 
   // Retrieve local contacts first
   try {
+    console.log(`[Evolution] Fetching local contacts for instance: ${EVOLUTION_INSTANCE}`);
     const localContacts = await pool?.query(
       `SELECT * FROM whatsapp_contacts WHERE instance = $1 ORDER BY name ASC`,
       [EVOLUTION_INSTANCE]
     );
+    console.log(`[Evolution] Found ${localContacts?.rows?.length || 0} local contacts.`);
     return res.json(localContacts?.rows || []);
   } catch (error) {
     console.error("Error fetching local contacts:", error);
@@ -408,15 +414,57 @@ export const syncEvolutionContacts = async (req: Request, res: Response) => {
 
     // 2. Upsert to Database
     if (pool && contactsList.length > 0) {
-      let savedCount = 0;
-      for (const contact of contactsList) {
-        const jid = contact.id; // remoteJid
-        // Try to find the best name available
-        const name = contact.name || contact.pushName || contact.notify || (contact.id ? contact.id.split('@')[0] : 'Unknown');
-        const pushName = contact.pushName;
-        const profilePicUser = contact.profilePictureUrl || contact.profilePicture;
+      // CLEANUP: Remove previously saved contacts that are actually internal IDs (Cuids) or malformed
+      // We delete any JID that does NOT match strictly numeric format '12345@s.whatsapp.net'
+      try {
+        await pool.query(`
+              DELETE FROM whatsapp_contacts 
+              WHERE instance = $1 
+              AND jid !~ '^[0-9]+@s\\.whatsapp\\.net$'
+          `, [EVOLUTION_INSTANCE]);
+        console.log(`[Evolution] Cleaned up invalid contacts (non-numeric JIDs) for instance ${EVOLUTION_INSTANCE}`);
+      } catch (cleanErr) {
+        console.error("[Evolution] Cleanup error:", cleanErr);
+      }
 
-        if (!jid) continue;
+      let savedCount = 0;
+      if (contactsList.length > 0) {
+        // console.log("[Evolution Debug] First raw contact from API:", JSON.stringify(contactsList[0], null, 2));
+      }
+
+      for (const contact of contactsList) {
+        // Find a valid numeric phone number
+        let candidate = null;
+
+        // Priority order: explicit number/phone field, then remoteJid, then id if numeric
+        const potentialFields = [contact.number, contact.phone, contact.remoteJid, contact.id];
+
+        for (const field of potentialFields) {
+          if (typeof field === 'string' && field) {
+            // Remove suffix if present to check the number part
+            const clean = field.split('@')[0];
+
+            // Strict check: must be digits only and reasonable length (10-15 chars)
+            // This excludes random IDs like 'cmjiwzyki0884p74lakndv85j'
+            if (/^\d+$/.test(clean) && clean.length >= 7 && clean.length <= 16) {
+              candidate = clean;
+              break;
+            }
+          }
+        }
+
+        if (!candidate) {
+          // console.warn(`[Evolution Debug] Skipping contact, no valid phone found. ID: ${contact.id}`);
+          continue;
+        }
+
+        // Construct normalized JID
+        const jid = `${candidate}@s.whatsapp.net`;
+
+        // Try to find the best name available
+        const name = contact.name || contact.pushName || contact.notify || contact.verifiedName || candidate;
+        const pushName = contact.pushName || contact.notify;
+        const profilePicUser = contact.profilePictureUrl || contact.profilePicture;
 
         try {
           // Safe upsert
@@ -429,13 +477,13 @@ export const syncEvolutionContacts = async (req: Request, res: Response) => {
                             push_name = EXCLUDED.push_name,
                             profile_pic_url = EXCLUDED.profile_pic_url,
                             updated_at = NOW();
-                    `, [jid, name, pushName, profilePicUser, EVOLUTION_INSTANCE]);
+                    `, [jid, name, pushName || null, profilePicUser || null, EVOLUTION_INSTANCE]);
           savedCount++;
         } catch (dbErr) {
           console.error(`[Evolution] DB Save error for ${jid}:`, dbErr);
         }
       }
-      console.log(`[Evolution] Successfully saved/updated ${savedCount} contacts to DB.`);
+      console.log(`[Evolution] Successfully saved/updated ${savedCount} valid contacts to DB.`);
     } else {
       if (!pool) console.error("[Evolution] Database pool is missing.");
       else console.log("[Evolution] No contacts to save.");
@@ -527,6 +575,48 @@ export const getEvolutionContactsLive = async (req: Request, res: Response) => {
     return res.status(500).json({ error: "Live fetch failed", details: error.message });
   }
 };
+
+export const createEvolutionContact = async (req: Request, res: Response) => {
+  const config = await getEvolutionConfig((req as any).user, 'createContact');
+  const EVOLUTION_INSTANCE = config.instance;
+
+  const { name, phone } = req.body;
+
+  if (!name || !phone) {
+    return res.status(400).json({ error: "Name and Phone are required" });
+  }
+
+  // Validate phone format - remove non-digits
+  const cleanPhone = phone.replace(/\D/g, "");
+  if (!cleanPhone || cleanPhone.length < 10) {
+    return res.status(400).json({ error: "Invalid phone number" });
+  }
+
+  const jid = `${cleanPhone}@s.whatsapp.net`;
+
+  try {
+    if (!pool) return res.status(500).json({ error: "Database not configured" });
+
+    // Insert into DB
+    await pool.query(`
+          INSERT INTO whatsapp_contacts (jid, name, instance, updated_at)
+          VALUES ($1, $2, $3, NOW())
+          ON CONFLICT (jid, instance) 
+          DO UPDATE SET name = EXCLUDED.name, updated_at = NOW()
+      `, [jid, name, EVOLUTION_INSTANCE]);
+
+    return res.status(201).json({
+      id: jid,
+      name,
+      phone: cleanPhone,
+      jid
+    });
+
+  } catch (error: any) {
+    console.error("Error creating contact:", error);
+    return res.status(500).json({ error: "Failed to create contact" });
+  }
+};
 // ... (previous code)
 
 // Handle Evolution Webhooks
@@ -572,14 +662,29 @@ export const handleEvolutionWebhook = async (req: Request, res: Response) => {
         let conversationId: number | null = null;
 
         if (pool) {
-          // 1. Upsert Conversation
-          // We need to check by external_id AND instance
-          // If it doesn't exist, create it.
-          // Also update last_message stuff.
-
           // Helper: clean phone
           const phone = remoteJid.split('@')[0];
 
+          // 0. Resolve Contact Name from Saved Contacts
+          // Priority: Saved Name > PushName > Phone
+          let finalContactName = pushName || phone;
+          let isSavedContact = false;
+
+          try {
+            const savedContactRes = await pool.query(
+              "SELECT name FROM whatsapp_contacts WHERE jid = $1 OR phone = $2 LIMIT 1",
+              [remoteJid, phone]
+            );
+            if (savedContactRes.rows.length > 0) {
+              finalContactName = savedContactRes.rows[0].name;
+              isSavedContact = true;
+            }
+          } catch (err) {
+            console.error("Error looking up saved contact:", err);
+          }
+
+          // 1. Upsert Conversation
+          // We need to check by external_id AND instance
           const existing = await pool.query(
             `SELECT id FROM whatsapp_conversations WHERE external_id = $1 AND instance = $2`,
             [remoteJid, instance]
@@ -587,14 +692,15 @@ export const handleEvolutionWebhook = async (req: Request, res: Response) => {
 
           if (existing.rows.length > 0) {
             conversationId = existing.rows[0].id;
-            // Update last message
+            // Update last message AND contact_name (to keep it in sync with saved contacts)
             await pool.query(
               `UPDATE whatsapp_conversations SET 
                                 last_message = $1, 
                                 last_message_at = NOW(), 
-                                unread_count = unread_count + $3
+                                unread_count = unread_count + $3,
+                                contact_name = $4
                              WHERE id = $2`,
-              [content, conversationId, fromMe ? 0 : 1]
+              [content, conversationId, fromMe ? 0 : 1, finalContactName]
             );
           } else {
             // Create new
@@ -603,13 +709,15 @@ export const handleEvolutionWebhook = async (req: Request, res: Response) => {
                                 (external_id, phone, contact_name, instance, last_message, last_message_at, unread_count)
                              VALUES ($1, $2, $3, $4, $5, NOW(), $6)
                              RETURNING id`,
-              [remoteJid, phone, pushName || phone, instance, content, fromMe ? 0 : 1]
+              [remoteJid, phone, finalContactName, instance, content, fromMe ? 0 : 1]
             );
             conversationId = newConv.rows[0].id;
 
             // --- CRM INTEGRATION: Auto-create Lead ---
-            // Only if message is INBOUND (from user to us)
-            if (!fromMe) {
+            // Condition: 
+            // 1. Message is INBOUND (from user)
+            // 2. Contact is NOT SAVED in whatsapp_contacts (isSavedContact === false)
+            if (!fromMe && !isSavedContact) {
               try {
                 // Find 'Leads' stage ID
                 const leadStageRes = await pool.query("SELECT id FROM crm_stages WHERE name = 'Leads' LIMIT 1");
@@ -621,7 +729,7 @@ export const handleEvolutionWebhook = async (req: Request, res: Response) => {
                   const checkLead = await pool.query("SELECT id FROM crm_leads WHERE phone = $1", [phone]);
 
                   if (checkLead.rows.length === 0) {
-                    console.log(`[CRM] Auto-creating lead for ${phone}`);
+                    console.log(`[CRM] Auto-creating lead for UNSAVED contact ${phone}`);
                     await pool.query(
                       `INSERT INTO crm_leads (name, phone, stage_id, origin, created_at, updated_at)
                                  VALUES ($1, $2, $3, 'WhatsApp', NOW(), NOW())`,
@@ -676,5 +784,74 @@ export const handleEvolutionWebhook = async (req: Request, res: Response) => {
   } catch (e) {
     console.error("Error processing webhook:", e);
     return res.status(500).send("Error");
+  }
+};
+
+export const deleteEvolutionMessage = async (req: Request, res: Response) => {
+  const { conversationId, messageId } = req.params;
+
+  // As we don't store external WAMID yet, we only delete locally.
+  try {
+    if (!pool) return res.status(500).json({ error: "DB not configured" });
+
+    await pool.query('DELETE FROM whatsapp_messages WHERE id = $1', [messageId]);
+
+    return res.json({ status: "deleted", id: messageId });
+  } catch (error) {
+    console.error("Error deleting message:", error);
+    return res.status(500).json({ error: "Failed to delete" });
+  }
+};
+
+export const editEvolutionMessage = async (req: Request, res: Response) => {
+  const { conversationId, messageId } = req.params;
+  const { content } = req.body;
+
+  if (!content) return res.status(400).json({ error: "Content is required" });
+
+  try {
+    if (!pool) return res.status(500).json({ error: "DB not configured" });
+
+    await pool.query('UPDATE whatsapp_messages SET content = $1 WHERE id = $2', [content, messageId]);
+
+    return res.json({ status: "updated", id: messageId, content });
+  } catch (error) {
+    console.error("Error updating message:", error);
+    return res.status(500).json({ error: "Failed to update" });
+  }
+};
+
+export const updateEvolutionContact = async (req: Request, res: Response) => {
+  const { id } = req.params;
+  const { name } = req.body;
+
+  try {
+    if (!pool) return res.status(500).json({ error: "DB not configured" });
+
+    await pool.query(
+      'UPDATE whatsapp_contacts SET name = $1 WHERE id = $2',
+      [name, id]
+    );
+
+    return res.json({ status: "updated", id, name });
+
+  } catch (error) {
+    console.error("Error updating contact:", error);
+    return res.status(500).json({ error: "Failed to update contact" });
+  }
+};
+
+export const deleteEvolutionContact = async (req: Request, res: Response) => {
+  const { id } = req.params;
+
+  try {
+    if (!pool) return res.status(500).json({ error: "DB not configured" });
+
+    await pool.query('DELETE FROM whatsapp_contacts WHERE id = $1', [id]);
+
+    return res.json({ status: "deleted", id });
+  } catch (error) {
+    console.error("Error deleting contact:", error);
+    return res.status(500).json({ error: "Failed to delete contact" });
   }
 };

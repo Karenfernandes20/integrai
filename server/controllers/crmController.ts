@@ -163,3 +163,87 @@ export const deleteStage = async (req: Request, res: Response) => {
         res.status(500).json({ error: 'Failed to delete stage' });
     }
 };
+
+export const getCrmDashboardStats = async (req: Request, res: Response) => {
+    try {
+        if (!pool) return res.status(500).json({ error: 'Database not configured' });
+
+        // 1. Funnel Data (Stages + Lead Counts)
+        const funnelRes = await pool.query(`
+            SELECT s.name as label, COUNT(l.id) as count, s.position
+            FROM crm_stages s
+            LEFT JOIN crm_leads l ON s.id = l.stage_id
+            GROUP BY s.id, s.name, s.position
+            ORDER BY s.position ASC
+        `);
+
+        const funnelData = funnelRes.rows.map((row, idx) => {
+            // Simple color cycle
+            const colors = [
+                { border: "border-blue-500", bg: "bg-blue-50" },
+                { border: "border-indigo-500", bg: "bg-indigo-50" },
+                { border: "border-purple-500", bg: "bg-purple-50" },
+                { border: "border-orange-500", bg: "bg-orange-50" },
+                { border: "border-green-500", bg: "bg-green-50" }
+            ];
+            const theme = colors[idx % colors.length];
+
+            return {
+                label: row.label,
+                count: parseInt(row.count),
+                value: "R$ 0", // Placeholder for value
+                color: theme.border,
+                bg: theme.bg
+            };
+        });
+
+        // 2. Overview Stats
+        const activeConvsRes = await pool.query(`SELECT COUNT(*) FROM whatsapp_conversations`);
+        const msgsTodayRes = await pool.query(`
+            SELECT COUNT(*) FROM whatsapp_messages 
+            WHERE direction = 'inbound' 
+            AND sent_at::date = CURRENT_DATE
+        `);
+        const newLeadsRes = await pool.query(`
+            SELECT COUNT(*) FROM crm_leads 
+            WHERE created_at::date = CURRENT_DATE
+        `);
+        const attendedClientsRes = await pool.query(`
+             SELECT COUNT(DISTINCT conversation_id) 
+             FROM whatsapp_messages 
+             WHERE direction = 'outbound' AND sent_at::date = CURRENT_DATE
+        `);
+
+        // 3. Realtime Activities
+        const recentMsgsRes = await pool.query(`
+             SELECT m.content as text, m.sent_at, m.direction, c.phone, c.contact_name
+             FROM whatsapp_messages m
+             JOIN whatsapp_conversations c ON m.conversation_id = c.id
+             ORDER BY m.sent_at DESC
+             LIMIT 5
+        `);
+
+        const recentActivities = recentMsgsRes.rows.map(m => ({
+            type: m.direction === 'inbound' ? 'msg_in' : 'msg_out',
+            user: m.contact_name || m.phone,
+            text: m.text,
+            time: new Date(m.sent_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+            status: m.direction === 'inbound' ? 'w_agent' : 'w_client'
+        }));
+
+        res.json({
+            funnel: funnelData,
+            overview: {
+                activeConversations: activeConvsRes.rows[0].count,
+                receivedMessages: msgsTodayRes.rows[0].count,
+                attendedClients: attendedClientsRes.rows[0].count,
+                newLeads: newLeadsRes.rows[0].count,
+            },
+            activities: recentActivities
+        });
+
+    } catch (error: any) {
+        console.error('Error fetching dashboard stats:', error);
+        res.status(500).json({ error: 'Failed to fetch dashboard stats' });
+    }
+};

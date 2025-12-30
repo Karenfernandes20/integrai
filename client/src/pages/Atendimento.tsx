@@ -7,7 +7,9 @@ import {
   Search,
   CheckCheck,
   RefreshCcw,
-  UserPlus
+  UserPlus,
+  Trash2,
+  Pencil
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
 import { Input } from "../components/ui/input";
@@ -557,6 +559,64 @@ const AtendimentoPage = () => {
     setMessages([]);
   };
 
+
+  const handleDeleteMessage = async (msgId: number) => {
+    if (!confirm("Deseja apagar esta mensagem? (Isso apenas remove do histórico local por enquanto)")) return;
+
+    try {
+      // Optimistic update
+      setMessages(prev => prev.filter(m => m.id !== msgId));
+
+      if (!selectedConversation) return;
+
+      const res = await fetch(`/api/evolution/messages/${selectedConversation.id}/${msgId}`, {
+        method: "DELETE",
+        headers: {
+          "Authorization": `Bearer ${token}`
+        }
+      });
+
+      if (!res.ok) {
+        console.error("Falha ao deletar mensagem no servidor");
+        // Could revert here if needed
+      } else {
+        console.log("Mensagem deletada");
+      }
+    } catch (e) {
+      console.error("Erro ao deletar mensagem", e);
+    }
+  };
+
+  const handleEditMessage = async (msg: Message) => {
+    const newContent = prompt("Editar mensagem:", msg.content);
+    if (newContent === null || newContent === msg.content) return; // Cancelled or same
+
+    try {
+      // Optimistic Update
+      setMessages(prev => prev.map(m => m.id === msg.id ? { ...m, content: newContent } : m));
+
+      if (!selectedConversation) return;
+
+      const res = await fetch(`/api/evolution/messages/${selectedConversation.id}/${msg.id}`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${token}`
+        },
+        body: JSON.stringify({ content: newContent })
+      });
+
+      if (!res.ok) {
+        alert("Falha ao editar mensagem no servidor");
+        // Revert
+        setMessages(prev => prev.map(m => m.id === msg.id ? { ...m, content: msg.content } : m));
+      }
+    } catch (e) {
+      console.error("Erro ao editar mensagem", e);
+      alert("Erro de conexão");
+    }
+  };
+
   const handleSendMessage = async (e: FormEvent) => {
     e.preventDefault();
     if (!newMessage.trim() || !selectedConversation) return;
@@ -978,7 +1038,7 @@ const AtendimentoPage = () => {
                   <div
                     key={msg.id}
                     className={cn(
-                      "flex w-full",
+                      "flex w-full group relative",
                       msg.direction === "outbound" ? "justify-end" : "justify-start"
                     )}
                   >
@@ -996,6 +1056,24 @@ const AtendimentoPage = () => {
                         {formatTime(msg.sent_at)}
                         {msg.direction === "outbound" && <CheckCheck className="h-3 w-3 text-[#53bdeb]" />}
                       </span>
+
+                      {/* Actions Buttons (Hover) */}
+                      <div className="absolute top-0 right-0 m-1 opacity-0 group-hover:opacity-100 transition-opacity flex gap-1">
+                        <button
+                          onClick={(e) => { e.stopPropagation(); handleEditMessage(msg); }}
+                          className="p-1 bg-black/10 hover:bg-black/20 dark:bg-white/10 dark:hover:bg-white/20 rounded-full text-zinc-500 dark:text-zinc-300"
+                          title="Editar mensagem"
+                        >
+                          <Pencil className="h-3 w-3" />
+                        </button>
+                        <button
+                          onClick={(e) => { e.stopPropagation(); handleDeleteMessage(msg.id); }}
+                          className="p-1 bg-black/10 hover:bg-black/20 dark:bg-white/10 dark:hover:bg-white/20 rounded-full text-zinc-500 dark:text-zinc-300"
+                          title="Apagar mensagem"
+                        >
+                          <Trash2 className="h-3 w-3" />
+                        </button>
+                      </div>
                     </div>
                   </div>
                 ))}
