@@ -339,19 +339,20 @@ const AtendimentoPage = () => {
             last_message: newMessage.content,
             last_message_at: newMessage.sent_at,
             // Incrementa unread se chat não estiver aberto e for inbound
-            unread_count: (existing.unread_count || 0) + (newMessage.direction === 'inbound' && !isChatOpen ? 1 : 0)
+            unread_count: (existing.unread_count || 0) + (newMessage.direction === 'inbound' && !isChatOpen ? 1 : 0),
+            status: newMessage.status || existing.status
           };
           // Remove da posição atual
           updatedList.splice(existingIndex, 1);
         } else {
-          // Nova conversa (não estava na lista)
           conversationToUpdate = {
-            id: newMessage.conversation_id, // Pode não ser exato se o back não mandar id da conv no payload de msg, mas webhook manda
+            id: newMessage.conversation_id,
             phone: newMessage.phone,
             contact_name: newMessage.contact_name || newMessage.phone,
             last_message: newMessage.content,
             last_message_at: newMessage.sent_at,
-            unread_count: newMessage.direction === 'inbound' ? 1 : 0
+            unread_count: newMessage.direction === 'inbound' ? 1 : 0,
+            status: newMessage.status || 'PENDING'
           };
         }
 

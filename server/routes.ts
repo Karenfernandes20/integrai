@@ -55,7 +55,7 @@ router.delete('/evolution/disconnect', authenticateToken, deleteEvolutionInstanc
 router.post('/evolution/messages/send', authenticateToken, sendEvolutionMessage);
 router.put('/evolution/messages/:conversationId/:messageId', authenticateToken, editEvolutionMessage);
 router.delete('/evolution/messages/:conversationId/:messageId', authenticateToken, deleteEvolutionMessage);
-router.post('/evolution/webhook', handleEvolutionWebhook); // Using new handler
+router.post('/evolution/webhook', handleWebhook); // Using unified and robust handler
 router.get('/evolution/conversations', authenticateToken, getConversations);
 router.get('/evolution/messages/:conversationId', authenticateToken, getMessages);
 

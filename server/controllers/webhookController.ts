@@ -17,27 +17,35 @@ interface WebhookMessage {
 export const handleWebhook = async (req: Request, res: Response) => {
     try {
         const body = req.body;
-        const instance = body.instance || 'integrai'; // Fallback if missing, but critical for multi-tenancy
+        // console.log("[Webhook] Received:", JSON.stringify(body));
 
-        let type = body.type;
+        let type = body.type || body.event;
         let data = body.data;
+        let instance = body.instance || (data?.instance) || 'integrai';
 
-        // Simplify payload extraction logic
+        // Support array-style payloads (used in some Evolution versions)
         if (Array.isArray(body) && body.length > 0) {
-            type = body[0].type;
+            type = body[0].type || body[0].event;
             data = body[0].data;
-        } else if (!type && body.event) {
-            type = body.event;
-            data = body;
+            instance = body[0].instance || 'integrai';
         }
 
         if (!type) {
             return res.status(200).send();
         }
 
-        if (type === 'messages.upsert') {
-            const msg = data as WebhookMessage;
-            if (!msg.key) return res.status(200).send();
+        const normalizedType = type.toLowerCase();
+
+        if (normalizedType === 'messages.upsert' || normalizedType === 'messages_upsert') {
+            // Find the message object
+            let msg: any = null;
+            if (data?.messages && Array.isArray(data.messages)) {
+                msg = data.messages[0];
+            } else {
+                msg = data;
+            }
+
+            if (!msg || !msg.key) return res.status(200).send();
 
             const remoteJid = msg.key.remoteJid;
 
@@ -47,9 +55,11 @@ export const handleWebhook = async (req: Request, res: Response) => {
             }
 
             const isFromMe = msg.key.fromMe;
-            let direction = isFromMe ? 'outbound' : 'inbound';
-            const status = direction === 'outbound' ? 'OPEN' : 'PENDING';
+            const direction = isFromMe ? 'outbound' : 'inbound';
 
+            // Business Logic: 
+            // Inbound messages make the chat PENDING if it was CLOSED.
+            // If it's OPEN, it stays OPEN.
             const phone = remoteJid.split('@')[0];
             const name = msg.pushName || phone;
 
@@ -57,8 +67,8 @@ export const handleWebhook = async (req: Request, res: Response) => {
 
             // 1. Upsert Conversation (Scoped by Instance)
             let conversationId: number;
+            let currentStatus: string = 'PENDING';
 
-            // Check based on remoteJid AND instance
             const checkConv = await pool.query(
                 `SELECT id, status FROM whatsapp_conversations WHERE external_id = $1 AND instance = $2`,
                 [remoteJid, instance]
@@ -67,81 +77,86 @@ export const handleWebhook = async (req: Request, res: Response) => {
             if (checkConv.rows.length > 0) {
                 conversationId = checkConv.rows[0].id;
                 const existingStatus = checkConv.rows[0].status;
+                currentStatus = existingStatus || 'PENDING';
+
+                // Rules:
+                // - If inbound and CLOSED -> Move to PENDING
+                // - If outbound -> Move to OPEN
+                if (direction === 'inbound') {
+                    if (existingStatus === 'CLOSED') {
+                        currentStatus = 'PENDING';
+                        await pool.query("UPDATE whatsapp_conversations SET status = 'PENDING' WHERE id = $1", [conversationId]);
+                    }
+                } else if (direction === 'outbound') {
+                    if (existingStatus !== 'OPEN') {
+                        currentStatus = 'OPEN';
+                        await pool.query("UPDATE whatsapp_conversations SET status = 'OPEN' WHERE id = $1", [conversationId]);
+                    }
+                }
 
                 // Sync name if updated
                 if (msg.pushName) {
                     await pool.query('UPDATE whatsapp_conversations SET contact_name = $1 WHERE id = $2', [msg.pushName, conversationId]);
                 }
-
-                // Any outbound from me should ensure the conversation is OPEN
-                if (direction === 'outbound' && existingStatus !== 'OPEN') {
-                    await pool.query("UPDATE whatsapp_conversations SET status = 'OPEN' WHERE id = $1", [conversationId]);
-                }
             } else {
+                currentStatus = direction === 'outbound' ? 'OPEN' : 'PENDING';
                 const newConv = await pool.query(
                     `INSERT INTO whatsapp_conversations (external_id, phone, contact_name, instance, status) 
                      VALUES ($1, $2, $3, $4, $5) RETURNING id`,
-                    [remoteJid, phone, name, instance, status]
+                    [remoteJid, phone, name, instance, currentStatus]
                 );
                 conversationId = newConv.rows[0].id;
             }
 
             // 2. Insert Message
             let content = '';
-            if (msg.message?.conversation) content = msg.message.conversation;
-            else if (msg.message?.extendedTextMessage?.text) content = msg.message.extendedTextMessage.text;
-            else if (msg.message?.imageMessage?.caption) content = msg.message.imageMessage.caption;
-            else content = '[Mídia ou outro tipo de mensagem]';
+            const m = msg.message;
+            if (m?.conversation) content = m.conversation;
+            else if (m?.extendedTextMessage?.text) content = m.extendedTextMessage.text;
+            else if (m?.imageMessage?.caption) content = m.imageMessage.caption;
+            else if (m?.videoMessage?.caption) content = m.videoMessage.caption;
+            else if (m?.buttonsResponseMessage?.selectedButtonId) content = m.buttonsResponseMessage.selectedButtonId;
+            else if (m?.listResponseMessage?.title) content = m.listResponseMessage.title;
+            else content = '[Mídia/Tipo não suportado]';
 
-            direction = isFromMe ? 'outbound' : 'inbound';
-            const sent_at = new Date(msg.messageTimestamp * 1000);
+            const sent_at = new Date((msg.messageTimestamp || Math.floor(Date.now() / 1000)) * 1000);
 
-            // Avoid duplicating messages if Evolution sends same ID twice
-            // Ideally we check if message key.id exists for this conversation? For now just insert.
             const insertedMsg = await pool.query(
                 `INSERT INTO whatsapp_messages (conversation_id, direction, content, sent_at, status, external_id) 
                  VALUES ($1, $2, $3, $4, 'received', $5) 
+                 ON CONFLICT DO NOTHING
                  RETURNING id, conversation_id, direction, content, sent_at, status, external_id`,
                 [conversationId, direction, content, sent_at, msg.key.id]
             );
 
-            // Update metadata
-            if (direction === 'inbound') {
-                await pool.query(
-                    `UPDATE whatsapp_conversations 
-                     SET last_message_at = $1, last_message = $2, unread_count = unread_count + 1 
-                     WHERE id = $3`,
-                    [sent_at, content, conversationId]
-                );
-            } else {
-                // Outbound, just update time and message
-                await pool.query(
-                    `UPDATE whatsapp_conversations 
-                     SET last_message_at = $1, last_message = $2
-                     WHERE id = $3`,
-                    [sent_at, content, conversationId]
-                );
-            }
+            if (insertedMsg.rows.length === 0) return res.status(200).send(); // Avoid processing duplicates
 
-            // EMIT SOCKET EVENT (Room: instance)
+            // Update metadata
+            await pool.query(
+                `UPDATE whatsapp_conversations 
+                 SET last_message_at = $1, 
+                     last_message = $2, 
+                     unread_count = CASE WHEN $3 = 'inbound' THEN unread_count + 1 ELSE unread_count END 
+                 WHERE id = $4`,
+                [sent_at, content, direction, conversationId]
+            );
+
+            // EMIT SOCKET EVENT
             const io = req.app.get('io');
             if (io) {
                 const newMessageObj = insertedMsg.rows[0];
-                // Emit event globally or to instance room. 
-                // For now global 'message:received' but payload includes instance so client filters.
                 io.emit('message:received', {
                     ...newMessageObj,
                     phone: phone,
                     contact_name: name,
                     remoteJid: remoteJid,
-                    instance: instance
+                    instance: instance,
+                    status: currentStatus // Send updated status to frontend
                 });
             }
 
-            // CRM Integration (Optional: only if inbound)
+            // CRM Integration (Inbound leads)
             if (direction === 'inbound') {
-                // Check if lead exists (Global check or Instance check? Assuming global for now or scoped?)
-                // Keeping it simple: check by phone globally
                 const checkLead = await pool.query('SELECT id FROM crm_leads WHERE phone = $1', [phone]);
                 if (checkLead.rows.length === 0) {
                     const stageRes = await pool.query('SELECT id FROM crm_stages ORDER BY position ASC LIMIT 1');
