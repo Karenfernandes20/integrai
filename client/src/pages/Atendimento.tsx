@@ -9,7 +9,8 @@ import {
   RefreshCcw,
   UserPlus,
   Trash2,
-  Pencil
+  Pencil,
+  XCircle
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
 import { Input } from "../components/ui/input";
@@ -1287,7 +1288,20 @@ const AtendimentoPage = () => {
                   <span className="font-medium text-sm text-zinc-900 dark:text-zinc-100 flex items-center gap-2">
                     {getDisplayName(selectedConversation)}
                     {selectedConversation.status === 'CLOSED' && <span className="px-1.5 py-0.5 rounded bg-red-100 text-red-600 text-[9px] uppercase border border-red-200">Fechado</span>}
-                    {selectedConversation.status === 'OPEN' && <span className="px-1.5 py-0.5 rounded bg-green-100 text-green-600 text-[9px] uppercase border border-green-200">Aberto</span>}
+                    {selectedConversation.status === 'OPEN' && (
+                      <div className="flex items-center gap-2">
+                        <span className="px-1.5 py-0.5 rounded bg-green-100 text-green-600 text-[9px] uppercase border border-green-200">Aberto</span>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-6 w-6 rounded-full text-red-500 hover:text-red-700 hover:bg-red-50"
+                          onClick={(e) => { e.stopPropagation(); handleCloseAtendimento(); }}
+                          title="Encerrar atendimento"
+                        >
+                          <XCircle className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    )}
                   </span>
                   <span className="text-[10px] text-muted-foreground flex gap-1">
                     {selectedConversation.phone}
@@ -1299,11 +1313,6 @@ const AtendimentoPage = () => {
                 {isPending && (
                   <Button size="sm" onClick={handleStartAtendimento} className="bg-[#008069] hover:bg-[#006d59] text-white h-8 text-xs">
                     INICIAR
-                  </Button>
-                )}
-                {selectedConversation.status === 'OPEN' && isMyAttendance && (
-                  <Button size="sm" variant="destructive" onClick={handleCloseAtendimento} className="h-8 text-xs">
-                    ENCERRAR
                   </Button>
                 )}
                 <Search className="h-5 w-5 cursor-pointer hover:text-zinc-700" />

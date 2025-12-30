@@ -47,7 +47,8 @@ export const handleWebhook = async (req: Request, res: Response) => {
             }
 
             const isFromMe = msg.key.fromMe;
-            // For outbound from me, we might already have it, but good to save if not
+            let direction = isFromMe ? 'outbound' : 'inbound';
+            const status = direction === 'outbound' ? 'OPEN' : 'PENDING';
 
             const phone = remoteJid.split('@')[0];
             const name = msg.pushName || phone;
@@ -59,20 +60,28 @@ export const handleWebhook = async (req: Request, res: Response) => {
 
             // Check based on remoteJid AND instance
             const checkConv = await pool.query(
-                `SELECT id FROM whatsapp_conversations WHERE external_id = $1 AND instance = $2`,
+                `SELECT id, status FROM whatsapp_conversations WHERE external_id = $1 AND instance = $2`,
                 [remoteJid, instance]
             );
 
             if (checkConv.rows.length > 0) {
                 conversationId = checkConv.rows[0].id;
+                const existingStatus = checkConv.rows[0].status;
+
+                // Sync name if updated
                 if (msg.pushName) {
                     await pool.query('UPDATE whatsapp_conversations SET contact_name = $1 WHERE id = $2', [msg.pushName, conversationId]);
                 }
+
+                // If outbound from phone and status is PENDING/null, upgrade to OPEN
+                if (direction === 'outbound' && (existingStatus === 'PENDING' || !existingStatus)) {
+                    await pool.query("UPDATE whatsapp_conversations SET status = 'OPEN' WHERE id = $1", [conversationId]);
+                }
             } else {
                 const newConv = await pool.query(
-                    `INSERT INTO whatsapp_conversations (external_id, phone, contact_name, instance) 
-                     VALUES ($1, $2, $3, $4) RETURNING id`,
-                    [remoteJid, phone, name, instance]
+                    `INSERT INTO whatsapp_conversations (external_id, phone, contact_name, instance, status) 
+                     VALUES ($1, $2, $3, $4, $5) RETURNING id`,
+                    [remoteJid, phone, name, instance, status]
                 );
                 conversationId = newConv.rows[0].id;
             }
@@ -84,7 +93,7 @@ export const handleWebhook = async (req: Request, res: Response) => {
             else if (msg.message?.imageMessage?.caption) content = msg.message.imageMessage.caption;
             else content = '[Mídia ou outro tipo de mensagem]';
 
-            const direction = isFromMe ? 'outbound' : 'inbound';
+            direction = isFromMe ? 'outbound' : 'inbound';
             const sent_at = new Date(msg.messageTimestamp * 1000);
 
             // Avoid duplicating messages if Evolution sends same ID twice
