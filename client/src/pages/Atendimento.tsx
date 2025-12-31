@@ -601,6 +601,41 @@ const AtendimentoPage = () => {
     }
   };
 
+  const syncAllPhotos = async () => {
+    try {
+      setIsLoadingConversations(true);
+      const res = await fetch("/api/evolution/profile-pic/sync", {
+        method: "POST",
+        headers: { "Authorization": `Bearer ${token}` }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        alert(`Sincronização iniciada! ${data.totalFound} fotos sendo carregadas em segundo plano.`);
+        // Refresh conversations after a short delay to see some results
+        setTimeout(fetchConversations, 5000);
+      } else {
+        alert("Falha ao iniciar sincronização de fotos.");
+      }
+    } catch (error) {
+      console.error("Error syncing photos:", error);
+    } finally {
+      setIsLoadingConversations(false);
+    }
+  };
+
+  const getMediaUrl = (msg: Message) => {
+    if (!msg.media_url) return "";
+    if (msg.media_url.startsWith('http')) {
+      // If it's a direct WhatsApp MMS URL, we must proxy it to handle auth and CORS
+      if (msg.media_url.includes('fbcdn.net') || msg.media_url.includes('mmg.whatsapp.net')) {
+        return `/api/evolution/media/${msg.id}?token=${token}`;
+      }
+      return msg.media_url;
+    }
+    // If it's already a path or filename
+    return msg.media_url;
+  };
+
   const fetchConversations = async () => {
     try {
       setIsLoadingConversations(true); // Start loading
@@ -1387,6 +1422,15 @@ const AtendimentoPage = () => {
                 <Button
                   size="icon"
                   variant="ghost"
+                  className="h-7 w-7 text-zinc-500 hover:text-[#008069]"
+                  onClick={syncAllPhotos}
+                  title="Sincronizar todas as fotos do WhatsApp"
+                >
+                  <Image className="h-3.5 w-3.5" />
+                </Button>
+                <Button
+                  size="icon"
+                  variant="ghost"
                   className="h-7 w-7"
                   onClick={() => {
                     const newMuted = !isNotificationMuted;
@@ -1890,7 +1934,7 @@ const AtendimentoPage = () => {
                             <div className="flex flex-col gap-1">
                               {msg.media_url ? (
                                 <div className="relative rounded-lg overflow-hidden bg-black/5 min-w-[200px] min-h-[150px]">
-                                  <img src={msg.media_url} alt="Imagem" className="w-full h-auto object-cover max-h-[300px]" loading="lazy" />
+                                  <img src={getMediaUrl(msg)} alt="Imagem" className="w-full h-auto object-cover max-h-[300px]" loading="lazy" />
                                 </div>
                               ) : (
                                 <div className="flex items-center gap-2 bg-black/10 dark:bg-white/10 p-3 rounded-lg">
@@ -1910,7 +1954,7 @@ const AtendimentoPage = () => {
                               </div>
                               <div className="flex flex-col flex-1">
                                 {msg.media_url ? (
-                                  <audio controls src={msg.media_url} className="w-full h-8" />
+                                  <audio controls src={getMediaUrl(msg)} className="w-full h-8" />
                                 ) : (
                                   <span className="italic opacity-80">Áudio indisponível</span>
                                 )}
@@ -1923,7 +1967,7 @@ const AtendimentoPage = () => {
                           return (
                             <div className="flex flex-col gap-1">
                               {msg.media_url ? (
-                                <video controls src={msg.media_url} className="w-full max-h-[300px] rounded-lg bg-black" />
+                                <video controls src={getMediaUrl(msg)} className="w-full max-h-[300px] rounded-lg bg-black" />
                               ) : (
                                 <div className="flex items-center gap-2 bg-black/10 dark:bg-white/10 p-3 rounded-lg">
                                   <Video className="h-5 w-5" /> <span className="italic opacity-80">Vídeo indisponível</span>
@@ -1942,7 +1986,7 @@ const AtendimentoPage = () => {
                               </div>
                               <div className="flex flex-col gap-0.5 overflow-hidden flex-1">
                                 <span className="truncate font-medium text-sm">{msg.content || 'Documento'}</span>
-                                {msg.media_url && <a href={msg.media_url} target="_blank" rel="noopener noreferrer" className="text-xs underline opacity-70 hover:opacity-100">Baixar arquivo</a>}
+                                {msg.media_url && <a href={getMediaUrl(msg)} target="_blank" rel="noopener noreferrer" className="text-xs underline opacity-70 hover:opacity-100">Baixar arquivo</a>}
                               </div>
                             </div>
                           );
@@ -1953,7 +1997,7 @@ const AtendimentoPage = () => {
                             <div className="flex flex-col gap-1">
                               {msg.media_url ? (
                                 <div className="relative rounded-lg overflow-hidden bg-transparent min-w-[100px] max-w-[150px]">
-                                  <img src={msg.media_url} alt="Sticker" className="w-full h-auto object-cover" loading="lazy" />
+                                  <img src={getMediaUrl(msg)} alt="Sticker" className="w-full h-auto object-cover" loading="lazy" />
                                 </div>
                               ) : (
                                 <div className="flex items-center gap-2 bg-black/10 dark:bg-white/10 p-2 rounded-lg">

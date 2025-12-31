@@ -1143,9 +1143,12 @@ export const getEvolutionProfilePic = async (req: Request, res: Response) => {
     const picUrl = data.profilePictureUrl;
 
     if (picUrl && pool) {
-      // Update DB cache
-      const jid = `${phone}@s.whatsapp.net`; // Simple assumption, might need refinement for groups
-      await pool.query("UPDATE whatsapp_contacts SET profile_pic_url = $1 WHERE phone = $2 OR jid = $3", [picUrl, phone, jid]);
+      // Update DB cache for contacts and conversations (handles both people and groups)
+      const jid = phone.includes('@') ? phone : `${phone}@s.whatsapp.net`;
+      await Promise.all([
+        pool.query("UPDATE whatsapp_contacts SET profile_pic_url = $1 WHERE jid = $2 OR phone = $3", [picUrl, jid, phone]),
+        pool.query("UPDATE whatsapp_conversations SET profile_pic_url = $1 WHERE external_id = $2 OR phone = $3", [picUrl, jid, phone])
+      ]);
     }
 
     return res.json({ url: picUrl });
@@ -1153,5 +1156,73 @@ export const getEvolutionProfilePic = async (req: Request, res: Response) => {
   } catch (error) {
     console.error("Profile pic error:", error);
     return res.status(500).json({ error: "Internal Error" });
+  }
+};
+
+export const syncAllProfilePics = async (req: Request, res: Response) => {
+  const config = await getEvolutionConfig((req as any).user, 'syncAllProfilePics');
+  const EVOLUTION_API_URL = config.url;
+  const EVOLUTION_API_KEY = config.apikey;
+  const EVOLUTION_INSTANCE = config.instance;
+
+  if (!EVOLUTION_API_URL || !EVOLUTION_API_KEY) return res.status(500).json({ error: "Config missing" });
+
+  try {
+    if (!pool) return res.status(500).send("DB not configured");
+
+    const user = (req as any).user;
+    const companyId = user?.company_id;
+
+    // Fetch conversations without profile pics
+    let query = "SELECT external_id, phone FROM whatsapp_conversations WHERE (profile_pic_url IS NULL OR profile_pic_url = '') AND instance = $1";
+    const params = [EVOLUTION_INSTANCE];
+
+    if (user.role !== 'SUPERADMIN' || companyId) {
+      query += " AND (company_id = $2 OR company_id IS NULL)";
+      params.push(companyId);
+    }
+
+    const { rows } = await pool.query(query, params);
+
+    let count = 0;
+    const baseUrl = EVOLUTION_API_URL.replace(/\/$/, "");
+
+    // Process in background and return immediate status if there are many, or wait if few
+    res.json({ success: true, message: `Syncing ${rows.length} profile pictures in background...`, totalFound: rows.length });
+
+    // Process in background
+    (async () => {
+      for (const conv of rows) {
+        try {
+          const phone = conv.external_id || conv.phone;
+          const response = await fetch(`${baseUrl}/chat/fetchProfilePictureUrl/${EVOLUTION_INSTANCE}`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "apikey": EVOLUTION_API_KEY },
+            body: JSON.stringify({ number: phone })
+          });
+
+          if (response.ok) {
+            const data = await response.json();
+            const picUrl = data.profilePictureUrl || data.url;
+            if (picUrl) {
+              await Promise.all([
+                pool.query("UPDATE whatsapp_conversations SET profile_pic_url = $1 WHERE external_id = $2 AND instance = $3", [picUrl, conv.external_id, EVOLUTION_INSTANCE]),
+                pool.query("UPDATE whatsapp_contacts SET profile_pic_url = $1 WHERE jid = $2 AND instance = $3", [picUrl, conv.external_id, EVOLUTION_INSTANCE])
+              ]);
+              count++;
+            }
+          }
+          // Small delay to be polite to the API
+          await new Promise(resolve => setTimeout(resolve, 500));
+        } catch (err) {
+          console.error(`Error syncing pic for ${conv.external_id}:`, err);
+        }
+      }
+      console.log(`[SyncPics] Completed. Synced ${count} out of ${rows.length}.`);
+    })().catch(e => console.error("[SyncPics BG Error]:", e));
+
+  } catch (error) {
+    console.error("Sync all pics error:", error);
+    if (!res.headersSent) return res.status(500).json({ error: "Internal Error" });
   }
 };

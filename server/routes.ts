@@ -42,7 +42,7 @@ router.post('/users/:id/reset-password', authenticateToken, authorizeRole(['SUPE
 
 
 // Evolution routes
-import { getEvolutionQrCode, deleteEvolutionInstance, sendEvolutionMessage, getEvolutionConnectionState, getEvolutionContacts, createEvolutionContact, updateEvolutionContact, deleteEvolutionContact, editEvolutionMessage, syncEvolutionContacts, handleEvolutionWebhook, getEvolutionContactsLive, deleteEvolutionMessage, getEvolutionConfig, getEvolutionMedia, getEvolutionProfilePic } from './controllers/evolutionController';
+import { getEvolutionQrCode, deleteEvolutionInstance, sendEvolutionMessage, getEvolutionConnectionState, getEvolutionContacts, createEvolutionContact, updateEvolutionContact, deleteEvolutionContact, editEvolutionMessage, syncEvolutionContacts, handleEvolutionWebhook, getEvolutionContactsLive, deleteEvolutionMessage, getEvolutionConfig, getEvolutionMedia, getEvolutionProfilePic, syncAllProfilePics } from './controllers/evolutionController';
 router.get('/evolution/qrcode', authenticateToken, getEvolutionQrCode);
 router.get('/evolution/status', authenticateToken, getEvolutionConnectionState);
 router.get('/evolution/contacts', authenticateToken, getEvolutionContacts);
@@ -60,6 +60,7 @@ router.get('/evolution/conversations', authenticateToken, getConversations);
 router.get('/evolution/messages/:conversationId', authenticateToken, getMessages);
 router.get('/evolution/media/:messageId', authenticateToken, getEvolutionMedia);
 router.get('/evolution/profile-pic/:phone', authenticateToken, getEvolutionProfilePic);
+router.post('/evolution/profile-pic/sync', authenticateToken, syncAllProfilePics);
 
 // CRM Routes
 // CRM Routes

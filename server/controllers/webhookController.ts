@@ -79,7 +79,7 @@ export const handleWebhook = async (req: Request, res: Response) => {
             // UPSERT Conversation
             let conversationId: number;
             const checkConv = await pool.query(
-                `SELECT id, status, is_group, contact_name FROM whatsapp_conversations WHERE external_id = $1 AND instance = $2 AND company_id = $3`,
+                `SELECT id, status, is_group, contact_name, profile_pic_url FROM whatsapp_conversations WHERE external_id = $1 AND instance = $2 AND company_id = $3`,
                 [remoteJid, instance, companyId]
             );
 
@@ -105,10 +105,14 @@ export const handleWebhook = async (req: Request, res: Response) => {
 
             } else {
                 currentStatus = direction === 'outbound' ? 'OPEN' : 'PENDING';
+
+                // For new groups, try to get a better name if possible
+                let finalName = isGroup && groupName ? groupName : name;
+
                 const newConv = await pool.query(
                     `INSERT INTO whatsapp_conversations (external_id, phone, contact_name, instance, status, company_id, is_group, group_name) 
                      VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id`,
-                    [remoteJid, phone, isGroup && groupName ? groupName : name, instance, currentStatus, companyId, isGroup, groupName]
+                    [remoteJid, phone, finalName, instance, currentStatus, companyId, isGroup, isGroup ? finalName : null]
                 );
                 conversationId = newConv.rows[0].id;
             }
@@ -214,7 +218,7 @@ export const handleWebhook = async (req: Request, res: Response) => {
                 });
             }
 
-            // 6. Non-critical post-processing (Metadata & CRM)
+            // 6. Non-critical post-processing (Metadata & CRM & Profile Pic)
             (async () => {
                 // Update Conversation Metadata (Last message preview)
                 await pool!.query(
@@ -224,6 +228,38 @@ export const handleWebhook = async (req: Request, res: Response) => {
                      WHERE id = $4`,
                     [sent_at, content, direction, conversationId]
                 );
+
+                // Profile Pic Fetch Logic (if missing)
+                const hasPic = checkConv.rows.length > 0 && checkConv.rows[0].profile_pic_url;
+                if (!hasPic) {
+                    (async () => {
+                        try {
+                            const compRes = await pool!.query('SELECT evolution_apikey FROM companies WHERE id = $1', [companyId]);
+                            if (compRes.rows.length > 0 && compRes.rows[0].evolution_apikey) {
+                                const apikey = compRes.rows[0].evolution_apikey;
+                                const baseUrl = process.env.EVOLUTION_API_URL || "https://freelasdekaren-evolution-api.nhvvzr.easypanel.host";
+                                const url = `${baseUrl.replace(/\/$/, "")}/chat/fetchProfilePictureUrl/${instance}`;
+
+                                const response = await fetch(url, {
+                                    method: "POST",
+                                    headers: { "Content-Type": "application/json", "apikey": apikey },
+                                    body: JSON.stringify({ number: remoteJid })
+                                });
+
+                                if (response.ok) {
+                                    const data = await response.json();
+                                    const picUrl = data.profilePictureUrl || data.url;
+                                    if (picUrl) {
+                                        await pool!.query('UPDATE whatsapp_conversations SET profile_pic_url = $1 WHERE id = $2', [picUrl, conversationId]);
+                                        if (!isGroup) {
+                                            await pool!.query('UPDATE whatsapp_contacts SET profile_pic_url = $1 WHERE jid = $2 AND instance = $3', [picUrl, remoteJid, instance]);
+                                        }
+                                    }
+                                }
+                            }
+                        } catch (e) { }
+                    })();
+                }
 
                 // CRM Logic: Auto-create lead for new contacts
                 if (direction === 'inbound') {
