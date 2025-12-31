@@ -138,6 +138,25 @@ router.get('/evolution-debug', authenticateToken, async (req: Request, res: Resp
   });
 });
 
+// DEBUG ROUTE FOR MESSAGES
+router.get('/debug-messages/:id', authenticateToken, async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const conv = await pool!.query('SELECT * FROM whatsapp_conversations WHERE id = $1', [id]);
+    const msgs = await pool!.query('SELECT count(*) as count FROM whatsapp_messages WHERE conversation_id = $1', [id]);
+    const lastMsgs = await pool!.query('SELECT id, content, sent_at FROM whatsapp_messages WHERE conversation_id = $1 ORDER BY sent_at DESC LIMIT 5', [id]);
+
+    res.json({
+      conversation: conv.rows[0],
+      message_count: msgs.rows[0].count,
+      last_5_messages: lastMsgs.rows,
+      user_company: (req as any).user.company_id
+    });
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // Temporary route to update Evolution API Key
 import { pool } from './db';
 import { Request, Response } from 'express';
