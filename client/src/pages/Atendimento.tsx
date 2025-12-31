@@ -165,7 +165,9 @@ const AtendimentoPage = () => {
   const [openPage, setOpenPage] = useState(1);
   const [closedPage, setClosedPage] = useState(1);
   const [groupPage, setGroupPage] = useState(1);
-  const ITEMS_PER_PAGE = 30;
+
+  const ITEMS_PER_PAGE = 1000;
+
 
   // Helper para resolver o nome do contato baseado no banco de dados sincronizado
   // Otimizado com useMemo para não recalcular o mapa a cada render
@@ -305,11 +307,12 @@ const AtendimentoPage = () => {
   useEffect(() => {
     const filterByStatusAndSearch = (status: 'PENDING' | 'OPEN' | 'CLOSED' | 'GROUPS') => {
       return conversations.filter(c => {
+        const isGroup = Boolean(c.is_group || c.group_name);
         // Exclude groups from individual conversations tabs
         if (status === 'GROUPS') {
-          if (!c.is_group) return false;
+          if (!isGroup) return false;
         } else {
-          if (c.is_group) return false;
+          if (isGroup) return false;
           const s = c.status || 'PENDING';
           if (s !== status) return false;
         }
