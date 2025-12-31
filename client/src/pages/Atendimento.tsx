@@ -24,7 +24,9 @@ import {
   Sticker,
   Volume2,
   VolumeX,
-  Volume1
+  Volume1,
+  ChevronLeft,
+  ChevronRight
 } from "lucide-react";
 import { FollowUpModal } from "../components/follow-up/FollowUpModal";
 import { toast } from "sonner";
@@ -1529,15 +1531,7 @@ const AtendimentoPage = () => {
                   >
                     Fechados
                   </button>
-                  <button
-                    onClick={() => setViewMode('GROUPS')}
-                    className={cn(
-                      "text-[11px] px-1 py-1.5 rounded-lg font-bold uppercase transition-all flex items-center justify-center gap-2 flex-1",
-                      viewMode === 'GROUPS' ? "bg-blue-500 text-white shadow-sm" : "text-zinc-500 hover:text-zinc-700 hover:bg-black/5"
-                    )}
-                  >
-                    Grupos <span className="opacity-60 text-[9px] bg-white/20 px-1.5 rounded">{groupConversations.length}</span>
-                  </button>
+
                 </div>
               </div>
 
@@ -1545,52 +1539,7 @@ const AtendimentoPage = () => {
                 <div className="flex flex-col py-3">
                   {/* DYNAMIC LIST BASED ON VIEWMODE */}
 
-                  {viewMode === 'GROUPS' && (() => {
-                    const startIndex = (groupPage - 1) * ITEMS_PER_PAGE;
-                    const endIndex = startIndex + ITEMS_PER_PAGE;
-                    const paginatedItems = groupConversations.slice(startIndex, endIndex);
-                    const totalPages = Math.ceil(groupConversations.length / ITEMS_PER_PAGE);
 
-                    if (groupConversations.length === 0) {
-                      return (
-                        <div className="flex flex-col items-center justify-center py-20 px-6 text-center opacity-40">
-                          <MessageCircleMore className="h-12 w-12 mb-4" />
-                          <p className="text-sm font-medium">Nenhum grupo encontrado</p>
-                        </div>
-                      );
-                    }
-
-                    return (
-                      <>
-                        {paginatedItems.map((conv) => renderConversationCard(conv))}
-                        {totalPages > 1 && (
-                          <div className="flex justify-center items-center gap-2 py-4">
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              className="h-8 w-8 p-0"
-                              disabled={groupPage === 1}
-                              onClick={() => setGroupPage(prev => prev - 1)}
-                            >
-                              &lt;
-                            </Button>
-                            <span className="text-xs font-medium text-muted-foreground">
-                              {groupPage} de {totalPages}
-                            </span>
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              className="h-8 w-8 p-0"
-                              disabled={groupPage === totalPages}
-                              onClick={() => setGroupPage(prev => prev + 1)}
-                            >
-                              &gt;
-                            </Button>
-                          </div>
-                        )}
-                      </>
-                    );
-                  })()}
 
                   {viewMode === 'PENDING' && (() => {
                     const startIndex = (pendingPage - 1) * ITEMS_PER_PAGE;
@@ -1602,24 +1551,30 @@ const AtendimentoPage = () => {
                       <>
                         {paginatedItems.map(conv => renderConversationCard(conv))}
                         {totalPages > 1 && (
-                          <div className="flex items-center justify-center gap-2 mt-4 mb-2">
-                            <button
+                          <div className="flex items-center justify-center gap-1 mt-2 mb-2 p-2 pt-0">
+                            <Button
+                              variant="outline"
+                              size="icon"
                               onClick={() => setPendingPage(p => Math.max(1, p - 1))}
                               disabled={pendingPage === 1}
-                              className="px-3 py-1 text-xs rounded hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
+                              className="h-7 w-7"
+                              title="Página Anterior"
                             >
-                              Anterior
-                            </button>
-                            <span className="text-xs text-muted-foreground">
-                              &lt; {pendingPage} &gt;
+                              <ChevronLeft className="h-4 w-4" />
+                            </Button>
+                            <span className="text-[10px] text-muted-foreground font-medium px-2 min-w-[3rem] text-center">
+                              {pendingPage} / {totalPages}
                             </span>
-                            <button
+                            <Button
+                              variant="outline"
+                              size="icon"
                               onClick={() => setPendingPage(p => Math.min(totalPages, p + 1))}
                               disabled={pendingPage === totalPages}
-                              className="px-3 py-1 text-xs rounded hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
+                              className="h-7 w-7"
+                              title="Próxima Página"
                             >
-                              Próxima
-                            </button>
+                              <ChevronRight className="h-4 w-4" />
+                            </Button>
                           </div>
                         )}
                       </>
@@ -1636,24 +1591,30 @@ const AtendimentoPage = () => {
                       <>
                         {paginatedItems.map(conv => renderConversationCard(conv))}
                         {totalPages > 1 && (
-                          <div className="flex items-center justify-center gap-2 mt-4 mb-2">
-                            <button
+                          <div className="flex items-center justify-center gap-1 mt-2 mb-2 p-2 pt-0">
+                            <Button
+                              variant="outline"
+                              size="icon"
                               onClick={() => setOpenPage(p => Math.max(1, p - 1))}
                               disabled={openPage === 1}
-                              className="px-3 py-1 text-xs rounded hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
+                              className="h-7 w-7"
+                              title="Página Anterior"
                             >
-                              Anterior
-                            </button>
-                            <span className="text-xs text-muted-foreground">
-                              &lt; {openPage} &gt;
+                              <ChevronLeft className="h-4 w-4" />
+                            </Button>
+                            <span className="text-[10px] text-muted-foreground font-medium px-2 min-w-[3rem] text-center">
+                              {openPage} / {totalPages}
                             </span>
-                            <button
+                            <Button
+                              variant="outline"
+                              size="icon"
                               onClick={() => setOpenPage(p => Math.min(totalPages, p + 1))}
                               disabled={openPage === totalPages}
-                              className="px-3 py-1 text-xs rounded hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
+                              className="h-7 w-7"
+                              title="Próxima Página"
                             >
-                              Próxima
-                            </button>
+                              <ChevronRight className="h-4 w-4" />
+                            </Button>
                           </div>
                         )}
                       </>
@@ -1670,24 +1631,30 @@ const AtendimentoPage = () => {
                       <>
                         {paginatedItems.map(conv => renderConversationCard(conv))}
                         {totalPages > 1 && (
-                          <div className="flex items-center justify-center gap-2 mt-4 mb-2">
-                            <button
+                          <div className="flex items-center justify-center gap-1 mt-2 mb-2 p-2 pt-0">
+                            <Button
+                              variant="outline"
+                              size="icon"
                               onClick={() => setClosedPage(p => Math.max(1, p - 1))}
                               disabled={closedPage === 1}
-                              className="px-3 py-1 text-xs rounded hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
+                              className="h-7 w-7"
+                              title="Página Anterior"
                             >
-                              Anterior
-                            </button>
-                            <span className="text-xs text-muted-foreground">
-                              &lt; {closedPage} &gt;
+                              <ChevronLeft className="h-4 w-4" />
+                            </Button>
+                            <span className="text-[10px] text-muted-foreground font-medium px-2 min-w-[3rem] text-center">
+                              {closedPage} / {totalPages}
                             </span>
-                            <button
+                            <Button
+                              variant="outline"
+                              size="icon"
                               onClick={() => setClosedPage(p => Math.min(totalPages, p + 1))}
                               disabled={closedPage === totalPages}
-                              className="px-3 py-1 text-xs rounded hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
+                              className="h-7 w-7"
+                              title="Próxima Página"
                             >
-                              Próxima
-                            </button>
+                              <ChevronRight className="h-4 w-4" />
+                            </Button>
                           </div>
                         )}
                       </>
