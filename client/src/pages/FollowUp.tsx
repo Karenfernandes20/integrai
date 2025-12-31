@@ -34,11 +34,27 @@ import {
 } from "../components/ui/dropdown-menu";
 import { toast } from "sonner";
 
+import { FollowUpModal } from "../components/follow-up/FollowUpModal";
+
 const FollowUpPage = () => {
     const { token, user } = useAuth();
     const queryClient = useQueryClient();
     const [searchTerm, setSearchTerm] = useState("");
     const [statusFilter, setStatusFilter] = useState("all");
+
+    // Modal State
+    const [isModalOpen, setIsModalOpen] = useState(false);
+    const [selectedFollowUp, setSelectedFollowUp] = useState<any>(null);
+
+    const handleOpenNew = () => {
+        setSelectedFollowUp(null);
+        setIsModalOpen(true);
+    };
+
+    const handleOpenEdit = (followUp: any) => {
+        setSelectedFollowUp(followUp);
+        setIsModalOpen(true);
+    };
 
     // Fetch Stats
     const { data: stats } = useQuery({
@@ -150,7 +166,7 @@ const FollowUpPage = () => {
                     </p>
                 </div>
                 <div className="flex items-center gap-2">
-                    <Button className="bg-primary hover:bg-primary/90 shadow-md">
+                    <Button className="bg-primary hover:bg-primary/90 shadow-md" onClick={handleOpenNew}>
                         <Plus className="h-4 w-4 mr-2" /> Novo Follow-up
                     </Button>
                 </div>
@@ -333,8 +349,8 @@ const FollowUpPage = () => {
                                                 </Button>
                                             </DropdownMenuTrigger>
                                             <DropdownMenuContent align="end" className="w-40">
-                                                <DropdownMenuItem className="text-xs">Editar</DropdownMenuItem>
-                                                <DropdownMenuItem className="text-xs">Reagendar</DropdownMenuItem>
+                                                <DropdownMenuItem className="text-xs" onClick={() => handleOpenEdit(f)}>Editar</DropdownMenuItem>
+                                                <DropdownMenuItem className="text-xs" onClick={() => handleOpenEdit(f)}>Reagendar</DropdownMenuItem>
                                                 {f.status !== 'completed' && (
                                                     <DropdownMenuItem className="text-xs text-red-600" onClick={() => handleAction(f.id, 'cancel')}>Cancelar</DropdownMenuItem>
                                                 )}
@@ -347,6 +363,14 @@ const FollowUpPage = () => {
                     </div>
                 )}
             </section>
+
+            {isModalOpen && (
+                <FollowUpModal
+                    isOpen={isModalOpen}
+                    onClose={() => setIsModalOpen(false)}
+                    initialData={selectedFollowUp || {}}
+                />
+            )}
         </div>
     );
 };

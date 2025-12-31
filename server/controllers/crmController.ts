@@ -9,17 +9,20 @@ const getEvolutionConfig = async (user: any) => {
         instance: "integrai"
     };
 
-    if (user && user.role !== 'SUPERADMIN' && pool) {
+    if (user && pool) {
         try {
             const userRes = await pool.query('SELECT company_id FROM app_users WHERE id = $1', [user.id]);
             if (userRes.rows.length > 0 && userRes.rows[0].company_id) {
                 const companyId = userRes.rows[0].company_id;
+                // console.log(`[CRM Config] Resolving config for Company ID: ${companyId}`);
+
                 const compRes = await pool.query('SELECT evolution_instance, evolution_apikey FROM companies WHERE id = $1', [companyId]);
                 if (compRes.rows.length > 0) {
                     const { evolution_instance, evolution_apikey } = compRes.rows[0];
                     if (evolution_instance && evolution_apikey) {
                         config.instance = evolution_instance;
                         config.apikey = evolution_apikey;
+                        // console.log(`[CRM Config] Found DB Config - Instance: ${evolution_instance}`);
                     }
                 }
             }
@@ -47,18 +50,26 @@ const getEvolutionConnectionStateInternal = async (user: any) => {
 
         const response = await fetch(fetchUrl, {
             method: "GET",
-            headers: { "Content-Type": "application/json", apikey: apikey },
+            headers: {
+                "Content-Type": "application/json",
+                "apikey": apikey
+            },
         });
 
         if (!response.ok) {
-            console.error(`[CRM Dashboard] Fetch failed. Status: ${response.status}`);
+            console.error(`[CRM Dashboard] Status Fetch Failed for '${instance}'. Status: ${response.status}`);
             return 'Offline';
         }
 
         const data = await response.json();
         // Evolution returns { instance: { state: 'open' | 'close' | 'connecting' ... } }
         const rawState = data?.instance?.state || data?.state;
-        console.log(`[CRM Dashboard] Raw State received: ${rawState}`);
+
+        // Log explicitly for debugging
+        console.log(`[CRM Dashboard] Instance '${instance}' Status: ${rawState}`);
+
+        if (!rawState) return 'Offline';
+
 
         if (!rawState) return 'Offline';
 
@@ -80,30 +91,37 @@ const getEvolutionConnectionStateInternal = async (user: any) => {
 const ensureDefaultStages = async () => {
     if (!pool) return;
 
-    // Check specifically for 'Leads' stage
-    const leadsStageCheck = await pool.query("SELECT id FROM crm_stages WHERE name = 'Leads'");
+    try {
+        // 1. Check for 'Leads' stage specifically
+        const leadsStageCheck = await pool.query("SELECT id FROM crm_stages WHERE name = 'Leads'");
 
-    if (leadsStageCheck.rows.length === 0) {
-        // Create Leads stage if it doesn't exist. Force position 0 or 1.
-        await pool.query("INSERT INTO crm_stages (name, position) VALUES ('Leads', 1)");
-    }
-
-    const countResult = await pool.query('SELECT COUNT(*) FROM crm_stages');
-    if (parseInt(countResult.rows[0].count) <= 1 && leadsStageCheck.rows.length === 0) {
-        // If table was basically empty (or we just added Leads), add the others.
-        // This prevents adding duplicates if only Leads was missing.
-        // Only run full seed if table was previously empty.
-        const defaultStages = [
-            { name: 'Em contato', position: 2 },
-            { name: 'Agendamento', position: 3 },
-            { name: 'Venda realizada', position: 4 },
-            { name: 'Perdido', position: 5 }
-        ];
-
-        for (const stage of defaultStages) {
-            // Avoid duplicates by name
-            await pool.query('INSERT INTO crm_stages (name, position) VALUES ($1, $2) ON CONFLICT DO NOTHING', [stage.name, stage.position]);
+        if (leadsStageCheck.rows.length === 0) {
+            // Create Leads stage at position 0
+            await pool.query("INSERT INTO crm_stages (name, position, color) VALUES ('Leads', 0, '#cbd5e1')");
+        } else {
+            // Ensure it is at position 0
+            await pool.query("UPDATE crm_stages SET position = 0 WHERE name = 'Leads'");
         }
+
+        // 2. Ensure other defaults if strictly empty
+        const countResult = await pool.query('SELECT COUNT(*) FROM crm_stages');
+        if (parseInt(countResult.rows[0].count) <= 1) {
+            const defaultStages = [
+                { name: 'Em Atendimento', position: 1, color: '#93c5fd' },
+                { name: 'Agendamento', position: 2, color: '#fde047' },
+                { name: 'Venda Realizada', position: 3, color: '#86efac' },
+                { name: 'Perdido', position: 4, color: '#fca5a5' }
+            ];
+
+            for (const stage of defaultStages) {
+                await pool.query(
+                    'INSERT INTO crm_stages (name, position, color) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING',
+                    [stage.name, stage.position, stage.color]
+                );
+            }
+        }
+    } catch (error) {
+        console.error("Error ensuring default stages:", error);
     }
 };
 

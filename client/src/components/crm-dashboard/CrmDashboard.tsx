@@ -22,7 +22,7 @@ export const CrmDashboard = ({ company }: CrmDashboardProps) => {
     useEffect(() => {
         const fetchDashboard = async () => {
             try {
-                setLoading(true);
+                // Determine if this is a background poll to avoid flashing loading state
                 const token = localStorage.getItem("auth_token");
                 const res = await fetch("/api/crm/dashboard", {
                     headers: { "Authorization": `Bearer ${token}` }
@@ -34,10 +34,15 @@ export const CrmDashboard = ({ company }: CrmDashboardProps) => {
             } catch (e) {
                 console.error("Failed to fetch dashboard", e);
             } finally {
-                setLoading(false);
+                if (loading) setLoading(false);
             }
         };
-        fetchDashboard();
+
+        setLoading(true);
+        fetchDashboard().then(() => setLoading(false));
+
+        const interval = setInterval(fetchDashboard, 5000); // 5 seconds polling
+        return () => clearInterval(interval);
     }, []);
 
     return (

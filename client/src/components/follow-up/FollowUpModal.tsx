@@ -24,13 +24,16 @@ interface FollowUpModalProps {
 export function FollowUpModal({ isOpen, onClose, initialData }: FollowUpModalProps) {
     const { token, user } = useAuth();
     const [isLoading, setIsLoading] = useState(false);
+    const isEditing = !!(initialData as any)?.id;
 
     const [formData, setFormData] = useState({
-        title: "",
-        description: "",
-        type: "whatsapp",
-        priority: "medium",
-        scheduled_at: format(new Date(Date.now() + 3600000), "yyyy-MM-dd'T'HH:mm"), // 1 hour later
+        title: (initialData as any)?.title || "",
+        description: (initialData as any)?.description || "",
+        type: (initialData as any)?.type || "whatsapp",
+        priority: (initialData as any)?.priority || "medium",
+        scheduled_at: (initialData as any)?.scheduled_at
+            ? format(new Date((initialData as any).scheduled_at), "yyyy-MM-dd'T'HH:mm")
+            : format(new Date(Date.now() + 3600000), "yyyy-MM-dd'T'HH:mm"),
         user_id: user?.id || ""
     });
 
@@ -38,14 +41,22 @@ export function FollowUpModal({ isOpen, onClose, initialData }: FollowUpModalPro
         e.preventDefault();
         try {
             setIsLoading(true);
-            const res = await fetch("/api/crm/follow-ups", {
-                method: "POST",
+            const url = isEditing
+                ? `/api/crm/follow-ups/${(initialData as any).id}`
+                : "/api/crm/follow-ups";
+
+            const method = isEditing ? "PUT" : "POST";
+
+            const res = await fetch(url, {
+                method,
                 headers: {
                     "Content-Type": "application/json",
                     "Authorization": `Bearer ${token}`
                 },
                 body: JSON.stringify({
                     ...formData,
+                    // If creating, use values from initialData which are context-specific
+                    // If editing, usually we don't change lead_id/conversation_id unless specifically needed
                     lead_id: initialData?.lead_id,
                     conversation_id: initialData?.conversation_id,
                     origin: initialData?.origin || "Atendimento"
@@ -53,10 +64,10 @@ export function FollowUpModal({ isOpen, onClose, initialData }: FollowUpModalPro
             });
 
             if (res.ok) {
-                toast.success("Follow-up agendado com sucesso!");
+                toast.success(isEditing ? "Follow-up atualizado!" : "Follow-up agendado com sucesso!");
                 onClose();
             } else {
-                toast.error("Erro ao agendar follow-up");
+                toast.error("Erro ao salvar follow-up");
             }
         } catch (err) {
             toast.error("Erro de conexão");
@@ -70,7 +81,7 @@ export function FollowUpModal({ isOpen, onClose, initialData }: FollowUpModalPro
             <DialogContent className="sm:max-w-[425px]">
                 <DialogHeader>
                     <DialogTitle className="flex items-center gap-2">
-                        Novo Follow-up
+                        {isEditing ? "Editar Follow-up" : "Novo Follow-up"}
                     </DialogTitle>
                     <DialogDescription>
                         Agende uma ação futura para o contato <strong>{initialData?.contact_name || initialData?.phone}</strong>.
@@ -147,7 +158,7 @@ export function FollowUpModal({ isOpen, onClose, initialData }: FollowUpModalPro
                     <DialogFooter>
                         <Button type="button" variant="outline" onClick={onClose} disabled={isLoading}>Cancelar</Button>
                         <Button type="submit" disabled={isLoading}>
-                            {isLoading ? "Agendando..." : "Agendar Follow-up"}
+                            {isLoading ? "Salvando..." : isEditing ? "Salvar Alterações" : "Agendar Follow-up"}
                         </Button>
                     </DialogFooter>
                 </form>

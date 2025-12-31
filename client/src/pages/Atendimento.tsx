@@ -20,7 +20,8 @@ import {
   Mic,
   Video,
   MapPin,
-  Contact
+  Contact,
+  Sticker
 } from "lucide-react";
 import { FollowUpModal } from "../components/follow-up/FollowUpModal";
 import { toast } from "sonner";
@@ -87,7 +88,7 @@ const AtendimentoPage = () => {
   const { token, user } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
 
-  const [viewMode, setViewMode] = useState<'ALL' | 'PENDING' | 'OPEN' | 'CLOSED'>('PENDING');
+  const [viewMode, setViewMode] = useState<'PENDING' | 'OPEN' | 'CLOSED'>('OPEN');
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [pendingConversations, setPendingConversations] = useState<Conversation[]>([]);
   const [openConversations, setOpenConversations] = useState<Conversation[]>([]);
@@ -1085,7 +1086,6 @@ const AtendimentoPage = () => {
       key={conv.id}
       onClick={() => {
         setSelectedConversation(conv);
-        if (viewMode !== 'ALL' && conv.status) setViewMode(conv.status as any);
       }}
       className={cn(
         "group mx-3 my-1 p-3 rounded-xl cursor-pointer transition-all duration-200 border border-transparent flex flex-col gap-2",
@@ -1138,27 +1138,17 @@ const AtendimentoPage = () => {
             ) : null}
           </div>
 
-          {/* Status Badge - Only in 'ALL' view */}
-          {viewMode === 'ALL' && (
-            <div className="mt-1">
-              <span className={cn(
-                "text-[9px] px-1.5 py-0.5 rounded-full font-bold uppercase",
-                (conv.status === 'PENDING' || !conv.status) && "bg-zinc-100 text-zinc-600",
-                conv.status === 'OPEN' && "bg-[#e7fce3] text-[#008069]",
-                conv.status === 'CLOSED' && "bg-red-50 text-red-600"
-              )}>
-                {conv.status === 'OPEN' ? 'Em Aberto' : conv.status === 'CLOSED' ? 'Finalizado' : 'Pendente'}
-              </span>
-            </div>
-          )}
+
+
         </div>
       </div>
 
       {/* Action Buttons on Hover or if Selected */}
-      <div className={cn(
-        "flex items-center gap-2 mt-1 opacity-0 group-hover:opacity-100 transition-opacity justify-end",
-        selectedConversation?.id === conv.id && "opacity-100"
-      )}>
+      <div className={
+        cn(
+          "flex items-center gap-2 mt-1 opacity-0 group-hover:opacity-100 transition-opacity justify-end",
+          selectedConversation?.id === conv.id && "opacity-100"
+        )}>
         {(conv.status === 'PENDING' || !conv.status) && (
           <div className="flex gap-1">
             <Button
@@ -1181,17 +1171,30 @@ const AtendimentoPage = () => {
             </Button>
           </div>
         )}
-        {conv.status === 'OPEN' && (
-          <Button
-            size="sm"
-            variant="ghost"
-            className="h-7 px-2 text-[10px] gap-1 text-red-500 hover:bg-red-50 font-bold"
-            onClick={(e) => { e.stopPropagation(); handleCloseAtendimento(conv); }}
-            title="Encerrar Atendimento"
-          >
-            <CheckCircle2 className="h-3 w-3" /> ENCERRAR
-          </Button>
-        )}
+        {
+          conv.status === 'OPEN' && (
+            <div className="flex gap-1">
+              <Button
+                size="sm"
+                variant="ghost"
+                className="h-7 px-2 text-[10px] gap-1 text-[#008069] hover:bg-[#008069]/10 font-bold"
+                onClick={(e) => { e.stopPropagation(); handleStartAtendimento(conv); }}
+                title="Iniciar Atendimento"
+              >
+                <Play className="h-3 w-3 fill-current" /> INICIAR
+              </Button>
+              <Button
+                size="sm"
+                variant="ghost"
+                className="h-7 px-2 text-[10px] gap-1 text-red-500 hover:bg-red-50 font-bold"
+                onClick={(e) => { e.stopPropagation(); handleCloseAtendimento(conv); }}
+                title="Encerrar Atendimento"
+              >
+                <CheckCircle2 className="h-3 w-3" /> ENCERRAR
+              </Button>
+            </div>
+          )
+        }
         {/* In Closed mode, no actions shown as per spec 2.3 */}
         {conv.status === 'CLOSED' && null}
       </div>
@@ -1257,21 +1260,13 @@ const AtendimentoPage = () => {
                 </div>
 
                 {/* QUICK NAVIGATION TABS (Top Bar Style) */}
-                <div className="flex items-center gap-1 bg-zinc-100 dark:bg-zinc-900/50 p-1 rounded-xl shadow-inner border border-zinc-200/50 dark:border-zinc-800/50">
-                  <button
-                    onClick={() => setViewMode('ALL')}
-                    className={cn(
-                      "text-[11px] px-4 py-1.5 rounded-lg font-bold uppercase transition-all flex items-center gap-2",
-                      viewMode === 'ALL' ? "bg-white dark:bg-zinc-800 text-[#008069] shadow-sm" : "text-zinc-500 hover:text-zinc-700"
-                    )}
-                  >
-                    Tudo
-                  </button>
+                <div className="flex items-center gap-1 bg-zinc-100 dark:bg-zinc-900/50 p-1 rounded-xl shadow-inner border border-zinc-200/50 dark:border-zinc-800/50 w-full">
+
                   <button
                     onClick={() => setViewMode('PENDING')}
                     className={cn(
-                      "text-[11px] px-4 py-1.5 rounded-lg font-bold uppercase transition-all flex items-center gap-2",
-                      viewMode === 'PENDING' ? "bg-zinc-500 text-white shadow-sm" : "text-zinc-500 hover:text-zinc-700"
+                      "text-[11px] px-1 py-1.5 rounded-lg font-bold uppercase transition-all flex items-center justify-center gap-2 flex-1",
+                      viewMode === 'PENDING' ? "bg-zinc-500 text-white shadow-sm" : "text-zinc-500 hover:text-zinc-700 hover:bg-black/5"
                     )}
                   >
                     Pendentes <span className="opacity-50 text-[9px] bg-black/10 px-1.5 rounded">{pendingConversations.length}</span>
@@ -1279,8 +1274,8 @@ const AtendimentoPage = () => {
                   <button
                     onClick={() => setViewMode('OPEN')}
                     className={cn(
-                      "text-[11px] px-4 py-1.5 rounded-lg font-bold uppercase transition-all flex items-center gap-2",
-                      viewMode === 'OPEN' ? "bg-[#008069] text-white shadow-sm" : "text-zinc-500 hover:text-zinc-700"
+                      "text-[11px] px-1 py-1.5 rounded-lg font-bold uppercase transition-all flex items-center justify-center gap-2 flex-1",
+                      viewMode === 'OPEN' ? "bg-[#008069] text-white shadow-sm" : "text-zinc-500 hover:text-zinc-700 hover:bg-black/5"
                     )}
                   >
                     Abertos <span className="opacity-60 text-[9px] bg-white/20 px-1.5 rounded">{openConversations.length}</span>
@@ -1288,8 +1283,8 @@ const AtendimentoPage = () => {
                   <button
                     onClick={() => setViewMode('CLOSED')}
                     className={cn(
-                      "text-[11px] px-4 py-1.5 rounded-lg font-bold uppercase transition-all flex items-center gap-2",
-                      viewMode === 'CLOSED' ? "bg-red-500 text-white shadow-sm" : "text-zinc-500 hover:text-zinc-700"
+                      "text-[11px] px-1 py-1.5 rounded-lg font-bold uppercase transition-all flex items-center justify-center gap-2 flex-1",
+                      viewMode === 'CLOSED' ? "bg-red-500 text-white shadow-sm" : "text-zinc-500 hover:text-zinc-700 hover:bg-black/5"
                     )}
                   >
                     Fechados
@@ -1314,8 +1309,7 @@ const AtendimentoPage = () => {
                   )}
 
                   {/* EMPTY STATES */}
-                  {((viewMode === 'ALL' && conversations.length === 0) ||
-                    (viewMode === 'PENDING' && pendingConversations.length === 0) ||
+                  {((viewMode === 'PENDING' && pendingConversations.length === 0) ||
                     (viewMode === 'OPEN' && openConversations.length === 0) ||
                     (viewMode === 'CLOSED' && closedConversations.length === 0)) && (
                       <div className="flex flex-col items-center justify-center p-12 opacity-40">
@@ -1485,7 +1479,20 @@ const AtendimentoPage = () => {
                 <div className="flex flex-col cursor-pointer">
                   <span className="font-medium text-sm text-zinc-900 dark:text-zinc-100 flex items-center gap-2">
                     {getDisplayName(selectedConversation)}
-                    {selectedConversation.status === 'CLOSED' && <span className="px-1.5 py-0.5 rounded bg-red-100 text-red-600 text-[9px] uppercase border border-red-200">Fechado</span>}
+                    {selectedConversation.status === 'CLOSED' && (
+                      <div className="flex items-center gap-2">
+                        <span className="px-1.5 py-0.5 rounded bg-red-100 text-red-600 text-[9px] uppercase border border-red-200">Fechado</span>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-6 w-6 rounded-full text-green-500 hover:text-green-700 hover:bg-green-50"
+                          onClick={(e) => { e.stopPropagation(); handleStartAtendimento(); }}
+                          title="Iniciar atendimento"
+                        >
+                          <Play className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    )}
                     {selectedConversation.status === 'OPEN' && (
                       <div className="flex items-center gap-2">
                         <span className="px-1.5 py-0.5 rounded bg-green-100 text-green-600 text-[9px] uppercase border border-green-200">Aberto</span>
@@ -1643,6 +1650,55 @@ const AtendimentoPage = () => {
                               <div className="flex flex-col gap-0.5 overflow-hidden flex-1">
                                 <span className="truncate font-medium text-sm">{msg.content || 'Documento'}</span>
                                 {msg.media_url && <a href={msg.media_url} target="_blank" rel="noopener noreferrer" className="text-xs underline opacity-70 hover:opacity-100">Baixar arquivo</a>}
+                              </div>
+                            </div>
+                          );
+                        }
+
+                        if (type === 'sticker') {
+                          return (
+                            <div className="flex flex-col gap-1">
+                              {msg.media_url ? (
+                                <div className="relative rounded-lg overflow-hidden bg-transparent min-w-[100px] max-w-[150px]">
+                                  <img src={msg.media_url} alt="Sticker" className="w-full h-auto object-cover" loading="lazy" />
+                                </div>
+                              ) : (
+                                <div className="flex items-center gap-2 bg-black/10 dark:bg-white/10 p-2 rounded-lg">
+                                  <Sticker className="h-5 w-5" /> <span className="italic opacity-80">Sticker</span>
+                                </div>
+                              )}
+                            </div>
+                          );
+                        }
+
+                        if (type === 'location') {
+                          return (
+                            <div className="flex items-center gap-3 bg-black/5 dark:bg-white/5 p-3 rounded-lg min-w-[200px]">
+                              <div className="p-2 bg-orange-100 dark:bg-orange-900/30 rounded text-orange-600 dark:text-orange-400">
+                                <MapPin className="h-6 w-6" />
+                              </div>
+                              <div className="flex flex-col gap-0.5 overflow-hidden flex-1">
+                                <span className="truncate font-bold text-sm">Localização</span>
+                                {msg.content && <span className="text-xs opacity-80 line-clamp-2">{msg.content}</span>}
+                                {msg.media_url && (
+                                  <a href={`https://www.google.com/maps?q=${msg.media_url}`} target="_blank" rel="noopener noreferrer" className="text-xs underline text-blue-500 hover:text-blue-600 mt-1">
+                                    Ver no Maps
+                                  </a>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        }
+
+                        if (type === 'contact') {
+                          return (
+                            <div className="flex items-center gap-3 bg-black/5 dark:bg-white/5 p-3 rounded-lg min-w-[200px]">
+                              <div className="p-2 bg-blue-100 dark:bg-blue-900/30 rounded text-blue-600 dark:text-blue-400">
+                                <Contact className="h-6 w-6" />
+                              </div>
+                              <div className="flex flex-col gap-0.5 overflow-hidden flex-1">
+                                <span className="truncate font-bold text-sm">Contato Compartilhado</span>
+                                <span className="text-xs font-mono">{msg.content?.split('//')[0] || 'Ver detalhes'}</span>
                               </div>
                             </div>
                           );

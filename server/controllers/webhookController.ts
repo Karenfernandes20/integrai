@@ -216,17 +216,27 @@ export const handleWebhook = async (req: Request, res: Response) => {
             }
 
             // CRM Integration (Inbound leads)
+            // CRM Integration (Inbound leads)
             if (direction === 'inbound') {
                 const checkLead = await pool.query('SELECT id FROM crm_leads WHERE phone = $1 AND (company_id = $2 OR company_id IS NULL)', [phone, companyId]);
+
                 if (checkLead.rows.length === 0) {
-                    const stageRes = await pool.query('SELECT id FROM crm_stages ORDER BY position ASC LIMIT 1');
+                    // Find the Fixed 'Leads' stage
+                    const stageRes = await pool.query("SELECT id FROM crm_stages WHERE name = 'Leads' LIMIT 1");
+
                     if (stageRes.rows.length > 0) {
+                        const stageId = stageRes.rows[0].id;
+                        console.log(`[CRM Auto-Lead] Creating new lead in 'Leads' stage (ID: ${stageId}) for ${phone}`);
+
                         await pool.query(
-                            'INSERT INTO crm_leads (name, phone, origin, stage_id, company_id, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, NOW(), NOW())',
-                            [name, phone, 'WhatsApp', stageRes.rows[0].id, companyId]
+                            `INSERT INTO crm_leads (name, phone, origin, stage_id, company_id, created_at, updated_at, description) 
+                             VALUES ($1, $2, $3, $4, $5, NOW(), NOW(), 'Criado automaticamente via WhatsApp')`,
+                            [name, phone, 'WhatsApp', stageId, companyId]
                         );
                     }
                 } else {
+                    // Optional: Update last interaction time? 
+                    // For now, strict requirement was just creation.
                     await pool.query('UPDATE crm_leads SET updated_at = NOW(), company_id = COALESCE(company_id, $1) WHERE id = $2', [companyId, checkLead.rows[0].id]);
                 }
             }
