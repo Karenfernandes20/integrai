@@ -63,15 +63,21 @@ const CampanhasPage = () => {
 
     const handleCreateCampaign = async () => {
         try {
-            // Parse contacts from text (CSV format: phone,name)
+            // Parse contacts from text
             const contacts = contactsText
                 .split('\n')
                 .filter(line => line.trim())
                 .map(line => {
-                    const [rawPhone, name] = line.split(',').map(s => s.trim());
+                    const parts = line.split(',');
+                    const rawPhone = parts[0]?.trim() || "";
+                    const rawName = parts[1]?.trim() || "";
+
                     // Limpa o telefone removendo caracteres não numéricos
-                    const phone = (rawPhone || "").replace(/\D/g, "");
-                    return { phone, name: name || phone, variables: { nome: name || phone } };
+                    const phone = rawPhone.replace(/\D/g, "");
+                    // Usa o nome se fornecido, senão usa "Cliente"
+                    const contactName = rawName || "Cliente";
+
+                    return { phone, name: contactName, variables: { nome: contactName } };
                 });
 
             if (contacts.length === 0) {
@@ -268,12 +274,15 @@ const CampanhasPage = () => {
 
                         <div>
                             <label className="block text-sm font-medium mb-1">
-                                Contatos (um por linha: telefone,nome)
+                                Contatos (Um por linha)
                             </label>
+                            <p className="text-[10px] text-muted-foreground mb-2">
+                                Formatos aceitos: <b>5538999999999</b> ou <b>5538999999999,Nome</b>
+                            </p>
                             <Textarea
                                 value={contactsText}
                                 onChange={(e) => setContactsText(e.target.value)}
-                                placeholder="5511999999999,João Silva&#10;5511888888888,Maria Santos"
+                                placeholder="5538999540230&#10;5538998969286"
                                 rows={6}
                             />
                         </div>
