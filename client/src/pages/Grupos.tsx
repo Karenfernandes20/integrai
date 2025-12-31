@@ -253,7 +253,7 @@ const GruposPage = () => {
                 </div>
 
                 <ScrollArea className="flex-1">
-                    <div className="p-2 space-y-1">
+                    <div className="px-3 py-2 space-y-1">
                         {isLoading ? (
                             <div className="text-center py-8 text-muted-foreground text-sm">
                                 Carregando grupos...
@@ -268,38 +268,40 @@ const GruposPage = () => {
                                     key={group.id}
                                     onClick={() => setSelectedGroup(group)}
                                     className={cn(
-                                        "flex items-center gap-3 p-3 rounded-lg cursor-pointer transition-colors border border-transparent",
+                                        "group flex items-center gap-3 p-3 rounded-xl cursor-pointer transition-all duration-200 border border-transparent",
                                         selectedGroup?.id === group.id
-                                            ? "bg-[#e7fce3] dark:bg-[#005c4b]/30 border-[#00a884]/20"
-                                            : "hover:bg-muted/50"
+                                            ? "bg-[#e7fce3] dark:bg-[#005c4b]/30 border-[#00a884]/20 shadow-sm"
+                                            : "hover:bg-zinc-50 dark:hover:bg-zinc-900 border-zinc-100/50 dark:border-zinc-800/50"
                                     )}
                                 >
-                                    <Avatar className="h-12 w-12 border-2 border-white dark:border-zinc-900 shadow-sm">
-                                        <AvatarImage src={group.profile_pic_url || `https://api.dicebear.com/7.x/initials/svg?seed=${group.group_name || group.contact_name || "G"}`} />
-                                        <AvatarFallback className="bg-blue-100 text-blue-600">
-                                            <Users className="h-6 w-6" />
-                                        </AvatarFallback>
-                                    </Avatar>
+                                    <div className="relative shrink-0">
+                                        <Avatar className="h-12 w-12 border-2 border-white dark:border-zinc-900 shadow-sm">
+                                            <AvatarImage src={group.profile_pic_url || `https://api.dicebear.com/7.x/initials/svg?seed=${group.group_name || group.contact_name || "G"}`} />
+                                            <AvatarFallback className="bg-blue-100 text-blue-600">
+                                                <Users className="h-6 w-6" />
+                                            </AvatarFallback>
+                                        </Avatar>
+                                    </div>
 
                                     <div className="flex-1 min-w-0">
                                         <div className="flex justify-between items-center mb-0.5">
                                             <span className={cn(
                                                 "font-semibold truncate text-[14px]",
-                                                selectedGroup?.id === group.id ? "text-[#008069] dark:text-[#00a884]" : "text-foreground"
+                                                selectedGroup?.id === group.id ? "text-[#008069] dark:text-[#00a884]" : "text-zinc-900 dark:text-zinc-100"
                                             )}>
                                                 {group.group_name || group.contact_name || "Grupo"}
                                             </span>
-                                            <span className="text-[10px] text-muted-foreground whitespace-nowrap ml-2">
+                                            <span className="text-[10px] text-muted-foreground whitespace-nowrap ml-2 opacity-80">
                                                 {formatTime(group.last_message_at)}
                                             </span>
                                         </div>
-                                        <p className="text-xs text-muted-foreground truncate">
+                                        <p className="text-[12px] text-muted-foreground truncate opacity-90 uppercase tracking-tight">
                                             {group.last_message || "Nenhuma mensagem"}
                                         </p>
                                     </div>
 
                                     {group.unread_count && group.unread_count > 0 && (
-                                        <div className="shrink-0 min-w-[20px] h-5 px-1.5 flex items-center justify-center rounded-full bg-[#25d366] text-white text-[10px] font-bold">
+                                        <div className="shrink-0 min-w-[20px] h-5 px-1.5 flex items-center justify-center rounded-full bg-[#25d366] text-white text-[10px] font-bold shadow-sm">
                                             {group.unread_count}
                                         </div>
                                     )}
