@@ -524,7 +524,10 @@ const AtendimentoPage = () => {
             last_message: newMessage.content,
             last_message_at: newMessage.sent_at,
             unread_count: newMessage.direction === 'inbound' ? 1 : 0,
-            status: newMessage.status || 'PENDING'
+            status: newMessage.status || 'PENDING',
+            is_group: newMessage.is_group,
+            group_name: newMessage.group_name,
+            profile_pic_url: newMessage.profile_pic_url
           };
         }
 

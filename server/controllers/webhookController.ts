@@ -79,7 +79,7 @@ export const handleWebhook = async (req: Request, res: Response) => {
             // UPSERT Conversation
             let conversationId: number;
             const checkConv = await pool.query(
-                `SELECT id, status, is_group, contact_name, profile_pic_url FROM whatsapp_conversations WHERE external_id = $1 AND instance = $2 AND company_id = $3`,
+                `SELECT id, status, is_group, contact_name, group_name, profile_pic_url FROM whatsapp_conversations WHERE external_id = $1 AND instance = $2 AND company_id = $3`,
                 [remoteJid, instance, companyId]
             );
 
@@ -216,6 +216,9 @@ export const handleWebhook = async (req: Request, res: Response) => {
                     ...insertedMsg.rows[0],
                     phone,
                     contact_name: (checkConv.rows.length > 0 ? checkConv.rows[0].contact_name : name) || name,
+                    is_group: checkConv.rows.length > 0 ? checkConv.rows[0].is_group : isGroup,
+                    group_name: checkConv.rows.length > 0 ? checkConv.rows[0].group_name : (isGroup ? name : null),
+                    profile_pic_url: checkConv.rows.length > 0 ? checkConv.rows[0].profile_pic_url : null,
                     remoteJid,
                     instance,
                     company_id: companyId,
