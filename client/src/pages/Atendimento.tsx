@@ -1256,35 +1256,13 @@ const AtendimentoPage = () => {
       </div>
 
       {/* Action Buttons on Hover or if Selected */}
-      <div className={
-        cn(
-          "flex items-center gap-2 mt-1 opacity-0 group-hover:opacity-100 transition-opacity justify-end",
-          selectedConversation?.id === conv.id && "opacity-100"
-        )}>
-        {(conv.status === 'PENDING' || !conv.status) && (
-          <div className="flex gap-1">
-            <Button
-              size="sm"
-              variant="ghost"
-              className="h-7 px-2 text-[10px] gap-1 text-[#008069] hover:bg-[#008069]/10 font-bold"
-              onClick={(e) => { e.stopPropagation(); handleStartAtendimento(conv); }}
-              title="Iniciar Atendimento"
-            >
-              <Play className="h-3 w-3 fill-current" /> INICIAR
-            </Button>
-            <Button
-              size="sm"
-              variant="ghost"
-              className="h-7 px-2 text-[10px] gap-1 text-red-500 hover:bg-red-50 font-bold"
-              onClick={(e) => { e.stopPropagation(); handleCloseAtendimento(conv); }}
-              title="Fechar Conversa"
-            >
-              <XCircle className="h-3 w-3" /> FECHAR
-            </Button>
-          </div>
-        )}
-        {
-          conv.status === 'OPEN' && (
+      {!conv.is_group && (
+        <div className={
+          cn(
+            "flex items-center gap-2 mt-1 opacity-0 group-hover:opacity-100 transition-opacity justify-end",
+            selectedConversation?.id === conv.id && "opacity-100"
+          )}>
+          {(conv.status === 'PENDING' || !conv.status) && (
             <div className="flex gap-1">
               <Button
                 size="sm"
@@ -1300,16 +1278,39 @@ const AtendimentoPage = () => {
                 variant="ghost"
                 className="h-7 px-2 text-[10px] gap-1 text-red-500 hover:bg-red-50 font-bold"
                 onClick={(e) => { e.stopPropagation(); handleCloseAtendimento(conv); }}
-                title="Encerrar Atendimento"
+                title="Fechar Conversa"
               >
-                <CheckCircle2 className="h-3 w-3" /> ENCERRAR
+                <XCircle className="h-3 w-3" /> FECHAR
               </Button>
             </div>
-          )
-        }
-        {/* In Closed mode, no actions shown as per spec 2.3 */}
-        {conv.status === 'CLOSED' && null}
-      </div>
+          )}
+          {
+            conv.status === 'OPEN' && (
+              <div className="flex gap-1">
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="h-7 px-2 text-[10px] gap-1 text-[#008069] hover:bg-[#008069]/10 font-bold"
+                  onClick={(e) => { e.stopPropagation(); handleStartAtendimento(conv); }}
+                  title="Iniciar Atendimento"
+                >
+                  <Play className="h-3 w-3 fill-current" /> INICIAR
+                </Button>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="h-7 px-2 text-[10px] gap-1 text-red-500 hover:bg-red-50 font-bold"
+                  onClick={(e) => { e.stopPropagation(); handleCloseAtendimento(conv); }}
+                  title="Encerrar Atendimento"
+                >
+                  <CheckCircle2 className="h-3 w-3" /> ENCERRAR
+                </Button>
+              </div>
+            )
+          }
+          {/* In Closed mode, no actions shown as per spec 2.3 */}
+        </div>
+      )}
     </div>
   );
 
@@ -1444,7 +1445,7 @@ const AtendimentoPage = () => {
                       viewMode === 'OPEN' ? "bg-[#008069] text-white shadow-sm" : "text-zinc-500 hover:text-zinc-700 hover:bg-black/5"
                     )}
                   >
-                    Abertos <span className="opacity-60 text-[9px] bg-white/20 px-1.5 rounded">{openConversations.length}</span>
+                    Atendimento <span className="opacity-60 text-[9px] bg-white/20 px-1.5 rounded">{openConversations.length}</span>
                   </button>
                   <button
                     onClick={() => setViewMode('CLOSED')}
@@ -1462,7 +1463,7 @@ const AtendimentoPage = () => {
                       viewMode === 'GROUPS' ? "bg-blue-600 text-white shadow-sm" : "text-zinc-500 hover:text-zinc-700 hover:bg-black/5"
                     )}
                   >
-                    Grupos <span className="opacity-60 text-[9px] bg-white/20 px-1.5 rounded">{groupConversations.length}</span>
+                    Mundo <span className="opacity-60 text-[9px] bg-white/20 px-1.5 rounded">{groupConversations.length}</span>
                   </button>
                 </div>
               </div>
@@ -1779,7 +1780,7 @@ const AtendimentoPage = () => {
                 <div className="flex flex-col cursor-pointer">
                   <span className="font-medium text-sm text-zinc-900 dark:text-zinc-100 flex items-center gap-2">
                     {getDisplayName(selectedConversation)}
-                    {selectedConversation.status === 'CLOSED' && (
+                    {!selectedConversation.is_group && selectedConversation.status === 'CLOSED' && (
                       <div className="flex items-center gap-2">
                         <span className="px-1.5 py-0.5 rounded bg-red-100 text-red-600 text-[9px] uppercase border border-red-200">Fechado</span>
                         <Button
@@ -1793,7 +1794,7 @@ const AtendimentoPage = () => {
                         </Button>
                       </div>
                     )}
-                    {selectedConversation.status === 'OPEN' && (
+                    {!selectedConversation.is_group && selectedConversation.status === 'OPEN' && (
                       <div className="flex items-center gap-2">
                         <span className="px-1.5 py-0.5 rounded bg-green-100 text-green-600 text-[9px] uppercase border border-green-200">Aberto</span>
                         <Button
@@ -2080,8 +2081,8 @@ const AtendimentoPage = () => {
                   className="flex-1 bg-white dark:bg-zinc-700 border-none focus-visible:ring-0 focus-visible:ring-offset-0 placeholder:text-zinc-400 min-h-[40px] py-2"
                   placeholder={
                     !selectedConversation ? "Selecione um contato" :
-                      isPending ? "Inicie o atendimento para responder" :
-                        isClosed ? "Esta conversa está encerrada (Somente Leitura)" :
+                      (isPending && !selectedConversation.is_group) ? "Inicie o atendimento para responder" :
+                        (isClosed && !selectedConversation.is_group) ? "Esta conversa está encerrada (Somente Leitura)" :
                           isReadOnly ? "Aguardando resposta de outro atendente" : "Digite uma mensagem"
                   }
                   value={newMessage}
