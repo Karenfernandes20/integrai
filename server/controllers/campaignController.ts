@@ -292,6 +292,33 @@ async function processCampaign(campaignId: number) {
     }
 }
 
+// Scheduler to check for pending campaigns
+export const checkAndStartScheduledCampaigns = async () => {
+    try {
+        if (!pool) return;
+
+        // Find due campaigns
+        const result = await pool.query(
+            "SELECT id FROM whatsapp_campaigns WHERE status = 'scheduled' AND scheduled_at <= NOW()"
+        );
+
+        for (const row of result.rows) {
+            console.log(`[Scheduler] Starting scheduled campaign ${row.id}`);
+
+            // Mark as running
+            await pool.query(
+                "UPDATE whatsapp_campaigns SET status = 'running', updated_at = NOW() WHERE id = $1",
+                [row.id]
+            );
+
+            // Trigger process
+            processCampaign(row.id);
+        }
+    } catch (error) {
+        console.error("Error checking scheduled campaigns:", error);
+    }
+};
+
 // Send WhatsApp message via Evolution API
 async function sendWhatsAppMessage(companyId: number, phone: string, message: string): Promise<boolean> {
     try {
@@ -310,8 +337,10 @@ async function sendWhatsAppMessage(companyId: number, phone: string, message: st
         if (!evolution_instance || !evolution_apikey) return false;
 
         const EVOLUTION_API_BASE = process.env.EVOLUTION_API_URL || 'https://freelasdekaren-evolution-api.nhvvzr.easypanel.host';
+        // Ensure no trailing slash
+        const baseUrl = EVOLUTION_API_BASE.replace(/\/$/, "");
 
-        const response = await fetch(`${EVOLUTION_API_BASE}/message/sendText/${evolution_instance}`, {
+        const response = await fetch(`${baseUrl}/message/sendText/${evolution_instance}`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -323,9 +352,14 @@ async function sendWhatsAppMessage(companyId: number, phone: string, message: st
             })
         });
 
+        if (!response.ok) {
+            console.error(`[Campaign] Failed Evolution send: ${response.status} - ${await response.text()}`);
+        }
+
         return response.ok;
     } catch (error) {
         console.error('Error sending WhatsApp message:', error);
         return false;
     }
 }
+

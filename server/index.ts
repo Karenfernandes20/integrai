@@ -109,5 +109,15 @@ app.set("io", io);
 runMigrations().then(() => {
   httpServer.listen(Number(port), "0.0.0.0", () => {
     console.log(`Server rodando na porta ${port}`);
+
+    // Start Campaign Scheduler (every minute)
+    console.log("Starting Campaign Scheduler...");
+    const { checkAndStartScheduledCampaigns } = require('./controllers/campaignController');
+    setInterval(() => {
+      checkAndStartScheduledCampaigns();
+    }, 60000);
+
+    // Run immediately on start
+    checkAndStartScheduledCampaigns();
   });
 });

@@ -1786,7 +1786,7 @@ const AtendimentoPage = () => {
                         </Button>
                       </div>
                     )}
-                    {!selectedConversation.is_group && selectedConversation.status === 'OPEN' && (
+                    {/* {!selectedConversation.is_group && selectedConversation.status === 'OPEN' && (
                       <div className="flex items-center gap-2">
                         <span className="px-1.5 py-0.5 rounded bg-green-100 text-green-600 text-[9px] uppercase border border-green-200">Aberto</span>
                         <Button
@@ -1799,7 +1799,7 @@ const AtendimentoPage = () => {
                           <XCircle className="h-4 w-4" />
                         </Button>
                       </div>
-                    )}
+                    )} */}
                   </span>
                   <span className="text-[10px] text-muted-foreground flex gap-1">
                     {selectedConversation.phone}
@@ -1808,7 +1808,7 @@ const AtendimentoPage = () => {
                 </div>
               </div>
               <div className="flex items-center gap-4 text-zinc-500">
-                {isPending && (
+                {/* {isPending && (
                   <div className="flex gap-2">
                     <Button size="sm" onClick={() => handleStartAtendimento()} className="bg-[#008069] hover:bg-[#006d59] text-white h-8 text-xs font-bold gap-2">
                       <Play className="h-3 w-3 fill-current" /> INICIAR ATENDIMENTO
@@ -1817,7 +1817,7 @@ const AtendimentoPage = () => {
                       <XCircle className="h-3 w-3" /> FECHAR
                     </Button>
                   </div>
-                )}
+                )} */}
                 <Search className="h-5 w-5 cursor-pointer hover:text-zinc-700" />
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>

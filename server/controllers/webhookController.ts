@@ -247,47 +247,49 @@ export const handleWebhook = async (req: Request, res: Response) => {
 
             // CRM Integration (Inbound leads)
             if (direction === 'inbound') {
+                // Check if contact is "Registered" in the contact list for this company/instance
+                // We consider "Registered" if they exist in whatsapp_contacts with a non-default name.
+                // OR if the user simply implies "If not in my saved contacts" (which we sync to whatsapp_contacts).
+                const contactCheck = await pool.query(
+                    `SELECT id FROM whatsapp_contacts 
+                      WHERE phone = $1 AND (company_id = $2 OR instance = $3)
+                      AND name IS NOT NULL AND name != '' AND name != $1`,
+                    [phone, companyId, instance]
+                );
+                const isRegistered = contactCheck.rows.length > 0;
+
                 const checkLead = await pool.query(
                     'SELECT id, stage_id FROM crm_leads WHERE phone = $1 AND (company_id = $2 OR company_id IS NULL)',
                     [phone, companyId]
                 );
 
-                // Fetch stage IDs for names to handle movement
+                // Fetch stage IDs
                 const stagesRes = await pool.query("SELECT id, name FROM crm_stages");
                 const stagesMap = stagesRes.rows.reduce((acc: any, s: any) => {
                     acc[s.name.toUpperCase()] = s.id;
                     return acc;
                 }, {});
 
-                const pendingStageId = stagesMap['PENDENTES'] || stagesMap['LEADS'] || null;
+                // Prioritize 'Leads' stage ID, then 'PENDENTES'
+                const leadsStageId = stagesMap['LEADS'] || stagesMap['PENDENTES'] || null;
                 const closedStageId = stagesMap['FECHADOS'] || stagesMap['FECHADO'] || null;
 
                 if (checkLead.rows.length === 0) {
-                    if (pendingStageId) {
-                        console.log(`[CRM Auto-Lead] Creating new lead in 'PENDENTES' stage for ${phone}`);
+                    // Only create lead if NOT registered in contacts AND we have a valid Leads stage
+                    if (!isRegistered && leadsStageId) {
+                        console.log(`[CRM Auto-Lead] Contact ${phone} is not in contact list. Creating new lead in 'Leads' stage.`);
                         await pool.query(
                             `INSERT INTO crm_leads (name, phone, origin, stage_id, company_id, created_at, updated_at, description) 
-                             VALUES ($1, $2, $3, $4, $5, NOW(), NOW(), 'Criado automaticamente via WhatsApp')`,
-                            [name, phone, 'WhatsApp', pendingStageId, companyId]
+                             VALUES ($1, $2, $3, $4, $5, NOW(), NOW(), 'Criado automaticamente - Novo Contato')`,
+                            [name, phone, 'WhatsApp', leadsStageId, companyId]
                         );
                     }
                 } else {
                     const leadId = checkLead.rows[0].id;
-                    const currentStageId = checkLead.rows[0].stage_id;
-
-                    // Logic: If in FECHADOS, move to PENDENTES. If in ABERTOS, stay in ABERTOS.
-                    if (closedStageId && currentStageId === closedStageId && pendingStageId) {
-                        console.log(`[CRM Auto-Lead] Moving lead ${leadId} from 'FECHADOS' to 'PENDENTES'`);
-                        await pool.query(
-                            'UPDATE crm_leads SET stage_id = $1, updated_at = NOW(), company_id = COALESCE(company_id, $2) WHERE id = $3',
-                            [pendingStageId, companyId, leadId]
-                        );
-                    } else {
-                        await pool.query(
-                            'UPDATE crm_leads SET updated_at = NOW(), company_id = COALESCE(company_id, $1) WHERE id = $2',
-                            [companyId, leadId]
-                        );
-                    }
+                    await pool.query(
+                        'UPDATE crm_leads SET updated_at = NOW(), company_id = COALESCE(company_id, $1) WHERE id = $2',
+                        [companyId, leadId]
+                    );
                 }
             }
         }
