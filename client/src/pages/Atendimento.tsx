@@ -1205,8 +1205,8 @@ const AtendimentoPage = () => {
     <div className="flex h-[calc(100vh-4rem)] overflow-hidden bg-background shadow-none border-none" onClick={() => setShowEmojiPicker(false)}>
       {/* Sidebar - Lista de Conversas / Contatos */}
       <div className={cn(
-        "flex flex-col border-r bg-white dark:bg-zinc-950 transition-all duration-300 shadow-sm z-20",
-        selectedConversation ? "w-[380px]" : "flex-1"
+        "flex flex-col border-r bg-white dark:bg-zinc-950 transition-all duration-300 shadow-sm z-20 shrink-0",
+        "w-full md:w-[380px]"
       )}>
         <Tabs
           value={activeTab}
@@ -1295,9 +1295,7 @@ const AtendimentoPage = () => {
               <ScrollArea className="flex-1">
                 <div className="flex flex-col py-3">
                   {/* DYNAMIC LIST BASED ON VIEWMODE */}
-                  {viewMode === 'ALL' && (
-                    conversations.map(conv => renderConversationCard(conv))
-                  )}
+
                   {viewMode === 'PENDING' && (
                     pendingConversations.map(conv => renderConversationCard(conv))
                   )}
