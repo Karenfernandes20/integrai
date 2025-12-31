@@ -88,6 +88,15 @@ const io = new Server(httpServer, {
 
 io.on("connection", (socket) => {
   console.log("Client connected via Socket.IO:", socket.id);
+
+  socket.on("join:company", (companyId: string | number) => {
+    if (companyId) {
+      const room = `company_${companyId}`;
+      socket.join(room);
+      console.log(`Socket ${socket.id} joined room ${room}`);
+    }
+  });
+
   socket.on("disconnect", () => {
     console.log("Client disconnected:", socket.id);
   });

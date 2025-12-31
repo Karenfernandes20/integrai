@@ -14,7 +14,13 @@ import {
   Play,
   CheckCircle2,
   RotateCcw,
-  CalendarCheck
+  CalendarCheck,
+  Image,
+  FileText,
+  Mic,
+  Video,
+  MapPin,
+  Contact
 } from "lucide-react";
 import { FollowUpModal } from "../components/follow-up/FollowUpModal";
 import { toast } from "sonner";
@@ -59,6 +65,8 @@ interface Message {
   sent_at: string;
   status?: string;
   external_id?: string;
+  message_type?: string;
+  media_url?: string;
 }
 
 interface Contact {
@@ -290,6 +298,11 @@ const AtendimentoPage = () => {
     socket.on("connect", () => {
       console.log("Connected to socket server");
       setSocketStatus("connected");
+
+      if (user?.company_id) {
+        socket.emit("join:company", user.company_id);
+      }
+
       fetchConversations(); // Refresh list on connect
     });
 
@@ -1568,8 +1581,75 @@ const AtendimentoPage = () => {
                           : "bg-white dark:bg-[#202c33] text-zinc-900 dark:text-zinc-100 rounded-lg rounded-tl-none"
                       )}
                     >
-                      {/* Tail CSS pseudo-element simulation could be more complex, but using rounded corners is decent for now */}
-                      <span className="block pr-12 pb-1 whitespace-pre-wrap">{msg.content}</span>
+                      {/* Render Message Content with Media Support */}
+                      {(() => {
+                        const type = msg.message_type || 'text';
+
+                        if (type === 'image') {
+                          return (
+                            <div className="flex flex-col gap-1">
+                              {msg.media_url ? (
+                                <div className="relative rounded-lg overflow-hidden bg-black/5 min-w-[200px] min-h-[150px]">
+                                  <img src={msg.media_url} alt="Imagem" className="w-full h-auto object-cover max-h-[300px]" loading="lazy" />
+                                </div>
+                              ) : (
+                                <div className="flex items-center gap-2 bg-black/10 dark:bg-white/10 p-3 rounded-lg">
+                                  <Image className="h-5 w-5" /> <span className="italic opacity-80">Imagem indisponível</span>
+                                </div>
+                              )}
+                              {msg.content && <span className="whitespace-pre-wrap pt-1">{msg.content}</span>}
+                            </div>
+                          );
+                        }
+
+                        if (type === 'audio') {
+                          return (
+                            <div className="flex items-center gap-2 min-w-[200px]">
+                              <div className="p-2 bg-zinc-200 dark:bg-zinc-700 rounded-full">
+                                <Mic className="h-5 w-5" />
+                              </div>
+                              <div className="flex flex-col flex-1">
+                                {msg.media_url ? (
+                                  <audio controls src={msg.media_url} className="w-full h-8" />
+                                ) : (
+                                  <span className="italic opacity-80">Áudio indisponível</span>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        }
+
+                        if (type === 'video') {
+                          return (
+                            <div className="flex flex-col gap-1">
+                              {msg.media_url ? (
+                                <video controls src={msg.media_url} className="w-full max-h-[300px] rounded-lg bg-black" />
+                              ) : (
+                                <div className="flex items-center gap-2 bg-black/10 dark:bg-white/10 p-3 rounded-lg">
+                                  <Video className="h-5 w-5" /> <span className="italic opacity-80">Vídeo indisponível</span>
+                                </div>
+                              )}
+                              {msg.content && <span className="whitespace-pre-wrap pt-1">{msg.content}</span>}
+                            </div>
+                          );
+                        }
+
+                        if (type === 'document') {
+                          return (
+                            <div className="flex items-center gap-3 bg-black/5 dark:bg-white/5 p-2 rounded-lg min-w-[200px]">
+                              <div className="p-2 bg-red-100 dark:bg-red-900/30 rounded text-red-600 dark:text-red-400">
+                                <FileText className="h-6 w-6" />
+                              </div>
+                              <div className="flex flex-col gap-0.5 overflow-hidden flex-1">
+                                <span className="truncate font-medium text-sm">{msg.content || 'Documento'}</span>
+                                {msg.media_url && <a href={msg.media_url} target="_blank" rel="noopener noreferrer" className="text-xs underline opacity-70 hover:opacity-100">Baixar arquivo</a>}
+                              </div>
+                            </div>
+                          );
+                        }
+
+                        return <span className="block pr-12 pb-1 whitespace-pre-wrap break-words">{msg.content}</span>;
+                      })()}
                       <span className="absolute right-2 bottom-1 text-[10px] flex items-center gap-1 text-zinc-500 dark:text-zinc-400">
                         {formatTime(msg.sent_at)}
                         {msg.direction === "outbound" && <CheckCheck className="h-3 w-3 text-[#53bdeb]" />}

@@ -301,18 +301,49 @@ export const deleteFinancialTransaction = async (req: Request, res: Response) =>
     const { id } = req.params;
 
     // Check ownership
-    const check = await pool.query('SELECT company_id FROM financial_transactions WHERE id = $1', [id]);
+    const check = await pool.query('SELECT company_id, status FROM financial_transactions WHERE id = $1', [id]);
     if (check.rows.length === 0) return res.status(404).json({ error: 'Transaction not found' });
 
     if (user.role !== 'SUPERADMIN' && check.rows[0].company_id && check.rows[0].company_id !== userCompanyId) {
       return res.status(403).json({ error: 'Permission denied' });
     }
 
-    const result = await pool.query('DELETE FROM financial_transactions WHERE id = $1', [id]);
-    res.json({ message: 'Transaction deleted successfully' });
+    // SOFT DELETE: Mark as excluded instead of deleting
+    await pool.query("UPDATE financial_transactions SET status = 'excluded', updated_at = NOW() WHERE id = $1", [id]);
+    res.json({ message: 'Transaction marked as excluded' });
   } catch (error) {
     console.error('Error deleting transaction:', error);
     res.status(500).json({ error: 'Failed to delete transaction' });
+  }
+};
+
+export const reactivateFinancialTransaction = async (req: Request, res: Response) => {
+  try {
+    if (!pool) return res.status(500).json({ error: 'Database not configured' });
+    const user = (req as any).user;
+    const userCompanyId = user?.company_id;
+    const { id } = req.params;
+
+    // Check ownership
+    const check = await pool.query('SELECT company_id, paid_at FROM financial_transactions WHERE id = $1', [id]);
+    if (check.rows.length === 0) return res.status(404).json({ error: 'Transaction not found' });
+
+    if (user.role !== 'SUPERADMIN' && check.rows[0].company_id && check.rows[0].company_id !== userCompanyId) {
+      return res.status(403).json({ error: 'Permission denied' });
+    }
+
+    // Determine status: if paid_at exists, go to paid, else pending
+    const newStatus = check.rows[0].paid_at ? 'paid' : 'pending';
+
+    const result = await pool.query(
+      `UPDATE financial_transactions SET status = $1, updated_at = NOW() WHERE id = $2 RETURNING *`,
+      [newStatus, id]
+    );
+
+    res.json(result.rows[0]);
+  } catch (error) {
+    console.error('Error reactivating transaction:', error);
+    res.status(500).json({ error: 'Failed to reactivate' });
   }
 };
 

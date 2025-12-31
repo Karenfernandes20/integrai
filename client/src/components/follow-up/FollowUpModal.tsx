@@ -29,6 +29,7 @@ export function FollowUpModal({ isOpen, onClose, initialData }: FollowUpModalPro
         title: "",
         description: "",
         type: "whatsapp",
+        priority: "medium",
         scheduled_at: format(new Date(Date.now() + 3600000), "yyyy-MM-dd'T'HH:mm"), // 1 hour later
         user_id: user?.id || ""
     });
@@ -98,6 +99,7 @@ export function FollowUpModal({ isOpen, onClose, initialData }: FollowUpModalPro
                                 <SelectContent>
                                     <SelectItem value="whatsapp">WhatsApp</SelectItem>
                                     <SelectItem value="call">Ligar</SelectItem>
+                                    <SelectItem value="email">E-mail</SelectItem>
                                     <SelectItem value="wait_reply">Aguardar Resposta</SelectItem>
                                     <SelectItem value="reactivate">Reativar</SelectItem>
                                     <SelectItem value="billing">Cobrança</SelectItem>
@@ -116,6 +118,20 @@ export function FollowUpModal({ isOpen, onClose, initialData }: FollowUpModalPro
                                 required
                             />
                         </div>
+                    </div>
+
+                    <div className="grid gap-2">
+                        <Label htmlFor="priority">Prioridade</Label>
+                        <Select value={formData.priority} onValueChange={(val) => setFormData({ ...formData, priority: val })}>
+                            <SelectTrigger>
+                                <SelectValue placeholder="Selecione a prioridade" />
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="low">Baixa</SelectItem>
+                                <SelectItem value="medium">Média</SelectItem>
+                                <SelectItem value="high">Alta</SelectItem>
+                            </SelectContent>
+                        </Select>
                     </div>
 
                     <div className="grid gap-2">

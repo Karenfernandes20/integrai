@@ -115,25 +115,76 @@ export const handleWebhook = async (req: Request, res: Response) => {
                 conversationId = newConv.rows[0].id;
             }
 
-            // 2. Insert Message
+            // 2. Insert Message, Media & Type Handling
             let content = '';
+            let messageType = 'text';
+            let mediaUrl: string | null = null;
+
             const m = msg.message;
-            if (m?.conversation) content = m.conversation;
-            else if (m?.extendedTextMessage?.text) content = m.extendedTextMessage.text;
-            else if (m?.imageMessage?.caption) content = m.imageMessage.caption;
-            else if (m?.videoMessage?.caption) content = m.videoMessage.caption;
-            else if (m?.buttonsResponseMessage?.selectedButtonId) content = m.buttonsResponseMessage.selectedButtonId;
-            else if (m?.listResponseMessage?.title) content = m.listResponseMessage.title;
-            else content = '[Mídia/Tipo não suportado]';
+            // Infer type safely
+            const rawType = msg.messageType || (m ? Object.keys(m)[0] : 'unknown');
+
+            if (m?.conversation) {
+                content = m.conversation;
+                messageType = 'text';
+            }
+            else if (m?.extendedTextMessage?.text) {
+                content = m.extendedTextMessage.text;
+                messageType = 'text';
+            }
+            else if (m?.imageMessage) {
+                messageType = 'image';
+                content = m.imageMessage.caption || '';
+                // Evolution might not provide direct URL in webhook, but let's try standard fields or fallback to base64 indication
+                mediaUrl = m.imageMessage.url || null;
+            }
+            else if (m?.videoMessage) {
+                messageType = 'video';
+                content = m.videoMessage.caption || '';
+                mediaUrl = m.videoMessage.url || null;
+            }
+            else if (m?.audioMessage) {
+                messageType = 'audio';
+                mediaUrl = m.audioMessage.url || null;
+            }
+            else if (m?.documentMessage) {
+                messageType = 'document';
+                content = m.documentMessage.fileName || m.documentMessage.caption || m.documentMessage.title || '';
+                mediaUrl = m.documentMessage.url || null;
+            }
+            else if (m?.stickerMessage) {
+                messageType = 'sticker';
+                mediaUrl = m.stickerMessage.url || null;
+            }
+            else if (m?.locationMessage) {
+                messageType = 'location';
+                content = `${m.locationMessage.degreesLatitude}, ${m.locationMessage.degreesLongitude}`;
+            }
+            else if (m?.contactMessage) {
+                messageType = 'contact';
+                content = m.contactMessage.displayName || 'Contato';
+            }
+            else if (m?.buttonsResponseMessage?.selectedButtonId) {
+                content = m.buttonsResponseMessage.selectedButtonId;
+                messageType = 'text';
+            }
+            else if (m?.listResponseMessage?.title) {
+                content = m.listResponseMessage.title;
+                messageType = 'text';
+            }
+            else {
+                content = '[Mídia/Tipo não suportado: ' + rawType + ']';
+                messageType = 'unknown';
+            }
 
             const sent_at = new Date((msg.messageTimestamp || Math.floor(Date.now() / 1000)) * 1000);
 
             const insertedMsg = await pool.query(
-                `INSERT INTO whatsapp_messages (conversation_id, direction, content, sent_at, status, external_id) 
-                 VALUES ($1, $2, $3, $4, 'received', $5) 
+                `INSERT INTO whatsapp_messages (conversation_id, direction, content, sent_at, status, external_id, message_type, media_url) 
+                 VALUES ($1, $2, $3, $4, 'received', $5, $6, $7) 
                  ON CONFLICT DO NOTHING
-                 RETURNING id, conversation_id, direction, content, sent_at, status, external_id`,
-                [conversationId, direction, content, sent_at, msg.key.id]
+                 RETURNING id, conversation_id, direction, content, sent_at, status, external_id, message_type, media_url`,
+                [conversationId, direction, content, sent_at, msg.key.id, messageType, mediaUrl]
             );
 
             if (insertedMsg.rows.length === 0) return res.status(200).send(); // Avoid processing duplicates
@@ -150,9 +201,10 @@ export const handleWebhook = async (req: Request, res: Response) => {
 
             // EMIT SOCKET EVENT
             const io = req.app.get('io');
-            if (io) {
+            if (io && companyId) {
                 const newMessageObj = insertedMsg.rows[0];
-                io.emit('message:received', {
+                const room = `company_${companyId}`;
+                io.to(room).emit('message:received', {
                     ...newMessageObj,
                     phone: phone,
                     contact_name: name,
@@ -229,6 +281,17 @@ export const getMessages = async (req: Request, res: Response) => {
         if (!pool) return res.status(500).json({ error: 'Database not configured' });
 
         const { conversationId } = req.params;
+        const user = (req as any).user;
+        const companyId = user?.company_id;
+
+        // Verify that the conversation belongs to the user's company
+        const check = await pool.query('SELECT company_id FROM whatsapp_conversations WHERE id = $1', [conversationId]);
+        if (check.rows.length === 0) return res.status(404).json({ error: 'Conversation not found' });
+
+        if (user.role !== 'SUPERADMIN' && check.rows[0].company_id && check.rows[0].company_id !== companyId) {
+            return res.status(403).json({ error: 'Você não tem permissão para acessar estas mensagens.' });
+        }
+
         const result = await pool.query(
             'SELECT * FROM whatsapp_messages WHERE conversation_id = $1 ORDER BY sent_at ASC',
             [conversationId]

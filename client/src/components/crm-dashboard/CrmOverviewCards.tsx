@@ -16,16 +16,25 @@ export const CrmOverviewCards = ({ data }: { data?: any }) => {
         <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3">
             {cards.map((card, idx) => {
                 const isWhatsapp = card.label === "Conexão WhatsApp";
-                const isOnline = card.value === "Online";
-                const isConnecting = card.value === "Conectando...";
+                let iconColor = card.color;
+                let bgColor = card.bg;
 
-                const iconColor = isWhatsapp
-                    ? (isOnline ? "text-emerald-500" : isConnecting ? "text-yellow-500" : "text-red-500")
-                    : card.color;
-
-                const bgColor = isWhatsapp
-                    ? (isOnline ? "bg-emerald-500/10" : isConnecting ? "bg-yellow-500/10" : "bg-red-500/10")
-                    : card.bg;
+                if (isWhatsapp) {
+                    const status = String(card.value).toLowerCase();
+                    if (status === 'online') {
+                        iconColor = "text-emerald-500";
+                        bgColor = "bg-emerald-500/10";
+                    } else if (status.includes('conectando')) {
+                        iconColor = "text-yellow-500";
+                        bgColor = "bg-yellow-500/10";
+                    } else if (status.includes('qr')) {
+                        iconColor = "text-orange-500";
+                        bgColor = "bg-orange-500/10";
+                    } else {
+                        iconColor = "text-red-500";
+                        bgColor = "bg-red-500/10";
+                    }
+                }
 
                 return (
                     <Card key={idx} className="border-none shadow-sm hover:shadow-md transition-all hover:-translate-y-1">

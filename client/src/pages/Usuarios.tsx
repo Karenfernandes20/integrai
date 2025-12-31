@@ -9,8 +9,8 @@ import {
 } from "../components/ui/tabs";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { userService, User } from "../services/userService";
-import { Loader2, Trash2 } from "lucide-react";
 import { useState } from "react";
+import { Loader2, Trash2, Power, PowerOff } from "lucide-react";
 
 const UsuariosPage = () => {
   const queryClient = useQueryClient();
@@ -46,6 +46,13 @@ const UsuariosPage = () => {
 
   const deleteMutation = useMutation({
     mutationFn: (id: number) => userService.deleteUser(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["users"] });
+    },
+  });
+
+  const updateMutation = useMutation({
+    mutationFn: ({ id, data }: { id: number, data: Partial<User> }) => userService.updateUser(id, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["users"] });
     },
@@ -252,16 +259,30 @@ const UsuariosPage = () => {
                           <span className="font-bold text-sm">{user.full_name || 'Usuário sem nome'}</span>
                           <div className="flex items-center gap-2">
                             <span className="text-[11px] text-muted-foreground">{user.email || user.phone}</span>
-                            <Badge variant="outline" className={`text-[9px] h-4 font-bold border-none uppercase px-1.5 ${user.user_type === 'passenger' ? 'bg-emerald-100 text-emerald-700' :
-                              user.user_type === 'driver' ? 'bg-amber-100 text-amber-700' : 'bg-purple-100 text-purple-700'
-                              }`}>
-                              {user.user_type ? (user.user_type === 'passenger' ? 'Passageiro' : 'Motorista') : `SISTEMA (${user.role})`}
-                            </Badge>
+                            <div className="flex gap-1">
+                              <Badge variant="outline" className={`text-[9px] h-4 font-bold border-none uppercase px-1.5 ${user.user_type === 'passenger' ? 'bg-emerald-100 text-emerald-700' :
+                                user.user_type === 'driver' ? 'bg-amber-100 text-amber-700' : 'bg-purple-100 text-purple-700'
+                                }`}>
+                                {user.user_type ? (user.user_type === 'passenger' ? 'Passageiro' : 'Motorista') : `SISTEMA (${user.role})`}
+                              </Badge>
+                              <Badge variant="outline" className={`text-[9px] h-4 font-bold border-none uppercase px-1.5 ${user.is_active ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                                {user.is_active ? 'ATIVO' : 'INATIVO'}
+                              </Badge>
+                            </div>
                           </div>
                         </div>
                       </div>
 
                       <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className={user.is_active ? "h-8 w-8 text-zinc-400 hover:text-red-500 hover:bg-red-50" : "h-8 w-8 text-green-500 hover:text-green-600 hover:bg-green-50"}
+                          onClick={() => updateMutation.mutate({ id: user.id, data: { is_active: !user.is_active } })}
+                          title={user.is_active ? "Desativar" : "Ativar"}
+                        >
+                          {user.is_active ? <PowerOff className="h-4 w-4" /> : <Power className="h-4 w-4" />}
+                        </Button>
                         <Button
                           variant="ghost"
                           size="icon"

@@ -106,7 +106,7 @@ interface Transaction {
   id: number;
   description: string;
   amount: number;
-  status: "pending" | "paid" | "cancelled";
+  status: "pending" | "paid" | "excluded" | "cancelled";
   type: "payable" | "receivable";
   due_date: string | null;
   issue_date: string | null;
@@ -280,7 +280,7 @@ const FinanceiroPage = () => {
   };
 
   const handleDelete = async (id: number) => {
-    if (!confirm("Tem certeza que deseja excluir este registro?")) return;
+    if (!confirm("Deseja excluir este registro? Ele ficará visível como 'Excluído' e poderá ser reativado.")) return;
     try {
       const res = await fetch(`/api/financial/transactions/${id}`, {
         method: "DELETE",
@@ -289,6 +289,19 @@ const FinanceiroPage = () => {
       if (res.ok) await fetchData();
     } catch (error) {
       console.error("Erro ao excluir", error);
+    }
+  };
+
+  const handleReactivate = async (id: number) => {
+    if (!confirm("Deseja reativar esta movimentação?")) return;
+    try {
+      const res = await fetch(`/api/financial/transactions/${id}/reactivate`, {
+        method: "PUT",
+        headers: { "Authorization": `Bearer ${token}` }
+      });
+      if (res.ok) await fetchData();
+    } catch (error) {
+      console.error("Erro ao reativar", error);
     }
   };
 
@@ -434,7 +447,13 @@ const FinanceiroPage = () => {
                           {t.type === 'receivable' ? 'Marcar como Recebido' : 'Marcar como Pago'}
                         </DropdownMenuItem>
                         <DropdownMenuItem onClick={() => { setFormData(t); setIsDialogOpen(true); }}>Editar</DropdownMenuItem>
-                        <DropdownMenuItem onClick={() => handleDelete(t.id)} className="text-red-600">Excluir</DropdownMenuItem>
+                        {t.status === 'excluded' || t.status === 'cancelled' ? (
+                          <DropdownMenuItem onClick={() => handleReactivate(t.id)} className="text-blue-600 font-bold">
+                            Reativar Movimentação
+                          </DropdownMenuItem>
+                        ) : (
+                          <DropdownMenuItem onClick={() => handleDelete(t.id)} className="text-red-600">Excluir</DropdownMenuItem>
+                        )}
                       </DropdownMenuContent>
                     </DropdownMenu>
                   </div>
@@ -740,6 +759,14 @@ const FinanceiroPage = () => {
     const now = startOfDay(new Date());
     const dueDate = t.due_date ? parseISO(t.due_date) : null;
     const itemStatus = t.status;
+
+    if (itemStatus === "excluded" || itemStatus === "cancelled") {
+      return (
+        <Badge variant="outline" className="border-red-200 text-red-500 bg-red-50 text-[10px] uppercase font-bold text-decoration-line-through">
+          Excluído
+        </Badge>
+      )
+    }
 
     if (itemStatus === "paid") {
       return (

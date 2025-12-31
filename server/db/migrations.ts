@@ -287,6 +287,15 @@ const runWhatsappMigrations = async () => {
             );
         `);
 
+        // Add priority column safely
+        const addPriorityColumn = async () => {
+            if (!pool) return;
+            try {
+                await pool.query(`ALTER TABLE crm_follow_ups ADD COLUMN priority VARCHAR(20) DEFAULT 'medium'`); // low, medium, high
+            } catch (e) { }
+        };
+        await addPriorityColumn();
+
         // Index for performance
         await pool.query('CREATE INDEX IF NOT EXISTS idx_follow_ups_company_user ON crm_follow_ups(company_id, user_id)');
         await pool.query('CREATE INDEX IF NOT EXISTS idx_follow_ups_status_date ON crm_follow_ups(status, scheduled_at)');

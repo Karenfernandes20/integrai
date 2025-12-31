@@ -92,7 +92,7 @@ router.get('/reports/dre', authenticateToken, authorizeRole(['SUPERADMIN', 'ADMI
 router.get('/reports/breakdown', authenticateToken, authorizeRole(['SUPERADMIN', 'ADMIN']), getBreakdown);
 router.get('/reports/indicators', authenticateToken, authorizeRole(['SUPERADMIN', 'ADMIN']), getFinancialIndicators);
 
-import { getPayables, getReceivables, getReceivablesByCity, getCashFlow, getFinancialStats, createFinancialTransaction, updateFinancialTransaction, deleteFinancialTransaction, markAsPaid } from './controllers/financialController';
+import { getPayables, getReceivables, getReceivablesByCity, getCashFlow, getFinancialStats, createFinancialTransaction, updateFinancialTransaction, deleteFinancialTransaction, reactivateFinancialTransaction, markAsPaid } from './controllers/financialController';
 // Financial routes
 router.get('/financial/payables', authenticateToken, getPayables);
 router.get('/financial/receivables', authenticateToken, getReceivables);
@@ -102,6 +102,7 @@ router.get('/financial/stats', authenticateToken, getFinancialStats);
 router.post('/financial/transactions', authenticateToken, createFinancialTransaction);
 router.put('/financial/transactions/:id', authenticateToken, updateFinancialTransaction);
 router.delete('/financial/transactions/:id', authenticateToken, deleteFinancialTransaction);
+router.put('/financial/transactions/:id/reactivate', authenticateToken, reactivateFinancialTransaction);
 router.post('/financial/transactions/:id/pay', authenticateToken, markAsPaid);
 
 // Placeholder for other routes

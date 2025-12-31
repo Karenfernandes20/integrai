@@ -49,7 +49,9 @@ const getEvolutionConnectionStateInternal = async (user: any) => {
         const state = data?.instance?.state || data?.state;
 
         if (state === 'open') return 'Online';
-        if (state === 'connecting') return 'Conectando...';
+        if (state === 'connecting') return 'Conectando';
+        if (state === 'close') return 'Offline';
+        if (typeof state === 'string' && (state.toLowerCase().includes('qr') || state.toLowerCase().includes('scann'))) return 'QR Code pendente';
         return 'Offline';
     } catch (error) {
         return 'Offline';

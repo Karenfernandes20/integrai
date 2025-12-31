@@ -55,7 +55,9 @@ export const startConversation = async (req: AuthenticatedRequest, res: Response
         await auditLog(Number(id), userId, 'LOCK', { prev_status: conv.status });
 
         // Emit socket event
-        req.app.get('io')?.emit('conversation:update', { id, status: 'OPEN', user_id: userId });
+        if (companyId) {
+            req.app.get('io')?.to(`company_${companyId}`).emit('conversation:update', { id, status: 'OPEN', user_id: userId });
+        }
 
         return res.json({ status: 'success', conversation_id: id });
     } catch (error) {
@@ -96,7 +98,9 @@ export const closeConversation = async (req: AuthenticatedRequest, res: Response
         );
 
         await auditLog(Number(id), userId, 'CLOSE');
-        req.app.get('io')?.emit('conversation:update', { id, status: 'CLOSED', closed_by: userId });
+        if (companyId) {
+            req.app.get('io')?.to(`company_${companyId}`).emit('conversation:update', { id, status: 'CLOSED', closed_by: userId });
+        }
 
         return res.json({ status: 'success' });
 
@@ -144,7 +148,9 @@ export const updateContactNameWithAudit = async (req: AuthenticatedRequest, res:
         // Evolution V2 might handle this. Check evolutionController or docs.
 
         // Emit Socket
-        req.app.get('io')?.emit('contact:update', { phone, name, conversationId: id }); // Should trigger reload or local update
+        if (companyId) {
+            req.app.get('io')?.to(`company_${companyId}`).emit('contact:update', { phone, name, conversationId: id }); // Should trigger reload or local update
+        }
 
         return res.json({ status: 'success', name });
 
@@ -205,7 +211,9 @@ export const deleteConversation = async (req: AuthenticatedRequest, res: Respons
         await pool.query('DELETE FROM whatsapp_audit_logs WHERE conversation_id = $1', [id]);
 
         // Broadcast
-        req.app.get('io')?.emit('conversation:delete', { id });
+        if (convCompanyId) {
+            req.app.get('io')?.to(`company_${convCompanyId}`).emit('conversation:delete', { id });
+        }
 
         // Log this action generally? Too late if conversation is gone.
         console.log(`User ${userId} deleted conversation ${id}`);
