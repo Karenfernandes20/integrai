@@ -31,8 +31,13 @@ export const AdminLayout = () => {
   const { user, logout } = useAuth();
 
   const handleLogout = () => {
+    const role = user?.role;
     logout();
-    navigate("/login");
+    if (role === 'SUPERADMIN') {
+      navigate("/superlogin");
+    } else {
+      navigate("/login");
+    }
   };
 
   // Dynamic Favicon Update

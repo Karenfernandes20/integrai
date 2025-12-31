@@ -13,7 +13,8 @@ const AdminRoute = ({ roles }: AdminRouteProps) => {
     }
 
     if (!user) {
-        return <Navigate to="/login" replace />;
+        const isSuperRoute = roles.includes('SUPERADMIN') && roles.length === 1;
+        return <Navigate to={isSuperRoute ? "/superlogin" : "/login"} replace />;
     }
 
     if (!roles.includes(user.role)) {
