@@ -172,9 +172,8 @@ const AtendimentoPage = () => {
     return map;
   }, [importedContacts]);
 
-  // Notification Sound Function
+  // Notification Sound Function (iPhone-like Tri-tone synthesis)
   const playNotificationSound = async () => {
-    // Don't play if muted
     if (mutedRef.current) return;
 
     try {
@@ -184,33 +183,47 @@ const AtendimentoPage = () => {
         await audioContext.resume();
       }
 
-      // Create oscillator for beep sound
-      const oscillator = audioContext.createOscillator();
-      const gainNode = audioContext.createGain();
+      const playTone = (freq: number, start: number, duration: number) => {
+        const osc = audioContext.createOscillator();
+        const gain = audioContext.createGain();
 
-      oscillator.connect(gainNode);
-      gainNode.connect(audioContext.destination);
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(freq, start);
 
-      // Configure sound
-      oscillator.frequency.value = 1200; // Frequency in Hz - bit higher for clarity
-      oscillator.type = 'sine';
+        gain.gain.setValueAtTime(0, start);
+        gain.gain.linearRampToValueAtTime(volumeRef.current, start + 0.01);
+        gain.gain.exponentialRampToValueAtTime(0.01, start + duration);
 
-      // Volume envelope (respecting user volume setting)
-      const maxVolume = volumeRef.current; // Use latest volume
-      gainNode.gain.setValueAtTime(0, audioContext.currentTime);
-      gainNode.gain.linearRampToValueAtTime(maxVolume, audioContext.currentTime + 0.05);
-      gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.5);
+        osc.connect(gain);
+        gain.connect(audioContext.destination);
 
-      // Play
-      oscillator.start(audioContext.currentTime);
-      oscillator.stop(audioContext.currentTime + 0.5);
+        osc.start(start);
+        osc.stop(start + duration);
+      };
 
-      // Close context after done to free resources
-      setTimeout(() => {
-        audioContext.close();
-      }, 1000);
+      const now = audioContext.currentTime;
+      // iPhone-like Tri-tone (approximate frequencies)
+      playTone(1050, now, 0.15);       // Note 1
+      playTone(700, now + 0.15, 0.15);   // Note 2
+      playTone(850, now + 0.3, 0.4);    // Note 3
+
+      setTimeout(() => audioContext.close(), 2000);
     } catch (error) {
       console.error('Error playing notification sound:', error);
+    }
+  };
+
+  const showSystemNotification = (title: string, body: string, icon?: string) => {
+    if (!("Notification" in window)) return;
+
+    if (Notification.permission === "granted") {
+      new Notification(title, { body, icon });
+    } else if (Notification.permission !== "denied") {
+      Notification.requestPermission().then(permission => {
+        if (permission === "granted") {
+          new Notification(title, { body, icon });
+        }
+      });
     }
   };
 
@@ -419,9 +432,13 @@ const AtendimentoPage = () => {
     socket.on("message:received", (newMessage: any) => {
       console.log("New message received via socket:", newMessage);
 
-      // Play notification sound for inbound messages
+      // Play notification sound and show alert for inbound messages
       if (newMessage.direction === 'inbound') {
         playNotificationSound();
+        showSystemNotification(
+          `Nova mensagem de ${newMessage.contact_name || newMessage.phone}`,
+          newMessage.content || "Mídia recebida"
+        );
       }
 
       // 1. Se a mensagem for da conversa aberta, adiciona na lista
