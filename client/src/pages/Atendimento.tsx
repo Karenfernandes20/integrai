@@ -1536,12 +1536,68 @@ const AtendimentoPage = () => {
                   >
                     Fechados
                   </button>
+                  <button
+                    onClick={() => setViewMode('GROUPS')}
+                    className={cn(
+                      "text-[11px] px-1 py-1.5 rounded-lg font-bold uppercase transition-all flex items-center justify-center gap-2 flex-1",
+                      viewMode === 'GROUPS' ? "bg-blue-500 text-white shadow-sm" : "text-zinc-500 hover:text-zinc-700 hover:bg-black/5"
+                    )}
+                  >
+                    Grupos <span className="opacity-60 text-[9px] bg-white/20 px-1.5 rounded">{groupConversations.length}</span>
+                  </button>
                 </div>
               </div>
 
               <ScrollArea className="flex-1">
                 <div className="flex flex-col py-3">
                   {/* DYNAMIC LIST BASED ON VIEWMODE */}
+
+                  {viewMode === 'GROUPS' && (() => {
+                    const startIndex = (groupPage - 1) * ITEMS_PER_PAGE;
+                    const endIndex = startIndex + ITEMS_PER_PAGE;
+                    const paginatedItems = groupConversations.slice(startIndex, endIndex);
+                    const totalPages = Math.ceil(groupConversations.length / ITEMS_PER_PAGE);
+
+                    if (groupConversations.length === 0) {
+                      return (
+                        <div className="flex flex-col items-center justify-center py-20 px-6 text-center opacity-40">
+                          <MessageCircleMore className="h-12 w-12 mb-4" />
+                          <p className="text-sm font-medium">Nenhum grupo encontrado</p>
+                        </div>
+                      );
+                    }
+
+                    return (
+                      <>
+                        {paginatedItems.map((conv) => renderConversationCard(conv))}
+                        {totalPages > 1 && (
+                          <div className="flex justify-center items-center gap-2 py-4">
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="h-8 w-8 p-0"
+                              disabled={groupPage === 1}
+                              onClick={() => setGroupPage(prev => prev - 1)}
+                            >
+                              &lt;
+                            </Button>
+                            <span className="text-xs font-medium text-muted-foreground">
+                              {groupPage} de {totalPages}
+                            </span>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="h-8 w-8 p-0"
+                              disabled={groupPage === totalPages}
+                              onClick={() => setGroupPage(prev => prev + 1)}
+                            >
+                              &gt;
+                            </Button>
+                          </div>
+                        )}
+                      </>
+                    );
+                  })()}
 
                   {viewMode === 'PENDING' && (() => {
                     const startIndex = (pendingPage - 1) * ITEMS_PER_PAGE;

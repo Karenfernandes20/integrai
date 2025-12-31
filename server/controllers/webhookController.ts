@@ -107,7 +107,7 @@ export const handleWebhook = async (req: Request, res: Response) => {
                 currentStatus = direction === 'outbound' ? 'OPEN' : 'PENDING';
 
                 // For new groups, try to get a better name if possible
-                let finalName = isGroup && groupName ? groupName : name;
+                let finalName = isGroup ? `Grupo ${phone.substring(0, 8)}` : name;
 
                 const newConv = await pool.query(
                     `INSERT INTO whatsapp_conversations (external_id, phone, contact_name, instance, status, company_id, is_group, group_name) 
@@ -229,30 +229,52 @@ export const handleWebhook = async (req: Request, res: Response) => {
                     [sent_at, content, direction, conversationId]
                 );
 
-                // Profile Pic Fetch Logic (if missing)
-                const hasPic = checkConv.rows.length > 0 && checkConv.rows[0].profile_pic_url;
-                if (!hasPic) {
+                // Profile Pic & Name Fetch Logic (if missing or placeholder)
+                const row = checkConv.rows[0] || {};
+                const hasPic = row.profile_pic_url;
+                const isPlaceholderName = isGroup && (row.contact_name?.startsWith('Grupo ') || !row.contact_name);
+
+                if (!hasPic || isPlaceholderName) {
                     (async () => {
                         try {
                             const compRes = await pool!.query('SELECT evolution_apikey FROM companies WHERE id = $1', [companyId]);
                             if (compRes.rows.length > 0 && compRes.rows[0].evolution_apikey) {
                                 const apikey = compRes.rows[0].evolution_apikey;
                                 const baseUrl = process.env.EVOLUTION_API_URL || "https://freelasdekaren-evolution-api.nhvvzr.easypanel.host";
-                                const url = `${baseUrl.replace(/\/$/, "")}/chat/fetchProfilePictureUrl/${instance}`;
 
-                                const response = await fetch(url, {
-                                    method: "POST",
-                                    headers: { "Content-Type": "application/json", "apikey": apikey },
-                                    body: JSON.stringify({ number: remoteJid })
-                                });
+                                // 1. Fetch Name if Group and placeholder
+                                if (isPlaceholderName) {
+                                    const groupUrl = `${baseUrl.replace(/\/$/, "")}/group/findGroup/${instance}?groupJid=${remoteJid}`;
+                                    const gRes = await fetch(groupUrl, {
+                                        method: "GET",
+                                        headers: { "Content-Type": "application/json", "apikey": apikey }
+                                    });
+                                    if (gRes.ok) {
+                                        const gData = await gRes.json();
+                                        const realGroupName = gData.subject || gData.name;
+                                        if (realGroupName) {
+                                            await pool!.query('UPDATE whatsapp_conversations SET contact_name = $1, group_name = $1 WHERE id = $2', [realGroupName, conversationId]);
+                                        }
+                                    }
+                                }
 
-                                if (response.ok) {
-                                    const data = await response.json();
-                                    const picUrl = data.profilePictureUrl || data.url;
-                                    if (picUrl) {
-                                        await pool!.query('UPDATE whatsapp_conversations SET profile_pic_url = $1 WHERE id = $2', [picUrl, conversationId]);
-                                        if (!isGroup) {
-                                            await pool!.query('UPDATE whatsapp_contacts SET profile_pic_url = $1 WHERE jid = $2 AND instance = $3', [picUrl, remoteJid, instance]);
+                                // 2. Fetch Picture
+                                if (!hasPic) {
+                                    const picUrl_endpoint = `${baseUrl.replace(/\/$/, "")}/chat/fetchProfilePictureUrl/${instance}`;
+                                    const response = await fetch(picUrl_endpoint, {
+                                        method: "POST",
+                                        headers: { "Content-Type": "application/json", "apikey": apikey },
+                                        body: JSON.stringify({ number: remoteJid })
+                                    });
+
+                                    if (response.ok) {
+                                        const data = await response.json();
+                                        const picUrl = data.profilePictureUrl || data.url;
+                                        if (picUrl) {
+                                            await pool!.query('UPDATE whatsapp_conversations SET profile_pic_url = $1 WHERE id = $2', [picUrl, conversationId]);
+                                            if (!isGroup) {
+                                                await pool!.query('UPDATE whatsapp_contacts SET profile_pic_url = $1 WHERE jid = $2 AND instance = $3', [picUrl, remoteJid, instance]);
+                                            }
                                         }
                                     }
                                 }
