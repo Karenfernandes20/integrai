@@ -15,7 +15,7 @@ import { pool } from "../db";
 // Hardcoded fallback for this environment
 const DEFAULT_URL = "https://freelasdekaren-evolution-api.nhvvzr.easypanel.host";
 
-const getEvolutionConfig = async (user: any, source: string = 'unknown') => {
+export const getEvolutionConfig = async (user: any, source: string = 'unknown') => {
   let config = {
     url: process.env.EVOLUTION_API_URL || DEFAULT_URL,
     apikey: process.env.EVOLUTION_API_KEY,
@@ -24,18 +24,22 @@ const getEvolutionConfig = async (user: any, source: string = 'unknown') => {
 
   if (pool) {
     try {
-      // SuperAdmin fallback: fetch from company id 1 if API key missing
-      if ((!user || user.role === 'SUPERADMIN') && !config.apikey) {
-        const res = await pool.query('SELECT evolution_instance, evolution_apikey FROM companies WHERE id = 1 LIMIT 1');
-        if (res.rows.length > 0) {
-          const c = res.rows[0];
-          if (c.evolution_apikey) config.apikey = c.evolution_apikey;
-          if (c.evolution_instance) config.instance = c.evolution_instance;
+      // SuperAdmin/Admin without company: Always use 'integrai'
+      const role = (user?.role || '').toUpperCase();
+      const isMasterUser = !user || role === 'SUPERADMIN' || role === 'ADMIN';
+
+      if (isMasterUser) {
+        config.instance = "integrai";
+
+        // Priority for SuperAdmin: DB Key (Company 1) > ENV Key
+        const res = await pool.query('SELECT evolution_apikey FROM companies WHERE id = 1 LIMIT 1');
+        if (res.rows.length > 0 && res.rows[0].evolution_apikey) {
+          config.apikey = res.rows[0].evolution_apikey;
         }
       }
 
-      // Regular user: fetch company config
-      if (user && user.role !== 'SUPERADMIN') {
+      // Regular user with company: fetch company config
+      if (user && !isMasterUser) {
         const timeoutPromise = new Promise((_, reject) =>
           setTimeout(() => reject(new Error('DB_TIMEOUT')), 3000)
         );
@@ -64,7 +68,7 @@ const getEvolutionConfig = async (user: any, source: string = 'unknown') => {
     }
   }
 
-  console.log(`[Evolution] Config accessed by [${source}] for instance: ${config.instance}. URL: ${config.url}`);
+  console.log(`[Evolution Debug] Config resolved: Instance=${config.instance}, URL=${config.url}, Key (last 4 chars)=${config.apikey?.slice(-4)}`);
   return config;
 };
 

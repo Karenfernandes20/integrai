@@ -1,5 +1,6 @@
 
-const { Pool } = require('pg');
+import pkg from 'pg';
+const { Pool } = pkg;
 
 const databaseUrl = "postgresql://postgres:postgres@localhost:5432/viamovecar_hub";
 

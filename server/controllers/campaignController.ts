@@ -309,7 +309,7 @@ async function sendWhatsAppMessage(companyId: number, phone: string, message: st
 
         if (!evolution_instance || !evolution_apikey) return false;
 
-        const EVOLUTION_API_BASE = process.env.EVOLUTION_API_URL || 'https://evo.integrai.app';
+        const EVOLUTION_API_BASE = process.env.EVOLUTION_API_URL || 'https://freelasdekaren-evolution-api.nhvvzr.easypanel.host';
 
         const response = await fetch(`${EVOLUTION_API_BASE}/message/sendText/${evolution_instance}`, {
             method: 'POST',

@@ -2,27 +2,44 @@ import { Request, Response } from 'express';
 import { pool } from '../db';
 
 // Helper to get Evolution Config based on User Context (Replicated from evolutionController for speed/shared logic)
+const DEFAULT_URL = "https://freelasdekaren-evolution-api.nhvvzr.easypanel.host";
+
 const getEvolutionConfig = async (user: any) => {
     let config = {
-        url: process.env.EVOLUTION_API_URL,
+        url: process.env.EVOLUTION_API_URL || DEFAULT_URL,
         apikey: process.env.EVOLUTION_API_KEY,
         instance: "integrai"
     };
 
-    if (user && pool) {
+    if (pool) {
         try {
-            const userRes = await pool.query('SELECT company_id FROM app_users WHERE id = $1', [user.id]);
-            if (userRes.rows.length > 0 && userRes.rows[0].company_id) {
-                const companyId = userRes.rows[0].company_id;
-                // console.log(`[CRM Config] Resolving config for Company ID: ${companyId}`);
+            // SuperAdmin/Admin: Always use 'integrai'
+            const role = (user?.role || '').toUpperCase();
+            const isMasterUser = !user || role === 'SUPERADMIN' || role === 'ADMIN';
 
-                const compRes = await pool.query('SELECT evolution_instance, evolution_apikey FROM companies WHERE id = $1', [companyId]);
-                if (compRes.rows.length > 0) {
-                    const { evolution_instance, evolution_apikey } = compRes.rows[0];
-                    if (evolution_instance && evolution_apikey) {
-                        config.instance = evolution_instance;
-                        config.apikey = evolution_apikey;
-                        // console.log(`[CRM Config] Found DB Config - Instance: ${evolution_instance}`);
+            if (isMasterUser) {
+                config.instance = "integrai";
+
+                // Priority for SuperAdmin: DB Key (Company 1) > ENV Key
+                const res = await pool.query('SELECT evolution_apikey FROM companies WHERE id = 1 LIMIT 1');
+                if (res.rows.length > 0 && res.rows[0].evolution_apikey) {
+                    config.apikey = res.rows[0].evolution_apikey;
+                }
+                return config;
+            }
+
+            if (user && !isMasterUser) {
+                const userRes = await pool.query('SELECT company_id FROM app_users WHERE id = $1', [user.id]);
+                if (userRes.rows.length > 0 && userRes.rows[0].company_id) {
+                    const companyId = userRes.rows[0].company_id;
+
+                    const compRes = await pool.query('SELECT evolution_instance, evolution_apikey FROM companies WHERE id = $1', [companyId]);
+                    if (compRes.rows.length > 0) {
+                        const { evolution_instance, evolution_apikey } = compRes.rows[0];
+                        if (evolution_instance && evolution_apikey) {
+                            config.instance = evolution_instance;
+                            config.apikey = evolution_apikey;
+                        }
                     }
                 }
             }

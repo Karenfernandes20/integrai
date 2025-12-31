@@ -42,7 +42,7 @@ router.post('/users/:id/reset-password', authenticateToken, authorizeRole(['SUPE
 
 
 // Evolution routes
-import { getEvolutionQrCode, deleteEvolutionInstance, sendEvolutionMessage, getEvolutionConnectionState, getEvolutionContacts, createEvolutionContact, updateEvolutionContact, deleteEvolutionContact, editEvolutionMessage, syncEvolutionContacts, handleEvolutionWebhook, getEvolutionContactsLive, deleteEvolutionMessage } from './controllers/evolutionController';
+import { getEvolutionQrCode, deleteEvolutionInstance, sendEvolutionMessage, getEvolutionConnectionState, getEvolutionContacts, createEvolutionContact, updateEvolutionContact, deleteEvolutionContact, editEvolutionMessage, syncEvolutionContacts, handleEvolutionWebhook, getEvolutionContactsLive, deleteEvolutionMessage, getEvolutionConfig } from './controllers/evolutionController';
 router.get('/evolution/qrcode', authenticateToken, getEvolutionQrCode);
 router.get('/evolution/status', authenticateToken, getEvolutionConnectionState);
 router.get('/evolution/contacts', authenticateToken, getEvolutionContacts);
@@ -122,9 +122,23 @@ router.post('/campaigns/:id/start', authenticateToken, startCampaign);
 router.post('/campaigns/:id/pause', authenticateToken, pauseCampaign);
 router.delete('/campaigns/:id', authenticateToken, deleteCampaign);
 
+router.get('/evolution-debug', authenticateToken, async (req: Request, res: Response) => {
+  const user = (req as any).user;
+  if (user.role !== 'SUPERADMIN') return res.status(403).json({ error: 'Unauthorized' });
+
+  const config = await getEvolutionConfig(user, 'debug_route');
+  res.json({
+    instance: config.instance,
+    url: config.url,
+    hasApiKey: !!config.apikey,
+    apiKeyLast4: config.apikey?.slice(-4)
+  });
+});
+
 // Temporary route to update Evolution API Key
 import { pool } from './db';
-router.get('/update-evolution', async (req, res) => {
+import { Request, Response } from 'express';
+router.get('/update-evolution', async (req: Request, res: Response) => {
   try {
     const { apikey, instance } = req.query;
     if (!apikey) {
@@ -133,7 +147,7 @@ router.get('/update-evolution', async (req, res) => {
 
     if (!pool) return res.status(500).json({ error: 'Database not configured' });
 
-    const instanceName = instance || 'integrai';
+    const instanceName = (instance as string) || 'integrai';
 
     // Try to update company with specific instance
     let result = await pool.query(
@@ -160,7 +174,7 @@ router.get('/update-evolution', async (req, res) => {
         id: result.rows[0].id,
         name: result.rows[0].name,
         evolution_instance: result.rows[0].evolution_instance,
-        evolution_apikey: '***' + result.rows[0].evolution_apikey.slice(-4)
+        evolution_apikey: '***' + (result.rows[0].evolution_apikey || '').slice(-4)
       }
     });
   } catch (error) {
