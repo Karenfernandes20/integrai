@@ -138,7 +138,7 @@ const QrCodePage = () => {
             <div>
               <h2 className="text-base font-semibold tracking-tight">Conexão WhatsApp: {instanceName}</h2>
               <p className="text-xs text-muted-foreground">
-                Status atual: <span className={cn("font-bold px-2 py-0.5 rounded-full text-[10px]", isConnected ? "bg-green-100 text-green-700" : "bg-amber-100 text-amber-700")}>
+                Status atual: <span className={cn("font-bold px-2 py-0.5 rounded-full text-[10px]", isConnected ? "bg-black text-white" : "bg-zinc-100 text-zinc-900")}>
                   {isConnected ? "CONECTADO" : connectionState.toUpperCase()}
                 </span>
               </p>
@@ -169,11 +169,11 @@ const QrCodePage = () => {
 
                   {isConnected ? (
                     <div className="flex flex-col items-center gap-3 text-center">
-                      <div className="h-20 w-20 rounded-full bg-green-100 flex items-center justify-center shadow-inner">
-                        <MessageSquare className="h-10 w-10 text-green-600" />
+                      <div className="h-20 w-20 rounded-full bg-zinc-100 flex items-center justify-center shadow-inner">
+                        <MessageSquare className="h-10 w-10 text-black" />
                       </div>
                       <div className="space-y-1">
-                        <p className="font-bold text-lg text-green-700">WhatsApp Conectado!</p>
+                        <p className="font-bold text-lg text-black">WhatsApp Conectado!</p>
                         <p className="text-[11px] text-muted-foreground">Sua instância está pronta para enviar e receber mensagens.</p>
                       </div>
                       <Button
@@ -190,7 +190,7 @@ const QrCodePage = () => {
                     <>
                       {qrCode ? (
                         <div className="flex flex-col items-center gap-4 animate-in zoom-in-95 duration-300">
-                          <div className="bg-white p-4 rounded-2xl shadow-xl border-4 border-primary/10">
+                          <div className="bg-white p-4 rounded-2xl shadow-2xl border-2 border-black/5">
                             <img
                               src={qrCode}
                               alt="QR Code"
@@ -264,8 +264,8 @@ const QrCodePage = () => {
         <TabsContent value="instagram" className="space-y-4">
           <Card className="border-dashed bg-muted/20 min-h-[400px] flex items-center justify-center">
             <div className="flex flex-col items-center text-center p-8 space-y-4">
-              <div className="h-20 w-20 rounded-full bg-pink-100 flex items-center justify-center">
-                <Instagram className="h-10 w-10 text-pink-600" />
+              <div className="h-20 w-20 rounded-full bg-zinc-100 flex items-center justify-center">
+                <Instagram className="h-10 w-10 text-black" />
               </div>
               <div className="space-y-2">
                 <h3 className="text-xl font-bold">Integração com Instagram</h3>
@@ -283,8 +283,8 @@ const QrCodePage = () => {
         <TabsContent value="messenger" className="space-y-4">
           <Card className="border-dashed bg-muted/20 min-h-[400px] flex items-center justify-center">
             <div className="flex flex-col items-center text-center p-8 space-y-4">
-              <div className="h-20 w-20 rounded-full bg-blue-100 flex items-center justify-center">
-                <MessageCircle className="h-10 w-10 text-blue-600" />
+              <div className="h-20 w-20 rounded-full bg-zinc-100 flex items-center justify-center">
+                <MessageCircle className="h-10 w-10 text-black" />
               </div>
               <div className="space-y-2">
                 <h3 className="text-xl font-bold">Integração com Messenger</h3>
