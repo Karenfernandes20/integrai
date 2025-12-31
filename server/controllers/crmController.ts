@@ -34,26 +34,44 @@ const getEvolutionConnectionStateInternal = async (user: any) => {
     const config = await getEvolutionConfig(user);
     const { url, apikey, instance } = config;
 
-    if (!url || !apikey) return 'Offline';
+    console.log(`[CRM Dashboard] Checking WhatsApp Status for Instance: ${instance || 'N/A'}`);
+
+    if (!url || !apikey || !instance) {
+        console.warn(`[CRM Dashboard] Missing Evolution Config. URL: ${!!url}, Key: ${!!apikey}, Instance: ${!!instance}`);
+        return 'Offline';
+    }
 
     try {
         const fetchUrl = `${url.replace(/\/$/, "")}/instance/connectionState/${instance}`;
+        console.log(`[CRM Dashboard] Fetching URL: ${fetchUrl}`);
+
         const response = await fetch(fetchUrl, {
             method: "GET",
             headers: { "Content-Type": "application/json", apikey: apikey },
         });
 
-        if (!response.ok) return 'Offline';
+        if (!response.ok) {
+            console.error(`[CRM Dashboard] Fetch failed. Status: ${response.status}`);
+            return 'Offline';
+        }
+
         const data = await response.json();
         // Evolution returns { instance: { state: 'open' | 'close' | 'connecting' ... } }
-        const state = data?.instance?.state || data?.state;
+        const rawState = data?.instance?.state || data?.state;
+        console.log(`[CRM Dashboard] Raw State received: ${rawState}`);
+
+        if (!rawState) return 'Offline';
+
+        const state = String(rawState).toLowerCase();
 
         if (state === 'open') return 'Online';
         if (state === 'connecting') return 'Conectando';
         if (state === 'close') return 'Offline';
-        if (typeof state === 'string' && (state.toLowerCase().includes('qr') || state.toLowerCase().includes('scann'))) return 'QR Code pendente';
-        return 'Offline';
+        if (state.includes('qr') || state.includes('scann')) return 'QR Code pendente';
+
+        return 'Offline'; // Default for unknown states
     } catch (error) {
+        console.error(`[CRM Dashboard] Exception checking status:`, error);
         return 'Offline';
     }
 };
