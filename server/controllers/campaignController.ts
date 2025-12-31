@@ -223,11 +223,16 @@ async function processCampaign(campaignId: number) {
                 break;
             }
 
-            // Check time window
-            const now = new Date();
-            const currentTime = now.toTimeString().substring(0, 5); // HH:MM
-            if (currentTime < campaign.start_time || currentTime > campaign.end_time) {
-                console.log(`[Campaign ${campaignId}] Outside time window, waiting...`);
+            // Check time window (Adjusted for Brazil Timezone)
+            const brazilTime = new Date().toLocaleTimeString('pt-BR', {
+                timeZone: 'America/Sao_Paulo',
+                hour: '2-digit',
+                minute: '2-digit',
+                hour12: false
+            });
+
+            if (brazilTime < campaign.start_time || brazilTime > campaign.end_time) {
+                console.log(`[Campaign ${campaignId}] Outside window (${brazilTime} vs ${campaign.start_time}-${campaign.end_time}), waiting...`);
                 await new Promise(resolve => setTimeout(resolve, 60000)); // Wait 1 minute
                 continue;
             }
@@ -347,7 +352,7 @@ async function sendWhatsAppMessage(companyId: number, phone: string, message: st
                 'apikey': evolution_apikey
             },
             body: JSON.stringify({
-                number: phone,
+                number: phone.replace(/\D/g, ''), // Ensure only numbers
                 text: message
             })
         });

@@ -68,7 +68,9 @@ const CampanhasPage = () => {
                 .split('\n')
                 .filter(line => line.trim())
                 .map(line => {
-                    const [phone, name] = line.split(',').map(s => s.trim());
+                    const [rawPhone, name] = line.split(',').map(s => s.trim());
+                    // Limpa o telefone removendo caracteres não numéricos
+                    const phone = (rawPhone || "").replace(/\D/g, "");
                     return { phone, name: name || phone, variables: { nome: name || phone } };
                 });
 
