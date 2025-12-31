@@ -72,13 +72,19 @@ export const handleWebhook = async (req: Request, res: Response) => {
             const compLookup = await pool.query('SELECT id FROM companies WHERE evolution_instance = $1', [instance]);
             const companyId = compLookup.rows.length > 0 ? compLookup.rows[0].id : null;
 
+            // CRITICAL: If instance is not mapped to a company, skip processing to avoid data being visible to everyone (company_id = null)
+            if (!companyId) {
+                console.warn(`[Webhook] Instance '${instance}' not mapped to any company. Ignoring message.`);
+                return res.status(200).send();
+            }
+
             // 1. Upsert Conversation (Scoped by Instance and Company)
             let conversationId: number;
             let currentStatus: string = 'PENDING';
 
             const checkConv = await pool.query(
-                `SELECT id, status, is_group FROM whatsapp_conversations WHERE external_id = $1 AND instance = $2`,
-                [remoteJid, instance]
+                `SELECT id, status, is_group, company_id FROM whatsapp_conversations WHERE external_id = $1 AND instance = $2 AND company_id = $3`,
+                [remoteJid, instance, companyId]
             );
 
             if (checkConv.rows.length > 0) {
@@ -303,7 +309,11 @@ export const getConversations = async (req: Request, res: Response) => {
         `;
         const params: any[] = [];
 
-        if (user.role !== 'SUPERADMIN' || companyId) {
+        if (user.role !== 'SUPERADMIN') {
+            query += ` AND c.company_id = $1`;
+            params.push(companyId);
+        } else if (companyId) {
+            // SuperAdmin viewing a specific company
             query += ` AND c.company_id = $1`;
             params.push(companyId);
         }
@@ -330,8 +340,10 @@ export const getMessages = async (req: Request, res: Response) => {
         const check = await pool.query('SELECT company_id FROM whatsapp_conversations WHERE id = $1', [conversationId]);
         if (check.rows.length === 0) return res.status(404).json({ error: 'Conversation not found' });
 
-        if (user.role !== 'SUPERADMIN' && check.rows[0].company_id && check.rows[0].company_id !== companyId) {
-            return res.status(403).json({ error: 'Você não tem permissão para acessar estas mensagens.' });
+        if (user.role !== 'SUPERADMIN') {
+            if (!check.rows[0].company_id || check.rows[0].company_id !== companyId) {
+                return res.status(403).json({ error: 'Você não tem permissão para acessar estas mensagens.' });
+            }
         }
 
         const result = await pool.query(
