@@ -5,7 +5,7 @@ import { useNavigate } from "react-router-dom";
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
 import { Input } from "../components/ui/input";
 import { ScrollArea } from "../components/ui/scroll-area";
-import { Avatar, AvatarFallback } from "../components/ui/avatar";
+import { Avatar, AvatarFallback, AvatarImage } from "../components/ui/avatar";
 import { cn } from "../lib/utils";
 
 interface GroupConversation {
@@ -17,6 +17,7 @@ interface GroupConversation {
     last_message_at?: string;
     unread_count?: number;
     is_group: boolean;
+    profile_pic_url?: string;
 }
 
 const GruposPage = () => {
@@ -113,7 +114,8 @@ const GruposPage = () => {
                                         className="flex items-center gap-3 p-3 rounded-lg hover:bg-muted/50 transition-colors cursor-pointer border"
                                         onClick={() => navigate(`/app/atendimento?phone=${group.phone}&name=${encodeURIComponent(group.group_name || group.contact_name || "Grupo")}`)}
                                     >
-                                        <Avatar className="h-12 w-12">
+                                        <Avatar className="h-12 w-12 border-2 border-white dark:border-zinc-900 shadow-sm">
+                                            <AvatarImage src={group.profile_pic_url || `https://api.dicebear.com/7.x/initials/svg?seed=${group.group_name || group.contact_name || "G"}`} />
                                             <AvatarFallback className="bg-blue-100 text-blue-600">
                                                 <Users className="h-6 w-6" />
                                             </AvatarFallback>

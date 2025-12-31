@@ -1209,7 +1209,7 @@ const AtendimentoPage = () => {
       <div className="flex items-center gap-3">
         <div className="relative shrink-0">
           <Avatar className="h-12 w-12 border-2 border-white dark:border-zinc-900 shadow-sm">
-            <AvatarImage src={`https://api.dicebear.com/7.x/initials/svg?seed=${getDisplayName(conv)}`} />
+            <AvatarImage src={conv.profile_pic_url || `https://api.dicebear.com/7.x/initials/svg?seed=${getDisplayName(conv)}`} />
             <AvatarFallback className="bg-zinc-200 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 font-bold">
               {(getDisplayName(conv)?.[0] || "?").toUpperCase()}
             </AvatarFallback>
@@ -1774,7 +1774,7 @@ const AtendimentoPage = () => {
             <div className="relative z-10 flex-none h-[60px] bg-zinc-100 dark:bg-zinc-800 flex items-center justify-between px-4 border-l border-b border-zinc-200 dark:border-zinc-700">
               <div className="flex items-center gap-3">
                 <Avatar className="cursor-pointer">
-                  <AvatarImage src={`https://api.dicebear.com/7.x/initials/svg?seed=${getDisplayName(selectedConversation)}`} />
+                  <AvatarImage src={selectedConversation.profile_pic_url || `https://api.dicebear.com/7.x/initials/svg?seed=${getDisplayName(selectedConversation)}`} />
                   <AvatarFallback>{(getDisplayName(selectedConversation)?.[0] || "?").toUpperCase()}</AvatarFallback>
                 </Avatar>
                 <div className="flex flex-col cursor-pointer">
