@@ -1456,15 +1456,6 @@ const AtendimentoPage = () => {
                   >
                     Fechados
                   </button>
-                  <button
-                    onClick={() => setViewMode('GROUPS')}
-                    className={cn(
-                      "text-[11px] px-1 py-1.5 rounded-lg font-bold uppercase transition-all flex items-center justify-center gap-2 flex-1",
-                      viewMode === 'GROUPS' ? "bg-blue-600 text-white shadow-sm" : "text-zinc-500 hover:text-zinc-700 hover:bg-black/5"
-                    )}
-                  >
-                    Mundo <span className="opacity-60 text-[9px] bg-white/20 px-1.5 rounded">{groupConversations.length}</span>
-                  </button>
                 </div>
               </div>
 
@@ -1574,45 +1565,10 @@ const AtendimentoPage = () => {
                     );
                   })()}
 
-                  {viewMode === 'GROUPS' && (() => {
-                    const startIndex = (groupPage - 1) * ITEMS_PER_PAGE;
-                    const endIndex = startIndex + ITEMS_PER_PAGE;
-                    const paginatedItems = groupConversations.slice(startIndex, endIndex);
-                    const totalPages = Math.ceil(groupConversations.length / ITEMS_PER_PAGE);
-
-                    return (
-                      <>
-                        {paginatedItems.map(conv => renderConversationCard(conv))}
-                        {totalPages > 1 && (
-                          <div className="flex items-center justify-center gap-2 mt-4 mb-2">
-                            <button
-                              onClick={() => setGroupPage(p => Math.max(1, p - 1))}
-                              disabled={groupPage === 1}
-                              className="px-3 py-1 text-xs rounded hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
-                            >
-                              Anterior
-                            </button>
-                            <span className="text-xs text-muted-foreground">
-                              &lt; {groupPage} &gt;
-                            </span>
-                            <button
-                              onClick={() => setGroupPage(p => Math.min(totalPages, p + 1))}
-                              disabled={groupPage === totalPages}
-                              className="px-3 py-1 text-xs rounded hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
-                            >
-                              Próxima
-                            </button>
-                          </div>
-                        )}
-                      </>
-                    );
-                  })()}
-
                   {/* EMPTY STATES */}
                   {((viewMode === 'PENDING' && pendingConversations.length === 0) ||
                     (viewMode === 'OPEN' && openConversations.length === 0) ||
-                    (viewMode === 'CLOSED' && closedConversations.length === 0) ||
-                    (viewMode === 'GROUPS' && groupConversations.length === 0)) && (
+                    (viewMode === 'CLOSED' && closedConversations.length === 0)) && (
                       <div className="flex flex-col items-center justify-center p-12 opacity-40">
                         <Search className="h-12 w-12 mb-4 text-zinc-300" />
                         <p className="text-sm font-medium">Nenhuma conversa encontrada</p>
