@@ -21,6 +21,7 @@ import {
   LogOut,
   Building2,
   FileText,
+  CalendarCheck,
 } from "lucide-react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext";
@@ -28,6 +29,7 @@ import { useAuth } from "../contexts/AuthContext";
 const items = [
   { label: "Dashboard", icon: LayoutDashboard, to: "/app/dashboard" },
   { label: "Atendimento", icon: MessageCircle, to: "/app/atendimento" },
+  { label: "Follow-up", icon: CalendarCheck, to: "/app/follow-up" },
   { label: "Contatos", icon: Users, to: "/app/contatos" },
   { label: "CRM", icon: KanbanSquare, to: "/app/crm" },
   { label: "Financeiro", icon: Wallet2, to: "/app/financeiro" },
@@ -74,6 +76,7 @@ export function AppSidebar() {
     switch (item.label) {
       case "Dashboard": requiredPerm = "dashboard"; break;
       case "Atendimento": requiredPerm = "atendimentos"; break;
+      case "Follow-up": requiredPerm = "atendimentos"; break;
       case "Contatos": requiredPerm = "atendimentos"; break;
       case "CRM": requiredPerm = "crm"; break;
       case "Financeiro": requiredPerm = "financeiro"; break;

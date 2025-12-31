@@ -19,6 +19,7 @@ import ResetPasswordPage from "./pages/ResetPassword";
 import SuperadminPage from "./pages/Superadmin";
 import RelatoriosPage from "./pages/Relatorios";
 import ContatosPage from "./pages/Contatos";
+import FollowUpPage from "./pages/FollowUp";
 
 import { AuthProvider } from "./contexts/AuthContext";
 import AdminRoute from "./components/AdminRoute";
@@ -59,6 +60,7 @@ const App = () => (
               <Route path="qr-code" element={<QrCodePage />} />
               <Route path="configuracoes" element={<ConfiguracoesPage />} />
               <Route path="contatos" element={<ContatosPage />} />
+              <Route path="follow-up" element={<FollowUpPage />} />
 
               {/* SuperAdmin Routes */}
               <Route element={<AdminRoute roles={['SUPERADMIN', 'ADMIN']} />}>

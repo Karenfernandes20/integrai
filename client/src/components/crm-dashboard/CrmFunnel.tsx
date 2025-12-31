@@ -1,6 +1,6 @@
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "../ui/card";
 import { Filter, MoreHorizontal, ArrowRight } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
+import { Badge } from "../ui/badge";
 
 export const CrmFunnel = ({ data }: { data?: any[] }) => {
     // Default structure with 0 values if no data provided
@@ -61,11 +61,6 @@ export const CrmFunnel = ({ data }: { data?: any[] }) => {
                         ))}
                     </div>
 
-                    {/* Funnel Insight */}
-                    <div className="mt-2 text-xs text-muted-foreground flex items-center gap-2 bg-muted/30 p-2 rounded">
-                        <ArrowRight className="h-3 w-3 text-emerald-500" />
-                        <span>Sua taxa de conversão de <strong>Novo Contato</strong> para <strong>Venda</strong> é de <span className="text-emerald-600 font-bold">28%</span> hoje.</span>
-                    </div>
                 </div>
             </CardContent>
         </Card>

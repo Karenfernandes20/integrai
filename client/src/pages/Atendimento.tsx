@@ -13,8 +13,11 @@ import {
   XCircle,
   Play,
   CheckCircle2,
-  RotateCcw
+  RotateCcw,
+  CalendarCheck
 } from "lucide-react";
+import { FollowUpModal } from "../components/follow-up/FollowUpModal";
+import { toast } from "sonner";
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
 import { Input } from "../components/ui/input";
 import { Button } from "../components/ui/button";
@@ -110,6 +113,7 @@ const AtendimentoPage = () => {
   const [socketStatus, setSocketStatus] = useState<"connected" | "disconnected" | "connecting">("connecting");
   const [whatsappStatus, setWhatsappStatus] = useState<"open" | "close" | "connecting" | "unknown">("unknown");
   const [apiError, setApiError] = useState<string | null>(null);
+  const [isFollowUpModalOpen, setIsFollowUpModalOpen] = useState(false);
 
   // Helper para resolver o nome do contato baseado no banco de dados sincronizado
   // Otimizado com useMemo para não recalcular o mapa a cada render
@@ -1507,6 +1511,9 @@ const AtendimentoPage = () => {
                     <MoreVertical className="h-5 w-5 cursor-pointer hover:text-zinc-700" />
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end">
+                    <DropdownMenuItem onClick={() => setIsFollowUpModalOpen(true)} className="gap-2">
+                      <CalendarCheck className="h-4 w-4" /> Novo Follow-up
+                    </DropdownMenuItem>
                     <DropdownMenuItem onClick={handleRenameContact}>
                       Editar nome do contato
                     </DropdownMenuItem>
@@ -1661,6 +1668,16 @@ const AtendimentoPage = () => {
           </>
         )}
       </div>
+      <FollowUpModal
+        isOpen={isFollowUpModalOpen}
+        onClose={() => setIsFollowUpModalOpen(false)}
+        initialData={{
+          conversation_id: selectedConversation?.id,
+          contact_name: getDisplayName(selectedConversation),
+          phone: selectedConversation?.phone,
+          origin: "Atendimento"
+        }}
+      />
     </div>
   );
 };

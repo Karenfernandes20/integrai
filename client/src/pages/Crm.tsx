@@ -37,8 +37,12 @@ import {
   MessageCircle,
   Clock,
   ChevronRight,
-  ExternalLink
+  ExternalLink,
+  CalendarCheck,
+  CalendarClock,
+  AlertCircle
 } from "lucide-react";
+import { FollowUpModal } from "../components/follow-up/FollowUpModal";
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
 import { Button } from "../components/ui/button";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "../components/ui/dialog";
@@ -64,6 +68,8 @@ type Lead = {
   description?: string;
   value?: number;
   columnId?: string; // Mapeado de stage_id para lógica de frontend
+  follow_up_status?: 'pending' | 'overdue' | 'completed';
+  follow_up_date?: string;
 };
 
 type Stage = {
@@ -86,7 +92,12 @@ const pastelOptions = [
 ];
 
 // Componente Sortable Item (Card)
-function SortableLeadCard({ lead, onEdit, onChat }: { lead: Lead; onEdit: (l: Lead) => void; onChat: (l: Lead) => void }) {
+function SortableLeadCard({ lead, onEdit, onChat, onFollowUp }: {
+  lead: Lead;
+  onEdit: (l: Lead) => void;
+  onChat: (l: Lead) => void;
+  onFollowUp: (l: Lead) => void;
+}) {
   const {
     attributes,
     listeners,
@@ -161,6 +172,19 @@ function SortableLeadCard({ lead, onEdit, onChat }: { lead: Lead; onEdit: (l: Le
             onPointerDown={(e) => e.stopPropagation()}
             onClick={(e) => {
               e.stopPropagation();
+              onFollowUp(lead);
+            }}
+            title="Agendar Follow-up"
+          >
+            <CalendarCheck className="h-3.5 w-3.5" />
+          </Button>
+          <Button
+            size="icon"
+            variant="ghost"
+            className="h-6 w-6 hover:bg-primary/10 hover:text-primary"
+            onPointerDown={(e) => e.stopPropagation()}
+            onClick={(e) => {
+              e.stopPropagation();
               onEdit(lead);
             }}
           >
@@ -168,6 +192,18 @@ function SortableLeadCard({ lead, onEdit, onChat }: { lead: Lead; onEdit: (l: Le
           </Button>
         </div>
       </div>
+
+      {lead.follow_up_status && (
+        <div className={cn(
+          "mt-2 pt-2 border-t border-dashed flex gap-1.5 items-center",
+          lead.follow_up_status === 'overdue' ? "text-red-600" : "text-blue-600"
+        )}>
+          {lead.follow_up_status === 'overdue' ? <AlertCircle className="h-3 w-3" /> : <CalendarClock className="h-3 w-3" />}
+          <span className="text-[10px] font-medium">
+            Follow-up: {lead.follow_up_date ? new Date(lead.follow_up_date).toLocaleDateString() : 'Pendente'}
+          </span>
+        </div>
+      )}
 
       {lead.description && (
         <div className="mt-2 pt-2 border-t border-dashed flex gap-1.5 items-start">
@@ -196,6 +232,10 @@ const CrmPage = () => {
   const [isSheetOpen, setIsSheetOpen] = useState(false);
   const [editingLead, setEditingLead] = useState<Lead | null>(null);
   const [isSaving, setIsSaving] = useState(false);
+
+  // Follow-up State
+  const [isFollowUpModalOpen, setIsFollowUpModalOpen] = useState(false);
+  const [followUpInitialData, setFollowUpInitialData] = useState<any>(null);
 
   useEffect(() => {
     fetchData();
@@ -241,6 +281,16 @@ const CrmPage = () => {
 
   const handleChatLead = (lead: Lead) => {
     navigate(`/app/atendimento?phone=${lead.phone}&name=${lead.name || lead.phone}`);
+  };
+
+  const handleFollowUpLead = (lead: Lead) => {
+    setFollowUpInitialData({
+      lead_id: lead.id,
+      contact_name: lead.name,
+      phone: lead.phone,
+      origin: "CRM"
+    });
+    setIsFollowUpModalOpen(true);
   };
 
   const saveLeadDetails = async () => {
@@ -479,7 +529,7 @@ const CrmPage = () => {
                 <SortableContext id={column.id.toString()} items={leadsByStage(column.id).map((l) => l.id)} strategy={verticalListSortingStrategy}>
                   <div className="flex flex-col gap-2 min-h-[150px]">
                     {leadsByStage(column.id).map((lead) => (
-                      <SortableLeadCard key={lead.id} lead={lead} onEdit={handleEditLead} onChat={handleChatLead} />
+                      <SortableLeadCard key={lead.id} lead={lead} onEdit={handleEditLead} onChat={handleChatLead} onFollowUp={handleFollowUpLead} />
                     ))}
                   </div>
                 </SortableContext>
@@ -556,6 +606,12 @@ const CrmPage = () => {
           </SheetFooter>
         </SheetContent>
       </Sheet>
+
+      <FollowUpModal
+        isOpen={isFollowUpModalOpen}
+        onClose={() => setIsFollowUpModalOpen(false)}
+        initialData={followUpInitialData}
+      />
     </div>
   );
 };

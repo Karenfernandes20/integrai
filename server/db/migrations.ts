@@ -266,6 +266,31 @@ const runWhatsappMigrations = async () => {
             console.error("Warning: Could not enforce unique constraint on whatsapp_contacts:", e);
         }
 
+        // Follow-ups Table
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS crm_follow_ups (
+                id SERIAL PRIMARY KEY,
+                title VARCHAR(255),
+                description TEXT,
+                type VARCHAR(50) NOT NULL, -- call, whatsapp, wait_reply, reactivate, billing, post_sale, custom
+                status VARCHAR(50) DEFAULT 'pending', -- pending, in_progress, overdue, completed, cancelled
+                scheduled_at TIMESTAMP NOT NULL,
+                completed_at TIMESTAMP,
+                lead_id INTEGER REFERENCES crm_leads(id) ON DELETE SET NULL,
+                conversation_id INTEGER REFERENCES whatsapp_conversations(id) ON DELETE SET NULL,
+                user_id INTEGER REFERENCES app_users(id), -- responsible
+                company_id INTEGER REFERENCES companies(id),
+                origin VARCHAR(50), -- Atendimento, Campanha, Manual
+                metadata JSONB DEFAULT '{}',
+                created_at TIMESTAMP DEFAULT NOW(),
+                updated_at TIMESTAMP DEFAULT NOW()
+            );
+        `);
+
+        // Index for performance
+        await pool.query('CREATE INDEX IF NOT EXISTS idx_follow_ups_company_user ON crm_follow_ups(company_id, user_id)');
+        await pool.query('CREATE INDEX IF NOT EXISTS idx_follow_ups_status_date ON crm_follow_ups(status, scheduled_at)');
+
     } catch (error) {
         console.error("Error creating WhatsApp tables:", error);
     }

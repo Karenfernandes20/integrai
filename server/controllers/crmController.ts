@@ -109,7 +109,17 @@ export const getLeads = async (req: Request, res: Response) => {
         const companyId = user?.company_id;
 
         let query = `
-            SELECT l.*, s.name as stage_name, s.position as stage_position 
+            SELECT l.*, s.name as stage_name, s.position as stage_position,
+            (
+                SELECT status FROM crm_follow_ups 
+                WHERE lead_id = l.id AND status IN ('pending', 'overdue')
+                ORDER BY scheduled_at ASC LIMIT 1
+            ) as follow_up_status,
+            (
+                SELECT scheduled_at FROM crm_follow_ups 
+                WHERE lead_id = l.id AND status IN ('pending', 'overdue')
+                ORDER BY scheduled_at ASC LIMIT 1
+            ) as follow_up_date
             FROM crm_leads l
             LEFT JOIN crm_stages s ON l.stage_id = s.id
             WHERE 1=1
@@ -323,6 +333,26 @@ export const getCrmDashboardStats = async (req: Request, res: Response) => {
              AND m.direction = 'outbound' AND m.sent_at::date = CURRENT_DATE
         `, filterParams);
 
+        // Follow-ups summary
+        const followUpsStatRes = await pool.query(`
+            SELECT 
+                COUNT(*) FILTER (WHERE status = 'pending') as pending,
+                COUNT(*) FILTER (WHERE status = 'pending' AND scheduled_at < NOW()) as overdue
+            FROM crm_follow_ups
+            ${filterClause}
+        `, filterParams);
+
+        const recentFollowUpsRes = await pool.query(`
+            SELECT f.*, COALESCE(l.name, c.contact_name) as contact_name
+            FROM crm_follow_ups f
+            LEFT JOIN crm_leads l ON f.lead_id = l.id
+            LEFT JOIN whatsapp_conversations c ON f.conversation_id = c.id
+            ${filterClause}
+            AND f.status = 'pending'
+            ORDER BY f.scheduled_at ASC
+            LIMIT 5
+        `, filterParams);
+
         // 3. Realtime Activities
         const recentMsgsRes = await pool.query(`
              SELECT m.content as text, m.sent_at, m.direction, c.phone, c.contact_name
@@ -351,9 +381,12 @@ export const getCrmDashboardStats = async (req: Request, res: Response) => {
                 receivedMessages: msgsTodayRes.rows[0].count,
                 attendedClients: attendedClientsRes.rows[0].count,
                 newLeads: newLeadsRes.rows[0].count,
-                whatsappStatus: whatsappStatus
+                whatsappStatus: whatsappStatus,
+                followUpPending: followUpsStatRes.rows[0].pending,
+                followUpOverdue: followUpsStatRes.rows[0].overdue
             },
-            activities: recentActivities
+            activities: recentActivities,
+            followups: recentFollowUpsRes.rows
         });
 
     } catch (error: any) {

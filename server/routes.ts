@@ -14,6 +14,7 @@ import { login, register } from './controllers/authController';
 import { authenticateToken, authorizeRole } from './middleware/authMiddleware';
 import { getCompanies, createCompany, updateCompany, deleteCompany, getCompanyUsers, getCompany } from './controllers/companyController';
 import { startConversation, closeConversation, updateContactNameWithAudit, deleteConversation } from './controllers/conversationController';
+import { getFollowUps, createFollowUp, updateFollowUp, deleteFollowUp, getFollowUpStats } from './controllers/followUpController';
 
 const router = express.Router();
 
@@ -77,6 +78,13 @@ router.delete('/crm/stages/:id', deleteStage);
 router.get('/crm/leads', getLeads);
 router.put('/crm/leads/:id', updateLead);
 router.put('/crm/leads/:id/move', updateLeadStage);
+
+// Follow-up Routes
+router.get('/crm/follow-ups', authenticateToken, getFollowUps);
+router.get('/crm/follow-ups/stats', authenticateToken, getFollowUpStats);
+router.post('/crm/follow-ups', authenticateToken, createFollowUp);
+router.put('/crm/follow-ups/:id', authenticateToken, updateFollowUp);
+router.delete('/crm/follow-ups/:id', authenticateToken, deleteFollowUp);
 
 // Reports routes
 import { getDRE, getBreakdown, getFinancialIndicators } from './controllers/reportsController';
