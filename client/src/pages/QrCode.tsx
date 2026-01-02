@@ -102,6 +102,27 @@ const QrCodePage = () => {
     }
   };
 
+  const handleFixSync = async () => {
+    try {
+      setIsLoading(true);
+      setError(null);
+      const response = await fetch("/api/evolution/webhook/set", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (response.ok) {
+        alert("Sincronização ajustada com sucesso! As mensagens agora devem chegar corretamente.");
+      } else {
+        const err = await response.json();
+        throw new Error(err.error || "Erro ao ajustar sincronização");
+      }
+    } catch (err: any) {
+      setError(err?.message || "Erro ao ajustar sincronização");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   useEffect(() => {
     if (token) {
       fetchStatus();
@@ -177,15 +198,27 @@ const QrCodePage = () => {
                         <p className="font-bold text-lg text-black">WhatsApp Conectado!</p>
                         <p className="text-[11px] text-muted-foreground">Sua instância está pronta para enviar e receber mensagens.</p>
                       </div>
-                      <Button
-                        onClick={handleDisconnect}
-                        variant="destructive"
-                        size="sm"
-                        className="mt-2 text-xs h-8 px-4"
-                        disabled={isLoading}
-                      >
-                        Desconectar Instância
-                      </Button>
+                      <div className="flex flex-wrap gap-2 justify-center">
+                        <Button
+                          onClick={handleFixSync}
+                          variant="outline"
+                          size="sm"
+                          className="mt-2 text-xs h-8 px-4 border-zinc-200 hover:bg-zinc-50"
+                          disabled={isLoading}
+                        >
+                          <RefreshCcw className={cn("h-3 w-3 mr-1", isLoading && "animate-spin")} />
+                          Corrigir Sincronização
+                        </Button>
+                        <Button
+                          onClick={handleDisconnect}
+                          variant="destructive"
+                          size="sm"
+                          className="mt-2 text-xs h-8 px-4"
+                          disabled={isLoading}
+                        >
+                          Desconectar Instância
+                        </Button>
+                      </div>
                     </div>
                   ) : (
                     <>

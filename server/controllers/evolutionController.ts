@@ -126,6 +126,32 @@ export const getEvolutionQrCode = async (req: Request, res: Response) => {
 
     const data = await response.json();
 
+    // AUTO-REGISTER WEBHOOK whenever we request a QR Code (to be sure)
+    try {
+      const backendUrl = process.env.BACKEND_URL || `${req.protocol}://${req.get('host')}`;
+      const webhookUrl = `${backendUrl}/api/evolution/webhook`;
+      console.log(`[Evolution] Auto-registering Webhook: ${webhookUrl}`);
+
+      const endpoints = [
+        `${EVOLUTION_API_URL.replace(/\/$/, "")}/webhook/set/${EVOLUTION_INSTANCE}`,
+        `${EVOLUTION_API_URL.replace(/\/$/, "")}/webhook/instance/${EVOLUTION_INSTANCE}`
+      ];
+
+      for (const wUrl of endpoints) {
+        fetch(wUrl, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", apikey: EVOLUTION_API_KEY },
+          body: JSON.stringify({
+            url: webhookUrl,
+            enabled: true,
+            events: ["MESSAGES_UPSERT", "MESSAGES_UPDATE", "SEND_MESSAGE", "CONNECTION_UPDATE"]
+          })
+        }).catch(e => console.warn(`[Evolution Webhook Set Silent Fail]: ${e.message}`));
+      }
+    } catch (e) {
+      console.warn("[Evolution] Webhook auto-registration failed silently", e);
+    }
+
     // A API costuma retornar algo como { qrCode: "data:image/png;base64,..." } ou campos similares.
     const qrCode =
       (data.qrCode as string) ||
@@ -1455,5 +1481,88 @@ export const refreshConversationMetadata = async (req: Request, res: Response) =
   } catch (e: any) {
     console.error("Error refreshing metadata:", e);
     return res.status(500).json({ error: "Internal Error", details: e.message });
+  }
+};
+
+export const setEvolutionWebhook = async (req: Request, res: Response) => {
+  const targetCompanyId = req.query.companyId as string;
+  const config = await getEvolutionConfig((req as any).user, 'set_webhook', targetCompanyId);
+  const { url: EVOLUTION_API_URL, apikey: EVOLUTION_API_KEY, instance: EVOLUTION_INSTANCE } = config;
+
+  if (!EVOLUTION_API_URL || !EVOLUTION_API_KEY) {
+    return res.status(500).json({ error: "Configuração da Evolution API ausente." });
+  }
+
+  try {
+    const backendUrl = process.env.BACKEND_URL || `${req.protocol}://${req.get('host')}`;
+    const webhookUrl = `${backendUrl}/api/evolution/webhook`;
+
+    console.log(`[Webhook] Registering webhook for instance ${EVOLUTION_INSTANCE} to ${webhookUrl}`);
+
+    // Tentamos os dois endpoints possíveis dependendo da versão (v1/v2)
+    const endpoints = [
+      `${EVOLUTION_API_URL.replace(/\/$/, "")}/webhook/set/${EVOLUTION_INSTANCE}`,
+      `${EVOLUTION_API_URL.replace(/\/$/, "")}/webhook/instance/${EVOLUTION_INSTANCE}`
+    ];
+
+    let lastError = null;
+    let success = false;
+    let responseData = null;
+
+    for (const url of endpoints) {
+      try {
+        const response = await fetch(url, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            apikey: EVOLUTION_API_KEY
+          },
+          body: JSON.stringify({
+            url: webhookUrl,
+            enabled: true,
+            webhook_by_events: false,
+            events: [
+              "MESSAGES_UPSERT",
+              "MESSAGES_UPDATE",
+              "MESSAGES_DELETE",
+              "SEND_MESSAGE",
+              "CONNECTION_UPDATE",
+              "TYPEING_START",
+              "CHATS_UPSERT",
+              "CHATS_UPDATE",
+              "PRESENCE_UPDATE"
+            ]
+          })
+        });
+
+        if (response.ok) {
+          success = true;
+          responseData = await response.json();
+          break;
+        } else {
+          lastError = await response.text();
+        }
+      } catch (e: any) {
+        lastError = e.message;
+      }
+    }
+
+    if (!success) {
+      return res.status(500).json({
+        error: "Falha ao registrar webhook na Evolution API.",
+        details: lastError,
+        webhookUrl
+      });
+    }
+
+    return res.json({
+      success: true,
+      webhookUrl,
+      instance: EVOLUTION_INSTANCE,
+      data: responseData
+    });
+  } catch (error: any) {
+    console.error("Error setting webhook:", error);
+    return res.status(500).json({ error: "Erro interno ao configurar webhook.", details: error.message });
   }
 };
