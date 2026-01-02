@@ -1668,7 +1668,7 @@ const AtendimentoPage = () => {
                 </div>
               </div>
 
-              <ScrollArea className="flex-1">
+              <div className="flex-1 overflow-y-auto">
                 <div className="flex flex-col py-3">
                   {/* DYNAMIC LIST BASED ON VIEWMODE */}
 
@@ -1805,7 +1805,7 @@ const AtendimentoPage = () => {
                       </div>
                     )}
                 </div>
-              </ScrollArea>
+              </div>
             </TabsContent>
 
             {/* Aba NOVA CONVERSA / CONTATOS */}
@@ -2085,7 +2085,7 @@ const AtendimentoPage = () => {
                   >
                     {msg.direction === "outbound" && (
                       <span className="text-[10px] font-bold text-zinc-500 dark:text-zinc-400 mb-0.5 px-1 uppercase tracking-wider">
-                        {msg.agent_name || (msg as any).user_id ? "Usuário" : "(celular)"}
+                        {msg.agent_name || ((msg as any).user_id ? "Usuário" : "(celular)")}
                       </span>
                     )}
                     {msg.direction === "inbound" && selectedConversation?.is_group && (
@@ -2327,7 +2327,7 @@ const AtendimentoPage = () => {
           origin: "Atendimento"
         }}
       />
-    </div>
+    </div >
   );
 };
 

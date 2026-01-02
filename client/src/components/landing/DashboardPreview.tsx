@@ -92,8 +92,7 @@ export const DashboardPreview = () => {
                             <TabsList className="bg-white border border-slate-200 p-1 shadow-sm">
                                 <TabsTrigger value="dashboard" className="data-[state=active]:bg-blue-50 data-[state=active]:text-blue-700">Visão Geral</TabsTrigger>
                                 <TabsTrigger value="chats" className="data-[state=active]:bg-blue-50 data-[state=active]:text-blue-700">Atendimentos</TabsTrigger>
-                                <TabsTrigger value="crm" className="data-[state=active]:bg-blue-50 data-[state=active]:text-blue-700">Funnel CRM</TabsTrigger>
-                                <TabsTrigger value="marketing" className="data-[state=active]:bg-blue-50 data-[state=active]:text-blue-700">Marketing</TabsTrigger>
+                                <TabsTrigger value="crm" className="data-[state=active]:bg-blue-50 data-[state=active]:text-blue-700">Funil CRM</TabsTrigger>
                             </TabsList>
                             <div className="flex gap-2">
                                 <Button size="sm" variant="outline" className="border-slate-200 bg-white hover:bg-slate-50 text-slate-700 shadow-sm">
@@ -227,21 +226,113 @@ export const DashboardPreview = () => {
                         </TabsContent>
 
                         {/* TAB: CRM FUNNEL */}
-                        <TabsContent value="crm" className="m-0 h-[450px] overflow-hidden rounded-lg border border-slate-200 bg-white">
-                            <div className="relative h-full w-full group">
-                                <img src="/real_crm.png" alt="CRM Kanban Real" className="h-full w-full object-cover object-top transition-transform duration-500 group-hover:scale-105" />
-                                <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex items-end p-6">
-                                    <p className="text-white text-sm font-medium">Controle visual de leads em estilo Kanban, idêntico ao que você usará no dia a dia.</p>
+                        <TabsContent value="crm" className="m-0 h-[450px] overflow-x-auto bg-slate-50/50 rounded-lg border border-slate-200">
+                            <div className="flex gap-4 h-full min-w-[800px] p-4 font-sans">
+                                {/* Stage 1 */}
+                                <div className="w-64 flex-shrink-0 flex flex-col gap-3">
+                                    <div className="flex items-center justify-between px-1">
+                                        <div className="flex items-center gap-2">
+                                            <span className="h-2 w-2 rounded-full bg-slate-400" />
+                                            <h4 className="font-semibold text-sm text-slate-700">Novos Leads</h4>
+                                        </div>
+                                        <Badge variant="outline" className="text-slate-500 border-slate-300 bg-white shadow-sm">4</Badge>
+                                    </div>
+                                    <div className="flex-1 bg-slate-100/50 rounded-lg p-2 space-y-2 border border-slate-200/60">
+                                        {[
+                                            { title: "Empresa Solar", val: "R$ 15k", tag: "Quente", badgeColor: "bg-red-100 text-red-700" },
+                                            { title: "Tech Solutions", val: "R$ 8.5k", tag: "Morno", badgeColor: "bg-amber-100 text-amber-700" },
+                                            { title: "Padaria Central", val: "R$ 12k", tag: "Frio", badgeColor: "bg-blue-100 text-blue-700" },
+                                            { title: "Dr. Consultório", val: "R$ 22k", tag: "Indicação", badgeColor: "bg-indigo-100 text-indigo-700" }
+                                        ].map((card, i) => (
+                                            <div key={i} className="bg-white border border-slate-200 p-3 rounded-md shadow-sm hover:shadow-md cursor-pointer transition-all hover:-translate-y-0.5 group relative">
+                                                <div className="flex justify-between items-start mb-2">
+                                                    <span className="text-sm font-semibold text-slate-700 group-hover:text-blue-600 transition-colors">{card.title}</span>
+                                                </div>
+                                                <div className="flex justify-between items-center text-xs">
+                                                    <Badge variant="secondary" className={`${card.badgeColor} px-2 py-0.5 border-transparent font-medium`}>{card.tag}</Badge>
+                                                    <span className="font-bold text-slate-600">{card.val}</span>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
                                 </div>
-                            </div>
-                        </TabsContent>
-
-                        {/* TAB: MARKETING PRINT */}
-                        <TabsContent value="marketing" className="m-0 h-[450px] overflow-hidden rounded-lg border border-slate-200 bg-white">
-                            <div className="relative h-full w-full group">
-                                <img src="/real_campaigns.png" alt="Marketing Module" className="h-full w-full object-cover object-top transition-transform duration-500 group-hover:scale-105" />
-                                <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex items-end p-6">
-                                    <p className="text-white text-sm font-medium">Interface real de gestão de campanhas com tabela de status e progresso.</p>
+                                {/* Stage 2 */}
+                                <div className="w-64 flex-shrink-0 flex flex-col gap-3">
+                                    <div className="flex items-center justify-between px-1">
+                                        <div className="flex items-center gap-2">
+                                            <span className="h-2 w-2 rounded-full bg-blue-400" />
+                                            <h4 className="font-semibold text-sm text-slate-700">Em Atendimento</h4>
+                                        </div>
+                                        <Badge variant="outline" className="text-slate-500 border-slate-300 bg-white shadow-sm">2</Badge>
+                                    </div>
+                                    <div className="flex-1 bg-slate-100/50 rounded-lg p-2 space-y-2 border border-slate-200/60">
+                                        {[
+                                            { title: "Logística Express", val: "R$ 45k", tag: "Negociando" },
+                                            { title: "Click Entregas", val: "R$ 3.2k", tag: "Demo Agendada" },
+                                        ].map((card, i) => (
+                                            <div key={i} className="bg-white border border-slate-200 p-3 rounded-md shadow-sm hover:shadow-md cursor-pointer transition-all hover:-translate-y-0.5 group">
+                                                <div className="flex justify-between items-start mb-2">
+                                                    <span className="text-sm font-semibold text-slate-700 group-hover:text-blue-600 transition-colors">{card.title}</span>
+                                                </div>
+                                                <div className="flex justify-between items-center text-xs">
+                                                    <Badge variant="secondary" className="bg-blue-50 text-blue-700 px-2 py-0.5 border-blue-100">{card.tag}</Badge>
+                                                    <span className="font-bold text-slate-600">{card.val}</span>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                                {/* Stage 3 */}
+                                <div className="w-64 flex-shrink-0 flex flex-col gap-3">
+                                    <div className="flex items-center justify-between px-1">
+                                        <div className="flex items-center gap-2">
+                                            <span className="h-2 w-2 rounded-full bg-amber-400" />
+                                            <h4 className="font-semibold text-sm text-slate-700">Proposta</h4>
+                                        </div>
+                                        <Badge variant="outline" className="text-slate-500 border-slate-300 bg-white shadow-sm">1</Badge>
+                                    </div>
+                                    <div className="flex-1 bg-slate-100/50 rounded-lg p-2 space-y-2 border border-slate-200/60">
+                                        {[
+                                            { title: "Construtora Silva", val: "R$ 120k", tag: "Aguardando Assinatura" },
+                                        ].map((card, i) => (
+                                            <div key={i} className="bg-white border border-slate-200 p-3 rounded-md shadow-sm hover:shadow-md cursor-pointer transition-all hover:-translate-y-0.5 group">
+                                                <div className="flex justify-between items-start mb-2">
+                                                    <span className="text-sm font-semibold text-slate-700 group-hover:text-blue-600 transition-colors">{card.title}</span>
+                                                </div>
+                                                <div className="flex justify-between items-center text-xs">
+                                                    <Badge variant="secondary" className="bg-amber-50 text-amber-700 px-2 py-0.5 border-amber-100">{card.tag}</Badge>
+                                                    <span className="font-bold text-slate-600">{card.val}</span>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                                {/* Stage 4 */}
+                                <div className="w-64 flex-shrink-0 flex flex-col gap-3">
+                                    <div className="flex items-center justify-between px-1">
+                                        <div className="flex items-center gap-2">
+                                            <span className="h-2 w-2 rounded-full bg-emerald-400" />
+                                            <h4 className="font-semibold text-sm text-slate-700">Fechado</h4>
+                                        </div>
+                                        <Badge variant="outline" className="text-slate-500 border-slate-300 bg-white shadow-sm">5</Badge>
+                                    </div>
+                                    <div className="flex-1 bg-slate-100/50 rounded-lg p-2 space-y-2 border border-slate-200/60 opacity-90">
+                                        {[
+                                            { title: "Cliente VIP 01", val: "R$ 10k", tag: "Pago" },
+                                            { title: "StartUp X", val: "R$ 15k", tag: "Pago" },
+                                            { title: "Loja Y", val: "R$ 5k", tag: "Pago" },
+                                        ].map((card, i) => (
+                                            <div key={i} className="bg-emerald-50 border border-emerald-200 p-3 rounded-md shadow-sm hover:shadow-md transition-all">
+                                                <div className="flex justify-between items-start mb-2">
+                                                    <span className="text-sm font-bold text-emerald-900">{card.title}</span>
+                                                </div>
+                                                <div className="flex justify-between items-center text-xs">
+                                                    <Badge variant="secondary" className="bg-emerald-200 text-emerald-800 px-2 py-0.5">{card.tag}</Badge>
+                                                    <span className="font-bold text-emerald-700">{card.val}</span>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
                                 </div>
                             </div>
                         </TabsContent>

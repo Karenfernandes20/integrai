@@ -116,7 +116,7 @@ const Index = () => {
         </section>
 
         {/* Feature Gallery */}
-        <section className="grid grid-cols-1 md:grid-cols-3 gap-8 w-full max-w-7xl mt-12 px-4">
+        <section className="grid grid-cols-1 md:grid-cols-2 gap-8 w-full max-w-5xl mt-12 px-4">
           <div className="flex flex-col gap-4 group">
             <div className="overflow-hidden rounded-2xl border bg-white shadow-sm transition-all hover:shadow-xl hover:-translate-y-1">
               <img src="/real_atendimento.png" alt="Atendimento WhatsApp Real" className="aspect-video object-cover object-top" />
@@ -124,15 +124,6 @@ const Index = () => {
             <div>
               <h3 className="text-xl font-bold">Atendimento Multicanal</h3>
               <p className="text-sm text-muted-foreground mt-1">Chat real com suporte a mensagens de texto, áudio e grupos. Identificação visual de atendentes e status de conversa.</p>
-            </div>
-          </div>
-          <div className="flex flex-col gap-4 group">
-            <div className="overflow-hidden rounded-2xl border bg-white shadow-sm transition-all hover:shadow-xl hover:-translate-y-1">
-              <img src="/real_campaigns.png" alt="Campanhas Marketing Real" className="aspect-video object-cover object-top" />
-            </div>
-            <div>
-              <h3 className="text-xl font-bold">Campanhas Inteligentes</h3>
-              <p className="text-sm text-muted-foreground mt-1">Gestão de disparos com status em tempo real (Enviando, Concluído, Agendado) e barras de progresso visuais.</p>
             </div>
           </div>
           <div className="flex flex-col gap-4 group">
