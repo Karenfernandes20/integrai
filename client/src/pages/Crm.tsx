@@ -482,60 +482,35 @@ const CrmPage = () => {
     <div className="space-y-4 max-w-full overflow-x-hidden">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h2 className="text-base font-semibold tracking-tight">Funil de relacionamento</h2>
-          <p className="text-xs text-muted-foreground">Arraste os cards para mover entre as fases.</p>
+          <h2 className="text-base font-semibold tracking-tight">Gestão de Leads</h2>
+          <p className="text-xs text-muted-foreground">Visualize e gerencie seus leads de entrada.</p>
         </div>
-        <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-          <DialogTrigger asChild>
-            <Button size="sm" className="gap-1 text-[11px]">
-              <Plus className="h-3.5 w-3.5" /> Adicionar Fase
-            </Button>
-          </DialogTrigger>
-          <DialogContent className="max-w-sm">
-            <DialogHeader><DialogTitle>Nova fase</DialogTitle></DialogHeader>
-            <div className="space-y-3 py-2">
-              <div className="space-y-1">
-                <Label className="text-xs">Nome da fase</Label>
-                <Input value={newStageName} onChange={(e) => setNewStageName(e.target.value)} placeholder="Ex: Proposta" className="h-8 text-xs" />
-              </div>
-            </div>
-            <DialogFooter>
-              <Button size="sm" variant="outline" onClick={() => setIsDialogOpen(false)}>Cancelar</Button>
-              <Button size="sm" onClick={createStage}>Salvar</Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
       </div>
 
       <DndContext sensors={sensors} collisionDetection={closestCorners} onDragStart={handleDragStart} onDragOver={handleDragOver} onDragEnd={handleDragEnd}>
-        <div className="grid gap-3 md:grid-cols-4 lg:grid-cols-5 items-start">
-          {stages.map((column) => (
-            <Card key={column.id} className="min-h-[400px] flex flex-col bg-slate-50/50 border-slate-200">
-              <CardHeader className="flex flex-row items-center justify-between p-3 border-b bg-white rounded-t-xl">
-                <CardTitle className="text-xs font-bold uppercase tracking-wider text-slate-500">
-                  {column.name}
-                  <Badge variant="secondary" className="ml-2 bg-slate-100 text-slate-600 border-none h-5 px-1.5">{leadsByStage(column.id).length}</Badge>
-                </CardTitle>
-                <div className="flex items-center gap-1">
-                  {column.name !== "Leads" && (
-                    <Button size="icon" variant="ghost" className="h-6 w-6 text-muted-foreground hover:text-destructive" onClick={() => deleteStage(column.id)}>
-                      <Trash2 className="h-3 w-3" />
-                    </Button>
-                  )}
-                </div>
-              </CardHeader>
+        <div className="grid gap-3 items-start">
+          {stages
+            .filter(s => s.name.toUpperCase() === 'LEADS')
+            .map((column) => (
+              <Card key={column.id} className="min-h-[400px] flex flex-col bg-slate-50/50 border-slate-200 w-full max-w-md">
+                <CardHeader className="flex flex-row items-center justify-between p-3 border-b bg-white rounded-t-xl">
+                  <CardTitle className="text-xs font-bold uppercase tracking-wider text-slate-500">
+                    {column.name}
+                    <Badge variant="secondary" className="ml-2 bg-slate-100 text-slate-600 border-none h-5 px-1.5">{leadsByStage(column.id).length}</Badge>
+                  </CardTitle>
+                </CardHeader>
 
-              <CardContent className="flex-1 p-2">
-                <SortableContext id={column.id.toString()} items={leadsByStage(column.id).map((l) => l.id)} strategy={verticalListSortingStrategy}>
-                  <div className="flex flex-col gap-2 min-h-[150px]">
-                    {leadsByStage(column.id).map((lead) => (
-                      <SortableLeadCard key={lead.id} lead={lead} onEdit={handleEditLead} onChat={handleChatLead} onFollowUp={handleFollowUpLead} />
-                    ))}
-                  </div>
-                </SortableContext>
-              </CardContent>
-            </Card>
-          ))}
+                <CardContent className="flex-1 p-2">
+                  <SortableContext id={column.id.toString()} items={leadsByStage(column.id).map((l) => l.id)} strategy={verticalListSortingStrategy}>
+                    <div className="flex flex-col gap-2 min-h-[150px]">
+                      {leadsByStage(column.id).map((lead) => (
+                        <SortableLeadCard key={lead.id} lead={lead} onEdit={handleEditLead} onChat={handleChatLead} onFollowUp={handleFollowUpLead} />
+                      ))}
+                    </div>
+                  </SortableContext>
+                </CardContent>
+              </Card>
+            ))}
         </div>
 
         <DragOverlay dropAnimation={dropAnimation}>
