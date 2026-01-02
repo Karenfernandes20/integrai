@@ -35,8 +35,8 @@ const CampanhasPage = () => {
     const [name, setName] = useState("");
     const [messageTemplate, setMessageTemplate] = useState("");
     const [scheduledAt, setScheduledAt] = useState("");
-    const [startTime, setStartTime] = useState("09:00");
-    const [endTime, setEndTime] = useState("18:00");
+    const [startTime, setStartTime] = useState("00:00");
+    const [endTime, setEndTime] = useState("23:59");
     const [delayMin, setDelayMin] = useState(5);
     const [delayMax, setDelayMax] = useState(15);
     const [contactsText, setContactsText] = useState("");
@@ -169,8 +169,8 @@ const CampanhasPage = () => {
         setName("");
         setMessageTemplate("");
         setScheduledAt("");
-        setStartTime("09:00");
-        setEndTime("18:00");
+        setStartTime("00:00");
+        setEndTime("23:59");
         setDelayMin(5);
         setDelayMax(15);
         setContactsText("");

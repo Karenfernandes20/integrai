@@ -37,8 +37,8 @@ export const createCampaign = async (req: Request, res: Response) => {
                 companyId,
                 user.id,
                 scheduled_at || null,
-                start_time || '09:00',
-                end_time || '18:00',
+                start_time || '00:00',
+                end_time || '23:59',
                 delay_min || 5,
                 delay_max || 15,
                 contacts?.length || 0,
@@ -142,7 +142,8 @@ export const startCampaign = async (req: Request, res: Response) => {
         );
 
         // Trigger background job to send messages
-        processCampaign(parseInt(id));
+        const io = req.app.get('io');
+        processCampaign(parseInt(id), io);
 
         res.json({ message: 'Campaign started' });
     } catch (error) {
