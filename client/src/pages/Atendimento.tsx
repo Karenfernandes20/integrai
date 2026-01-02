@@ -190,6 +190,12 @@ const AtendimentoPage = () => {
     return map;
   }, [importedContacts]);
 
+  const normalizePhone = (p: string) => {
+    if (!p) return '';
+    if (p.includes('@g.us')) return p;
+    return p.replace(/\D/g, '');
+  };
+
   // Notification Sound Function (iPhone 16 "Rebound" style synthesis)
   const playNotificationSound = async (isGroup?: boolean) => {
     console.log("[Notificação] Reproduzindo som iPhone 16... Mudo:", mutedRef.current, "Volume:", volumeRef.current, "Grupo:", isGroup);
@@ -512,13 +518,23 @@ const AtendimentoPage = () => {
 
       // 1. Se a mensagem for da conversa aberta, adiciona na lista
       const currentSelected = selectedConvRef.current;
-      if (currentSelected && (currentSelected.phone === newMessage.phone || currentSelected.phone === newMessage.remoteJid)) {
-        setMessages((prev) => {
-          // Evitar duplicados se já tiver
-          if (prev.find(m => m.id === newMessage.id)) return prev;
-          return [...prev, newMessage];
-        });
-        // Mark as read logic could go here
+      if (currentSelected) {
+        // Normalize IDs for comparison (handle LIDs and Phones)
+        const currentPhone = normalizePhone(currentSelected.phone);
+        const msgPhone = normalizePhone(newMessage.phone);
+        const msgJid = normalizePhone(newMessage.remoteJid || '');
+
+        if (currentPhone === msgPhone || currentPhone == msgJid || currentSelected.id === newMessage.conversation_id) {
+          setMessages((prev) => {
+            if (prev.find(m => m.id === newMessage.id)) return prev;
+            return [...prev, newMessage];
+          });
+
+          // Scroll to bottom
+          setTimeout(() => {
+            if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+          }, 100);
+        }
       }
 
       // 2. Atualiza a lista de conversas
@@ -1429,6 +1445,7 @@ const AtendimentoPage = () => {
       key={conv.id}
       onClick={() => {
         setSelectedConversation(conv);
+        // Force fetch logic handled by useEffect on selectedConversation, but this ensures state update
       }}
       className={cn(
         "group mx-3 my-1 p-3 rounded-xl cursor-pointer transition-all duration-200 border border-transparent flex flex-col gap-2",
