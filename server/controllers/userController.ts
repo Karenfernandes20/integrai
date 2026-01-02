@@ -105,11 +105,15 @@ export const deleteUser = async (req: Request, res: Response) => {
       // Set user_id to NULL for campaigns created by this user
       await client.query('UPDATE whatsapp_campaigns SET user_id = NULL WHERE user_id = $1', [id]);
 
-      // Delete or Unlink Financial Transactions? usually unlink
-      // But if strict ownership is needed, we might have to keep it. Assuming unlink is safe for history.
-      // If the schema enforces NOT NULL on financial_transactions.user_id (unlikely based on create), we are good.
-      // If it exists but is optional:
-      // await client.query('UPDATE financial_transactions SET user_id = NULL WHERE user_id = $1', [id]);
+      // Unlink Audit Logs
+      await client.query('UPDATE whatsapp_audit_logs SET user_id = NULL WHERE user_id = $1', [id]);
+
+      // Unlink Rides (Passenger or Driver)
+      await client.query('UPDATE rides SET passenger_id = NULL WHERE passenger_id = $1', [id]);
+      await client.query('UPDATE rides SET driver_id = NULL WHERE driver_id = $1', [id]);
+
+      // Unlink Follow Ups
+      await client.query('UPDATE crm_follow_ups SET user_id = NULL WHERE user_id = $1', [id]);
 
       // 2. Delete the user
       const result = await client.query('DELETE FROM app_users WHERE id = $1 RETURNING *', [id]);

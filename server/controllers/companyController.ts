@@ -128,40 +128,68 @@ export const deleteCompany = async (req: Request, res: Response) => {
 
             console.log(`[Delete Company ${id}] Starting full cleanup...`);
 
-            // 1. Delete Campaign Contacts (via Campaign association)
+            // 0. Get User IDs for deep cleanup
+            const userRes = await client.query('SELECT id FROM app_users WHERE company_id = $1', [id]);
+            const userIds = userRes.rows.map(r => r.id);
+
+            // 1. Delete WhatsApp Audit Logs
+            // Linked to company conversations OR company users
+            await client.query(`
+                DELETE FROM whatsapp_audit_logs 
+                WHERE conversation_id IN (SELECT id FROM whatsapp_conversations WHERE company_id = $1)
+                OR user_id = ANY($2::int[])
+            `, [id, userIds]);
+
+            // 2. Delete Campaign Contacts (via Campaign association)
             await client.query(`
                 DELETE FROM whatsapp_campaign_contacts 
                 WHERE campaign_id IN (SELECT id FROM whatsapp_campaigns WHERE company_id = $1)
             `, [id]);
 
-            // 2. Delete Campaigns
+            // 3. Delete Campaigns
             await client.query('DELETE FROM whatsapp_campaigns WHERE company_id = $1', [id]);
 
-            // 3. Delete CRM Follow Ups
+            // 4. Delete CRM Follow Ups
             await client.query('DELETE FROM crm_follow_ups WHERE company_id = $1', [id]);
 
-            // 4. Delete Leads
+            // 5. Delete Leads
             await client.query('DELETE FROM crm_leads WHERE company_id = $1', [id]);
 
-            // 5. Delete Messages (linked to conversations)
+            // 6. Delete Messages (linked to conversations)
             await client.query(`
                 DELETE FROM whatsapp_messages 
                 WHERE conversation_id IN (SELECT id FROM whatsapp_conversations WHERE company_id = $1)
             `, [id]);
 
-            // 6. Delete Conversations
+            // 7. Delete Conversations
             await client.query('DELETE FROM whatsapp_conversations WHERE company_id = $1', [id]);
 
-            // 7. Delete WhatsApp Contacts associated with the company
+            // 8. Delete WhatsApp Contacts associated with the company
             await client.query('DELETE FROM whatsapp_contacts WHERE company_id = $1', [id]);
 
-            // 8. Delete Financial Transactions
+            // 9. Delete Financial Transactions
+            // First by company_id
             await client.query('DELETE FROM financial_transactions WHERE company_id = $1', [id]);
+            // Also delete transactions linked to rides of these users (if any missed)
+            if (userIds.length > 0) {
+                await client.query(`
+                    DELETE FROM financial_transactions 
+                    WHERE ride_id IN (SELECT id FROM rides WHERE passenger_id = ANY($1::int[]) OR driver_id = ANY($1::int[]))
+                `, [userIds]);
+            }
 
-            // 9. Delete associated users
+            // 10. Delete Rides (linked to users)
+            if (userIds.length > 0) {
+                await client.query(`
+                    DELETE FROM rides 
+                    WHERE passenger_id = ANY($1::int[]) OR driver_id = ANY($1::int[])
+                `, [userIds]);
+            }
+
+            // 11. Delete associated users
             await client.query('DELETE FROM app_users WHERE company_id = $1', [id]);
 
-            // 10. Delete the company
+            // 12. Delete the company
             const result = await client.query('DELETE FROM companies WHERE id = $1 RETURNING *', [id]);
 
             await client.query('COMMIT');
