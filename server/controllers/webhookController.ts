@@ -194,10 +194,10 @@ export const handleWebhook = async (req: Request, res: Response) => {
 
             // Insert Message into database
             const insertedMsg = await pool.query(
-                `INSERT INTO whatsapp_messages (conversation_id, direction, content, sent_at, status, external_id, message_type, media_url) 
-                 VALUES ($1, $2, $3, $4, 'received', $5, $6, $7) 
-                 ON CONFLICT DO NOTHING RETURNING *`,
-                [conversationId, direction, content, sent_at, msg.key.id, messageType, mediaUrl]
+                `INSERT INTO whatsapp_messages (conversation_id, direction, content, sent_at, status, external_id, message_type, media_url, user_id) 
+                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) 
+                 ON CONFLICT (external_id) DO NOTHING RETURNING *`,
+                [conversationId, direction, content, sent_at, 'received', msg.key.id, messageType, mediaUrl, null]
             );
 
             // If duplicate message (conflict), stop processing

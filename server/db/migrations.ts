@@ -227,6 +227,22 @@ const runWhatsappMigrations = async () => {
         await addColumn('whatsapp_messages', 'message_type', "VARCHAR(50) DEFAULT 'text'");
         await addColumn('whatsapp_messages', 'media_url', 'TEXT');
 
+        // Ensure message uniqueness by external_id (WhatsApp message ID)
+        try {
+            // 1. Clean duplicates
+            await pool.query(`
+                DELETE FROM whatsapp_messages a USING whatsapp_messages b 
+                WHERE a.id < b.id AND a.external_id = b.external_id AND a.external_id IS NOT NULL;
+            `);
+            // 2. Create unique index for ON CONFLICT (external_id)
+            await pool.query(`
+                CREATE UNIQUE INDEX IF NOT EXISTS idx_whatsapp_messages_external_id 
+                ON whatsapp_messages (external_id);
+            `);
+        } catch (e) {
+            console.error("Warning: Could not enforce unique constraint on whatsapp_messages:", e);
+        }
+
         // Audit Logs
         await pool.query(`
             CREATE TABLE IF NOT EXISTS whatsapp_audit_logs (
@@ -353,6 +369,7 @@ const runWhatsappMigrations = async () => {
         await pool.query('CREATE INDEX IF NOT EXISTS idx_campaigns_company ON whatsapp_campaigns(company_id, status)');
         await pool.query('CREATE INDEX IF NOT EXISTS idx_campaign_contacts_campaign ON whatsapp_campaign_contacts(campaign_id, status)');
 
+        console.log("WhatsApp migrations finished.");
     } catch (error) {
         console.error("Error creating WhatsApp tables:", error);
     }

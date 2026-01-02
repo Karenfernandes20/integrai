@@ -14,14 +14,20 @@ export const login = async (req: Request, res: Response) => {
         const isSecondAdmin = email === 'integraiempresa01@gmail.com' && password === 'integr1234';
 
         if (isFirstAdmin || isSecondAdmin) {
-            if (!pool) return res.status(500).json({ error: 'Database not configured' });
+            console.log(`[Auth] Fixed admin login detected for ${email}`);
+            if (!pool) {
+                console.error('[Auth] Database pool not available');
+                return res.status(500).json({ error: 'Database not configured' });
+            }
 
             // Ensure these users exist in DB to get a numeric ID for foreign keys
-            let userRes = await pool.query('SELECT id, full_name, email, role, email_validated, user_type FROM app_users WHERE email = $1', [email]);
+            // Case-insensitive email lookup
+            let userRes = await pool.query('SELECT id, full_name, email, role, email_validated, user_type FROM app_users WHERE LOWER(email) = LOWER($1)', [email]);
             let dbUser;
 
             if (userRes.rows.length === 0) {
                 const name = isFirstAdmin ? 'Superadmin ViaMoveCar' : 'Integrai Empresa 01';
+                console.log(`[Auth] Creating missing fixed admin user: ${email}`);
                 const insertRes = await pool.query(
                     'INSERT INTO app_users (full_name, email, role, is_active, email_validated, user_type) VALUES ($1, $2, $3, $4, $5, $6) RETURNING *',
                     [name, email, 'SUPERADMIN', true, true, 'superadmin']
@@ -29,12 +35,17 @@ export const login = async (req: Request, res: Response) => {
                 dbUser = insertRes.rows[0];
             } else {
                 dbUser = userRes.rows[0];
+                // Ensure existing user has superadmin role if they are using these credentials
+                if (dbUser.role !== 'SUPERADMIN' || !dbUser.is_active) {
+                    await pool.query('UPDATE app_users SET role = $1, is_active = $2 WHERE id = $3', ['SUPERADMIN', true, dbUser.id]);
+                }
             }
 
             const superadminPayload = {
                 id: dbUser.id,
                 email: dbUser.email,
                 role: 'SUPERADMIN',
+                company_id: null // Added for consistency
             };
 
             const token = jwt.sign(superadminPayload, JWT_SECRET, { expiresIn: '24h' });
@@ -45,9 +56,12 @@ export const login = async (req: Request, res: Response) => {
                     id: dbUser.id,
                     full_name: dbUser.full_name,
                     email: dbUser.email,
-                    role: dbUser.role,
+                    role: 'SUPERADMIN',
                     email_validated: true,
                     user_type: 'superadmin',
+                    company_id: null,
+                    permissions: [],
+                    profile_pic_url: null
                 },
             });
         }
