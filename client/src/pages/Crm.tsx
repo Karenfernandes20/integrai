@@ -354,7 +354,10 @@ const CrmPage = () => {
     try {
       const res = await fetch("/api/crm/stages", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${token}`
+        },
         body: JSON.stringify({ name }),
       });
 
@@ -376,7 +379,12 @@ const CrmPage = () => {
     if (!confirm(`Deseja excluir a fase "${stage.name}"? Os leads serão movidos para "Leads".`)) return;
 
     try {
-      const res = await fetch(`/api/crm/stages/${stageId}`, { method: "DELETE" });
+      const res = await fetch(`/api/crm/stages/${stageId}`, {
+        method: "DELETE",
+        headers: {
+          "Authorization": `Bearer ${token}`
+        }
+      });
       if (res.ok) fetchData();
     } catch (error) {
       console.error("Erro ao excluir fase", error);
@@ -485,22 +493,59 @@ const CrmPage = () => {
           <h2 className="text-base font-semibold tracking-tight">Gestão de Leads</h2>
           <p className="text-xs text-muted-foreground">Visualize e gerencie seus leads de entrada.</p>
         </div>
+
+        <div className="flex items-center gap-2">
+          <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+            <DialogTrigger asChild>
+              <Button size="sm" className="bg-[#008069] hover:bg-[#006654] gap-2 shadow-sm shrink-0">
+                <Plus className="h-4 w-4" /> Adicionar Fase
+              </Button>
+            </DialogTrigger>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Nova Fase do Funil</DialogTitle>
+              </DialogHeader>
+              <div className="space-y-4 py-4">
+                <div className="space-y-2">
+                  <Label>Nome da Fase</Label>
+                  <Input placeholder="Ex: Proposta, Fechado..." value={newStageName} onChange={(e) => setNewStageName(e.target.value)} />
+                </div>
+              </div>
+              <DialogFooter>
+                <Button variant="ghost" onClick={() => setIsDialogOpen(false)}>Cancelar</Button>
+                <Button className="bg-[#008069] hover:bg-[#006654]" onClick={createStage}>Criar Fase</Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+        </div>
       </div>
 
       <DndContext sensors={sensors} collisionDetection={closestCorners} onDragStart={handleDragStart} onDragOver={handleDragOver} onDragEnd={handleDragEnd}>
-        <div className="grid gap-3 items-start">
+        <div className="flex h-[calc(100vh-210px)] gap-4 overflow-x-auto pb-6 scrollbar-thin scrollbar-thumb-slate-200">
           {stages
-            .filter(s => s.name.toUpperCase() === 'LEADS')
+            .sort((a, b) => a.position - b.position)
             .map((column) => (
-              <Card key={column.id} className="min-h-[400px] flex flex-col bg-slate-50/50 border-slate-200 w-full max-w-md">
-                <CardHeader className="flex flex-row items-center justify-between p-3 border-b bg-white rounded-t-xl">
-                  <CardTitle className="text-xs font-bold uppercase tracking-wider text-slate-500">
-                    {column.name}
-                    <Badge variant="secondary" className="ml-2 bg-slate-100 text-slate-600 border-none h-5 px-1.5">{leadsByStage(column.id).length}</Badge>
+              <Card key={column.id} className="min-w-[320px] max-w-[320px] flex flex-col bg-slate-50/50 border-slate-200 shrink-0 h-full">
+                <CardHeader className="flex flex-row items-center justify-between p-3 border-b bg-white rounded-t-xl shrink-0">
+                  <CardTitle className="text-xs font-bold uppercase tracking-wider text-slate-500 flex items-center justify-between w-full">
+                    <div className="flex items-center">
+                      {column.name}
+                      <Badge variant="secondary" className="ml-2 bg-slate-100 text-slate-600 border-none h-5 px-1.5">{leadsByStage(column.id).length}</Badge>
+                    </div>
+                    {column.name.toUpperCase() !== 'LEADS' && (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-6 w-6 text-slate-400 hover:text-red-500"
+                        onClick={() => deleteStage(column.id)}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    )}
                   </CardTitle>
                 </CardHeader>
 
-                <CardContent className="flex-1 p-2">
+                <CardContent className="flex-1 p-2 overflow-y-auto custom-scrollbar">
                   <SortableContext id={column.id.toString()} items={leadsByStage(column.id).map((l) => l.id)} strategy={verticalListSortingStrategy}>
                     <div className="flex flex-col gap-2 min-h-[150px]">
                       {leadsByStage(column.id).map((lead) => (

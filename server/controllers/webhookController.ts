@@ -241,6 +241,8 @@ export const handleWebhook = async (req: Request, res: Response) => {
                 );
                 console.log(`[Webhook] Conversation ${conversationId} metadata updated.`);
 
+                const isGroup = remoteJid.endsWith('@g.us');
+
                 // Profile Pic & Name Fetch Logic (if missing or placeholder)
                 const row = checkConv.rows[0] || {};
                 const hasPic = row.profile_pic_url;
@@ -308,8 +310,8 @@ export const handleWebhook = async (req: Request, res: Response) => {
                     })();
                 }
 
-                // CRM Logic: Auto-create lead for new contacts
-                if (direction === 'inbound' && currentStatus === 'PENDING') {
+                // CRM Logic: Auto-create lead for new contacts (Only for individual chats)
+                if (direction === 'inbound' && currentStatus === 'PENDING' && !isGroup) {
                     console.log(`[Webhook] Processing CRM logic for PENDING inbound message from ${phone}.`);
 
                     // Update Stages Cache if needed
