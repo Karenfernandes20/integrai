@@ -29,6 +29,7 @@ import {
   ChevronRight,
   MessageSquare,
   MessageCircle,
+  ShieldAlert,
 } from "lucide-react";
 import { Badge } from "../components/ui/badge";
 import { FollowUpModal } from "../components/follow-up/FollowUpModal";
@@ -1691,10 +1692,10 @@ const AtendimentoPage = () => {
               </div>
 
               <div className="flex-1 overflow-y-auto min-h-0 custom-scrollbar">
-                <div className={cn("flex flex-col py-3", ((viewMode === 'PENDING' && pendingConversations.length === 0) || (viewMode === 'OPEN' && openConversations.length === 0) || (viewMode === 'CLOSED' && closedConversations.length === 0)) && "h-full")}>
+                <div className={cn("flex flex-col", ((viewMode === 'PENDING' && pendingConversations.length === 0) || (viewMode === 'OPEN' && openConversations.length === 0) || (viewMode === 'CLOSED' && closedConversations.length === 0)) ? "h-full py-0" : "py-3")}>
                   {/* DYNAMIC LIST BASED ON VIEWMODE */}
 
-                  {viewMode === 'PENDING' && (() => {
+                  {viewMode === 'PENDING' && pendingConversations.length > 0 && (() => {
                     const startIndex = (pendingPage - 1) * ITEMS_PER_PAGE;
                     const endIndex = startIndex + ITEMS_PER_PAGE;
                     const paginatedItems = pendingConversations.slice(startIndex, endIndex);
@@ -1734,7 +1735,7 @@ const AtendimentoPage = () => {
                     );
                   })()}
 
-                  {viewMode === 'OPEN' && (() => {
+                  {viewMode === 'OPEN' && openConversations.length > 0 && (() => {
                     const startIndex = (openPage - 1) * ITEMS_PER_PAGE;
                     const endIndex = startIndex + ITEMS_PER_PAGE;
                     const paginatedItems = openConversations.slice(startIndex, endIndex);
@@ -1774,7 +1775,7 @@ const AtendimentoPage = () => {
                     );
                   })()}
 
-                  {viewMode === 'CLOSED' && (() => {
+                  {viewMode === 'CLOSED' && closedConversations.length > 0 && (() => {
                     const startIndex = (closedPage - 1) * ITEMS_PER_PAGE;
                     const endIndex = startIndex + ITEMS_PER_PAGE;
                     const paginatedItems = closedConversations.slice(startIndex, endIndex);
@@ -1819,9 +1820,10 @@ const AtendimentoPage = () => {
                   {((viewMode === 'PENDING' && pendingConversations.length === 0) ||
                     (viewMode === 'OPEN' && openConversations.length === 0) ||
                     (viewMode === 'CLOSED' && closedConversations.length === 0)) && (
-                      <div className="flex-1 flex flex-col items-center justify-center p-12 opacity-40">
-                        <Search className="h-12 w-12 mb-4 text-zinc-300" />
-                        <p className="text-sm font-medium">Nenhuma conversa encontrada</p>
+                      <div className="flex-1 flex flex-col items-center justify-center p-8 text-center text-muted-foreground opacity-50">
+                        <MessageSquare className="h-16 w-16 mb-4 text-zinc-300 dark:text-zinc-700" />
+                        <h3 className="text-lg font-semibold text-zinc-600 dark:text-zinc-400">Nenhuma conversa encontrada</h3>
+                        <p className="text-sm max-w-[200px]">Você ainda não possui atendimentos nesta categoria.</p>
                       </div>
                     )}
                 </div>
@@ -2077,15 +2079,20 @@ const AtendimentoPage = () => {
             </div>
 
             {/* Chat Messages Area */}
-            <div className="relative z-10 flex-1 min-h-0">
+            <div className="relative z-10 flex-1 min-h-[400px] flex flex-col">
               <div
                 ref={scrollRef}
-                className="px-4 py-4 space-y-2"
+                className={cn("px-4 py-4 space-y-2 flex-1", messages.length === 0 && "flex flex-col items-center justify-center")}
               >
                 {messages.length === 0 && (
-                  <div className="flex justify-center my-4">
-                    <span className="bg-[#ffeecd] dark:bg-[#1f2c34] text-zinc-800 dark:text-[#ffd279] text-xs px-3 py-1.5 rounded shadow-sm text-center max-w-[90%]">
-                      As mensagens e as chamadas são protegidas com a criptografia de ponta a ponta e ficam somente entre você e os participantes dessa conversa. Nem mesmo o WhatsApp pode ler ou ouvi-las.
+                  <div className="flex flex-col items-center justify-center p-8 text-center animate-in fade-in duration-700">
+                    <div className="w-24 h-24 bg-zinc-100 dark:bg-zinc-800 rounded-full flex items-center justify-center mb-4 shadow-sm">
+                      <MessageSquare className="h-10 w-10 text-zinc-400" />
+                    </div>
+                    <h3 className="text-lg font-semibold text-zinc-600 dark:text-zinc-400 mb-1">Nenhuma mensagem encontrada</h3>
+                    <p className="text-xs text-muted-foreground max-w-[250px] mb-6">Esta conversa ainda não possui mensagens no banco de dados.</p>
+                    <span className="bg-[#ffeecd] dark:bg-[#1f2c34] text-zinc-800 dark:text-[#ffd279] text-[10px] px-3 py-1.5 rounded shadow-sm text-center max-w-[90%] flex items-center gap-2">
+                      <ShieldAlert className="h-3 w-3" /> As mensagens são protegidas com criptografia de ponta a ponta.
                     </span>
                   </div>
                 )}
