@@ -1565,9 +1565,11 @@ export const setEvolutionWebhook = async (req: Request, res: Response) => {
         if (response.ok) {
           success = true;
           responseData = await response.json();
+          console.log(`[Webhook] SUCCESS registering webhook via ${url}`);
           break;
         } else {
           lastError = await response.text();
+          console.error(`[Webhook] FAILED registering webhook via ${url}. Status: ${response.status}, Error: ${lastError}`);
         }
       } catch (e: any) {
         lastError = e.message;
