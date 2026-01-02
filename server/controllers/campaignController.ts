@@ -293,7 +293,7 @@ async function processCampaign(campaignId: number) {
 
         const contacts = contactsResult.rows;
 
-        console.log(`[Campaign ${campaignId}] Found ${contacts.length} pending contacts.`);
+        console.log(`[Campaign ${campaignId}] Found ${contacts.length} pending contacts for campaign "${campaign.name}".`);
 
         if (contacts.length === 0) {
             // Mark campaign as completed if no contacts left
@@ -309,117 +309,106 @@ async function processCampaign(campaignId: number) {
 
         // Send messages with delay
         for (const contact of contacts) {
-            // Check if campaign is still running
-            const statusCheck = await pool.query(
-                'SELECT status FROM whatsapp_campaigns WHERE id = $1',
-                [campaignId]
-            );
+            try {
+                // Check if campaign is still running
+                const statusCheck = await pool.query(
+                    'SELECT status FROM whatsapp_campaigns WHERE id = $1',
+                    [campaignId]
+                );
 
-            if (statusCheck.rows[0].status !== 'running') {
-                console.log(`[Campaign ${campaignId}] Stopped/Paused (current status: ${statusCheck.rows[0].status})`);
-                break;
-            }
+                if (statusCheck.rows[0].status !== 'running') {
+                    console.log(`[Campaign ${campaignId}] Stopped/Paused (current status: ${statusCheck.rows[0].status})`);
+                    break;
+                }
 
-            // Check time window (Robust Check)
-            const now = new Date();
-            const brazilTimeStr = now.toLocaleTimeString('pt-BR', {
-                timeZone: 'America/Sao_Paulo',
-                hour: '2-digit',
-                minute: '2-digit',
-                hour12: false
-            });
+                // Check time window (Robust Check)
+                const now = new Date();
+                const brazilTimeStr = now.toLocaleTimeString('pt-BR', {
+                    timeZone: 'America/Sao_Paulo',
+                    hour: '2-digit',
+                    minute: '2-digit',
+                    hour12: false
+                });
 
-            const currentMinutes = getMinutes(brazilTimeStr);
-            const startMinutes = getMinutes(campaign.start_time);
-            const endMinutes = getMinutes(campaign.end_time);
+                const currentMinutes = getMinutes(brazilTimeStr);
+                const startMinutes = getMinutes(campaign.start_time || '00:00');
+                const endMinutes = getMinutes(campaign.end_time || '23:59');
 
-            // Handle overnight windows (e.g. 22:00 to 06:00) ? 
-            // Simple range check for now: Start < End
-            const isInsideWindow = currentMinutes >= startMinutes && currentMinutes <= endMinutes;
+                if (currentMinutes < startMinutes || currentMinutes > endMinutes) {
+                    console.log(`[Campaign ${campaignId}] Outside window (${campaign.start_time}-${campaign.end_time}), skipping and waiting...`);
+                    // We don't break, we just sleep a bit longer or exit the iteration
+                    // To avoid busy wait, we can exit the process and wait for scheduler to restart it
+                    // But scheduler only starts 'scheduled' campaigns. 'running' campaigns should stay in this loop.
 
-            console.log(`[Campaign ${campaignId}] Time Check: Now=${brazilTimeStr} (${currentMinutes}), Window=${campaign.start_time}-${campaign.end_time} (${startMinutes}-${endMinutes}). Inside? ${isInsideWindow}`);
-
-            if (!isInsideWindow) {
-                console.log(`[Campaign ${campaignId}] Outside window, waiting 60s...`);
-                await new Promise(resolve => setTimeout(resolve, 60000)); // Wait 1 minute
-                // Decrement 'i' or just continue? 
-                // Using continue here will retry the SAME contact in the next iteration 
-                // but we need to loop. Since we are inside a for-of loop, 'continue' goes to next element.
-                // WE MUST DECREMENT OR RE-ADD logic.
-                // Actually, the simple logic is: if outside window, wait and RETRY checking.
-                // We shouldn't skip the contact.
-
-                // Infinite wait loop until window opens
-                let waiting = true;
-                while (waiting) {
-                    const checkNow = new Date().toLocaleTimeString('pt-BR', { timeZone: 'America/Sao_Paulo', hour: '2-digit', minute: '2-digit', hour12: false });
-                    const cm = getMinutes(checkNow);
-                    if (cm >= startMinutes && cm <= endMinutes) {
-                        waiting = false;
-                    } else {
-                        // Check if campaign was paused while waiting
-                        const sCheck = await pool.query('SELECT status FROM whatsapp_campaigns WHERE id = $1', [campaignId]);
-                        if (sCheck.rows[0].status !== 'running') {
-                            console.log(`[Campaign ${campaignId}] Paused while waiting for time window.`);
-                            return; // Exit process
+                    // Simple wait loop until window opens
+                    let waiting = true;
+                    while (waiting) {
+                        const checkNow = new Date().toLocaleTimeString('pt-BR', { timeZone: 'America/Sao_Paulo', hour: '2-digit', minute: '2-digit', hour12: false });
+                        const cm = getMinutes(checkNow);
+                        if (cm >= startMinutes && cm <= endMinutes) {
+                            waiting = false;
+                        } else {
+                            // Check if campaign was paused while waiting
+                            const sCheck = await pool.query('SELECT status FROM whatsapp_campaigns WHERE id = $1', [campaignId]);
+                            if (sCheck.rows[0].status !== 'running') {
+                                console.log(`[Campaign ${campaignId}] Paused while waiting for time window.`);
+                                return;
+                            }
+                            await new Promise(r => setTimeout(r, 60000)); // check every minute
                         }
-                        await new Promise(r => setTimeout(r, 60000));
                     }
                 }
+
+                // Replace variables in message
+                let message = campaign.message_template;
+                const variables = contact.variables || {};
+
+                // Default variable 'nome' from contact.name
+                if (contact.name) variables.nome = contact.name;
+
+                Object.keys(variables).forEach(key => {
+                    message = message.replace(new RegExp(`{${key}}`, 'g'), variables[key]);
+                });
+
+                console.log(`[Campaign ${campaignId}] Sending to ${contact.phone}...`);
+
+                // Send message via Evolution API
+                const success = await sendWhatsAppMessage(campaign.company_id, contact.phone, message);
+
+                if (success) {
+                    await pool.query(
+                        `UPDATE whatsapp_campaign_contacts SET status = 'sent', sent_at = NOW() WHERE id = $1`,
+                        [contact.id]
+                    );
+
+                    await pool.query(
+                        `UPDATE whatsapp_campaigns SET sent_count = sent_count + 1, updated_at = NOW() WHERE id = $1`,
+                        [campaignId]
+                    );
+                } else {
+                    await pool.query(
+                        `UPDATE whatsapp_campaign_contacts SET status = 'failed', error_message = 'Failed to send via API' WHERE id = $1`,
+                        [contact.id]
+                    );
+
+                    await pool.query(
+                        `UPDATE whatsapp_campaigns SET failed_count = failed_count + 1, updated_at = NOW() WHERE id = $1`,
+                        [campaignId]
+                    );
+                }
+
+                // Random delay between messages
+                const delay = Math.random() * (campaign.delay_max - campaign.delay_min) + campaign.delay_min;
+                console.log(`[Campaign ${campaignId}] Sleeping for ${delay.toFixed(1)}s...`);
+                await new Promise(resolve => setTimeout(resolve, delay * 1000));
+
+            } catch (itemError: any) {
+                console.error(`[Campaign ${campaignId}] Error processing contact ${contact.phone}:`, itemError);
+                await pool.query(
+                    `UPDATE whatsapp_campaign_contacts SET status = 'failed', error_message = $1 WHERE id = $2`,
+                    [itemError.message, contact.id]
+                );
             }
-
-            // Replace variables in message
-            let message = campaign.message_template;
-            const variables = contact.variables || {};
-
-            // Default variable 'nome' from contact.name
-            if (contact.name) variables.nome = contact.name;
-
-            Object.keys(variables).forEach(key => {
-                message = message.replace(new RegExp(`{${key}}`, 'g'), variables[key]);
-            });
-
-            console.log(`[Campaign ${campaignId}] Sending to ${contact.phone}...`);
-
-            // Send message via Evolution API
-            const success = await sendWhatsAppMessage(campaign.company_id, contact.phone, message);
-
-            if (success) {
-                console.log(`[Campaign ${campaignId}] Sent successfully to ${contact.phone}`);
-                await pool.query(
-                    `UPDATE whatsapp_campaign_contacts 
-                     SET status = 'sent', sent_at = NOW() 
-                     WHERE id = $1`,
-                    [contact.id]
-                );
-
-                await pool.query(
-                    `UPDATE whatsapp_campaigns 
-                     SET sent_count = sent_count + 1, updated_at = NOW() 
-                     WHERE id = $1`,
-                    [campaignId]
-                );
-            } else {
-                console.error(`[Campaign ${campaignId}] Failed to send to ${contact.phone}`);
-                await pool.query(
-                    `UPDATE whatsapp_campaign_contacts 
-                     SET status = 'failed', error_message = 'Failed to send - Check logs' 
-                     WHERE id = $1`,
-                    [contact.id]
-                );
-
-                await pool.query(
-                    `UPDATE whatsapp_campaigns 
-                     SET failed_count = failed_count + 1 
-                     WHERE id = $1`,
-                    [campaignId]
-                );
-            }
-
-            // Random delay between messages
-            const delay = Math.random() * (campaign.delay_max - campaign.delay_min) + campaign.delay_min;
-            console.log(`[Campaign ${campaignId}] Sleeping for ${delay.toFixed(1)}s...`);
-            await new Promise(resolve => setTimeout(resolve, delay * 1000));
         }
 
         // Verify if all done
@@ -429,18 +418,15 @@ async function processCampaign(campaignId: number) {
         );
 
         if (parseInt(remaining.rows[0].count) === 0) {
-            // Mark campaign as completed
             await pool.query(
-                `UPDATE whatsapp_campaigns 
-                SET status = 'completed', completed_at = NOW(), updated_at = NOW() 
-                WHERE id = $1`,
+                `UPDATE whatsapp_campaigns SET status = 'completed', completed_at = NOW(), updated_at = NOW() WHERE id = $1`,
                 [campaignId]
             );
-            console.log(`[Campaign ${campaignId}] All contacts processed. Validated Completed.`);
+            console.log(`[Campaign ${campaignId}] All contacts processed.`);
         }
 
     } catch (error) {
-        console.error(`Error processing campaign ${campaignId}:`, error);
+        console.error(`[Campaign ${campaignId}] Fatal error in processCampaign:`, error);
     }
 }
 
@@ -451,11 +437,15 @@ export const checkAndStartScheduledCampaigns = async () => {
 
         // Find due campaigns
         const result = await pool.query(
-            "SELECT id FROM whatsapp_campaigns WHERE status = 'scheduled' AND scheduled_at <= NOW()"
+            "SELECT id, name, scheduled_at FROM whatsapp_campaigns WHERE status = 'scheduled' AND (scheduled_at <= NOW() OR scheduled_at IS NULL)"
         );
 
+        if (result.rows.length > 0) {
+            console.log(`[Scheduler] Found ${result.rows.length} campaigns to start.`);
+        }
+
         for (const row of result.rows) {
-            console.log(`[Scheduler] Starting scheduled campaign ${row.id}`);
+            console.log(`[Scheduler] Starting scheduled campaign: ${row.name} (ID: ${row.id})`);
 
             // Mark as running
             await pool.query(
@@ -504,16 +494,26 @@ async function sendWhatsAppMessage(companyId: number, phone: string, message: st
 
         console.log(`[sendWhatsAppMessage] POST ${targetUrl} | Phone: ${cleanPhone}`);
 
+        const payload = {
+            number: cleanPhone,
+            options: {
+                delay: 1200,
+                presence: "composing",
+            },
+            textMessage: {
+                text: message,
+            },
+            text: message, // Fallback for some versions/endpoints requiring root text
+            message: message // Fallback for older versions
+        };
+
         const response = await fetch(targetUrl, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
                 'apikey': evolution_apikey
             },
-            body: JSON.stringify({
-                number: cleanPhone,
-                text: message
-            })
+            body: JSON.stringify(payload)
         });
 
         if (!response.ok) {
@@ -523,11 +523,12 @@ async function sendWhatsAppMessage(companyId: number, phone: string, message: st
         }
 
         const data = await response.json();
-        console.log(`[sendWhatsAppMessage] Success:`, data);
+        console.log(`[sendWhatsAppMessage] Success for ${cleanPhone}:`, data);
 
         return true;
-    } catch (error) {
+    } catch (error: any) {
         console.error('Error sending WhatsApp message:', error);
+        console.error('Error details:', error.message, error.stack);
         return false;
     }
 }
