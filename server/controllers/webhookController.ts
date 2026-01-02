@@ -325,26 +325,17 @@ export const handleWebhook = async (req: Request, res: Response) => {
                 if (direction === 'inbound' && currentStatus === 'PENDING' && !isGroup) {
                     console.log(`[Webhook] Processing CRM logic for PENDING inbound message from ${phone}.`);
 
-                    // Update Stages Cache if needed
-                    const now = Date.now();
-                    if (!stagesCache.map || (now - stagesCache.lastFetch > STAGE_CACHE_TTL)) {
-                        const sRes = await pool!.query("SELECT id, name FROM crm_stages");
-                        stagesCache.map = sRes.rows.reduce((acc: any, s: any) => {
-                            acc[s.name.toUpperCase()] = s.id;
-                            return acc;
-                        }, {});
-                        stagesCache.lastFetch = now;
-                    }
+                    // Find company-specific LEADS stage
+                    const stageRes = await pool!.query(
+                        `SELECT id FROM crm_stages WHERE name = 'LEADS' AND company_id = $1 LIMIT 1`,
+                        [companyId]
+                    );
 
-                    const leadsStageId = stagesCache.map['LEADS'];
+                    if (stageRes.rows.length === 0) {
+                        console.warn(`[Webhook] LEADS stage not found for company ${companyId}. Skipping auto-lead creation.`);
+                    } else {
+                        const leadsStageId = stageRes.rows[0].id;
 
-                    if (!leadsStageId) {
-                        console.warn('[Webhook] "LEADS" stage not found in crm_stages. Checking for "PENDENTES"...');
-                    }
-
-                    const finalStageId = leadsStageId || stagesCache.map['PENDENTES'];
-
-                    if (finalStageId) {
                         const [contactCheck, checkLead] = await Promise.all([
                             // Check if contact is saved with a real name (not just the phone)
                             pool!.query(`SELECT id FROM whatsapp_contacts WHERE jid = $1 AND instance = $2 AND name IS NOT NULL AND name != '' AND name != $3 LIMIT 1`, [remoteJid, instance, phone]),
@@ -352,18 +343,16 @@ export const handleWebhook = async (req: Request, res: Response) => {
                         ]);
 
                         if (checkLead.rows.length === 0 && contactCheck.rows.length === 0) {
-                            console.log(`[Webhook] Creating auto-lead for unregistered contact ${phone}.`);
+                            console.log(`[Webhook] Creating auto-lead for unregistered contact ${phone} in LEADS stage.`);
                             await pool!.query(
                                 `INSERT INTO crm_leads (name, phone, origin, stage_id, company_id, created_at, updated_at, description) 
                                  VALUES ($1, $2, $3, $4, $5, NOW(), NOW(), 'Lead automático (Nova mensagem)')`,
-                                [name || phone, phone, 'WhatsApp', finalStageId, companyId]
+                                [name || phone, phone, 'WhatsApp', leadsStageId, companyId]
                             );
                         } else if (checkLead.rows.length > 0) {
                             // Update existing lead timestamp
                             await pool!.query('UPDATE crm_leads SET updated_at = NOW() WHERE id = $1', [checkLead.rows[0].id]);
                         }
-                    } else {
-                        console.error('[Webhook] No suitable CRM stage (LEADS/PENDENTES) found to create auto-lead.');
                     }
                 }
             })().catch(e => console.error('[Webhook Post-processing Error]:', e));

@@ -73,7 +73,23 @@ export const createCompany = async (req: Request, res: Response) => {
              RETURNING *`,
             [name, cnpj, city, state, phone, logo_url, evolution_instance, evolution_apikey, operation_type || 'clientes']
         );
-        res.status(201).json(result.rows[0]);
+
+        const newCompany = result.rows[0];
+
+        // Auto-create default CRM stage "LEADS" for this company
+        try {
+            await pool.query(
+                `INSERT INTO crm_stages (name, position, color, company_id) 
+                 VALUES ($1, $2, $3, $4)`,
+                ['LEADS', 0, '#cbd5e1', newCompany.id]
+            );
+            console.log(`[Company ${newCompany.id}] Created default LEADS stage`);
+        } catch (stageErr) {
+            console.error(`[Company ${newCompany.id}] Failed to create default stage:`, stageErr);
+            // Don't fail company creation if stage creation fails
+        }
+
+        res.status(201).json(newCompany);
     } catch (error) {
         console.error('Error creating company:', error);
         res.status(500).json({ error: 'Failed to create company' });
