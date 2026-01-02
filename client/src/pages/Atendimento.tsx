@@ -67,6 +67,9 @@ interface Conversation {
   closed_at?: string;
   is_group?: boolean;
   group_name?: string;
+  // New fields for name resolution
+  contact_push_name?: string;
+  last_sender_name?: string;
 }
 
 interface Message {
@@ -266,11 +269,29 @@ const AtendimentoPage = () => {
       return fromDB;
     }
 
-    // 2. Se não, usa contact_name do banco (conversas)
-    if (conv.contact_name && conv.contact_name !== conv.phone) {
+    // 2. Se não, usa contact_name do banco (conversas), SE for diferente do telefone
+    // Mas agora consideraremos contact_push_name e last_sender_name como fallback
+
+    // Normaliza para comparação (remove caracteres não numéricos)
+    const normalize = (s: string) => s ? s.replace(/\D/g, "") : "";
+    const nameIsPhone = normalize(conv.contact_name) === normalize(conv.phone);
+    const hasRealContactName = conv.contact_name && !nameIsPhone;
+
+    if (hasRealContactName) {
       return conv.contact_name;
     }
 
+    // 3. Fallback: Push Name (do banco de contatos)
+    if (conv.contact_push_name && normalize(conv.contact_push_name) !== normalize(conv.phone)) {
+      return conv.contact_push_name;
+    }
+
+    // 4. Fallback: Last Sender Name (histórico de mensagens)
+    if (conv.last_sender_name && normalize(conv.last_sender_name) !== normalize(conv.phone)) {
+      return conv.last_sender_name;
+    }
+
+    // 5. Último caso: Telefone formatado
     return formatBrazilianPhone(conv.phone);
   }, [contactMap]);
 
@@ -1523,7 +1544,7 @@ const AtendimentoPage = () => {
         <Tabs
           value={activeTab}
           onValueChange={(value) => setActiveTab(value as "conversas" | "contatos")}
-          className="flex flex-1 flex-col"
+          className="flex flex-1 flex-col min-h-0"
         >
           {/* Header da Sidebar */}
           <div className="bg-zinc-100/50 dark:bg-zinc-900/50 border-b">
@@ -1620,9 +1641,9 @@ const AtendimentoPage = () => {
 
 
 
-          <CardContent className="flex-1 flex flex-col overflow-hidden p-0">
+          <CardContent className="flex-1 flex flex-col overflow-hidden p-0 min-h-0">
             {/* Aba CONVERSAS - SINGLE COLUMN Vertical List */}
-            <TabsContent value="conversas" className="h-full flex flex-col m-0">
+            <TabsContent value="conversas" className="flex-1 flex flex-col min-h-0 m-0">
               <div className="px-3 py-2 flex flex-col gap-2 border-b">
                 <div className="relative">
                   <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
@@ -1668,7 +1689,7 @@ const AtendimentoPage = () => {
                 </div>
               </div>
 
-              <div className="flex-1 overflow-y-auto">
+              <div className="flex-1 overflow-y-auto min-h-0">
                 <div className="flex flex-col py-3">
                   {/* DYNAMIC LIST BASED ON VIEWMODE */}
 
@@ -1810,7 +1831,7 @@ const AtendimentoPage = () => {
 
             {/* Aba NOVA CONVERSA / CONTATOS */}
             {/* Aba NOVA CONVERSA / CONTATOS */}
-            <TabsContent value="contatos" className="h-full flex flex-col m-0 bg-white dark:bg-zinc-950">
+            <TabsContent value="contatos" className="flex-1 flex flex-col min-h-0 m-0 bg-white dark:bg-zinc-950">
               {/* Header de Nova Conversa (Estilo WhatsApp) */}
               <div className="h-[60px] bg-[#008069] dark:bg-zinc-800 flex items-center px-4 gap-4 text-white shrink-0">
                 <button onClick={() => setActiveTab("conversas")} className="hover:bg-white/10 rounded-full p-1 -ml-2">

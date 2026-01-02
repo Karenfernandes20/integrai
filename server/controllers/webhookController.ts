@@ -384,7 +384,9 @@ export const getConversations = async (req: Request, res: Response) => {
         let query = `
             SELECT c.*, 
             (SELECT content FROM whatsapp_messages WHERE conversation_id = c.id ORDER BY sent_at DESC LIMIT 1) as last_message,
-            COALESCE(co.profile_pic_url, c.profile_pic_url) as profile_pic_url
+            (SELECT sender_name FROM whatsapp_messages WHERE conversation_id = c.id AND sender_name IS NOT NULL LIMIT 1) as last_sender_name,
+            COALESCE(co.profile_pic_url, c.profile_pic_url) as profile_pic_url,
+            co.push_name as contact_push_name
             FROM whatsapp_conversations c
             LEFT JOIN whatsapp_contacts co ON (c.external_id = co.jid AND c.instance = co.instance)
             WHERE 1=1
