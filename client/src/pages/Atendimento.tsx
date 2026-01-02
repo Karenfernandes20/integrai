@@ -1691,10 +1691,8 @@ const AtendimentoPage = () => {
               </div>
 
               <div className="flex-1 overflow-y-auto min-h-0 custom-scrollbar">
-                <div className="flex flex-col py-3">
+                <div className={cn("flex flex-col py-3", ((viewMode === 'PENDING' && pendingConversations.length === 0) || (viewMode === 'OPEN' && openConversations.length === 0) || (viewMode === 'CLOSED' && closedConversations.length === 0)) && "h-full")}>
                   {/* DYNAMIC LIST BASED ON VIEWMODE */}
-
-
 
                   {viewMode === 'PENDING' && (() => {
                     const startIndex = (pendingPage - 1) * ITEMS_PER_PAGE;
@@ -1821,7 +1819,7 @@ const AtendimentoPage = () => {
                   {((viewMode === 'PENDING' && pendingConversations.length === 0) ||
                     (viewMode === 'OPEN' && openConversations.length === 0) ||
                     (viewMode === 'CLOSED' && closedConversations.length === 0)) && (
-                      <div className="flex flex-col items-center justify-center p-12 opacity-40">
+                      <div className="flex-1 flex flex-col items-center justify-center p-12 opacity-40">
                         <Search className="h-12 w-12 mb-4 text-zinc-300" />
                         <p className="text-sm font-medium">Nenhuma conversa encontrada</p>
                       </div>
