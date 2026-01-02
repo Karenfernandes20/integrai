@@ -22,3 +22,6 @@ WHERE company_id IS NULL;
 UPDATE crm_leads 
 SET company_id = (SELECT MIN(id) FROM companies) 
 WHERE company_id IS NULL;
+-- 6. Add color column to crm_stages
+ALTER TABLE crm_stages 
+ADD COLUMN IF NOT EXISTS color VARCHAR(7) DEFAULT '#cbd5e1';

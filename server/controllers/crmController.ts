@@ -116,10 +116,28 @@ export const getStages = async (req: Request, res: Response) => {
         }
 
         // Get ONLY stages for this specific company
-        const result = await pool.query(
+        let result = await pool.query(
             'SELECT * FROM crm_stages WHERE company_id = $1 ORDER BY position ASC',
             [companyId]
         );
+
+        // Failsafe: Ensure LEADS stage exists specifically
+        const hasLeads = result.rows.some(s => s.name.toUpperCase() === 'LEADS');
+
+        if (!hasLeads) {
+            console.log(`[CRM] No LEADS stage found for company ${companyId}. Creating it.`);
+            await pool.query(
+                `INSERT INTO crm_stages (name, position, color, company_id) 
+                 VALUES ($1, $2, $3, $4)`,
+                ['LEADS', 0, '#cbd5e1', companyId]
+            );
+
+            // Re-fetch stages after creation
+            result = await pool.query(
+                'SELECT * FROM crm_stages WHERE company_id = $1 ORDER BY position ASC',
+                [companyId]
+            );
+        }
 
         res.json(result.rows);
     } catch (error) {
@@ -237,7 +255,7 @@ export const createStage = async (req: Request, res: Response) => {
     try {
         if (!pool) return res.status(500).json({ error: 'Database not configured' });
 
-        const { name } = req.body;
+        const { name, color } = req.body;
         const user = (req as any).user;
         const companyId = user?.company_id;
 
@@ -257,8 +275,8 @@ export const createStage = async (req: Request, res: Response) => {
         const nextPos = posResult.rows[0].next_pos as number;
 
         const insertResult = await pool.query(
-            'INSERT INTO crm_stages (name, position, company_id) VALUES ($1, $2, $3) RETURNING *',
-            [name.trim(), nextPos, companyId]
+            'INSERT INTO crm_stages (name, position, company_id, color) VALUES ($1, $2, $3, $4) RETURNING *',
+            [name.trim(), nextPos, companyId, color || '#cbd5e1']
         );
 
         res.status(201).json(insertResult.rows[0]);

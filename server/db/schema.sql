@@ -71,6 +71,8 @@ CREATE TABLE IF NOT EXISTS crm_stages (
   id SERIAL PRIMARY KEY,
   name TEXT NOT NULL,
   position INTEGER NOT NULL,
+  color VARCHAR(7) DEFAULT '#cbd5e1',
+  company_id INTEGER REFERENCES companies(id) ON DELETE CASCADE,
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
@@ -83,6 +85,7 @@ CREATE TABLE IF NOT EXISTS crm_leads (
   state CHAR(2),
   origin TEXT, -- WhatsApp, App, Indicação, etc.
   stage_id INTEGER REFERENCES crm_stages(id),
+  company_id INTEGER REFERENCES companies(id) ON DELETE CASCADE,
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
