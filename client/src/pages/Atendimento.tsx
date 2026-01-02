@@ -173,7 +173,7 @@ const AtendimentoPage = () => {
   const [openPage, setOpenPage] = useState(1);
   const [closedPage, setClosedPage] = useState(1);
 
-  const ITEMS_PER_PAGE = 1000;
+  const ITEMS_PER_PAGE = 5;
 
 
   // Helper para resolver o nome do contato baseado no banco de dados sincronizado
