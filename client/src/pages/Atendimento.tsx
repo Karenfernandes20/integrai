@@ -111,8 +111,7 @@ const AtendimentoPage = () => {
   const [pendingConversations, setPendingConversations] = useState<Conversation[]>([]);
   const [openConversations, setOpenConversations] = useState<Conversation[]>([]);
   const [closedConversations, setClosedConversations] = useState<Conversation[]>([]);
-  const [groupConversations, setGroupConversations] = useState<Conversation[]>([]);
-  const [activeTab, setActiveTab] = useState<"conversas" | "contatos" | "grupos">("conversas");
+  const [activeTab, setActiveTab] = useState<"conversas" | "contatos">("conversas");
   const [selectedConversation, setSelectedConversation] = useState<Conversation | null>(null);
   const [isLoadingConversations, setIsLoadingConversations] = useState(true);
 
@@ -354,18 +353,6 @@ const AtendimentoPage = () => {
     setPendingConversations(filterByStatusAndSearch('PENDING'));
     setOpenConversations(filterByStatusAndSearch('OPEN'));
     setClosedConversations(filterByStatusAndSearch('CLOSED'));
-
-    setGroupConversations(conversations.filter(c => {
-      const isGroup = Boolean(c.is_group || c.group_name || c.phone.includes('@g.us') || c.phone.includes('-'));
-      if (!isGroup) return false;
-
-      if (conversationSearchTerm) {
-        const search = conversationSearchTerm.toLowerCase();
-        const name = (c.group_name || getDisplayName(c)).toLowerCase();
-        return name.includes(search) || c.phone.includes(search);
-      }
-      return true;
-    }).sort((a, b) => new Date(b.last_message_at || 0).getTime() - new Date(a.last_message_at || 0).getTime()));
 
   }, [conversations, conversationSearchTerm, getDisplayName]); // getDisplayName is a dependency because it uses contactMap which is memoized
 
@@ -1558,7 +1545,7 @@ const AtendimentoPage = () => {
       )}>
         <Tabs
           value={activeTab}
-          onValueChange={(value) => setActiveTab(value as "conversas" | "contatos" | "grupos")}
+          onValueChange={(value) => setActiveTab(value as "conversas" | "contatos")}
           className="flex flex-1 flex-col min-h-0"
         >
           {/* Header da Sidebar */}
@@ -1647,11 +1634,8 @@ const AtendimentoPage = () => {
                 <TabsTrigger value="conversas" className="text-[11px] font-semibold">
                   Conversas
                 </TabsTrigger>
-                <TabsTrigger value="grupos" className="text-[11px] font-semibold">
-                  Grupos
-                </TabsTrigger>
                 <TabsTrigger value="contatos" className="text-[11px] font-semibold">
-                  Novas
+                  Novas Conversas
                 </TabsTrigger>
               </TabsList>
             </div>
@@ -1842,35 +1826,6 @@ const AtendimentoPage = () => {
                         <p className="text-sm max-w-[200px]">Você ainda não possui atendimentos nesta categoria.</p>
                       </div>
                     )}
-                </div>
-              </div>
-            </TabsContent>
-
-            {/* Aba GRUPOS */}
-            <TabsContent value="grupos" className="flex-1 flex flex-col min-h-0 m-0">
-              <div className="px-3 py-2 flex flex-col gap-2 border-b">
-                <div className="relative">
-                  <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-                  <Input
-                    placeholder="Pesquisar grupos..."
-                    className="pl-9 h-10 bg-zinc-100 dark:bg-zinc-800/50 border-none shadow-none text-sm"
-                    value={conversationSearchTerm}
-                    onChange={(e) => setConversationSearchTerm(e.target.value)}
-                  />
-                </div>
-              </div>
-
-              <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar">
-                <div className={cn("flex flex-col py-3", groupConversations.length === 0 && "h-full")}>
-                  {groupConversations.map(conv => renderConversationCard(conv))}
-
-                  {groupConversations.length === 0 && (
-                    <div className="flex-1 flex flex-col items-center justify-center p-8 text-center text-muted-foreground opacity-50">
-                      <MessageSquare className="h-16 w-16 mb-4 text-zinc-300 dark:text-zinc-700" />
-                      <h3 className="text-lg font-semibold text-zinc-600 dark:text-zinc-400">Nenhum grupo encontrado</h3>
-                      <p className="text-sm max-w-[200px]">Os grupos do seu WhatsApp aparecerão aqui.</p>
-                    </div>
-                  )}
                 </div>
               </div>
             </TabsContent>
