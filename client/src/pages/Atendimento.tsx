@@ -1674,180 +1674,85 @@ const AtendimentoPage = () => {
                   />
                 </div>
 
-                {/* QUICK NAVIGATION TABS (Top Bar Style) */}
-                <div className="flex items-center gap-1 bg-zinc-100 dark:bg-zinc-900/50 p-1 rounded-xl shadow-inner border border-zinc-200/50 dark:border-zinc-800/50 w-full">
-
-                  <button
-                    onClick={() => setViewMode('PENDING')}
-                    className={cn(
-                      "text-[11px] px-1 py-1.5 rounded-lg font-bold uppercase transition-all flex items-center justify-center gap-2 flex-1",
-                      viewMode === 'PENDING' ? "bg-zinc-500 text-white shadow-sm" : "text-zinc-500 hover:text-zinc-700 hover:bg-black/5"
-                    )}
-                  >
-                    Pendentes <span className="opacity-50 text-[9px] bg-black/10 px-1.5 rounded">{pendingConversations.length}</span>
-                  </button>
-                  <button
-                    onClick={() => setViewMode('OPEN')}
-                    className={cn(
-                      "text-[11px] px-1 py-1.5 rounded-lg font-bold uppercase transition-all flex items-center justify-center gap-2 flex-1",
-                      viewMode === 'OPEN' ? "bg-[#008069] text-white shadow-sm" : "text-zinc-500 hover:text-zinc-700 hover:bg-black/5"
-                    )}
-                  >
-                    Abertos <span className="opacity-60 text-[9px] bg-white/20 px-1.5 rounded">{openConversations.length}</span>
-                  </button>
-                  <button
-                    onClick={() => setViewMode('CLOSED')}
-                    className={cn(
-                      "text-[11px] px-1 py-1.5 rounded-lg font-bold uppercase transition-all flex items-center justify-center gap-2 flex-1",
-                      viewMode === 'CLOSED' ? "bg-red-500 text-white shadow-sm" : "text-zinc-500 hover:text-zinc-700 hover:bg-black/5"
-                    )}
-                  >
-                    Fechados <span className="opacity-50 text-[9px] bg-black/10 px-1.5 rounded">{closedConversations.length}</span>
-                  </button>
-
-                </div>
               </div>
 
-              <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar">
-                <div className={cn("flex flex-col", ((viewMode === 'PENDING' && pendingConversations.length === 0) || (viewMode === 'OPEN' && openConversations.length === 0) || (viewMode === 'CLOSED' && closedConversations.length === 0)) ? "h-full py-0" : "py-3")}>
-                  {/* DYNAMIC LIST BASED ON VIEWMODE */}
+              <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar p-0 bg-zinc-50/50 dark:bg-zinc-900/10">
+                <div className="flex flex-col gap-4 py-2">
 
-                  {viewMode === 'PENDING' && pendingConversations.length > 0 && (() => {
-                    const startIndex = (pendingPage - 1) * ITEMS_PER_PAGE;
-                    const endIndex = startIndex + ITEMS_PER_PAGE;
-                    const paginatedItems = pendingConversations.slice(startIndex, endIndex);
-                    const totalPages = Math.ceil(pendingConversations.length / ITEMS_PER_PAGE);
+                  {/* SECTION: PENDENTES */}
+                  <div className="flex flex-col px-2">
+                    <div className="flex items-center justify-between px-2 py-1 mb-1">
+                      <span className="text-xs font-bold text-zinc-500 uppercase tracking-wider flex items-center gap-2">
+                        Pendentes <Badge variant="secondary" className="h-4 px-1 text-[9px] min-w-[1.2rem] flex justify-center bg-zinc-200 text-zinc-700">{pendingConversations.length}</Badge>
+                      </span>
+                      {Math.ceil(pendingConversations.length / ITEMS_PER_PAGE) > 1 && (
+                        <div className="flex gap-1">
+                          <Button size="icon" variant="ghost" className="h-5 w-5" onClick={() => setPendingPage(p => Math.max(1, p - 1))} disabled={pendingPage === 1}><ChevronLeft className="h-3 w-3" /></Button>
+                          <Button size="icon" variant="ghost" className="h-5 w-5" onClick={() => setPendingPage(p => Math.min(Math.ceil(pendingConversations.length / ITEMS_PER_PAGE), p + 1))} disabled={pendingPage >= Math.ceil(pendingConversations.length / ITEMS_PER_PAGE)}><ChevronRight className="h-3 w-3" /></Button>
+                        </div>
+                      )}
+                    </div>
+                    <div className="flex flex-col gap-1">
+                      {pendingConversations.length === 0 ? (
+                        <div className="text-center py-4 text-xs text-muted-foreground bg-white dark:bg-zinc-900 rounded-lg border border-dashed mx-2">Nenhum pendente</div>
+                      ) : (
+                        pendingConversations.slice((pendingPage - 1) * ITEMS_PER_PAGE, pendingPage * ITEMS_PER_PAGE).map(conv => renderConversationCard(conv))
+                      )}
+                    </div>
+                  </div>
 
-                    return (
-                      <>
-                        {paginatedItems.map(conv => renderConversationCard(conv))}
-                        {totalPages > 1 && (
-                          <div className="flex items-center justify-center gap-1 mt-2 mb-2 p-2 pt-0">
-                            <Button
-                              variant="outline"
-                              size="icon"
-                              onClick={() => setPendingPage(p => Math.max(1, p - 1))}
-                              disabled={pendingPage === 1}
-                              className="h-7 w-7"
-                              title="Página Anterior"
-                            >
-                              <ChevronLeft className="h-4 w-4" />
-                            </Button>
-                            <span className="text-[10px] text-muted-foreground font-medium px-2 min-w-[3rem] text-center">
-                              {pendingPage} / {totalPages}
-                            </span>
-                            <Button
-                              variant="outline"
-                              size="icon"
-                              onClick={() => setPendingPage(p => Math.min(totalPages, p + 1))}
-                              disabled={pendingPage === totalPages}
-                              className="h-7 w-7"
-                              title="Próxima Página"
-                            >
-                              <ChevronRight className="h-4 w-4" />
-                            </Button>
-                          </div>
-                        )}
-                      </>
-                    );
-                  })()}
+                  <div className="h-px bg-zinc-200 dark:bg-zinc-800 mx-4" />
 
-                  {viewMode === 'OPEN' && openConversations.length > 0 && (() => {
-                    const startIndex = (openPage - 1) * ITEMS_PER_PAGE;
-                    const endIndex = startIndex + ITEMS_PER_PAGE;
-                    const paginatedItems = openConversations.slice(startIndex, endIndex);
-                    const totalPages = Math.ceil(openConversations.length / ITEMS_PER_PAGE);
+                  {/* SECTION: ABERTOS */}
+                  <div className="flex flex-col px-2">
+                    <div className="flex items-center justify-between px-2 py-1 mb-1">
+                      <span className="text-xs font-bold text-[#008069] uppercase tracking-wider flex items-center gap-2">
+                        Em Atendimento <Badge className="h-4 px-1 text-[9px] min-w-[1.2rem] flex justify-center bg-[#008069] text-white hover:bg-[#008069]">{openConversations.length}</Badge>
+                      </span>
+                      {Math.ceil(openConversations.length / ITEMS_PER_PAGE) > 1 && (
+                        <div className="flex gap-1">
+                          <Button size="icon" variant="ghost" className="h-5 w-5" onClick={() => setOpenPage(p => Math.max(1, p - 1))} disabled={openPage === 1}><ChevronLeft className="h-3 w-3" /></Button>
+                          <Button size="icon" variant="ghost" className="h-5 w-5" onClick={() => setOpenPage(p => Math.min(Math.ceil(openConversations.length / ITEMS_PER_PAGE), p + 1))} disabled={openPage >= Math.ceil(openConversations.length / ITEMS_PER_PAGE)}><ChevronRight className="h-3 w-3" /></Button>
+                        </div>
+                      )}
+                    </div>
+                    <div className="flex flex-col gap-1">
+                      {openConversations.length === 0 ? (
+                        <div className="text-center py-4 text-xs text-muted-foreground bg-white dark:bg-zinc-900 rounded-lg border border-dashed mx-2">Nenhum atendimento aberto</div>
+                      ) : (
+                        openConversations.slice((openPage - 1) * ITEMS_PER_PAGE, openPage * ITEMS_PER_PAGE).map(conv => renderConversationCard(conv))
+                      )}
+                    </div>
+                  </div>
 
-                    return (
-                      <>
-                        {paginatedItems.map(conv => renderConversationCard(conv))}
-                        {totalPages > 1 && (
-                          <div className="flex items-center justify-center gap-1 mt-2 mb-2 p-2 pt-0">
-                            <Button
-                              variant="outline"
-                              size="icon"
-                              onClick={() => setOpenPage(p => Math.max(1, p - 1))}
-                              disabled={openPage === 1}
-                              className="h-7 w-7"
-                              title="Página Anterior"
-                            >
-                              <ChevronLeft className="h-4 w-4" />
-                            </Button>
-                            <span className="text-[10px] text-muted-foreground font-medium px-2 min-w-[3rem] text-center">
-                              {openPage} / {totalPages}
-                            </span>
-                            <Button
-                              variant="outline"
-                              size="icon"
-                              onClick={() => setOpenPage(p => Math.min(totalPages, p + 1))}
-                              disabled={openPage === totalPages}
-                              className="h-7 w-7"
-                              title="Próxima Página"
-                            >
-                              <ChevronRight className="h-4 w-4" />
-                            </Button>
-                          </div>
-                        )}
-                      </>
-                    );
-                  })()}
+                  <div className="h-px bg-zinc-200 dark:bg-zinc-800 mx-4" />
 
-                  {viewMode === 'CLOSED' && closedConversations.length > 0 && (() => {
-                    const startIndex = (closedPage - 1) * ITEMS_PER_PAGE;
-                    const endIndex = startIndex + ITEMS_PER_PAGE;
-                    const paginatedItems = closedConversations.slice(startIndex, endIndex);
-                    const totalPages = Math.ceil(closedConversations.length / ITEMS_PER_PAGE);
+                  {/* SECTION: FECHADOS */}
+                  <div className="flex flex-col px-2">
+                    <div className="flex items-center justify-between px-2 py-1 mb-1">
+                      <span className="text-xs font-bold text-red-500 uppercase tracking-wider flex items-center gap-2">
+                        Finalizados <Badge variant="secondary" className="h-4 px-1 text-[9px] min-w-[1.2rem] flex justify-center bg-zinc-200 text-zinc-700">{closedConversations.length}</Badge>
+                      </span>
+                      {Math.ceil(closedConversations.length / ITEMS_PER_PAGE) > 1 && (
+                        <div className="flex gap-1">
+                          <Button size="icon" variant="ghost" className="h-5 w-5" onClick={() => setClosedPage(p => Math.max(1, p - 1))} disabled={closedPage === 1}><ChevronLeft className="h-3 w-3" /></Button>
+                          <Button size="icon" variant="ghost" className="h-5 w-5" onClick={() => setClosedPage(p => Math.min(Math.ceil(closedConversations.length / ITEMS_PER_PAGE), p + 1))} disabled={closedPage >= Math.ceil(closedConversations.length / ITEMS_PER_PAGE)}><ChevronRight className="h-3 w-3" /></Button>
+                        </div>
+                      )}
+                    </div>
+                    <div className="flex flex-col gap-1">
+                      {closedConversations.length === 0 ? (
+                        <div className="text-center py-2 text-[10px] text-muted-foreground opacity-50">Lista vazia</div>
+                      ) : (
+                        closedConversations.slice((closedPage - 1) * ITEMS_PER_PAGE, closedPage * ITEMS_PER_PAGE).map(conv => renderConversationCard(conv))
+                      )}
+                    </div>
+                  </div>
 
-                    return (
-                      <>
-                        {paginatedItems.map(conv => renderConversationCard(conv))}
-                        {totalPages > 1 && (
-                          <div className="flex items-center justify-center gap-1 mt-2 mb-2 p-2 pt-0">
-                            <Button
-                              variant="outline"
-                              size="icon"
-                              onClick={() => setClosedPage(p => Math.max(1, p - 1))}
-                              disabled={closedPage === 1}
-                              className="h-7 w-7"
-                              title="Página Anterior"
-                            >
-                              <ChevronLeft className="h-4 w-4" />
-                            </Button>
-                            <span className="text-[10px] text-muted-foreground font-medium px-2 min-w-[3rem] text-center">
-                              {closedPage} / {totalPages}
-                            </span>
-                            <Button
-                              variant="outline"
-                              size="icon"
-                              onClick={() => setClosedPage(p => Math.min(totalPages, p + 1))}
-                              disabled={closedPage === totalPages}
-                              className="h-7 w-7"
-                              title="Próxima Página"
-                            >
-                              <ChevronRight className="h-4 w-4" />
-                            </Button>
-                          </div>
-                        )}
-                      </>
-                    );
-                  })()}
-
-
-                  {/* EMPTY STATES */}
-                  {((viewMode === 'PENDING' && pendingConversations.length === 0) ||
-                    (viewMode === 'OPEN' && openConversations.length === 0) ||
-                    (viewMode === 'CLOSED' && closedConversations.length === 0)) && (
-                      <div className="flex-1 flex flex-col items-center justify-center p-8 text-center text-muted-foreground opacity-50">
-                        <MessageSquare className="h-16 w-16 mb-4 text-zinc-300 dark:text-zinc-700" />
-                        <h3 className="text-lg font-semibold text-zinc-600 dark:text-zinc-400">Nenhuma conversa encontrada</h3>
-                        <p className="text-sm max-w-[200px]">Você ainda não possui atendimentos nesta categoria.</p>
-                      </div>
-                    )}
                 </div>
               </div>
             </TabsContent>
 
-            {/* Aba NOVA CONVERSA / CONTATOS */}
             {/* Aba NOVA CONVERSA / CONTATOS */}
             <TabsContent value="contatos" className="flex-1 flex flex-col min-h-0 m-0 bg-white dark:bg-zinc-950">
               {/* Header de Nova Conversa (Estilo WhatsApp) */}
