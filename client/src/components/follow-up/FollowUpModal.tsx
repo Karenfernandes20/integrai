@@ -8,6 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from ".
 import { useAuth } from "../../contexts/AuthContext";
 import { format } from "date-fns";
 import { toast } from "sonner";
+import { useQueryClient } from "@tanstack/react-query";
 
 interface FollowUpModalProps {
     isOpen: boolean;
@@ -24,6 +25,7 @@ interface FollowUpModalProps {
 export function FollowUpModal({ isOpen, onClose, initialData }: FollowUpModalProps) {
     const { token, user } = useAuth();
     const [isLoading, setIsLoading] = useState(false);
+    const queryClient = useQueryClient();
     const isEditing = !!(initialData as any)?.id;
 
     const [formData, setFormData] = useState({
@@ -65,6 +67,8 @@ export function FollowUpModal({ isOpen, onClose, initialData }: FollowUpModalPro
 
             if (res.ok) {
                 toast.success(isEditing ? "Follow-up atualizado!" : "Follow-up agendado com sucesso!");
+                queryClient.invalidateQueries({ queryKey: ["follow-ups"] });
+                queryClient.invalidateQueries({ queryKey: ["follow-up-stats"] });
                 onClose();
             } else {
                 toast.error("Erro ao salvar follow-up");
