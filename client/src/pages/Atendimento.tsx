@@ -78,6 +78,10 @@ interface Message {
   external_id?: string;
   message_type?: string;
   media_url?: string;
+  sender_jid?: string;
+  sender_name?: string;
+  agent_name?: string;
+  user_id?: number | string;
 }
 
 interface Contact {
@@ -183,9 +187,9 @@ const AtendimentoPage = () => {
   }, [importedContacts]);
 
   // Notification Sound Function (iPhone 16 "Rebound" style synthesis)
-  const playNotificationSound = async () => {
-    console.log("[Notificação] Reproduzindo som iPhone 16... Mudo:", mutedRef.current, "Volume:", volumeRef.current);
-    if (mutedRef.current) return;
+  const playNotificationSound = async (isGroup?: boolean) => {
+    console.log("[Notificação] Reproduzindo som iPhone 16... Mudo:", mutedRef.current, "Volume:", volumeRef.current, "Grupo:", isGroup);
+    if (mutedRef.current || isGroup) return;
 
     try {
       const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
@@ -475,7 +479,8 @@ const AtendimentoPage = () => {
 
       // Play notification sound and show alert for inbound messages
       if (newMessage.direction === 'inbound') {
-        playNotificationSound();
+        const isGroup = Boolean(newMessage.is_group || newMessage.remoteJid?.includes('@g.us'));
+        playNotificationSound(isGroup);
         showSystemNotification(
           `Nova mensagem de ${newMessage.contact_name || newMessage.phone}`,
           newMessage.content || "Mídia recebida"
@@ -1099,7 +1104,9 @@ const AtendimentoPage = () => {
         direction: "outbound",
         content: messageContent,
         sent_at: new Date().toISOString(),
-        status: "pending"
+        status: "pending",
+        user_id: user?.id,
+        agent_name: user?.full_name
       };
 
       setMessages((prev) => [...prev, optimisticMsg]);
@@ -1153,7 +1160,7 @@ const AtendimentoPage = () => {
 
         // Update the temp message with real IDs
         setMessages(prev => prev.map(m =>
-          m.id === tempMessageId ? { ...m, id: dbId, external_id: externalId, status: 'sent' } : m
+          m.id === tempMessageId ? { ...m, id: dbId, external_id: externalId, status: 'sent', user_id: user?.id, agent_name: user?.full_name } : m
         ));
 
         // Update the conversation in the list (crucial for persisting temp chats)
@@ -1588,7 +1595,7 @@ const AtendimentoPage = () => {
                       size="sm"
                       variant="ghost"
                       className="h-6 w-6 p-0 text-[10px]"
-                      onClick={playNotificationSound}
+                      onClick={() => playNotificationSound(false)}
                       title="Testar som"
                     >
                       🔔
@@ -2078,7 +2085,12 @@ const AtendimentoPage = () => {
                   >
                     {msg.direction === "outbound" && (
                       <span className="text-[10px] font-bold text-zinc-500 dark:text-zinc-400 mb-0.5 px-1 uppercase tracking-wider">
-                        {(msg as any).sender_name || ((msg as any).user_id ? "Usuário" : "(celular)")}
+                        {msg.agent_name || (msg as any).user_id ? "Usuário" : "(celular)"}
+                      </span>
+                    )}
+                    {msg.direction === "inbound" && selectedConversation?.is_group && (
+                      <span className="text-[10px] font-bold text-violet-600 dark:text-violet-400 mb-0.5 px-1 tracking-tight">
+                        {msg.sender_name || msg.sender_jid?.split('@')[0] || "Participante"}
                       </span>
                     )}
                     <div

@@ -355,12 +355,29 @@ export const sendEvolutionMessage = async (req: Request, res: Response) => {
         console.log(`[Evolution] Saved message to DB successfully with ID: ${insertedMsg.rows[0].id}.`);
 
         // Include the DB ID and external ID in the response so frontend can use them
-        return res.status(200).json({
+        const resultPayload = {
           ...data,
           databaseId: insertedMsg.rows[0].id,
           conversationId: conversationId,
-          external_id: externalMessageId
-        });
+          external_id: externalMessageId,
+          content: messageContent,
+          direction: 'outbound',
+          sent_at: new Date().toISOString(),
+          user_id: user.id,
+          agent_name: user.full_name,
+          phone: safePhone,
+          remoteJid: remoteJid
+        };
+
+        // Emit Socket to all users in the company
+        const io = req.app.get('io');
+        if (io && companyId) {
+          const room = `company_${companyId}`;
+          console.log(`[Evolution] Emitting system-sent message to room ${room}`);
+          io.to(room).emit('message:received', resultPayload);
+        }
+
+        return res.status(200).json(resultPayload);
 
       } catch (dbError) {
         console.error("Failed to save sent message to DB:", dbError);
@@ -464,12 +481,34 @@ export const sendEvolutionMedia = async (req: Request, res: Response) => {
 
         const externalMessageId = data?.key?.id;
 
-        await pool.query(
-          'INSERT INTO whatsapp_messages (conversation_id, direction, content, sent_at, status, external_id, user_id, message_type, media_url) VALUES ($1, $2, $3, NOW(), $4, $5, $6, $7, $8) ON CONFLICT DO NOTHING',
+        const insertedMsg = await pool.query(
+          'INSERT INTO whatsapp_messages (conversation_id, direction, content, sent_at, status, external_id, user_id, message_type, media_url) VALUES ($1, $2, $3, NOW(), $4, $5, $6, $7, $8) ON CONFLICT DO NOTHING RETURNING id',
           [conversationId, 'outbound', content, 'sent', externalMessageId, user.id, mediaType, (media.startsWith('http') ? media : null)]
         );
-        // Note: storing base64 in media_url is bad. If media is base64, store NULL or generic placeholder.
-        // Assuming client sends base64, we don't save it to 'media_url'. 
+
+        const resultPayload = {
+          ...data,
+          databaseId: insertedMsg.rows[0]?.id,
+          conversationId: conversationId,
+          external_id: externalMessageId,
+          content: content,
+          direction: 'outbound',
+          sent_at: new Date().toISOString(),
+          user_id: user.id,
+          agent_name: user.full_name,
+          message_type: mediaType,
+          media_url: media.startsWith('http') ? media : null, // Only include if it was an URL
+          phone: safePhone,
+          remoteJid: remoteJid
+        };
+
+        const io = req.app.get('io');
+        if (io && companyId) {
+          const room = `company_${companyId}`;
+          io.to(room).emit('message:received', resultPayload);
+        }
+
+        return res.status(200).json(resultPayload);
 
       } catch (e) {
         console.error("Failed to save media message to DB:", e);

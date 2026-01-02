@@ -226,6 +226,8 @@ const runWhatsappMigrations = async () => {
         await addColumn('whatsapp_messages', 'user_id', 'INTEGER REFERENCES app_users(id)');
         await addColumn('whatsapp_messages', 'message_type', "VARCHAR(50) DEFAULT 'text'");
         await addColumn('whatsapp_messages', 'media_url', 'TEXT');
+        await addColumn('whatsapp_messages', 'sender_jid', 'VARCHAR(100)');
+        await addColumn('whatsapp_messages', 'sender_name', 'VARCHAR(255)');
 
         // Ensure message uniqueness by external_id (WhatsApp message ID)
         try {

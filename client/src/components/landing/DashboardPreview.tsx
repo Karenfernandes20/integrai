@@ -93,6 +93,7 @@ export const DashboardPreview = () => {
                                 <TabsTrigger value="dashboard" className="data-[state=active]:bg-blue-50 data-[state=active]:text-blue-700">Visão Geral</TabsTrigger>
                                 <TabsTrigger value="chats" className="data-[state=active]:bg-blue-50 data-[state=active]:text-blue-700">Atendimentos</TabsTrigger>
                                 <TabsTrigger value="crm" className="data-[state=active]:bg-blue-50 data-[state=active]:text-blue-700">Funnel CRM</TabsTrigger>
+                                <TabsTrigger value="marketing" className="data-[state=active]:bg-blue-50 data-[state=active]:text-blue-700">Marketing</TabsTrigger>
                             </TabsList>
                             <div className="flex gap-2">
                                 <Button size="sm" variant="outline" className="border-slate-200 bg-white hover:bg-slate-50 text-slate-700 shadow-sm">
@@ -217,93 +218,10 @@ export const DashboardPreview = () => {
 
                         {/* TAB: CHATS */}
                         <TabsContent value="chats" className="h-[450px] m-0 rounded-lg border border-slate-200 overflow-hidden flex bg-white shadow-sm">
-                            {/* Chat List */}
-                            <div className="w-72 border-r border-slate-200 flex flex-col bg-white">
-                                <div className="p-3 border-b border-slate-100 bg-slate-50/50">
-                                    <div className="relative">
-                                        <Search className="absolute left-2 top-2.5 h-4 w-4 text-slate-400" />
-                                        <Input placeholder="Buscar..." className="pl-8 h-9 bg-white border-slate-200 text-xs focus-visible:ring-blue-500" />
-                                    </div>
-                                </div>
-                                <div className="flex-1 overflow-auto">
-                                    {[
-                                        { name: "Ana Beatriz", msg: "Gostaria de saber mais sobre...", time: "10:42", unread: 2 },
-                                        { name: "Carlos Oliveira", msg: "Ok, fico no aguardo.", time: "10:30", unread: 0 },
-                                        { name: "Fernanda Lima", msg: "Pode me enviar o orçamento?", time: "09:15", unread: 1 },
-                                        { name: "Grupo Vendas", msg: "Meta batida pessoal! 🚀", time: "Ontem", unread: 5 },
-                                    ].map((chat, i) => (
-                                        <div key={i} className={`p-3 border-b border-slate-100 flex gap-3 hover:bg-slate-50 cursor-pointer ${i === 0 ? 'bg-blue-50/60 border-l-2 border-l-blue-500' : ''}`}>
-                                            <Avatar className="h-10 w-10 border border-slate-200">
-                                                <AvatarFallback className="bg-slate-100 text-slate-600 text-xs font-medium">{chat.name.substring(0, 2).toUpperCase()}</AvatarFallback>
-                                            </Avatar>
-                                            <div className="flex-1 overflow-hidden">
-                                                <div className="flex justify-between items-center mb-1">
-                                                    <span className={`text-sm font-medium ${i === 0 ? 'text-blue-700' : 'text-slate-800'}`}>{chat.name}</span>
-                                                    <span className="text-[10px] text-slate-500">{chat.time}</span>
-                                                </div>
-                                                <p className="text-xs text-slate-500 truncate">{chat.msg}</p>
-                                            </div>
-                                            {chat.unread > 0 && (
-                                                <div className="flex flex-col justify-center">
-                                                    <span className="h-5 w-5 flex items-center justify-center rounded-full bg-blue-600 text-[10px] font-bold text-white shadow-sm shadow-blue-200">
-                                                        {chat.unread}
-                                                    </span>
-                                                </div>
-                                            )}
-                                        </div>
-                                    ))}
-                                </div>
-                            </div>
-                            {/* Chat View */}
-                            <div className="flex-1 flex flex-col bg-slate-50/30">
-                                <div className="h-16 border-b border-slate-200 flex items-center justify-between px-4 bg-white shadow-sm z-10">
-                                    <div className="flex items-center gap-3">
-                                        <Avatar className="h-9 w-9 border border-slate-200">
-                                            <AvatarFallback className="bg-blue-100 text-blue-700 font-medium">AB</AvatarFallback>
-                                        </Avatar>
-                                        <div>
-                                            <div className="text-sm font-semibold text-slate-800">Ana Beatriz</div>
-                                            <div className="text-[10px] text-emerald-600 flex items-center gap-1 font-medium">
-                                                <div className="h-1.5 w-1.5 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]" />
-                                                Online no WhatsApp
-                                            </div>
-                                        </div>
-                                    </div>
-                                    <Button size="icon" variant="ghost" className="h-8 w-8 text-slate-400 hover:text-slate-600">
-                                        <MoreVertical className="h-4 w-4" />
-                                    </Button>
-                                </div>
-                                <div className="flex-1 p-4 space-y-4 overflow-auto bg-[#e5ddd5]/30 custom-scrollbar"> {/* Light WhatsApp-ish bg hint */}
-                                    <div className="flex justify-center">
-                                        <span className="text-[10px] bg-slate-200 text-slate-600 px-2 py-1 rounded-full shadow-sm font-medium">Hoje</span>
-                                    </div>
-                                    <div className="flex justify-start max-w-[80%]">
-                                        <div className="bg-white text-slate-800 p-3 rounded-2xl rounded-tl-none border border-slate-200 text-sm shadow-sm">
-                                            Olá, bom dia! Gostaria de saber mais sobre os planos.
-                                            <span className="block text-[10px] text-slate-400 mt-1 text-right">10:40</span>
-                                        </div>
-                                    </div>
-                                    <div className="flex justify-end max-w-[80%] ml-auto">
-                                        <div className="bg-[#dcf8c6] text-slate-900 p-3 rounded-2xl rounded-tr-none text-sm shadow-sm border border-emerald-100">
-                                            Bom dia Ana, tudo bem?
-                                            Claro! Temos planos a partir de R$ 99,00. Qual seria o seu maior interesse hoje?
-                                            <span className="block text-[10px] text-slate-500/80 mt-1 text-right">10:41</span>
-                                        </div>
-                                    </div>
-                                    <div className="flex justify-start max-w-[80%]">
-                                        <div className="bg-white text-slate-800 p-3 rounded-2xl rounded-tl-none border border-slate-200 text-sm shadow-sm">
-                                            Preciso principalmente da parte de automação de WhatsApp.
-                                            <span className="block text-[10px] text-slate-400 mt-1 text-right">10:42</span>
-                                        </div>
-                                    </div>
-                                </div>
-                                <div className="p-3 border-t border-slate-200 bg-slate-100">
-                                    <div className="relative">
-                                        <Input placeholder="Digite sua mensagem..." className="bg-white border-slate-200 pr-12 text-slate-800 shadow-sm focus-visible:ring-blue-500" />
-                                        <Button size="icon" className="absolute right-1 top-1 h-8 w-8 bg-blue-600 hover:bg-blue-700 text-white shadow-sm">
-                                            <ArrowRight className="h-4 w-4" />
-                                        </Button>
-                                    </div>
+                            <div className="relative h-full w-full group">
+                                <img src="/atendimento_whatsapp_mockup.png" alt="Atendimento WhatsApp" className="h-full w-full object-cover object-top transition-transform duration-500 group-hover:scale-105" />
+                                <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex items-end p-6">
+                                    <p className="text-white text-sm font-medium">Atendimento profissional com suporte a grupos, identificação de atendentes e histórico completo.</p>
                                 </div>
                             </div>
                         </TabsContent>
@@ -416,6 +334,16 @@ export const DashboardPreview = () => {
                                             </div>
                                         ))}
                                     </div>
+                                </div>
+                            </div>
+                        </TabsContent>
+
+                        {/* TAB: MARKETING PRINT */}
+                        <TabsContent value="marketing" className="m-0 h-[450px] overflow-hidden rounded-lg border border-slate-200 bg-white">
+                            <div className="relative h-full w-full group">
+                                <img src="/campaign_whatsapp_mockup.png" alt="Marketing Module" className="h-full w-full object-cover object-top transition-transform duration-500 group-hover:scale-105" />
+                                <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex items-end p-6">
+                                    <p className="text-white text-sm font-medium">Crie campanhas de disparo em massa com segmentação avançada e acompanhamento de métricas.</p>
                                 </div>
                             </div>
                         </TabsContent>

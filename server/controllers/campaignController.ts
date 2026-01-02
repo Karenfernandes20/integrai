@@ -266,7 +266,7 @@ function getMinutes(timeStr: string): number {
 }
 
 // Background process to send messages
-async function processCampaign(campaignId: number) {
+async function processCampaign(campaignId: number, io?: any) {
     if (activeProcesses.has(campaignId)) {
         console.log(`[Campaign ${campaignId}] Already being processed in this instance.`);
         return;
@@ -371,7 +371,14 @@ async function processCampaign(campaignId: number) {
 
                 console.log(`[Campaign ${campaignId}] Sending to ${contact.phone}...`);
 
-                const success = await sendWhatsAppMessage(campaign.company_id, contact.phone, message);
+                const success = await sendWhatsAppMessage(
+                    campaign.company_id,
+                    contact.phone,
+                    message,
+                    contact.name,
+                    campaign.user_id,
+                    io
+                );
 
                 if (success) {
                     await pool.query(
@@ -430,7 +437,7 @@ async function processCampaign(campaignId: number) {
 }
 
 // Scheduler to check for pending campaigns
-export const checkAndStartScheduledCampaigns = async () => {
+export const checkAndStartScheduledCampaigns = async (io?: any) => {
     try {
         if (!pool) return;
 
@@ -453,7 +460,7 @@ export const checkAndStartScheduledCampaigns = async () => {
 
             // Only start if not already in memory
             if (!activeProcesses.has(row.id)) {
-                processCampaign(row.id);
+                processCampaign(row.id, io);
             }
         }
     } catch (error) {
@@ -462,7 +469,14 @@ export const checkAndStartScheduledCampaigns = async () => {
 };
 
 // Send WhatsApp message via Evolution API
-async function sendWhatsAppMessage(companyId: number | null, phone: string, message: string): Promise<boolean> {
+async function sendWhatsAppMessage(
+    companyId: number | null,
+    phone: string,
+    message: string,
+    contactName?: string,
+    userId?: number | null,
+    io?: any
+): Promise<boolean> {
     try {
         if (!pool) return false;
 
@@ -530,6 +544,68 @@ async function sendWhatsAppMessage(companyId: number | null, phone: string, mess
             const errText = await response.text();
             console.error(`[sendWhatsAppMessage] Failed: ${response.status} - ${errText}`);
             return false;
+        }
+
+        const data = await response.json();
+
+        // SYNC WITH ATENDIMENTO (OPEN status as requested)
+        if (pool) {
+            try {
+                const remoteJid = cleanPhone.includes('@') ? cleanPhone : `${cleanPhone}@s.whatsapp.net`;
+                let conversationId: number;
+
+                // Find or create conversation
+                const checkConv = await pool.query(
+                    'SELECT id FROM whatsapp_conversations WHERE external_id = $1 AND instance = $2',
+                    [remoteJid, evolution_instance]
+                );
+
+                if (checkConv.rows.length > 0) {
+                    conversationId = checkConv.rows[0].id;
+                    await pool.query(
+                        `UPDATE whatsapp_conversations 
+                         SET last_message = $1, last_message_at = NOW(), status = 'OPEN', user_id = COALESCE(user_id, $2), company_id = COALESCE(company_id, $3)
+                         WHERE id = $4`,
+                        [message, userId, companyId, conversationId]
+                    );
+                } else {
+                    const newConv = await pool.query(
+                        `INSERT INTO whatsapp_conversations (external_id, phone, contact_name, instance, status, user_id, last_message, last_message_at, company_id) 
+                         VALUES ($1, $2, $3, $4, 'OPEN', $5, $6, NOW(), $7) RETURNING id`,
+                        [remoteJid, cleanPhone, contactName || cleanPhone, evolution_instance, userId, message, companyId]
+                    );
+                    conversationId = newConv.rows[0].id;
+                }
+
+                const externalMessageId = data?.key?.id;
+
+                // Insert message
+                const insertedMsg = await pool.query(
+                    'INSERT INTO whatsapp_messages (conversation_id, direction, content, sent_at, status, external_id, user_id) VALUES ($1, $2, $3, NOW(), $4, $5, $6) RETURNING id',
+                    [conversationId, 'outbound', message, 'sent', externalMessageId, userId]
+                );
+
+                // Socket Emit
+                if (io && companyId) {
+                    const payload = {
+                        ...insertedMsg.rows[0],
+                        phone: cleanPhone,
+                        contact_name: contactName || cleanPhone,
+                        status: 'OPEN',
+                        direction: 'outbound',
+                        content: message,
+                        sent_at: new Date().toISOString(),
+                        user_id: userId,
+                        remoteJid,
+                        instance: evolution_instance,
+                        company_id: companyId,
+                        agent_name: "(Campanha)"
+                    };
+                    io.to(`company_${companyId}`).emit('message:received', payload);
+                }
+            } catch (dbErr) {
+                console.error('[sendWhatsAppMessage] DB Sync Error:', dbErr);
+            }
         }
 
         return true;

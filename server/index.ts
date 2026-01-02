@@ -114,10 +114,10 @@ runMigrations().then(() => {
     // Start Campaign Scheduler (every minute)
     console.log("Starting Campaign Scheduler...");
     setInterval(() => {
-      checkAndStartScheduledCampaigns();
+      checkAndStartScheduledCampaigns(io);
     }, 60000);
 
     // Run immediately on start
-    checkAndStartScheduledCampaigns();
+    checkAndStartScheduledCampaigns(io);
   });
 });

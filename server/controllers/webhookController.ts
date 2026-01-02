@@ -73,6 +73,9 @@ export const handleWebhook = async (req: Request, res: Response) => {
             const phone = remoteJid.split('@')[0];
             const name = msg.pushName || phone;
             const isGroup = remoteJid.includes('@g.us');
+            const senderJid = msg.key.participant || (isGroup ? null : remoteJid);
+            const senderName = msg.pushName || (senderJid ? senderJid.split('@')[0] : null);
+
             let groupName = null;
             if (isGroup) groupName = `Grupo ${phone.substring(0, 6)}...`;
 
@@ -194,10 +197,10 @@ export const handleWebhook = async (req: Request, res: Response) => {
 
             // Insert Message into database
             const insertedMsg = await pool.query(
-                `INSERT INTO whatsapp_messages (conversation_id, direction, content, sent_at, status, external_id, message_type, media_url, user_id) 
-                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) 
+                `INSERT INTO whatsapp_messages (conversation_id, direction, content, sent_at, status, external_id, message_type, media_url, user_id, sender_jid, sender_name) 
+                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) 
                  ON CONFLICT (external_id) DO NOTHING RETURNING *`,
-                [conversationId, direction, content, sent_at, 'received', msg.key.id, messageType, mediaUrl, null]
+                [conversationId, direction, content, sent_at, 'received', msg.key.id, messageType, mediaUrl, null, senderJid, senderName]
             );
 
             // If duplicate message (conflict), stop processing
@@ -217,12 +220,14 @@ export const handleWebhook = async (req: Request, res: Response) => {
                     phone,
                     contact_name: (checkConv.rows.length > 0 ? checkConv.rows[0].contact_name : name) || name,
                     is_group: checkConv.rows.length > 0 ? checkConv.rows[0].is_group : isGroup,
-                    group_name: checkConv.rows.length > 0 ? checkConv.rows[0].group_name : (isGroup ? name : null),
+                    group_name: (checkConv.rows.length > 0 ? checkConv.rows[0].group_name : null) || groupName,
                     profile_pic_url: checkConv.rows.length > 0 ? checkConv.rows[0].profile_pic_url : null,
                     remoteJid,
                     instance,
                     company_id: companyId,
-                    status: currentStatus
+                    status: currentStatus,
+                    sender_jid: insertedMsg.rows[0].sender_jid,
+                    sender_name: insertedMsg.rows[0].sender_name
                 };
                 console.log(`[Webhook] Emitting message to room ${room}`);
                 io.to(room).emit('message:received', payload);
@@ -246,7 +251,13 @@ export const handleWebhook = async (req: Request, res: Response) => {
                 // Profile Pic & Name Fetch Logic (if missing or placeholder)
                 const row = checkConv.rows[0] || {};
                 const hasPic = row.profile_pic_url;
-                const isPlaceholderName = isGroup && (row.contact_name?.startsWith('Grupo ') || !row.contact_name);
+                const isPlaceholderName = isGroup && (
+                    !row.contact_name ||
+                    row.contact_name.startsWith('Grupo ') ||
+                    row.contact_name === remoteJid ||
+                    row.contact_name === phone ||
+                    row.group_name?.startsWith('Grupo ')
+                );
 
                 if (!hasPic || isPlaceholderName) {
                     console.log(`[Webhook] Fetching profile pic or group name for ${remoteJid}.`);
@@ -430,7 +441,7 @@ export const getMessages = async (req: Request, res: Response) => {
         }
 
         const result = await pool.query(
-            `SELECT m.*, u.full_name as sender_name 
+            `SELECT m.*, u.full_name as agent_name 
              FROM whatsapp_messages m 
              LEFT JOIN app_users u ON m.user_id = u.id 
              WHERE m.conversation_id = $1 
