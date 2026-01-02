@@ -70,39 +70,51 @@ export const handleWebhook = async (req: Request, res: Response) => {
 
             const normalizedType = type.toString().toUpperCase();
 
-            // Accept various message event patterns
+            // Accept various message event patterns (be exhaustive)
             const isMessageEvent = [
-                'MESSAGES_UPSERT',
-                'MESSAGES.UPSERT',
-                'MESSAGES_SET',
-                'MESSAGES.SET',
-                'MESSAGES_RECEIVE',
+                'MESSAGES_UPSERT', 'MESSAGES.UPSERT',
+                'MESSAGE_UPSERT', 'MESSAGE.UPSERT',
+                'MESSAGES_SET', 'MESSAGES.SET',
+                'MESSAGE_SET', 'MESSAGE.SET',
+                'MESSAGES_RECEIVE', 'MESSAGE_RECEIVE',
+                'MESSAGES.RECEIVE', 'MESSAGE.RECEIVE',
                 'SEND_MESSAGE'
             ].includes(normalizedType);
 
             if (!isMessageEvent) {
                 // Silently ignore other events but log them for trace
-                if (!['CONNECTION_UPDATE', 'PRESENCE_UPDATE', 'TYPEING_START'].includes(normalizedType)) {
+                const ignitionEvents = ['CONNECTION_UPDATE', 'PRESENCE_UPDATE', 'TYPEING_START', 'CHATS_UPSERT', 'CHATS_UPDATE'];
+                if (!ignitionEvents.includes(normalizedType)) {
                     console.log(`[Webhook] Ignoring non-message event: ${normalizedType}`);
                 }
                 return;
             }
 
             // Extract message object robustly
-            let messages = data?.messages || body.messages || data;
+            let messages = data?.messages || body.messages || data || body.message;
             if (Array.isArray(messages)) {
+                if (messages.length === 0) {
+                    console.log('[Webhook] Empty messages array');
+                    return;
+                }
                 console.log(`[Webhook] Processing array of ${messages.length} messages`);
                 messages = messages[0];
             }
 
             const msg: any = messages;
-            if (!msg || !msg.key) {
-                console.warn('[Webhook] Data structure mismatch. Could not find msg.key. Keys in data:', data ? Object.keys(data) : 'null');
+            if (!msg || (!msg.key && !msg.id)) {
+                console.warn('[Webhook] Data structure mismatch. Could not find msg.key. Keys in messages:', msg ? Object.keys(msg) : 'null');
+                pushPayload({ error: 'Mismatch structure', data: messages });
                 return;
             }
 
-            const remoteJid = msg.key.remoteJid;
-            console.log(`[Webhook] Message JID: ${remoteJid} | fromMe: ${msg.key.fromMe}`);
+            // Normalize message structure (some versions put message at root, others inside messages array)
+            const remoteJid = msg.key?.remoteJid || msg.remoteJid || msg.jid;
+            if (!remoteJid) {
+                console.warn('[Webhook] Missing remoteJid in message');
+                return;
+            }
+            console.log(`[Webhook] Message JID: ${remoteJid} | fromMe: ${msg.key?.fromMe}`);
 
             if (remoteJid === 'status@broadcast') return;
 
@@ -124,13 +136,14 @@ export const handleWebhook = async (req: Request, res: Response) => {
                     instanceCache.set(instance, companyId!);
                     console.log(`[Webhook] Success! Instance "${instance}" mapped to companyId ${companyId}`);
                 } else {
-                    // Check if there is ONLY ONE company as fallback if instance is empty or default
+                    // Check if there is ONLY ONE company as fallback
                     const allCompanies = await pool.query('SELECT id, evolution_instance FROM companies');
                     console.log('[Webhook] Available companies in DB:', allCompanies.rows.map(c => `${c.id}:${c.evolution_instance}`).join(', '));
 
-                    if (allCompanies.rows.length === 1 && (!instance || instance === 'integrai' || instance === 'default')) {
+                    if (allCompanies.rows.length === 1) {
                         companyId = allCompanies.rows[0].id;
-                        console.log(`[Webhook] Fallback: Only one company found. Mapping to companyId ${companyId}`);
+                        console.log(`[Webhook] Single-Company Mode: Mapping instance "${instance}" to companyId ${companyId} (only one available)`);
+                        instanceCache.set(instance, companyId!);
                     }
                 }
             }
@@ -141,13 +154,13 @@ export const handleWebhook = async (req: Request, res: Response) => {
             }
 
             // Prepare Data
-            const isFromMe = msg.key.fromMe;
+            const isFromMe = msg.key?.fromMe || msg.fromMe || false;
             const direction = isFromMe ? 'outbound' : 'inbound';
             const phone = remoteJid.includes('@') ? remoteJid.split('@')[0] : remoteJid;
-            const name = msg.pushName || phone;
+            const name = msg.pushName || msg.pushname || phone;
             const isGroup = remoteJid.includes('@g.us');
-            const senderJid = msg.key.participant || (isGroup ? null : remoteJid);
-            const senderName = msg.pushName || (senderJid ? senderJid.split('@')[0] : null);
+            const senderJid = msg.key?.participant || msg.participant || (isGroup ? null : remoteJid);
+            const senderName = msg.pushName || msg.pushname || (senderJid ? senderJid.split('@')[0] : null);
 
             let groupName = null;
             if (isGroup) {
@@ -269,19 +282,20 @@ export const handleWebhook = async (req: Request, res: Response) => {
                 }
             }
 
-            const sent_at = new Date((msg.messageTimestamp || Date.now() / 1000) * 1000);
+            const sent_at = new Date((msg.messageTimestamp || msg.timestamp || Date.now() / 1000) * 1000);
+            const externalId = msg.key?.id || msg.id || `gen-${Date.now()}`;
 
             // Insert Message into database
             const insertedMsg = await pool.query(
                 `INSERT INTO whatsapp_messages (conversation_id, direction, content, sent_at, status, external_id, message_type, media_url, user_id, sender_jid, sender_name) 
                  VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) 
                  ON CONFLICT (external_id) DO NOTHING RETURNING *`,
-                [conversationId, direction, content, sent_at, 'received', msg.key.id, messageType, mediaUrl, null, senderJid, senderName]
+                [conversationId, direction, content, sent_at, 'received', externalId, messageType, mediaUrl, null, senderJid, senderName]
             );
 
             // If duplicate message (conflict), stop processing
             if (insertedMsg.rows.length === 0) {
-                console.log(`[Webhook] Duplicate message detected for external_id ${msg.key.id}. Skipping.`);
+                console.log(`[Webhook] Duplicate message detected for external_id ${externalId}. Skipping.`);
                 return;
             }
             console.log(`[Webhook] Message inserted into DB with ID: ${insertedMsg.rows[0].id}`);
