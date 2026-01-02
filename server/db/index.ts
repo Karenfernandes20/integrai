@@ -1,32 +1,46 @@
 import pkg from 'pg';
 const { Pool } = pkg;
+import { URL } from 'url';
 
 const databaseUrl = process.env.DATABASE_URL;
 
+let poolConfig: any = null;
+
 if (!databaseUrl) {
     console.warn("DATABASE_URL não definida. Configure-a no Render para conectar ao Postgres/PgHero.");
-}
+} else {
+    try {
+        // Parse URL manually to ensure family: 4 is respected by passing exact parameters
+        // instead of connectionString which might prioritize IPv6 DNS resolution in some envs.
+        const url = new URL(databaseUrl);
 
-// Configure Pool with explicit settings for Render/Cloud stability
-const poolConfig = databaseUrl ? {
-    connectionString: databaseUrl,
-    ssl: {
-        rejectUnauthorized: false, // Required for most cloud providers
-    },
-    max: 20,
-    idleTimeoutMillis: 30000,
-    connectionTimeoutMillis: 10000,
-    // FORCE IPv4 to avoid "connect ENETUNREACH :5432" (Node 17+ localhost resolution issue)
-    // This is the CRITICAL fix for the user's error.
-    host: undefined, // Let connectionString handle it
-    port: undefined, // Let connectionString handle it
-} : null;
+        poolConfig = {
+            user: url.username,
+            password: url.password,
+            host: url.hostname,
+            port: parseInt(url.port || '5432'),
+            database: url.pathname.slice(1), // remove leading slash
+            ssl: {
+                rejectUnauthorized: false, // Required for most cloud providers including Supabase
+            },
+            max: 20,
+            idleTimeoutMillis: 30000,
+            connectionTimeoutMillis: 10000,
+            family: 4 // Strictly FORCE IPv4
+        };
 
-// Only apply 'family' if we are actually creating the config object
-// Type casting as any to bypass partial type mismatch if types are old, 
-// though pg types usually support it.
-if (poolConfig) {
-    (poolConfig as any).family = 4; // Force IPv4
+        console.log(`DB Configured within Host: ${poolConfig.host} (IPv4 Forced)`);
+    } catch (e) {
+        console.error("Failed to parse DATABASE_URL, falling back to connectionString", e);
+        poolConfig = {
+            connectionString: databaseUrl,
+            ssl: { rejectUnauthorized: false },
+            max: 20,
+            idleTimeoutMillis: 30000,
+            connectionTimeoutMillis: 10000,
+            family: 4
+        };
+    }
 }
 
 export const pool = poolConfig ? new Pool(poolConfig) : null;
