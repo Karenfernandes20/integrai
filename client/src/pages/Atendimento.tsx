@@ -105,11 +105,12 @@ const AtendimentoPage = () => {
   const { token, user } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
 
-  const [viewMode, setViewMode] = useState<'PENDING' | 'OPEN' | 'CLOSED'>('PENDING');
+  const [viewMode, setViewMode] = useState<'PENDING' | 'OPEN' | 'CLOSED' | 'GROUPS'>('PENDING');
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [pendingConversations, setPendingConversations] = useState<Conversation[]>([]);
   const [openConversations, setOpenConversations] = useState<Conversation[]>([]);
   const [closedConversations, setClosedConversations] = useState<Conversation[]>([]);
+  const [groupConversations, setGroupConversations] = useState<Conversation[]>([]);
   const [activeTab, setActiveTab] = useState<"conversas" | "contatos">("conversas");
   const [selectedConversation, setSelectedConversation] = useState<Conversation | null>(null);
   const [isLoadingConversations, setIsLoadingConversations] = useState(true);
@@ -171,6 +172,7 @@ const AtendimentoPage = () => {
   const [pendingPage, setPendingPage] = useState(1);
   const [openPage, setOpenPage] = useState(1);
   const [closedPage, setClosedPage] = useState(1);
+  const [groupPage, setGroupPage] = useState(1);
 
   const ITEMS_PER_PAGE = 1000;
 
@@ -325,18 +327,23 @@ const AtendimentoPage = () => {
     setPendingPage(1);
     setOpenPage(1);
     setClosedPage(1);
+    setGroupPage(1);
   }, [viewMode]);
 
   // Filter Conversations Logic for 3 columns (individual chats only)
   useEffect(() => {
-    const filterByStatusAndSearch = (status: 'PENDING' | 'OPEN' | 'CLOSED') => {
+    const filterByStatusAndSearch = (status?: 'PENDING' | 'OPEN' | 'CLOSED', isGroupOnly: boolean = false) => {
       return conversations.filter(c => {
-        const isGroup = Boolean(c.is_group || c.group_name);
-        // Exclude groups from individual conversations tabs
-        if (isGroup) return false;
+        const isGroup = Boolean(c.is_group || c.group_name || c.phone.includes('@g.us') || c.phone.includes('-'));
 
-        const s = c.status || 'PENDING';
-        if (s !== status) return false;
+        if (isGroupOnly) {
+          if (!isGroup) return false;
+        } else {
+          // Exclude groups from individual conversations tabs
+          if (isGroup) return false;
+          const s = c.status || 'PENDING';
+          if (status && s !== status) return false;
+        }
 
         if (conversationSearchTerm) {
           const search = conversationSearchTerm.toLowerCase();
@@ -351,6 +358,7 @@ const AtendimentoPage = () => {
     setPendingConversations(filterByStatusAndSearch('PENDING'));
     setOpenConversations(filterByStatusAndSearch('OPEN'));
     setClosedConversations(filterByStatusAndSearch('CLOSED'));
+    setGroupConversations(filterByStatusAndSearch(undefined, true));
 
   }, [conversations, conversationSearchTerm, getDisplayName]); // getDisplayName is a dependency because it uses contactMap which is memoized
 
@@ -1685,6 +1693,15 @@ const AtendimentoPage = () => {
                   >
                     Fechados <span className="opacity-50 text-[9px] bg-black/10 px-1.5 rounded">{closedConversations.length}</span>
                   </button>
+                  <button
+                    onClick={() => setViewMode('GROUPS')}
+                    className={cn(
+                      "text-[11px] px-1 py-1.5 rounded-lg font-bold uppercase transition-all flex items-center justify-center gap-2 flex-1",
+                      viewMode === 'GROUPS' ? "bg-amber-500 text-white shadow-sm" : "text-zinc-500 hover:text-zinc-700 hover:bg-black/5"
+                    )}
+                  >
+                    Grupos <span className="opacity-50 text-[9px] bg-black/10 px-1.5 rounded">{groupConversations.length}</span>
+                  </button>
 
                 </div>
               </div>
@@ -1815,11 +1832,52 @@ const AtendimentoPage = () => {
                     );
                   })()}
 
+                  {viewMode === 'GROUPS' && (() => {
+                    const startIndex = (groupPage - 1) * ITEMS_PER_PAGE;
+                    const endIndex = startIndex + ITEMS_PER_PAGE;
+                    const paginatedItems = groupConversations.slice(startIndex, endIndex);
+                    const totalPages = Math.ceil(groupConversations.length / ITEMS_PER_PAGE);
+
+                    return (
+                      <>
+                        {paginatedItems.map(conv => renderConversationCard(conv))}
+                        {totalPages > 1 && (
+                          <div className="flex items-center justify-center gap-1 mt-2 mb-2 p-2 pt-0">
+                            <Button
+                              variant="outline"
+                              size="icon"
+                              onClick={() => setGroupPage(p => Math.max(1, p - 1))}
+                              disabled={groupPage === 1}
+                              className="h-7 w-7"
+                              title="Página Anterior"
+                            >
+                              <ChevronLeft className="h-4 w-4" />
+                            </Button>
+                            <span className="text-[10px] text-muted-foreground font-medium px-2 min-w-[3rem] text-center">
+                              {groupPage} / {totalPages}
+                            </span>
+                            <Button
+                              variant="outline"
+                              size="icon"
+                              onClick={() => setGroupPage(p => Math.min(totalPages, p + 1))}
+                              disabled={groupPage === totalPages}
+                              className="h-7 w-7"
+                              title="Próxima Página"
+                            >
+                              <ChevronRight className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        )}
+                      </>
+                    );
+                  })()}
+
 
                   {/* EMPTY STATES */}
                   {((viewMode === 'PENDING' && pendingConversations.length === 0) ||
                     (viewMode === 'OPEN' && openConversations.length === 0) ||
-                    (viewMode === 'CLOSED' && closedConversations.length === 0)) && (
+                    (viewMode === 'CLOSED' && closedConversations.length === 0) ||
+                    (viewMode === 'GROUPS' && groupConversations.length === 0)) && (
                       <div className="flex flex-col items-center justify-center p-12 opacity-40">
                         <Search className="h-12 w-12 mb-4 text-zinc-300" />
                         <p className="text-sm font-medium">Nenhuma conversa encontrada</p>
