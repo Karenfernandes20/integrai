@@ -1,6 +1,13 @@
 import pkg from 'pg';
 const { Pool } = pkg;
 import { URL } from 'url';
+import dns from 'dns';
+
+// CRITICAL FIX: Force Node.js to prefer IPv4 results from DNS
+// This solves the 'connect ENETUNREACH 2600:...' error on Render/networks with broken IPv6
+if (dns.setDefaultResultOrder) {
+    dns.setDefaultResultOrder('ipv4first');
+}
 
 const databaseUrl = process.env.DATABASE_URL;
 
