@@ -160,6 +160,13 @@ export const runMigrations = async () => {
         }
 
         await runWhatsappMigrations();
+
+        // 7. Remove restrictive user_type check constraint
+        try {
+            await pool.query('ALTER TABLE app_users DROP CONSTRAINT IF EXISTS app_users_user_type_check');
+            console.log("Dropped app_users_user_type_check");
+        } catch (e) { console.error("Error dropping constraint:", e); }
+
         console.log("Migrations finished.");
     } catch (e) {
         console.error("Migration Error:", e);
