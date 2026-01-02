@@ -1540,7 +1540,7 @@ const AtendimentoPage = () => {
       {/* Sidebar - Lista de Conversas / Contatos */}
       <div className={cn(
         "flex flex-col border-r bg-white dark:bg-zinc-950 transition-all duration-300 shadow-sm z-20 shrink-0",
-        "w-full md:w-[420px]"
+        "w-full md:w-[450px]"
       )}>
         <Tabs
           value={activeTab}
@@ -1865,7 +1865,7 @@ const AtendimentoPage = () => {
                 </div>
               </div>
 
-              <div className="flex-1 overflow-y-auto flex flex-col">
+              <div className="flex-1 overflow-y-auto flex flex-col custom-scrollbar">
 
                 {/* List starts here */}
                 {isLoadingContacts && (
