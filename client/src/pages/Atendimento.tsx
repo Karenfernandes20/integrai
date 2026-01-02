@@ -1620,7 +1620,7 @@ const AtendimentoPage = () => {
 
 
 
-          <CardContent className="flex-1 overflow-hidden p-0">
+          <CardContent className="flex-1 flex flex-col overflow-hidden p-0">
             {/* Aba CONVERSAS - SINGLE COLUMN Vertical List */}
             <TabsContent value="conversas" className="h-full flex flex-col m-0">
               <div className="px-3 py-2 flex flex-col gap-2 border-b">
