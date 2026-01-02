@@ -117,12 +117,14 @@ import {
   getCampaignById,
   startCampaign,
   pauseCampaign,
-  deleteCampaign
+  deleteCampaign,
+  updateCampaign,
 } from './controllers/campaignController';
 
 router.post('/campaigns', authenticateToken, createCampaign);
 router.get('/campaigns', authenticateToken, getCampaigns);
 router.get('/campaigns/:id', authenticateToken, getCampaignById);
+router.put('/campaigns/:id', authenticateToken, updateCampaign);
 router.post('/campaigns/:id/start', authenticateToken, startCampaign);
 router.post('/campaigns/:id/pause', authenticateToken, pauseCampaign);
 router.delete('/campaigns/:id', authenticateToken, deleteCampaign);

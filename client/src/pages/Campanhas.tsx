@@ -4,7 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card"
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Textarea } from "../components/ui/textarea";
-import { Plus, Play, Pause, Trash2, Eye, Upload } from "lucide-react";
+import { Plus, Play, Pause, Trash2, Eye, Upload, Pencil } from "lucide-react";
 import { toast } from "sonner";
 
 interface Campaign {
@@ -28,6 +28,8 @@ const CampanhasPage = () => {
     const [campaigns, setCampaigns] = useState<Campaign[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [showCreateForm, setShowCreateForm] = useState(false);
+
+    const [editingCampaignId, setEditingCampaignId] = useState<number | null>(null);
 
     // Form states
     const [name, setName] = useState("");
@@ -61,7 +63,7 @@ const CampanhasPage = () => {
         return () => clearInterval(interval);
     }, [token]);
 
-    const handleCreateCampaign = async () => {
+    const handleSaveCampaign = async () => {
         try {
             // Parse contacts from text
             const contacts = contactsText
@@ -80,41 +82,80 @@ const CampanhasPage = () => {
                     return { phone, name: contactName, variables: { nome: contactName } };
                 });
 
-            if (contacts.length === 0) {
+            if (contacts.length === 0 && !editingCampaignId) {
                 toast.error("Adicione pelo menos um contato");
                 return;
             }
 
-            const res = await fetch("/api/campaigns", {
-                method: "POST",
+            const url = editingCampaignId ? `/api/campaigns/${editingCampaignId}` : "/api/campaigns";
+            const method = editingCampaignId ? "PUT" : "POST";
+
+            const payload: any = {
+                name,
+                message_template: messageTemplate,
+                scheduled_at: scheduledAt || null,
+                start_time: startTime,
+                end_time: endTime,
+                delay_min: delayMin,
+                delay_max: delayMax,
+            };
+
+            if (contacts.length > 0) {
+                payload.contacts = contacts;
+            }
+
+            const res = await fetch(url, {
+                method,
                 headers: {
                     "Authorization": `Bearer ${token}`,
                     "Content-Type": "application/json"
                 },
-                body: JSON.stringify({
-                    name,
-                    message_template: messageTemplate,
-                    scheduled_at: scheduledAt || null,
-                    start_time: startTime,
-                    end_time: endTime,
-                    delay_min: delayMin,
-                    delay_max: delayMax,
-                    contacts
-                })
+                body: JSON.stringify(payload)
             });
 
             if (res.ok) {
-                toast.success("Campanha criada com sucesso!");
+                toast.success(editingCampaignId ? "Campanha atualizada!" : "Campanha criada!");
                 setShowCreateForm(false);
+                setEditingCampaignId(null);
                 resetForm();
                 fetchCampaigns();
             } else {
                 const error = await res.json();
-                toast.error(error.error || "Erro ao criar campanha");
+                toast.error(error.error || "Erro ao salvar campanha");
             }
         } catch (error) {
             toast.error("Erro ao conectar com o servidor");
         }
+    };
+
+    const handleEditCampaign = async (campaign: Campaign) => {
+        setEditingCampaignId(campaign.id);
+        setName(campaign.name);
+        setMessageTemplate(campaign.message_template);
+        setStartTime(campaign.start_time);
+        setEndTime(campaign.end_time);
+        setDelayMin(campaign.delay_min);
+        setDelayMax(campaign.delay_max);
+        setScheduledAt(campaign.scheduled_at ? new Date(campaign.scheduled_at).toISOString().slice(0, 16) : "");
+
+        // Fetch contacts for this campaign
+        try {
+            const res = await fetch(`/api/campaigns/${campaign.id}`, {
+                headers: { "Authorization": `Bearer ${token}` }
+            });
+            if (res.ok) {
+                const data = await res.json();
+                if (data.contacts) {
+                    const text = data.contacts.map((c: any) => `${c.phone},${c.name}`).join('\n');
+                    setContactsText(text);
+                }
+            }
+        } catch (e) {
+            console.error("Error fetching campaign contacts:", e);
+        }
+
+        setShowCreateForm(true);
+        window.scrollTo({ top: 0, behavior: 'smooth' });
     };
 
     const resetForm = () => {
@@ -209,7 +250,7 @@ const CampanhasPage = () => {
             <div className="container mx-auto p-6">
                 <Card>
                     <CardHeader>
-                        <CardTitle>Nova Campanha</CardTitle>
+                        <CardTitle>{editingCampaignId ? "Editar Campanha" : "Nova Campanha"}</CardTitle>
                     </CardHeader>
                     <CardContent className="space-y-4">
                         <div>
@@ -278,6 +319,7 @@ const CampanhasPage = () => {
                             </label>
                             <p className="text-[10px] text-muted-foreground mb-2">
                                 Formatos aceitos: <b>5538999999999</b> ou <b>5538999999999,Nome</b>
+                                {editingCampaignId && " (Deixe vazio para manter os atuais)"}
                             </p>
                             <Textarea
                                 value={contactsText}
@@ -288,10 +330,10 @@ const CampanhasPage = () => {
                         </div>
 
                         <div className="flex gap-2">
-                            <Button onClick={handleCreateCampaign}>
-                                Criar Campanha
+                            <Button onClick={handleSaveCampaign}>
+                                {editingCampaignId ? "Salvar Alterações" : "Criar Campanha"}
                             </Button>
-                            <Button variant="outline" onClick={() => { setShowCreateForm(false); resetForm(); }}>
+                            <Button variant="outline" onClick={() => { setShowCreateForm(false); setEditingCampaignId(null); resetForm(); }}>
                                 Cancelar
                             </Button>
                         </div>
@@ -355,6 +397,14 @@ const CampanhasPage = () => {
                                                     <Pause className="h-4 w-4" />
                                                 </Button>
                                             ) : null}
+                                            <Button
+                                                size="sm"
+                                                variant="outline"
+                                                onClick={() => handleEditCampaign(campaign)}
+                                                title="Editar Campanha"
+                                            >
+                                                <Pencil className="h-4 w-4" />
+                                            </Button>
                                             <Button
                                                 size="sm"
                                                 variant="destructive"

@@ -168,6 +168,78 @@ export const pauseCampaign = async (req: Request, res: Response) => {
     }
 };
 
+// Update Campaign
+export const updateCampaign = async (req: Request, res: Response) => {
+    try {
+        if (!pool) return res.status(500).json({ error: 'Database not configured' });
+
+        const { id } = req.params;
+        const {
+            name,
+            message_template,
+            scheduled_at,
+            start_time,
+            end_time,
+            delay_min,
+            delay_max,
+            contacts // Optional: replace contacts
+        } = req.body;
+
+        const campaignResult = await pool.query(
+            `UPDATE whatsapp_campaigns 
+             SET name = COALESCE($1, name),
+                 message_template = COALESCE($2, message_template),
+                 scheduled_at = $3,
+                 start_time = COALESCE($4, start_time),
+                 end_time = COALESCE($5, end_time),
+                 delay_min = COALESCE($6, delay_min),
+                 delay_max = COALESCE($7, delay_max),
+                 updated_at = NOW()
+             WHERE id = $8
+             RETURNING *`,
+            [name, message_template, scheduled_at || null, start_time, end_time, delay_min, delay_max, id]
+        );
+
+        if (campaignResult.rows.length === 0) {
+            return res.status(404).json({ error: 'Campaign not found' });
+        }
+
+        const campaign = campaignResult.rows[0];
+
+        // If contacts are provided, replace them (only if campaign is not completed/running probably?)
+        // For now, let's allow replacing contacts if provided
+        if (contacts && Array.isArray(contacts)) {
+            // Delete old contacts
+            await pool.query('DELETE FROM whatsapp_campaign_contacts WHERE campaign_id = $1', [id]);
+
+            // Insert new contacts
+            if (contacts.length > 0) {
+                const contactValues = contacts.map((c: any) =>
+                    `(${id}, '${c.phone}', '${c.name || ''}', '${JSON.stringify(c.variables || {})}')`
+                ).join(',');
+
+                await pool.query(`
+                    INSERT INTO whatsapp_campaign_contacts (campaign_id, phone, name, variables)
+                    VALUES ${contactValues}
+                `);
+
+                // Update total_contacts count
+                await pool.query(
+                    'UPDATE whatsapp_campaigns SET total_contacts = $1 WHERE id = $2',
+                    [contacts.length, id]
+                );
+            }
+        }
+
+        res.json(campaign);
+    } catch (error) {
+        console.error('Error updating campaign:', error);
+        res.status(500).json({ error: 'Failed to update campaign' });
+    }
+};
+
+// Delete Campaign
+
 // Delete Campaign
 export const deleteCampaign = async (req: Request, res: Response) => {
     try {
