@@ -200,7 +200,12 @@ export const deleteCompany = async (req: Request, res: Response) => {
         } catch (e: any) {
             await client.query('ROLLBACK');
             console.error(`[Delete Company ${id}] Failed:`, e);
-            res.status(500).json({ error: 'Failed to delete company', details: e.message });
+            res.status(500).json({
+                error: 'Failed to delete company',
+                details: e.message,
+                code: e.code,
+                constraint: e.constraint
+            });
         } finally {
             client.release();
         }
