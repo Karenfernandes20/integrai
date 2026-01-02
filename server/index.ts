@@ -107,7 +107,15 @@ io.on("connection", (socket) => {
 app.set("io", io);
 
 // Run migrations then start server
-runMigrations().then(() => {
+// Run migrations then start server attempt
+const startServer = async () => {
+  try {
+    await runMigrations();
+    console.log("Migrations check completed.");
+  } catch (err) {
+    console.error("Migration/DB check failed, starting server anyway for diagnostics:", err);
+  }
+
   httpServer.listen(Number(port), "0.0.0.0", () => {
     console.log(`Server rodando na porta ${port}`);
 
@@ -120,4 +128,6 @@ runMigrations().then(() => {
     // Run immediately on start
     checkAndStartScheduledCampaigns(io);
   });
-});
+};
+
+startServer();
