@@ -13,7 +13,8 @@ import {
     MapPin,
     Contact,
     Sticker,
-    MoreVertical
+    MoreVertical,
+    RefreshCw
 } from "lucide-react";
 import { Input } from "../components/ui/input";
 import { Button } from "../components/ui/button";
@@ -269,6 +270,30 @@ const GruposPage = () => {
         return date.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
     };
 
+    const handleRefreshMetadata = async () => {
+        if (!selectedGroup) return;
+        const toastId = toast.loading("Atualizando dados do grupo...");
+        try {
+            const res = await fetch(`/api/evolution/conversations/${selectedGroup.id}/refresh`, {
+                method: "POST",
+                headers: { "Authorization": `Bearer ${token}` }
+            });
+            if (res.ok) {
+                const data = await res.json();
+                toast.success(`Atualizado: ${data.name || 'Sem nome'}`, { id: toastId });
+                // Local update
+                setGroups(prev => prev.map(c =>
+                    c.id === selectedGroup.id ? { ...c, group_name: data.name, contact_name: data.name, profile_pic_url: data.pic } : c
+                ));
+                setSelectedGroup(prev => prev ? { ...prev, group_name: data.name, contact_name: data.name, profile_pic_url: data.pic } : null);
+            } else {
+                toast.error("Falha ao atualizar", { id: toastId });
+            }
+        } catch (e) {
+            toast.error("Erro de conexão", { id: toastId });
+        }
+    };
+
     return (
         <div className="flex h-[calc(100vh-64px)] overflow-hidden bg-background">
             {/* Sidebar - Group List */}
@@ -375,9 +400,14 @@ const GruposPage = () => {
                                     <span className="text-[10px] text-muted-foreground">ID: {selectedGroup.phone}</span>
                                 </div>
                             </div>
-                            <Button variant="ghost" size="icon" className="text-zinc-500">
-                                <MoreVertical className="h-5 w-5" />
-                            </Button>
+                            <div className="flex items-center gap-1">
+                                <Button variant="ghost" size="icon" className="text-zinc-500" onClick={handleRefreshMetadata} title="Atualizar dados do grupo">
+                                    <RefreshCw className="h-5 w-5" />
+                                </Button>
+                                <Button variant="ghost" size="icon" className="text-zinc-500">
+                                    <MoreVertical className="h-5 w-5" />
+                                </Button>
+                            </div>
                         </div>
 
                         {/* Message List */}
