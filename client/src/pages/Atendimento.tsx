@@ -97,12 +97,11 @@ const AtendimentoPage = () => {
   const { token, user } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
 
-  const [viewMode, setViewMode] = useState<'PENDING' | 'OPEN' | 'CLOSED' | 'GROUPS'>('OPEN');
+  const [viewMode, setViewMode] = useState<'PENDING' | 'OPEN' | 'CLOSED'>('OPEN');
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [pendingConversations, setPendingConversations] = useState<Conversation[]>([]);
   const [openConversations, setOpenConversations] = useState<Conversation[]>([]);
   const [closedConversations, setClosedConversations] = useState<Conversation[]>([]);
-  const [groupConversations, setGroupConversations] = useState<Conversation[]>([]);
   const [activeTab, setActiveTab] = useState<"conversas" | "contatos">("conversas");
   const [selectedConversation, setSelectedConversation] = useState<Conversation | null>(null);
   const [isLoadingConversations, setIsLoadingConversations] = useState(true);
@@ -164,7 +163,6 @@ const AtendimentoPage = () => {
   const [pendingPage, setPendingPage] = useState(1);
   const [openPage, setOpenPage] = useState(1);
   const [closedPage, setClosedPage] = useState(1);
-  const [groupPage, setGroupPage] = useState(1);
 
   const ITEMS_PER_PAGE = 1000;
 
@@ -305,17 +303,14 @@ const AtendimentoPage = () => {
 
   // Filter Conversations Logic for 3 columns (individual chats only)
   useEffect(() => {
-    const filterByStatusAndSearch = (status: 'PENDING' | 'OPEN' | 'CLOSED' | 'GROUPS') => {
+    const filterByStatusAndSearch = (status: 'PENDING' | 'OPEN' | 'CLOSED') => {
       return conversations.filter(c => {
         const isGroup = Boolean(c.is_group || c.group_name);
         // Exclude groups from individual conversations tabs
-        if (status === 'GROUPS') {
-          if (!isGroup) return false;
-        } else {
-          if (isGroup) return false;
-          const s = c.status || 'PENDING';
-          if (s !== status) return false;
-        }
+        if (isGroup) return false;
+
+        const s = c.status || 'PENDING';
+        if (s !== status) return false;
 
         if (conversationSearchTerm) {
           const search = conversationSearchTerm.toLowerCase();
@@ -330,7 +325,6 @@ const AtendimentoPage = () => {
     setPendingConversations(filterByStatusAndSearch('PENDING'));
     setOpenConversations(filterByStatusAndSearch('OPEN'));
     setClosedConversations(filterByStatusAndSearch('CLOSED'));
-    setGroupConversations(filterByStatusAndSearch('GROUPS'));
 
   }, [conversations, conversationSearchTerm, getDisplayName]); // getDisplayName is a dependency because it uses contactMap which is memoized
 
@@ -1636,22 +1630,13 @@ const AtendimentoPage = () => {
                 <div className="flex items-center gap-1 bg-zinc-100 dark:bg-zinc-900/50 p-1 rounded-xl shadow-inner border border-zinc-200/50 dark:border-zinc-800/50 w-full">
 
                   <button
-                    onClick={() => setViewMode('PENDING')}
-                    className={cn(
-                      "text-[11px] px-1 py-1.5 rounded-lg font-bold uppercase transition-all flex items-center justify-center gap-2 flex-1",
-                      viewMode === 'PENDING' ? "bg-zinc-500 text-white shadow-sm" : "text-zinc-500 hover:text-zinc-700 hover:bg-black/5"
-                    )}
-                  >
-                    Pendentes <span className="opacity-50 text-[9px] bg-black/10 px-1.5 rounded">{pendingConversations.length}</span>
-                  </button>
-                  <button
                     onClick={() => setViewMode('OPEN')}
                     className={cn(
                       "text-[11px] px-1 py-1.5 rounded-lg font-bold uppercase transition-all flex items-center justify-center gap-2 flex-1",
                       viewMode === 'OPEN' ? "bg-[#008069] text-white shadow-sm" : "text-zinc-500 hover:text-zinc-700 hover:bg-black/5"
                     )}
                   >
-                    Atendimento <span className="opacity-60 text-[9px] bg-white/20 px-1.5 rounded">{openConversations.length}</span>
+                    Abertos <span className="opacity-60 text-[9px] bg-white/20 px-1.5 rounded">{openConversations.length}</span>
                   </button>
                   <button
                     onClick={() => setViewMode('CLOSED')}
@@ -1663,13 +1648,13 @@ const AtendimentoPage = () => {
                     Fechados
                   </button>
                   <button
-                    onClick={() => setViewMode('GROUPS')}
+                    onClick={() => setViewMode('PENDING')}
                     className={cn(
                       "text-[11px] px-1 py-1.5 rounded-lg font-bold uppercase transition-all flex items-center justify-center gap-2 flex-1",
-                      viewMode === 'GROUPS' ? "bg-violet-500 text-white shadow-sm" : "text-zinc-500 hover:text-zinc-700 hover:bg-black/5"
+                      viewMode === 'PENDING' ? "bg-zinc-500 text-white shadow-sm" : "text-zinc-500 hover:text-zinc-700 hover:bg-black/5"
                     )}
                   >
-                    Grupos
+                    Pendentes <span className="opacity-50 text-[9px] bg-black/10 px-1.5 rounded">{pendingConversations.length}</span>
                   </button>
 
                 </div>
@@ -1801,64 +1786,6 @@ const AtendimentoPage = () => {
                     );
                   })()}
 
-                  {viewMode === 'GROUPS' && (() => {
-                    const groups = conversations.filter(c => c.is_group);
-
-                    // Filter by search term
-                    const filteredGroups = groups.filter(c => {
-                      if (!conversationSearchTerm) return true;
-                      const term = conversationSearchTerm.toLowerCase();
-                      const name = getDisplayName(c).toLowerCase();
-                      return name.includes(term) || c.phone.includes(term);
-                    });
-
-                    const startIndex = (groupPage - 1) * ITEMS_PER_PAGE;
-                    const endIndex = startIndex + ITEMS_PER_PAGE;
-                    const paginatedItems = filteredGroups.slice(startIndex, endIndex);
-                    const totalPages = Math.ceil(filteredGroups.length / ITEMS_PER_PAGE);
-
-                    if (filteredGroups.length === 0) {
-                      return (
-                        <div className="flex flex-col items-center justify-center py-10 text-muted-foreground opacity-50">
-                          <MessageSquare className="h-8 w-8 mb-2" />
-                          <span className="text-xs">Nenhum grupo encontrado</span>
-                        </div>
-                      );
-                    }
-
-                    return (
-                      <>
-                        {paginatedItems.map(conv => renderConversationCard(conv))}
-                        {totalPages > 1 && (
-                          <div className="flex items-center justify-center gap-1 mt-2 mb-2 p-2 pt-0">
-                            <Button
-                              variant="outline"
-                              size="icon"
-                              onClick={() => setGroupPage(p => Math.max(1, p - 1))}
-                              disabled={groupPage === 1}
-                              className="h-7 w-7"
-                              title="Página Anterior"
-                            >
-                              <ChevronLeft className="h-4 w-4" />
-                            </Button>
-                            <span className="text-[10px] text-muted-foreground font-medium px-2 min-w-[3rem] text-center">
-                              {groupPage} / {totalPages}
-                            </span>
-                            <Button
-                              variant="outline"
-                              size="icon"
-                              onClick={() => setGroupPage(p => Math.min(totalPages, p + 1))}
-                              disabled={groupPage === totalPages}
-                              className="h-7 w-7"
-                              title="Próxima Página"
-                            >
-                              <ChevronRight className="h-4 w-4" />
-                            </Button>
-                          </div>
-                        )}
-                      </>
-                    );
-                  })()}
 
                   {/* EMPTY STATES */}
                   {((viewMode === 'PENDING' && pendingConversations.length === 0) ||

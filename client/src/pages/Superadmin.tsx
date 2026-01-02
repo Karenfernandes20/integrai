@@ -403,6 +403,31 @@ const SuperadminPage = () => {
     }
   };
 
+  const handleDeleteUser = async (userId: number) => {
+    try {
+      const res = await fetch(`/api/users/${userId}`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+
+      if (!res.ok) throw new Error("Erro ao excluir usuário");
+
+      toast({
+        title: "Usuário excluído",
+        description: "O usuário foi removido com sucesso.",
+      });
+
+      setCompanyUsers((prev) => prev.filter((u) => u.id !== userId));
+    } catch (err: any) {
+      console.error(err);
+      toast({
+        title: "Erro inesperado",
+        description: err.message || "Tente novamente em alguns instantes.",
+        variant: "destructive",
+      });
+    }
+  };
+
   return (
     <div className="flex min-h-screen items-stretch bg-gradient-to-br from-primary-soft via-background to-primary/5 px-4 py-6">
       <main className="mx-auto flex w-full max-w-6xl flex-col gap-6 md:flex-row">
@@ -515,6 +540,36 @@ const SuperadminPage = () => {
                                               >
                                                 {savingPassword === user.id ? 'Sal...' : 'Redefinir'}
                                               </Button>
+
+                                              <AlertDialog>
+                                                <AlertDialogTrigger asChild>
+                                                  <Button
+                                                    size="icon"
+                                                    variant="outline"
+                                                    className="h-7 w-7 border-destructive/40 text-destructive"
+                                                    title="Excluir Usuário"
+                                                  >
+                                                    <Trash2 className="h-3.5 w-3.5" />
+                                                  </Button>
+                                                </AlertDialogTrigger>
+                                                <AlertDialogContent>
+                                                  <AlertDialogHeader>
+                                                    <AlertDialogTitle>Excluir Usuário</AlertDialogTitle>
+                                                    <AlertDialogDescription>
+                                                      Tem certeza que deseja excluir o usuário {user.full_name}? Esta ação não pode ser desfeita.
+                                                    </AlertDialogDescription>
+                                                  </AlertDialogHeader>
+                                                  <AlertDialogFooter>
+                                                    <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                                                    <AlertDialogAction
+                                                      className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                                                      onClick={() => handleDeleteUser(user.id)}
+                                                    >
+                                                      Excluir
+                                                    </AlertDialogAction>
+                                                  </AlertDialogFooter>
+                                                </AlertDialogContent>
+                                              </AlertDialog>
                                             </div>
                                           </div>
                                         ))}
