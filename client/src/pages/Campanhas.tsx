@@ -40,6 +40,9 @@ const CampanhasPage = () => {
     const [delayMin, setDelayMin] = useState(5);
     const [delayMax, setDelayMax] = useState(15);
     const [contactsText, setContactsText] = useState("");
+    const [mediaUrl, setMediaUrl] = useState<string | null>(null);
+    const [mediaType, setMediaType] = useState<string | null>(null);
+    const [isUploading, setIsUploading] = useState(false);
 
     const fetchCampaigns = async () => {
         try {
@@ -98,6 +101,8 @@ const CampanhasPage = () => {
                 end_time: endTime,
                 delay_min: delayMin,
                 delay_max: delayMax,
+                media_url: mediaUrl,
+                media_type: mediaType
             };
 
             if (contacts.length > 0) {
@@ -137,6 +142,8 @@ const CampanhasPage = () => {
         setDelayMin(campaign.delay_min);
         setDelayMax(campaign.delay_max);
         setScheduledAt(campaign.scheduled_at ? new Date(campaign.scheduled_at).toISOString().slice(0, 16) : "");
+        setMediaUrl((campaign as any).media_url || null);
+        setMediaType((campaign as any).media_type || null);
 
         // Fetch contacts for this campaign
         try {
@@ -167,6 +174,46 @@ const CampanhasPage = () => {
         setDelayMin(5);
         setDelayMax(15);
         setContactsText("");
+        setMediaUrl(null);
+        setMediaType(null);
+    };
+
+    const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+
+        setIsUploading(true);
+        const formData = new FormData();
+        formData.append("file", file);
+
+        try {
+            const res = await fetch("/api/campaigns/upload", {
+                method: "POST",
+                headers: { "Authorization": `Bearer ${token}` },
+                body: formData
+            });
+
+            if (res.ok) {
+                const data = await res.json();
+                setMediaUrl(data.url);
+
+                // Determine type
+                const mime = file.type;
+                if (mime.startsWith('image/')) setMediaType('image');
+                else if (mime.startsWith('video/')) setMediaType('video');
+                else if (mime.startsWith('audio/')) setMediaType('audio');
+                else if (mime === 'application/pdf') setMediaType('document');
+                else setMediaType('document'); // fallback
+
+                toast.success("Arquivo anexado!");
+            } else {
+                toast.error("Erro ao fazer upload");
+            }
+        } catch (error) {
+            toast.error("Erro ao enviar arquivo");
+        } finally {
+            setIsUploading(false);
+        }
     };
 
     const handleStartCampaign = async (id: number) => {
@@ -273,6 +320,37 @@ const CampanhasPage = () => {
                             <p className="text-xs text-muted-foreground mt-1">
                                 Use {"{nome}"} para personalizar
                             </p>
+                        </div>
+
+                        <div>
+                            <label className="block text-sm font-medium mb-1">Anexo (Opcional)</label>
+                            <div className="flex items-center gap-2">
+                                <Input
+                                    type="file"
+                                    className="hidden"
+                                    id="campaign-file"
+                                    onChange={handleFileUpload}
+                                    disabled={isUploading}
+                                    accept="image/*,video/*,audio/*,.pdf,.doc,.docx"
+                                />
+                                <label
+                                    htmlFor="campaign-file"
+                                    className={`flex items-center gap-2 px-4 py-2 border rounded cursor-pointer hover:bg-zinc-50 transition-colors ${isUploading ? 'opacity-50 pointer-events-none' : ''}`}
+                                >
+                                    <Upload className="h-4 w-4" />
+                                    {isUploading ? "Enviando..." : "Escolher arquivo"}
+                                </label>
+                                {mediaUrl && (
+                                    <div className="flex items-center gap-2 bg-zinc-100 px-3 py-1.5 rounded text-sm group">
+                                        <span className="max-w-[200px] truncate text-blue-600 underline" title={mediaUrl}>
+                                            <a href={mediaUrl} target="_blank" rel="noreferrer">Ver anexo ({mediaType})</a>
+                                        </span>
+                                        <button onClick={() => { setMediaUrl(null); setMediaType(null); }} className="text-red-500 hover:text-red-700">
+                                            <Trash2 className="h-4 w-4" />
+                                        </button>
+                                    </div>
+                                )}
+                            </div>
                         </div>
 
                         <div className="grid grid-cols-2 gap-4">

@@ -19,14 +19,23 @@ const storage = multer.diskStorage({
 });
 
 const fileFilter = (_req: any, file: Express.Multer.File, cb: multer.FileFilterCallback) => {
-    const allowedTypes = /jpeg|jpg|png|gif|webp/;
-    const extname = allowedTypes.test(path.extname(file.originalname).toLowerCase());
-    const mimetype = allowedTypes.test(file.mimetype);
+    // Allow images, audios, videos, PDFs, etc.
+    // Common mappings:
+    // audio/mpeg, audio/ogg, audio/mp4, audio/aac
+    // video/mp4, video/mpeg
+    // application/pdf
+    // image/...
 
-    if (extname && mimetype) {
+    // Simplistic regex for extensions
+    const allowedExtensions = /jpeg|jpg|png|gif|webp|mp3|ogg|mp4|pdf|doc|docx|xls|xlsx|txt/;
+    const extname = allowedExtensions.test(path.extname(file.originalname).toLowerCase().replace('.', ''));
+    // mime type check is often safer but can be tricky with some audio types on some systems
+    // relying on extension + basic mime group
+
+    if (extname) {
         return cb(null, true);
     } else {
-        cb(new Error('Only images are allowed (jpeg, jpg, png, gif, webp)'));
+        cb(new Error('File type not allowed. Allowed: images, audio, video, pdf, docs.'));
     }
 };
 

@@ -28,8 +28,8 @@ export const createCampaign = async (req: Request, res: Response) => {
         // Create campaign
         const campaignResult = await pool.query(
             `INSERT INTO whatsapp_campaigns 
-            (name, message_template, company_id, user_id, scheduled_at, start_time, end_time, delay_min, delay_max, total_contacts, status)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+            (name, message_template, company_id, user_id, scheduled_at, start_time, end_time, delay_min, delay_max, total_contacts, status, media_url, media_type)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
             RETURNING *`,
             [
                 name,
@@ -42,7 +42,9 @@ export const createCampaign = async (req: Request, res: Response) => {
                 delay_min || 5,
                 delay_max || 15,
                 contacts?.length || 0,
-                scheduled_at ? 'scheduled' : 'draft'
+                scheduled_at ? 'scheduled' : 'draft',
+                req.body.media_url || null,
+                req.body.media_type || null
             ]
         );
 
@@ -194,10 +196,23 @@ export const updateCampaign = async (req: Request, res: Response) => {
                  end_time = COALESCE($5, end_time),
                  delay_min = COALESCE($6, delay_min),
                  delay_max = COALESCE($7, delay_max),
+                 media_url = $8,
+                 media_type = $9,
                  updated_at = NOW()
-             WHERE id = $8
+             WHERE id = $10
              RETURNING *`,
-            [name, message_template, scheduled_at || null, start_time, end_time, delay_min, delay_max, id]
+            [
+                name,
+                message_template,
+                scheduled_at || null,
+                start_time,
+                end_time,
+                delay_min,
+                delay_max,
+                req.body.media_url || null,
+                req.body.media_type || null,
+                id
+            ]
         );
 
         if (campaignResult.rows.length === 0) {
@@ -377,7 +392,9 @@ async function processCampaign(campaignId: number, io?: any) {
                     message,
                     contact.name,
                     campaign.user_id,
-                    io
+                    io,
+                    campaign.media_url,
+                    campaign.media_type
                 );
 
                 if (success) {
@@ -475,7 +492,9 @@ async function sendWhatsAppMessage(
     message: string,
     contactName?: string,
     userId?: number | null,
-    io?: any
+    io?: any,
+    mediaUrl?: string | null,
+    mediaType?: string | null
 ): Promise<boolean> {
     try {
         if (!pool) return false;
@@ -515,21 +534,35 @@ async function sendWhatsAppMessage(
             cleanPhone = '55' + cleanPhone;
         }
 
-        const targetUrl = `${EVOLUTION_API_BASE}/message/sendText/${evolution_instance}`;
-        console.log(`[sendWhatsAppMessage] POST ${targetUrl} | Target: ${cleanPhone}`);
+        const isMedia = !!mediaUrl && !!mediaType;
+        const endpoint = isMedia ? 'sendMedia' : 'sendText';
+        const targetUrl = `${EVOLUTION_API_BASE}/message/${endpoint}/${evolution_instance}`;
 
-        const payload = {
+        console.log(`[sendWhatsAppMessage] POST ${targetUrl} | Target: ${cleanPhone} | Type: ${isMedia ? mediaType : 'text'}`);
+
+        let payload: any = {
             number: cleanPhone,
             options: {
                 delay: 1200,
                 presence: "composing",
                 linkPreview: false
-            },
-            textMessage: {
-                text: message,
-            },
-            text: message, // compat
+            }
         };
+
+        if (isMedia) {
+            payload.mediaMessage = {
+                mediatype: mediaType,
+                caption: message, // Caption is the text message
+                media: mediaUrl
+            };
+            // Evolution v2 might expect 'fileName' for documents, optional for others
+            if (mediaType === 'document') {
+                payload.mediaMessage.fileName = mediaUrl!.split('/').pop() || 'document.pdf';
+            }
+        } else {
+            payload.textMessage = { text: message };
+            payload.text = message; // backward compat
+        }
 
         const response = await fetch(targetUrl, {
             method: 'POST',
@@ -569,6 +602,7 @@ async function sendWhatsAppMessage(
                         [message, userId, companyId, conversationId]
                     );
                 } else {
+                    // Create new conversation
                     const newConv = await pool.query(
                         `INSERT INTO whatsapp_conversations (external_id, phone, contact_name, instance, status, user_id, last_message, last_message_at, company_id) 
                          VALUES ($1, $2, $3, $4, 'OPEN', $5, $6, NOW(), $7) RETURNING id`,
@@ -580,14 +614,15 @@ async function sendWhatsAppMessage(
                 const externalMessageId = data?.key?.id;
 
                 // Insert message
+                // Note: We should probably store media_url if it's a media message
                 const insertedMsg = await pool.query(
-                    'INSERT INTO whatsapp_messages (conversation_id, direction, content, sent_at, status, external_id, user_id) VALUES ($1, $2, $3, NOW(), $4, $5, $6) RETURNING id',
-                    [conversationId, 'outbound', message, 'sent', externalMessageId, userId]
+                    'INSERT INTO whatsapp_messages (conversation_id, direction, content, sent_at, status, external_id, user_id, media_url, message_type) VALUES ($1, $2, $3, NOW(), $4, $5, $6, $7, $8) RETURNING id',
+                    [conversationId, 'outbound', message, 'sent', externalMessageId, userId, mediaUrl || null, mediaType || 'text']
                 );
 
                 // Socket Emit
                 if (io && companyId) {
-                    const payload = {
+                    const socketPayload = {
                         ...insertedMsg.rows[0],
                         phone: cleanPhone,
                         contact_name: contactName || cleanPhone,
@@ -599,9 +634,11 @@ async function sendWhatsAppMessage(
                         remoteJid,
                         instance: evolution_instance,
                         company_id: companyId,
-                        agent_name: "(Campanha)"
+                        agent_name: "(Campanha)",
+                        media_url: mediaUrl,
+                        message_type: mediaType || 'text'
                     };
-                    io.to(`company_${companyId}`).emit('message:received', payload);
+                    io.to(`company_${companyId}`).emit('message:received', socketPayload);
                 }
             } catch (dbErr) {
                 console.error('[sendWhatsAppMessage] DB Sync Error:', dbErr);

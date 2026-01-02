@@ -130,6 +130,17 @@ router.put('/campaigns/:id', authenticateToken, updateCampaign);
 router.post('/campaigns/:id/start', authenticateToken, startCampaign);
 router.post('/campaigns/:id/pause', authenticateToken, pauseCampaign);
 router.delete('/campaigns/:id', authenticateToken, deleteCampaign);
+router.post('/campaigns/upload', authenticateToken, upload.single('file'), (req: Request, res: Response) => {
+  if (!req.file) {
+    return res.status(400).json({ error: 'No file uploaded' });
+  }
+  const fileUrl = `${req.protocol}://${req.get('host')}/uploads/${req.file.filename}`;
+  res.json({
+    url: fileUrl,
+    filename: req.file.filename,
+    mimetype: req.file.mimetype
+  });
+});
 
 router.get('/evolution-debug', authenticateToken, async (req: Request, res: Response) => {
   const user = (req as any).user;
