@@ -2198,7 +2198,7 @@ const AtendimentoPage = () => {
                   >
                     {msg.direction === "outbound" && (
                       <span className="text-[10px] font-bold text-zinc-500 dark:text-zinc-400 mb-0.5 px-1 uppercase tracking-wider">
-                        {msg.user_id === user?.id ? user?.full_name : (msg.agent_name || "Atendente")}
+                        {msg.user_id === user?.id ? user?.full_name : (msg.agent_name || "Celular")}
                       </span>
                     )}
                     {msg.direction === "inbound" && selectedConversation?.is_group && (
