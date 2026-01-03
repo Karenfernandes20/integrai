@@ -12,6 +12,7 @@ import {
   DragEndEvent,
   defaultDropAnimationSideEffects,
   DropAnimation,
+  useDroppable,
 } from "@dnd-kit/core";
 import {
   arrayMove,
@@ -214,6 +215,29 @@ function SortableLeadCard({ lead, onEdit, onChat, onFollowUp }: {
           </p>
         </div>
       )}
+    </div>
+  );
+}
+
+// Droppable Column Component
+function DroppableColumn({ id, children }: { id: string; children: React.ReactNode }) {
+  const { setNodeRef, isOver } = useDroppable({
+    id: id,
+    data: {
+      type: "Column",
+      stageId: id,
+    },
+  });
+
+  return (
+    <div
+      ref={setNodeRef}
+      className={cn(
+        "flex-1 transition-colors",
+        isOver && "bg-primary/5"
+      )}
+    >
+      {children}
     </div>
   );
 }
@@ -584,15 +608,17 @@ const CrmPage = () => {
                   </CardTitle>
                 </CardHeader>
 
-                <CardContent className="flex-1 p-2 overflow-y-auto custom-scrollbar">
-                  <SortableContext id={column.id.toString()} items={leadsByStage(column.id).map((l) => l.id)} strategy={verticalListSortingStrategy}>
-                    <div className="flex flex-col gap-2 min-h-[150px]">
-                      {leadsByStage(column.id).map((lead) => (
-                        <SortableLeadCard key={lead.id} lead={lead} onEdit={handleEditLead} onChat={handleChatLead} onFollowUp={handleFollowUpLead} />
-                      ))}
-                    </div>
-                  </SortableContext>
-                </CardContent>
+                <DroppableColumn id={column.id.toString()}>
+                  <CardContent className="flex-1 p-2 overflow-y-auto custom-scrollbar">
+                    <SortableContext id={column.id.toString()} items={leadsByStage(column.id).map((l) => l.id)} strategy={verticalListSortingStrategy}>
+                      <div className="flex flex-col gap-2 min-h-[150px]">
+                        {leadsByStage(column.id).map((lead) => (
+                          <SortableLeadCard key={lead.id} lead={lead} onEdit={handleEditLead} onChat={handleChatLead} onFollowUp={handleFollowUpLead} />
+                        ))}
+                      </div>
+                    </SortableContext>
+                  </CardContent>
+                </DroppableColumn>
               </Card>
             ))}
         </div>
