@@ -50,7 +50,7 @@ import {
 import { io } from "socket.io-client";
 import { useState, useEffect, useRef, useMemo, useLayoutEffect } from "react";
 import type { FormEvent } from "react";
-import { cn, formatBrazilianPhone } from "../lib/utils";
+import { cn } from "../lib/utils";
 import { Avatar, AvatarFallback, AvatarImage } from "../components/ui/avatar";
 import { useAuth } from "../contexts/AuthContext";
 
@@ -1640,14 +1640,19 @@ const AtendimentoPage = () => {
         </div>
 
         <div className="flex-1 min-w-0">
-          <div className="flex justify-between items-center mb-0.5">
-            <span className={cn(
-              "font-semibold truncate text-[15px]",
-              selectedConversation?.id === conv.id ? "text-[#008069] dark:text-[#00a884]" : "text-zinc-900 dark:text-zinc-100"
-            )}>
-              {getDisplayName(conv)}
-            </span>
-            <span className="text-[10px] font-medium text-muted-foreground whitespace-nowrap ml-2 opacity-80">
+          <div className="flex justify-between items-start mb-0.5">
+            <div className="flex flex-col min-w-0 mr-2">
+              <span className={cn(
+                "font-semibold truncate text-[15px]",
+                selectedConversation?.id === conv.id ? "text-[#008069] dark:text-[#00a884]" : "text-zinc-900 dark:text-zinc-100"
+              )}>
+                {getDisplayName(conv)}
+              </span>
+              <span className="text-[10px] text-zinc-500 dark:text-zinc-400 font-normal truncate">
+                {conv.phone?.replace(/\D/g, "")}
+              </span>
+            </div>
+            <span className="text-[10px] font-medium text-muted-foreground whitespace-nowrap opacity-80 pt-1">
               {conv.last_message_at ? formatTime(conv.last_message_at) : ""}
             </span>
           </div>
@@ -2016,7 +2021,7 @@ const AtendimentoPage = () => {
                           {contact.name}
                         </div>
                         <div className="text-[13px] text-zinc-500 font-normal whitespace-nowrap">
-                          {formatBrazilianPhone(contact.phone)}
+                          {contact.phone?.replace(/\D/g, "")}
                         </div>
                       </div>
 
