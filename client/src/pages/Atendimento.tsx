@@ -2149,7 +2149,7 @@ const AtendimentoPage = () => {
                         Atualizar dados do grupo
                       </span>
                     ) : (
-                      <span>{selectedConversation.phone}</span>
+                      <span>{selectedConversation.phone?.replace(/\D/g, "")}</span>
                     )}
                     {selectedConversation.user_id && <span className="font-bold ml-1">• Atendente: {selectedConversation.user_id === user?.id ? "Você" : `ID ${selectedConversation.user_id}`}</span>}
                   </span>
