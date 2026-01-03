@@ -420,7 +420,7 @@ const CampanhasPage = () => {
                             <Textarea
                                 value={contactsText}
                                 onChange={(e) => setContactsText(e.target.value)}
-                                placeholder="5538999540230&#10;5538998969286"
+                                placeholder="5539999999999"
                                 rows={6}
                             />
                         </div>

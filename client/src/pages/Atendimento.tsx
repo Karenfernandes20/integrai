@@ -1695,43 +1695,11 @@ const AtendimentoPage = () => {
               >
                 <Play className="h-3 w-3" /> Iniciar
               </Button>
-              <Button
-                size="sm"
-                variant="ghost"
-                className="h-7 w-7 p-0 text-red-500 hover:bg-red-50 hover:text-red-600"
-                onClick={(e) => { e.stopPropagation(); handleDeleteConversation(conv.id); }}
-                title="Excluir"
-              >
-                <Trash2 className="h-3 w-3" />
-              </Button>
+              {/* Delete button temporarily disabled */}
             </div>
           )}
-          {conv.status === 'OPEN' && (
-            <div className="flex gap-1">
-              <Button
-                size="sm"
-                variant="ghost"
-                className="h-7 px-2 text-[10px] gap-1 text-zinc-600 hover:bg-zinc-100"
-                onClick={(e) => { e.stopPropagation(); handleCloseAtendimento(conv.id); }}
-                title="Encerrar"
-              >
-                <CheckCircle2 className="h-3 w-3" /> Encerrar
-              </Button>
-            </div>
-          )}
-          {conv.status === 'CLOSED' && (
-            <div className="flex gap-1">
-              <Button
-                size="sm"
-                variant="ghost"
-                className="h-7 px-2 text-[10px] gap-1 text-blue-600 hover:bg-blue-50"
-                onClick={(e) => { e.stopPropagation(); handleReopenAtendimento(conv.id); }}
-                title="Reabrir"
-              >
-                <RotateCcw className="h-3 w-3" /> Reabrir
-              </Button>
-            </div>
-          )}
+          {/* Close button temporarily disabled */}
+          {/* Reopen button temporarily disabled */}
         </div>
       )}
     </div>
