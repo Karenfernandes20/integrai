@@ -1272,6 +1272,7 @@ const AtendimentoPage = () => {
     }
 
     const messageContent = newMessage; // Capture current state
+    setNewMessage(""); // Clear input IMMEDIATELY for instant feedback
 
     // 1. Validation (Strict)
     if (!messageContent || !messageContent.trim()) {
@@ -1394,8 +1395,6 @@ const AtendimentoPage = () => {
           last_message_at: new Date().toISOString(),
           status: 'OPEN' as 'OPEN'
         } : null);
-
-        setNewMessage(""); // Clear input ONLY on success as requested
       }
     } catch (err) {
       console.error("Erro ao enviar mensagem (Network/Code):", err);
