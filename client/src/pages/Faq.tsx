@@ -4,6 +4,17 @@ import { Input } from "../components/ui/input";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "../components/ui/accordion";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs";
 import { Button } from "../components/ui/button";
+import { Textarea } from "../components/ui/textarea";
+import {
+    Dialog,
+    DialogContent,
+    DialogDescription,
+    DialogFooter,
+    DialogHeader,
+    DialogTitle,
+    DialogTrigger,
+} from "../components/ui/dialog";
+import { toast } from "sonner";
 
 const faqData = [
     {
@@ -135,6 +146,24 @@ const faqData = [
 const FaqPage = () => {
     const [searchTerm, setSearchTerm] = useState("");
     const [activeTab, setActiveTab] = useState("Primeiros Passos");
+    const [userQuestion, setUserQuestion] = useState("");
+    const [isSubmitting, setIsSubmitting] = useState(false);
+    const [isDialogOpen, setIsDialogOpen] = useState(false);
+
+    const handleSubmitQuestion = (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!userQuestion.trim()) return;
+
+        setIsSubmitting(true);
+        // Simulating API call
+        setTimeout(() => {
+            console.log("Pergunta enviada:", userQuestion);
+            toast.success("Sua dúvida foi enviada com sucesso! Nossa equipe entrará em contato em breve.");
+            setUserQuestion("");
+            setIsSubmitting(false);
+            setIsDialogOpen(false);
+        }, 1500);
+    };
 
     const filteredFaq = faqData.map(category => ({
         ...category,
@@ -248,9 +277,44 @@ const FaqPage = () => {
                     <p className="text-muted-foreground mb-8 max-w-md mx-auto">
                         Nossa equipe está pronta para ajudar você com qualquer questão técnica ou operacional.
                     </p>
-                    <Button size="lg" className="rounded-full px-10 font-bold shadow-lg hover:shadow-primary/20 transition-all">
-                        Falar com Suporte
-                    </Button>
+                    <div className="flex flex-wrap justify-center gap-4">
+                        <Button size="lg" className="rounded-full px-10 font-bold shadow-lg hover:shadow-primary/20 transition-all">
+                            Falar com Suporte
+                        </Button>
+
+                        <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+                            <DialogTrigger asChild>
+                                <Button variant="outline" size="lg" className="rounded-full px-10 font-bold border-primary text-primary hover:bg-primary/5 transition-all">
+                                    Deixar uma Pergunta
+                                </Button>
+                            </DialogTrigger>
+                            <DialogContent className="sm:max-w-md">
+                                <DialogHeader>
+                                    <DialogTitle>Qual a sua dúvida?</DialogTitle>
+                                    <DialogDescription>
+                                        Escreva abaixo sua pergunta. Vamos analisá-la e responder o mais breve possível.
+                                    </DialogDescription>
+                                </DialogHeader>
+                                <div className="space-y-4 py-4">
+                                    <Textarea
+                                        placeholder="Digite aqui sua pergunta detalhadamente..."
+                                        className="min-h-[120px] resize-none"
+                                        value={userQuestion}
+                                        onChange={(e) => setUserQuestion(e.target.value)}
+                                    />
+                                </div>
+                                <DialogFooter>
+                                    <Button
+                                        onClick={handleSubmitQuestion}
+                                        disabled={isSubmitting || !userQuestion.trim()}
+                                        className="w-full sm:w-auto"
+                                    >
+                                        {isSubmitting ? "Enviando..." : "Enviar Pergunta"}
+                                    </Button>
+                                </DialogFooter>
+                            </DialogContent>
+                        </Dialog>
+                    </div>
                 </div>
             </div>
         </div>

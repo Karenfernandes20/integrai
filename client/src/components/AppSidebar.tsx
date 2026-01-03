@@ -31,7 +31,6 @@ import { EditProfileModal } from "./EditProfileModal";
 
 const items = [
   { label: "Dashboard", icon: LayoutDashboard, to: "/app/dashboard" },
-  { label: "Ajuda / FAQ", icon: HelpCircle, to: "/app/faq" },
   { label: "Atendimento", icon: MessageCircle, to: "/app/atendimento" },
   { label: "Grupos", icon: Users, to: "/app/grupos" },
   { label: "Campanhas", icon: FileText, to: "/app/campanhas" },
@@ -42,6 +41,7 @@ const items = [
   { label: "Usuários", icon: Users, to: "/app/usuarios" },
   { label: "Cidades", icon: MapPin, to: "/app/cidades" },
   { label: "QR Code", icon: QrCode, to: "/app/qr-code" },
+  { label: "Ajuda / FAQ", icon: HelpCircle, to: "/app/faq" },
   { label: "Configurações", icon: Settings, to: "/app/configuracoes" },
 ];
 
@@ -68,7 +68,17 @@ export function AppSidebar() {
   }
 
   if (user?.role === 'SUPERADMIN' || user?.role === 'ADMIN') {
+    // Insert "Relatórios" before the last item (Configurações) if FAQ is before Configurações
+    // Or just push and ensure FAQ is moved.
+    // Let's simplify: push all, then find FAQ and move it to penultimate.
     navItems.push({ label: "Relatórios", icon: FileText, to: "/app/relatorios" });
+  }
+
+  // Ensure FAQ is penultimate (second to last)
+  const faqIndex = navItems.findIndex(i => i.label === "Ajuda / FAQ");
+  if (faqIndex > -1) {
+    const [faqItem] = navItems.splice(faqIndex, 1);
+    navItems.splice(navItems.length - 1, 0, faqItem);
   }
 
   // Permission Logic
