@@ -546,20 +546,27 @@ const AtendimentoPage = () => {
   };
 
   // 2. Main Scroll Effect - Handles New Messages & Conversation Changes
-  useLayoutEffect(() => {
+  useEffect(() => {
     if (!scrollRef.current) return;
 
-    // Scenario A: Conversation just opened (or changed)
-    // We detect this by checking if we have messages. 
-    // We FORCE scroll to bottom to ensure "Start at bottom".
-    // We can use a ref to track the last conversation ID to detect change if needed, 
-    // but relying on isNearBottomRef reset on header click is safer.
-
-    // If we are "near bottom" (which we force to true on load), scroll down.
+    // Force scroll if we are supposed to be at bottom
     if (isNearBottomRef.current) {
-      scrollToBottom('auto'); // Always instant to prevent "scrolling down" visual
-    }
+      // Immediate
+      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
 
+      // Delay to handle layout shifts (images, etc)
+      setTimeout(() => {
+        if (scrollRef.current && isNearBottomRef.current) {
+          scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+        }
+      }, 100);
+
+      setTimeout(() => {
+        if (scrollRef.current && isNearBottomRef.current) {
+          scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+        }
+      }, 300);
+    }
   }, [messages, selectedConversation?.id]);
 
   // 3. Reset "Stickiness" when opening a new chat
