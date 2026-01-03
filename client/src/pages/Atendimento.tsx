@@ -2002,18 +2002,27 @@ const AtendimentoPage = () => {
                         </div>
                         <div className="text-[13px] text-zinc-500 font-normal whitespace-nowrap">
                           {(() => {
-                            // Priority order: number > phone > remoteJid > id (removing @s.whatsapp.net)
-                            const phoneNumber =
-                              (contact as any).number ||
-                              contact.phone ||
-                              (contact as any).remoteJid?.replace('@s.whatsapp.net', '') ||
-                              (contact as any).id?.toString().replace('@s.whatsapp.net', '');
+                            // Cast to any to access all possible fields
+                            const c = contact as any;
+
+                            // Try multiple fields in priority order
+                            let phoneNumber =
+                              c.number ||
+                              c.phone ||
+                              (typeof c.remoteJid === 'string' ? c.remoteJid.replace(/@s\.whatsapp\.net$/, '').replace(/@c\.us$/, '') : null) ||
+                              (typeof c.jid === 'string' ? c.jid.replace(/@s\.whatsapp\.net$/, '').replace(/@c\.us$/, '') : null) ||
+                              (typeof c.id === 'string' && c.id.includes('@') ? c.id.replace(/@s\.whatsapp\.net$/, '').replace(/@c\.us$/, '') : c.id);
 
                             if (!phoneNumber) return "Sem telefone";
 
-                            const raw = phoneNumber.replace(/\D/g, "");
-                            // Add 55 prefix if it looks like a BR number without country code
-                            return (raw.length >= 10 && raw.length <= 11) ? `55${raw}` : raw;
+                            // Clean and format
+                            const raw = String(phoneNumber).replace(/\D/g, "");
+
+                            // Don't add 55 if number already has it or if it's too short/long
+                            if (!raw) return "Sem telefone";
+                            if (raw.startsWith('55')) return raw;
+                            if (raw.length >= 10 && raw.length <= 11) return `55${raw}`;
+                            return raw;
                           })()}
                         </div>
                       </div>
