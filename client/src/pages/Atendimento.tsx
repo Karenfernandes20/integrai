@@ -800,51 +800,7 @@ const AtendimentoPage = () => {
     // Focus input (optional)
   };
 
-  const handleDeleteForEveryone = async (msg: Message) => {
-    if (!confirm("Tem certeza que deseja apagar essa mensagem para todos?")) return;
 
-    try {
-      const res = await fetch('/api/evolution/messages/delete-global', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify({
-          messageId: msg.external_id,
-          remoteJid: msg.remoteJid || (msg.direction === 'inbound' ? msg.user_id /* unlikely */ : undefined) || (selectedConversation ? (selectedConversation.phone.includes('@') ? selectedConversation.phone : selectedConversation.phone + '@s.whatsapp.net') : null)
-          // Use robust logic to determine remoteJid
-        })
-      });
-
-      if (res.ok) {
-        // Remove locally
-        setMessages(prev => prev.filter(m => m.id !== msg.id));
-        alert("Mensagem apagada.");
-      } else {
-        alert("Erro ao apagar mensagem.");
-      }
-    } catch (e) {
-      console.error(e);
-      alert("Erro ao conectar ao servidor.");
-    }
-  };
-
-  const handleUnifiedDelete = async (msg: Message) => {
-    const deleteChoice = window.confirm(
-      "Como deseja apagar esta mensagem?\n\nOK = Apagar para todos\nCancelar = Apagar somente para mim"
-    );
-
-    if (deleteChoice) {
-      // Delete for everyone
-      await handleDeleteForEveryone(msg);
-    } else {
-      // Delete for me (just remove locally from database)
-      if (confirm("Apagar esta mensagem apenas para você?")) {
-        await handleDeleteMessage(msg.id);
-      }
-    }
-  };
 
   const handleAudioSpeedToggle = (messageId: string | number, audioElement: HTMLAudioElement | null) => {
     if (!audioElement) return;
@@ -1236,41 +1192,7 @@ const AtendimentoPage = () => {
   };
 
 
-  const handleDeleteMessage = async (msgId: number | string) => {
-    if (typeof msgId === 'string' && msgId.startsWith('temp')) {
-      setMessages(prev => prev.filter(m => m.id !== msgId));
-      return;
-    }
-    const isOutbound = messages.find(m => m.id === msgId)?.direction === 'outbound';
-    const confirmMsg = isOutbound
-      ? "Deseja apagar esta mensagem para TODOS no WhatsApp?"
-      : "Deseja apagar esta mensagem do histórico? (Isso não apagará no celular do remetente)";
 
-    if (!confirm(confirmMsg)) return;
-
-    try {
-      // Optimistic update
-      setMessages(prev => prev.filter(m => m.id !== msgId));
-
-      if (!selectedConversation) return;
-
-      const res = await fetch(`/api/evolution/messages/${selectedConversation.id}/${msgId}`, {
-        method: "DELETE",
-        headers: {
-          "Authorization": `Bearer ${token}`
-        }
-      });
-
-      if (!res.ok) {
-        console.error("Falha ao deletar mensagem no servidor");
-        // Could revert here if needed
-      } else {
-        console.log("Mensagem deletada");
-      }
-    } catch (e) {
-      console.error("Erro ao deletar mensagem", e);
-    }
-  };
 
   const handleRenameContact = async () => {
     if (!selectedConversation) return;
@@ -2482,7 +2404,7 @@ const AtendimentoPage = () => {
                             variant="ghost"
                             size="icon"
                             className="h-7 w-7 bg-white/90 dark:bg-zinc-800/90 hover:bg-red-50 dark:hover:bg-red-900/20 shadow-sm border border-zinc-200 dark:border-zinc-700"
-                            onClick={(e) => { e.stopPropagation(); handleUnifiedDelete(msg); }}
+                            onClick={(e) => { e.stopPropagation(); handleDeleteClick(msg); }}
                             title="Apagar mensagem"
                           >
                             <Trash2 className="h-3.5 w-3.5 text-red-600 dark:text-red-400" />
