@@ -464,15 +464,56 @@ const AtendimentoPage = () => {
 
       // Clear params to keep URL clean
       if (phoneParam) {
-        setSearchParams(prev => {
-          const newParams = new URLSearchParams(prev);
-          newParams.delete('phone');
-          newParams.delete('name');
-          return newParams;
-        }, { replace: true });
+      }, [searchParams, conversations, isLoadingConversations, importedContacts, contacts, setSearchParams, selectedConversation, viewMode, user?.id]);
+
+  // AUTO-REFRESH GROUP METADATA (Similar to Grupos.tsx)
+  useEffect(() => {
+    if (conversations.length === 0) return;
+
+    // Filter groups that need refresh:
+    // 1. is_group = true AND
+    // 2. (no name OR name is "Grupo" OR name is ID OR name looks like "Grupo 55..." OR name ends with @g.us)
+    const groupsToRefresh = conversations.filter(c => {
+      if (!c.is_group) return false;
+      const name = c.group_name || c.contact_name;
+      return !name || name === 'Grupo' || name === c.phone || /^Grupo \d+/.test(name) || /@g\.us$/.test(name);
+    });
+
+    if (groupsToRefresh.length === 0) return;
+
+    console.log(`[AutoRefresh] Found ${groupsToRefresh.length} groups to refresh in Atendimento list.`);
+
+    const processQueue = async () => {
+      // Limit concurrency? Sequential is safer for rate limits.
+      for (const group of groupsToRefresh) {
+        try {
+          // If it's closed, maybe skip? No, we want to fix names in list.
+          const res = await fetch(`/api/evolution/conversations/${group.id}/refresh`, {
+            method: "POST",
+            headers: { "Authorization": `Bearer ${token}` }
+          });
+
+          if (res.ok) {
+            const data = await res.json();
+            if (data.name) {
+              setConversations(prev => prev.map(c =>
+                c.id === group.id ? { ...c, group_name: data.name, contact_name: data.name, profile_pic_url: data.pic || c.profile_pic_url } : c
+              ));
+              if (selectedConversation?.id === group.id) {
+                setSelectedConversation(prev => prev ? { ...prev, group_name: data.name, contact_name: data.name, profile_pic_url: data.pic || prev.profile_pic_url } : null);
+              }
+            }
+          }
+          // Small delay between requests
+          await new Promise(r => setTimeout(r, 1000));
+        } catch (e) {
+          console.error(`[AutoRefresh] Failed to fix group ${group.id}:`, e);
+        }
       }
-    }
-  }, [searchParams, conversations, isLoadingConversations, importedContacts, contacts, setSearchParams, selectedConversation, viewMode, user?.id]);
+    };
+
+    processQueue();
+  }, [conversations.length, token]); // Run when list size changes (initial load or manual update)
 
   // ... (Rest of the component)
 
