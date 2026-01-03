@@ -822,6 +822,22 @@ const AtendimentoPage = () => {
     }
   };
 
+  const handleUnifiedDelete = async (msg: Message) => {
+    const deleteChoice = window.confirm(
+      "Como deseja apagar esta mensagem?\n\nOK = Apagar para todos\nCancelar = Apagar somente para mim"
+    );
+
+    if (deleteChoice) {
+      // Delete for everyone
+      await handleDeleteForEveryone(msg);
+    } else {
+      // Delete for me (just remove locally from database)
+      if (confirm("Apagar esta mensagem apenas para você?")) {
+        await handleDeleteMessage(msg.id);
+      }
+    }
+  };
+
   const syncAllPhotos = async () => {
     try {
       setIsLoadingConversations(true);
@@ -2353,20 +2369,10 @@ const AtendimentoPage = () => {
                             variant="ghost"
                             size="icon"
                             className="h-7 w-7 bg-white/90 dark:bg-zinc-800/90 hover:bg-red-50 dark:hover:bg-red-900/20 shadow-sm border border-zinc-200 dark:border-zinc-700"
-                            onClick={(e) => { e.stopPropagation(); handleDeleteForEveryone(msg); }}
-                            title="Apagar para todos"
-                          >
-                            <Trash2 className="h-3.5 w-3.5 text-red-600 dark:text-red-400" />
-                          </Button>
-
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-7 w-7 bg-white/90 dark:bg-zinc-800/90 hover:bg-red-50 dark:hover:bg-red-900/20 shadow-sm border border-zinc-200 dark:border-zinc-700"
-                            onClick={(e) => { e.stopPropagation(); handleDeleteMessage(msg.id); }}
+                            onClick={(e) => { e.stopPropagation(); handleUnifiedDelete(msg); }}
                             title="Apagar mensagem"
                           >
-                            <Trash2 className="h-3.5 w-3.5 text-zinc-600 dark:text-zinc-300" />
+                            <Trash2 className="h-3.5 w-3.5 text-red-600 dark:text-red-400" />
                           </Button>
                         </>
                       )}
