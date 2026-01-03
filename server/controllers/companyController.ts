@@ -108,61 +108,76 @@ export const createCompany = async (req: Request, res: Response) => {
 
 export const updateCompany = async (req: Request, res: Response) => {
     try {
-        if (!pool) return res.status(500).json({ error: 'Database not configured' });
+        if (!pool) return res.status(500).json({ error: 'Configuração do banco de dados não encontrada.' });
+
         const { id } = req.params;
         const { name, cnpj, city, state, phone, evolution_instance, evolution_apikey, operation_type, remove_logo } = req.body;
 
-        let logo_url = null;
-        const isRemovingLogo = String(remove_logo) === 'true';
+        console.log('DEBUG: updateCompany request', { id, body: req.body, hasFile: !!req.file });
 
-        // Determine the logo_url value
-        let finalLogoUrl: string | null | undefined = undefined; // undefined means "don't change"
+        if (!name) {
+            return res.status(400).json({ error: 'O nome da empresa é obrigatório.' });
+        }
 
-        if (isRemovingLogo) {
-            finalLogoUrl = null;
-        } else if (req.file) {
+        const isRemovingLogo = remove_logo === 'true' || remove_logo === true;
+
+        let finalLogoUrl: string | null = null;
+        if (req.file) {
             const protocol = req.protocol;
             const host = req.get('host');
             finalLogoUrl = `${protocol}://${host}/uploads/${req.file.filename}`;
         }
 
-        const result = await pool.query(
-            `UPDATE companies 
-             SET name = $1, 
-                 cnpj = $2, 
-                 city = $3, 
-                 state = $4, 
-                 phone = $5, 
-                 logo_url = CASE 
-                    WHEN $11 = true THEN NULL 
-                    WHEN $6 IS NOT NULL THEN $6 
-                    ELSE logo_url 
-                 END,
-                 evolution_instance = $7,
-                 evolution_apikey = $8,
-                 operation_type = $9
-             WHERE id = $10 
-             RETURNING *`,
-            [
-                name,
-                cnpj || null,
-                city || null,
-                state || null,
-                phone || null,
-                finalLogoUrl || null,
-                evolution_instance || null,
-                evolution_apikey || null,
-                operation_type || 'clientes',
-                id,
-                isRemovingLogo
-            ]
-        );
+        console.log('Attemping update for company ID:', id, { isRemovingLogo, hasFile: !!req.file });
 
-        if (result.rowCount === 0) return res.status(404).json({ error: 'Company not found' });
+        const query = `
+            UPDATE companies 
+            SET name = $1, 
+                cnpj = $2, 
+                city = $3, 
+                state = $4, 
+                phone = $5, 
+                logo_url = CASE 
+                   WHEN $11 = true THEN NULL 
+                   WHEN $6 IS NOT NULL THEN $6 
+                   ELSE logo_url 
+                END,
+                evolution_instance = COALESCE($7, evolution_instance),
+                evolution_apikey = COALESCE($8, evolution_apikey),
+                operation_type = COALESCE($9, operation_type)
+            WHERE id = $10 
+            RETURNING *
+        `;
+
+        const values = [
+            name,
+            cnpj || null,
+            city || null,
+            state || null,
+            phone || null,
+            finalLogoUrl,
+            evolution_instance || null,
+            evolution_apikey || null,
+            operation_type || 'clientes',
+            parseInt(id),
+            isRemovingLogo
+        ];
+
+        const result = await pool.query(query, values);
+
+        if (result.rowCount === 0) {
+            return res.status(404).json({ error: 'Empresa não encontrada no banco de dados.' });
+        }
+
         res.json(result.rows[0]);
     } catch (error) {
-        console.error('Error updating company:', error);
-        res.status(500).json({ error: 'Failed to update company' });
+        console.error('CRITICAL ERROR in updateCompany:', error);
+        res.status(500).json({
+            error: 'Erro interno ao atualizar empresa',
+            details: (error as any).message,
+            code: (error as any).code,
+            stack: process.env.NODE_ENV === 'development' ? (error as any).stack : undefined
+        });
     }
 };
 
