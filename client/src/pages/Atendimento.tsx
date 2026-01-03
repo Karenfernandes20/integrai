@@ -2336,50 +2336,56 @@ const AtendimentoPage = () => {
                         {formatTime(msg.sent_at)}
                         {msg.direction === "outbound" && <CheckCheck className="h-3 w-3 text-[#53bdeb]" />}
                       </span>
+                    </div>
 
-                      {/* Actions Buttons (Hover) */}
-                      <div className="absolute top-0 right-0 m-1 opacity-0 group-hover:opacity-100 transition-opacity flex gap-1 bg-black/20 rounded p-1 backdrop-blur-sm">
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-6 w-6 text-white hover:text-violet-200 hover:bg-white/20"
-                          onClick={(e) => { e.stopPropagation(); handleReplyMessage(msg); }}
-                          title="Responder"
-                        >
-                          <span className="sr-only">Responder</span>
-                          {/* ArrowLeft or similar icon */}
-                          <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-reply"><polyline points="9 17 4 12 9 7" /><path d="M20 18v-2a4 4 0 0 0-4-4H4" /></svg>
-                        </Button>
+                    {/* Actions Buttons (Hover) - WhatsApp Web Style Below Message */}
+                    <div className={cn(
+                      "flex gap-1 mt-1 opacity-0 group-hover:opacity-100 transition-opacity duration-200",
+                      msg.direction === "outbound" ? "justify-end" : "justify-start"
+                    )}>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-7 w-7 bg-white/90 dark:bg-zinc-800/90 hover:bg-white dark:hover:bg-zinc-700 shadow-sm border border-zinc-200 dark:border-zinc-700"
+                        onClick={(e) => { e.stopPropagation(); handleReplyMessage(msg); }}
+                        title="Responder"
+                      >
+                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-reply text-zinc-600 dark:text-zinc-300"><polyline points="9 17 4 12 9 7" /><path d="M20 18v-2a4 4 0 0 0-4-4H4" /></svg>
+                      </Button>
 
-                        {msg.direction === 'outbound' && (
+                      {msg.direction === 'outbound' && (
+                        <>
                           <Button
                             variant="ghost"
                             size="icon"
-                            className="h-6 w-6 text-white hover:text-red-300 hover:bg-white/20"
+                            className="h-7 w-7 bg-white/90 dark:bg-zinc-800/90 hover:bg-white dark:hover:bg-zinc-700 shadow-sm border border-zinc-200 dark:border-zinc-700"
+                            onClick={(e) => { e.stopPropagation(); handleEditMessage(msg); }}
+                            title="Editar mensagem"
+                          >
+                            <Pencil className="h-3.5 w-3.5 text-zinc-600 dark:text-zinc-300" />
+                          </Button>
+
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-7 w-7 bg-white/90 dark:bg-zinc-800/90 hover:bg-red-50 dark:hover:bg-red-900/20 shadow-sm border border-zinc-200 dark:border-zinc-700"
                             onClick={(e) => { e.stopPropagation(); handleDeleteForEveryone(msg); }}
                             title="Apagar para todos"
                           >
-                            <span className="sr-only">Apagar</span>
-                            <Trash2 className="h-3.5 w-3.5" />
+                            <Trash2 className="h-3.5 w-3.5 text-red-600 dark:text-red-400" />
                           </Button>
-                        )}
 
-                        {/* Existing Edit (Keep or Move?) - keeping basic edit if needed */}
-                        <button
-                          onClick={(e) => { e.stopPropagation(); handleEditMessage(msg); }}
-                          className="p-1 bg-black/10 hover:bg-black/20 dark:bg-white/10 dark:hover:bg-white/20 rounded-full text-zinc-500 dark:text-zinc-300"
-                          title="Editar mensagem"
-                        >
-                          <Pencil className="h-3 w-3" />
-                        </button>
-                        <button
-                          onClick={(e) => { e.stopPropagation(); handleDeleteMessage(msg.id); }}
-                          className="p-1 bg-black/10 hover:bg-black/20 dark:bg-white/10 dark:hover:bg-white/20 rounded-full text-zinc-500 dark:text-zinc-300"
-                          title="Apagar mensagem"
-                        >
-                          <Trash2 className="h-3 w-3" />
-                        </button>
-                      </div>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-7 w-7 bg-white/90 dark:bg-zinc-800/90 hover:bg-red-50 dark:hover:bg-red-900/20 shadow-sm border border-zinc-200 dark:border-zinc-700"
+                            onClick={(e) => { e.stopPropagation(); handleDeleteMessage(msg.id); }}
+                            title="Apagar mensagem"
+                          >
+                            <Trash2 className="h-3.5 w-3.5 text-zinc-600 dark:text-zinc-300" />
+                          </Button>
+                        </>
+                      )}
                     </div>
                   </div>
 
