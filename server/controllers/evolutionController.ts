@@ -1436,10 +1436,16 @@ export const refreshConversationMetadata = async (req: Request, res: Response) =
 
     if (conv.is_group) {
       let groupJid = remoteJid;
-      if (groupJid && !groupJid.includes('@')) {
-        groupJid = `${groupJid}@g.us`;
+      // aggressively fix JID domain for groups
+      if (groupJid) {
+        if (groupJid.includes('@s.whatsapp.net')) {
+          groupJid = groupJid.replace('@s.whatsapp.net', '@g.us');
+        } else if (!groupJid.includes('@')) {
+          groupJid = `${groupJid}@g.us`;
+        }
       }
-      console.log(`[Refresh] Fetching Group Info for ${groupJid}`);
+
+      console.log(`[Refresh] Fetching Group Info for ${groupJid} (Original: ${remoteJid})`);
       const groupUrl = `${EVOLUTION_API_URL.replace(/\/$/, "")}/group/findGroup/${EVOLUTION_INSTANCE}?groupJid=${groupJid}`;
       const gRes = await fetch(groupUrl, {
         method: "GET",
