@@ -22,9 +22,12 @@ export const CrmDashboard = ({ company }: CrmDashboardProps) => {
     useEffect(() => {
         const fetchDashboard = async () => {
             try {
-                // Determine if this is a background poll to avoid flashing loading state
                 const token = localStorage.getItem("auth_token");
-                const res = await fetch("/api/crm/dashboard", {
+                const url = company.id && company.id !== 'superadmin-view'
+                    ? `/api/crm/dashboard?companyId=${company.id}`
+                    : "/api/crm/dashboard";
+
+                const res = await fetch(url, {
                     headers: { "Authorization": `Bearer ${token}` }
                 });
                 if (res.ok) {
@@ -41,9 +44,9 @@ export const CrmDashboard = ({ company }: CrmDashboardProps) => {
         setLoading(true);
         fetchDashboard().then(() => setLoading(false));
 
-        const interval = setInterval(fetchDashboard, 5000); // 5 seconds polling
+        const interval = setInterval(fetchDashboard, 10000); // Increased polling slightly to 10s
         return () => clearInterval(interval);
-    }, []);
+    }, [company.id]);
 
     return (
         <div className="space-y-6 animate-in fade-in duration-500">

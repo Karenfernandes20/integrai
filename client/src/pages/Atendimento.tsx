@@ -2160,7 +2160,18 @@ const AtendimentoPage = () => {
                     <MoreVertical className="h-5 w-5 cursor-pointer hover:text-zinc-700" />
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end">
-                    <DropdownMenuItem onClick={() => setIsFollowUpModalOpen(true)} className="gap-2">
+                    <DropdownMenuItem
+                      onClick={() => {
+                        setFollowUpInitialData({
+                          conversation_id: selectedConversation.id,
+                          contact_name: selectedConversation.contact_name,
+                          phone: selectedConversation.phone,
+                          origin: 'Atendimento'
+                        });
+                        setIsFollowUpModalOpen(true);
+                      }}
+                      className="gap-2"
+                    >
                       <CalendarCheck className="h-4 w-4" /> Novo Follow-up
                     </DropdownMenuItem>
                     <DropdownMenuItem onClick={handleRenameContact}>

@@ -4,7 +4,7 @@ import { pool } from '../db';
 // Helper to get Evolution Config based on User Context (Replicated from evolutionController for speed/shared logic)
 const DEFAULT_URL = "https://freelasdekaren-evolution-api.nhvvzr.easypanel.host";
 
-const getEvolutionConfig = async (user: any) => {
+const getEvolutionConfig = async (user: any, targetCompanyId?: string) => {
     let config = {
         url: process.env.EVOLUTION_API_URL || DEFAULT_URL,
         apikey: process.env.EVOLUTION_API_KEY,
@@ -13,7 +13,20 @@ const getEvolutionConfig = async (user: any) => {
 
     if (pool) {
         try {
-            // SuperAdmin/Admin: Always use 'integrai'
+            // Priority 1: targetCompanyId (Explicitly requested by SuperAdmin)
+            if (targetCompanyId && targetCompanyId !== 'superadmin-view') {
+                const compRes = await pool.query('SELECT evolution_instance, evolution_apikey FROM companies WHERE id = $1', [targetCompanyId]);
+                if (compRes.rows.length > 0) {
+                    const { evolution_instance, evolution_apikey } = compRes.rows[0];
+                    if (evolution_instance && evolution_apikey) {
+                        config.instance = evolution_instance;
+                        config.apikey = evolution_apikey;
+                        return config;
+                    }
+                }
+            }
+
+            // Priority 2: User Role context
             const role = (user?.role || '').toUpperCase();
             const isMasterUser = !user || role === 'SUPERADMIN' || role === 'ADMIN';
 
@@ -50,8 +63,8 @@ const getEvolutionConfig = async (user: any) => {
     return config;
 };
 
-const getEvolutionConnectionStateInternal = async (user: any) => {
-    const config = await getEvolutionConfig(user);
+const getEvolutionConnectionStateInternal = async (user: any, targetCompanyId?: string) => {
+    const config = await getEvolutionConfig(user, targetCompanyId);
     const { url, apikey, instance } = config;
 
     console.log(`[CRM Dashboard] Checking WhatsApp Status for Instance: ${instance || 'N/A'}`);
@@ -346,19 +359,35 @@ export const getCrmDashboardStats = async (req: Request, res: Response) => {
         if (!pool) return res.status(500).json({ error: 'Database not configured' });
 
         const user = (req as any).user;
-        const companyId = user?.company_id;
-        const filterClause = (user.role !== 'SUPERADMIN' || companyId) ? 'WHERE company_id = $1' : 'WHERE 1=1';
-        const filterParams = (user.role !== 'SUPERADMIN' || companyId) ? [companyId] : [];
+        let companyId = user?.company_id;
 
-        // 1. Funnel Data (Stages + Lead Counts) - Only for this company
-        const funnelRes = await pool.query(`
-            SELECT s.name as label, COUNT(l.id) as count, s.position
-            FROM crm_stages s
-            LEFT JOIN crm_leads l ON s.id = l.stage_id AND l.company_id = $1
-            WHERE s.company_id = $1
-            GROUP BY s.id, s.name, s.position
-            ORDER BY s.position ASC
-        `, filterParams);
+        // Allow SuperAdmin to override companyId via query param
+        if (user.role === 'SUPERADMIN' && req.query.companyId) {
+            companyId = req.query.companyId;
+        }
+
+        const filterClause = companyId ? 'company_id = $1' : '1=1';
+        const filterParams = companyId ? [companyId] : [];
+
+        // 1. Funnel Data (Stages + Lead Counts)
+        let funnelRes;
+        if (companyId) {
+            funnelRes = await pool.query(`
+                SELECT s.name as label, COUNT(l.id) as count, s.position
+                FROM crm_stages s
+                LEFT JOIN crm_leads l ON s.id = l.stage_id AND l.company_id = $1
+                WHERE s.company_id = $1
+                GROUP BY s.id, s.name, s.position
+                ORDER BY s.position ASC
+            `, [companyId]);
+        } else {
+            funnelRes = await pool.query(`
+                SELECT name as label, COUNT(id) as count, 0 as position
+                FROM crm_leads
+                GROUP BY name
+                LIMIT 0
+            `);
+        }
 
         const funnelData = funnelRes.rows.map((row, idx) => {
             const colors = [
@@ -380,24 +409,24 @@ export const getCrmDashboardStats = async (req: Request, res: Response) => {
         });
 
         // 2. Overview Stats
-        const activeConvsRes = await pool.query(`SELECT COUNT(*) FROM whatsapp_conversations ${filterClause}`, filterParams);
+        const activeConvsRes = await pool.query(`SELECT COUNT(*) FROM whatsapp_conversations WHERE ${filterClause}`, filterParams);
         const msgsTodayRes = await pool.query(`
             SELECT COUNT(*) FROM whatsapp_messages m
             JOIN whatsapp_conversations c ON m.conversation_id = c.id
-            ${filterClause.replace('WHERE', 'WHERE c.')}
+            WHERE c.${filterClause}
             AND m.direction = 'inbound' 
             AND m.sent_at::date = CURRENT_DATE
         `, filterParams);
         const newLeadsRes = await pool.query(`
             SELECT COUNT(*) FROM crm_leads 
-            ${filterClause}
+            WHERE ${filterClause}
             AND created_at::date = CURRENT_DATE
         `, filterParams);
         const attendedClientsRes = await pool.query(`
              SELECT COUNT(DISTINCT m.conversation_id) 
              FROM whatsapp_messages m
              JOIN whatsapp_conversations c ON m.conversation_id = c.id
-             ${filterClause.replace('WHERE', 'WHERE c.')}
+             WHERE c.${filterClause}
              AND m.direction = 'outbound' AND m.sent_at::date = CURRENT_DATE
         `, filterParams);
 
@@ -407,7 +436,7 @@ export const getCrmDashboardStats = async (req: Request, res: Response) => {
                 COUNT(*) FILTER (WHERE status = 'pending') as pending,
                 COUNT(*) FILTER (WHERE status = 'pending' AND scheduled_at < NOW()) as overdue
             FROM crm_follow_ups
-            ${filterClause}
+            WHERE ${filterClause}
         `, filterParams);
 
         const recentFollowUpsRes = await pool.query(`
@@ -415,7 +444,7 @@ export const getCrmDashboardStats = async (req: Request, res: Response) => {
             FROM crm_follow_ups f
             LEFT JOIN crm_leads l ON f.lead_id = l.id
             LEFT JOIN whatsapp_conversations c ON f.conversation_id = c.id
-            ${filterClause}
+            WHERE f.${filterClause}
             AND f.status = 'pending'
             ORDER BY f.scheduled_at ASC
             LIMIT 5
@@ -426,7 +455,7 @@ export const getCrmDashboardStats = async (req: Request, res: Response) => {
              SELECT m.content as text, m.sent_at, m.direction, c.phone, c.contact_name
              FROM whatsapp_messages m
              JOIN whatsapp_conversations c ON m.conversation_id = c.id
-             ${filterClause.replace('WHERE', 'WHERE c.')}
+             WHERE c.${filterClause}
              ORDER BY m.sent_at DESC
              LIMIT 5
         `, filterParams);
@@ -440,7 +469,7 @@ export const getCrmDashboardStats = async (req: Request, res: Response) => {
         }));
 
         // 4. WhatsApp Status Update
-        const whatsappStatus = await getEvolutionConnectionStateInternal(user);
+        const whatsappStatus = await getEvolutionConnectionStateInternal(user, companyId);
 
         res.json({
             funnel: funnelData,

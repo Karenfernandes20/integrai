@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "../ui/dialog";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
@@ -28,25 +28,42 @@ export function FollowUpModal({ isOpen, onClose, initialData }: FollowUpModalPro
     const queryClient = useQueryClient();
     const isEditing = !!(initialData as any)?.id;
 
+    // Normalize initial phone and name from different sources (Crm, Atendimento, FollowUp list)
+    const normalizedPhone = initialData?.phone || (initialData as any)?.lead_phone || (initialData as any)?.conversation_phone;
+    const normalizedName = initialData?.contact_name || (initialData as any)?.lead_name || (initialData as any)?.whatsapp_contact_name;
+
     // Contact search state
     const [contacts, setContacts] = useState<any[]>([]);
     const [contactSearchTerm, setContactSearchTerm] = useState("");
     const [isLoadingContacts, setIsLoadingContacts] = useState(false);
-    const [selectedContact, setSelectedContact] = useState<any>(
-        initialData?.phone ? { phone: initialData.phone, name: initialData.contact_name } : null
-    );
+    const [selectedContact, setSelectedContact] = useState<any>(null);
 
     const [formData, setFormData] = useState({
-        title: (initialData as any)?.title || "",
-        description: (initialData as any)?.description || "",
-        message: (initialData as any)?.message || "", // New field for scheduled message
-        type: (initialData as any)?.type || "whatsapp",
-        priority: (initialData as any)?.priority || "medium",
-        scheduled_at: (initialData as any)?.scheduled_at
-            ? format(new Date((initialData as any).scheduled_at), "yyyy-MM-dd'T'HH:mm")
-            : format(new Date(Date.now() + 3600000), "yyyy-MM-dd'T'HH:mm"),
+        title: "",
+        description: "",
+        message: "",
+        type: "whatsapp",
+        priority: "medium",
+        scheduled_at: format(new Date(Date.now() + 3600000), "yyyy-MM-dd'T'HH:mm"),
         user_id: user?.id || ""
     });
+
+    useEffect(() => {
+        if (isOpen) {
+            setSelectedContact(normalizedPhone ? { phone: normalizedPhone, name: normalizedName } : null);
+            setFormData({
+                title: (initialData as any)?.title || "",
+                description: (initialData as any)?.description || "",
+                message: (initialData as any)?.message || "",
+                type: (initialData as any)?.type || "whatsapp",
+                priority: (initialData as any)?.priority || "medium",
+                scheduled_at: (initialData as any)?.scheduled_at
+                    ? format(new Date((initialData as any).scheduled_at), "yyyy-MM-dd'T'HH:mm")
+                    : format(new Date(Date.now() + 3600000), "yyyy-MM-dd'T'HH:mm"),
+                user_id: user?.id || ""
+            });
+        }
+    }, [isOpen, normalizedPhone, normalizedName, initialData, user?.id]);
 
     const fetchContacts = async () => {
         setIsLoadingContacts(true);
@@ -69,7 +86,7 @@ export function FollowUpModal({ isOpen, onClose, initialData }: FollowUpModalPro
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
 
-        const phone = selectedContact?.phone || initialData?.phone;
+        const phone = selectedContact?.phone || normalizedPhone;
         if (!phone) {
             toast.error("Selecione um contato");
             return;
@@ -92,7 +109,7 @@ export function FollowUpModal({ isOpen, onClose, initialData }: FollowUpModalPro
                 body: JSON.stringify({
                     ...formData,
                     phone: phone,
-                    contact_name: selectedContact?.name || selectedContact?.push_name || initialData?.contact_name,
+                    contact_name: selectedContact?.name || selectedContact?.push_name || normalizedName,
                     lead_id: initialData?.lead_id,
                     conversation_id: initialData?.conversation_id,
                     origin: initialData?.origin || "Follow-up"
@@ -122,13 +139,13 @@ export function FollowUpModal({ isOpen, onClose, initialData }: FollowUpModalPro
                         {isEditing ? "Editar Follow-up" : "Novo Follow-up"}
                     </DialogTitle>
                     <DialogDescription>
-                        Agende uma ação futura para o contato <strong>{initialData?.contact_name || initialData?.phone}</strong>.
+                        Agende uma ação futura para o contato <strong>{normalizedName || normalizedPhone}</strong>.
                     </DialogDescription>
                 </DialogHeader>
 
                 <form onSubmit={handleSubmit} className="space-y-4 py-4">
                     {/* Contact Search */}
-                    {!initialData?.phone && (
+                    {!normalizedPhone && (
                         <div className="grid gap-2">
                             <Label>Selecionar Contato</Label>
                             {selectedContact ? (

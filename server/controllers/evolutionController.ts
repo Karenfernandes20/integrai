@@ -577,7 +577,7 @@ export const getEvolutionContacts = async (req: Request, res: Response) => {
   try {
     console.log(`[Evolution] Fetching local contacts for instance: ${EVOLUTION_INSTANCE} (Company: ${companyId})`);
 
-    let query = `SELECT * FROM whatsapp_contacts WHERE instance = $1`;
+    let query = `SELECT *, split_part(jid, '@', 1) as phone FROM whatsapp_contacts WHERE instance = $1`;
     const params = [EVOLUTION_INSTANCE];
 
     if (user.role !== 'SUPERADMIN' || companyId) {
@@ -1656,7 +1656,7 @@ export const deleteMessage = async (req: Request, res: Response) => {
       method: "DELETE",
       headers: {
         "Content-Type": "application/json",
-        "apikey": EVOLUTION_API_KEY
+        "apikey": EVOLUTION_API_KEY || ""
       },
       body: JSON.stringify({
         messageId: messageId,
