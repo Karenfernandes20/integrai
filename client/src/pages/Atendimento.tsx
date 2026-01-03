@@ -477,39 +477,30 @@ const AtendimentoPage = () => {
   // ... (Rest of the component)
 
   // Scroll Logic mimicking WhatsApp Web
-  const scrollToBottom = (behavior: 'auto' | 'smooth' = 'auto') => {
+  // Scroll Logic mimicking Grupos.tsx (Imperative Style)
+  const scrollToBottom = () => {
     if (scrollRef.current) {
-      scrollRef.current.scrollTo({
-        top: scrollRef.current.scrollHeight,
-        behavior: behavior
-      });
+      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
   };
 
-  // Check scroll position on user scroll
+  // Check scroll position on user scroll (Required for "Don't pull me down if I'm up" rule)
   const handleScroll = () => {
     if (!scrollRef.current) return;
     const { scrollTop, scrollHeight, clientHeight } = scrollRef.current;
-    // Consider "near bottom" if within 100px of bottom
     const distanceFromBottom = scrollHeight - scrollTop - clientHeight;
     isNearBottomRef.current = distanceFromBottom < 100;
   };
 
-  // 1. Reset flags when switching conversation
-  // 1. Force Scroll to bottom when opening a conversation
+  // 1. Initial Scroll on Conversation Change
   useEffect(() => {
-    isNearBottomRef.current = true; // Always start at bottom
-    // Small timeout to allow render, exactly like Grupos.tsx
-    setTimeout(() => scrollToBottom('auto'), 100);
-  }, [selectedConversation?.id]); // Trigger on conversation change
+    // Always reset to bottom when opening a chat
+    isNearBottomRef.current = true;
+    // Allow render then scroll
+    setTimeout(() => scrollToBottom(), 100);
+  }, [selectedConversation?.id]);
 
-  // 2. Auto-scroll on new messages
-  useEffect(() => {
-    // Only scroll if we are near bottom OR if it's a fresh load (which assumes nearBottom=true)
-    if (isNearBottomRef.current) {
-      setTimeout(() => scrollToBottom('smooth'), 100);
-    }
-  }, [messages]);
+  // NOTE: Deleted the useEffect([messages]) to rely on imperative calls in fetch/socket like Grupos.tsx
 
   // Socket.io Integration
   useEffect(() => {
@@ -567,9 +558,13 @@ const AtendimentoPage = () => {
             return [...prev, newMessage];
           });
 
-          // Rely on useEffect([messages]) for scrolling now
-          if (newMessage.direction === 'outbound') {
-            isNearBottomRef.current = true;
+          // Imperative scroll logic compatible with Grupos.tsx but preserving user position if reading history
+          if (isNearBottomRef.current || newMessage.direction === 'outbound') {
+            setTimeout(() => {
+              if (scrollRef.current) {
+                scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+              }
+            }, 100);
           }
         }
       }
@@ -906,6 +901,13 @@ const AtendimentoPage = () => {
       if (res.ok) {
         const data = await res.json();
         setMessages(data);
+
+        // Imperative scroll from Grupos.tsx
+        setTimeout(() => {
+          if (scrollRef.current) {
+            scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+          }
+        }, 100);
 
         // Reset unread count localmente
         setConversations(prev => prev.map(c =>
@@ -2044,12 +2046,11 @@ const AtendimentoPage = () => {
               </div>
             </div>
 
-            {/* Chat Messages Area */}
             <div className="flex-1 flex flex-col min-h-0 relative">
               <div
                 ref={scrollRef}
                 onScroll={handleScroll}
-                className={cn("flex-1 overflow-y-auto px-4 py-4 space-y-2 custom-scrollbar", messages.length === 0 && "flex flex-col items-center justify-center")}
+                className={cn("flex-1 overflow-y-auto p-4 flex flex-col gap-2 relative z-10 scrollbar-thin scrollbar-thumb-zinc-300 dark:scrollbar-thumb-zinc-800", messages.length === 0 && "items-center justify-center")}
               >
                 {messages.length === 0 && (
                   <div className="flex flex-col items-center justify-center p-8 text-center animate-in fade-in duration-700">
