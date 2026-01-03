@@ -85,6 +85,20 @@ export const getEvolutionConfig = async (user: any, source: string = 'unknown', 
   return config;
 };
 
+const WEBHOOK_EVENTS = [
+  "MESSAGES_UPSERT",
+  "MESSAGES_SET",
+  "MESSAGES_RECEIVE",
+  "MESSAGES_UPDATE",
+  "MESSAGES_DELETE",
+  "SEND_MESSAGE",
+  "CONNECTION_UPDATE",
+  "TYPEING_START",
+  "CHATS_UPSERT",
+  "CHATS_UPDATE",
+  "PRESENCE_UPDATE"
+];
+
 export const getEvolutionQrCode = async (req: Request, res: Response) => {
   const targetCompanyId = req.query.companyId as string;
   const config = await getEvolutionConfig((req as any).user, 'qrcode_connect', targetCompanyId);
@@ -105,22 +119,25 @@ export const getEvolutionQrCode = async (req: Request, res: Response) => {
       });
     }
 
-    const url = `${EVOLUTION_API_URL.replace(/\/$/, "")}/instance/connect/${EVOLUTION_INSTANCE}`;
+    // Prepare connection URL
+    const connectUrl = `${EVOLUTION_API_URL.replace(/\/$/, "")}/instance/connect/${EVOLUTION_INSTANCE}`;
+    console.log(`[Evolution] Fetching QR Code from: ${connectUrl}`);
 
-    const response = await fetch(url, {
+    const response = await fetch(connectUrl, {
       method: "GET",
       headers: {
         "Content-Type": "application/json",
-        apikey: EVOLUTION_API_KEY,
-      },
+        apikey: EVOLUTION_API_KEY
+      }
     });
 
     if (!response.ok) {
-      const text = await response.text().catch(() => undefined);
+      const errorText = await response.text();
+      console.error(`[Evolution] Error response from API: ${response.status}`, errorText);
       return res.status(response.status).json({
-        error: "Failed to fetch QR code from Evolution API",
+        error: "Evolution API error",
         status: response.status,
-        body: text,
+        details: errorText
       });
     }
 
@@ -151,16 +168,7 @@ export const getEvolutionQrCode = async (req: Request, res: Response) => {
             webhook: webhookUrl,
             enabled: true,
             webhook_by_events: false,
-            events: [
-              "MESSAGES_UPSERT",
-              "MESSAGES_SET",
-              "MESSAGES_RECEIVE",
-              "MESSAGES_UPDATE",
-              "MESSAGES_DELETE",
-              "SEND_MESSAGE",
-              "CONNECTION_UPDATE",
-              "TYPEING_START"
-            ]
+            events: WEBHOOK_EVENTS
           })
         }).catch(e => console.warn(`[Evolution Webhook Set Silent Fail]: ${e.message}`));
       }
@@ -1587,19 +1595,7 @@ export const setEvolutionWebhook = async (req: Request, res: Response) => {
             webhook: webhookUrl,
             enabled: true,
             webhook_by_events: false,
-            events: [
-              "MESSAGES_UPSERT",
-              "MESSAGES_SET",
-              "MESSAGES_RECEIVE",
-              "MESSAGES_UPDATE",
-              "MESSAGES_DELETE",
-              "SEND_MESSAGE",
-              "CONNECTION_UPDATE",
-              "TYPEING_START",
-              "CHATS_UPSERT",
-              "CHATS_UPDATE",
-              "PRESENCE_UPDATE"
-            ]
+            events: WEBHOOK_EVENTS
           })
         });
 
@@ -1695,6 +1691,14 @@ export const getEvolutionWebhook = async (req: Request, res: Response) => {
   }
 
   try {
+    let protocol = req.headers['x-forwarded-proto'] || req.protocol;
+    let host = req.get('host');
+    if (host && !host.includes('localhost') && !host.includes('127.0.0.1')) {
+      protocol = 'https';
+    }
+    const rawBackendUrl = process.env.BACKEND_URL || `${protocol}://${host}`;
+    const calculatedWebhookUrl = `${rawBackendUrl.replace(/\/$/, "")}/api/evolution/webhook`;
+
     const url = `${EVOLUTION_API_URL.replace(/\/$/, "")}/webhook/find/${EVOLUTION_INSTANCE}`;
     console.log(`[Webhook] Checking webhook for instance ${EVOLUTION_INSTANCE} at ${url}`);
 
@@ -1712,14 +1716,17 @@ export const getEvolutionWebhook = async (req: Request, res: Response) => {
       return res.status(response.status).json({
         error: "Falha ao buscar webhook",
         details: errorText,
-        instance: EVOLUTION_INSTANCE
+        instance: EVOLUTION_INSTANCE,
+        calculatedWebhookUrl
       });
     }
 
     const data = await response.json();
     return res.json({
       instance: EVOLUTION_INSTANCE,
-      webhook: data
+      currentWebhookInEvolution: data,
+      calculatedWebhookUrl,
+      match: data[0]?.url === calculatedWebhookUrl || data?.url === calculatedWebhookUrl
     });
 
   } catch (error: any) {
