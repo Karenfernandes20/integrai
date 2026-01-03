@@ -108,6 +108,7 @@ export function FollowUpModal({ isOpen, onClose, initialData }: FollowUpModalPro
                 },
                 body: JSON.stringify({
                     ...formData,
+                    scheduled_at: new Date(formData.scheduled_at).toISOString(),
                     phone: phone,
                     contact_name: selectedContact?.name || selectedContact?.push_name || normalizedName,
                     lead_id: initialData?.lead_id,
