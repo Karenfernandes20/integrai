@@ -1446,8 +1446,10 @@ export const refreshConversationMetadata = async (req: Request, res: Response) =
         }
       }
 
-      console.log(`[Refresh] Fetching Group Info for ${groupJid} (Original: ${remoteJid})`);
-      const groupUrl = `${EVOLUTION_API_URL.replace(/\/$/, "")}/group/findGroup/${EVOLUTION_INSTANCE}?groupJid=${groupJid}`;
+      const targetInstance = conv.instance || EVOLUTION_INSTANCE;
+
+      console.log(`[Refresh] Fetching Group Info for ${groupJid} (Original: ${remoteJid}) on Instance: ${targetInstance}`);
+      const groupUrl = `${EVOLUTION_API_URL.replace(/\/$/, "")}/group/findGroup/${targetInstance}?groupJid=${groupJid}`;
       const gRes = await fetch(groupUrl, {
         method: "GET",
         headers: { "Content-Type": "application/json", "apikey": EVOLUTION_API_KEY || "" }
@@ -1469,9 +1471,9 @@ export const refreshConversationMetadata = async (req: Request, res: Response) =
 
       // Fallback: Fetch all groups if direct fetch failed
       if (!nameFound) {
-        console.log(`[Refresh] Fallback: Fetching ALL groups to find ${groupJid}`);
+        console.log(`[Refresh] Fallback: Fetching ALL groups to find ${groupJid} on Instance: ${targetInstance}`);
         try {
-          const allGroupsUrl = `${EVOLUTION_API_URL.replace(/\/$/, "")}/group/fetchAllGroups/${EVOLUTION_INSTANCE}?getParticipants=false`;
+          const allGroupsUrl = `${EVOLUTION_API_URL.replace(/\/$/, "")}/group/fetchAllGroups/${targetInstance}?getParticipants=false`;
           const allRes = await fetch(allGroupsUrl, {
             method: "GET",
             headers: { "Content-Type": "application/json", "apikey": EVOLUTION_API_KEY || "" }
