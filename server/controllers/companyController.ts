@@ -138,7 +138,7 @@ export const updateCompany = async (req: Request, res: Response) => {
                 state = $4, 
                 phone = $5, 
                 logo_url = CASE 
-                   WHEN $11 = true THEN NULL 
+                   WHEN $11::boolean IS TRUE THEN NULL 
                    WHEN $6 IS NOT NULL THEN $6 
                    ELSE logo_url 
                 END,
