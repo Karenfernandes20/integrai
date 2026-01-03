@@ -4,6 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card"
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Textarea } from "../components/ui/textarea";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../components/ui/dialog";
 import { Plus, Play, Pause, Trash2, Eye, Upload, Pencil } from "lucide-react";
 import { toast } from "sonner";
 
@@ -421,8 +422,54 @@ const CampanhasPage = () => {
         );
     }
 
+    const [showFailuresModal, setShowFailuresModal] = useState(false);
+    const [failures, setFailures] = useState<any[]>([]);
+
+    const handleShowFailures = async (id: number) => {
+        try {
+            const res = await fetch(`/api/campaigns/${id}/failures`, {
+                headers: { "Authorization": `Bearer ${token}` }
+            });
+            if (res.ok) {
+                setFailures(await res.json());
+                setShowFailuresModal(true);
+            }
+        } catch (e) {
+            toast.error("Erro ao buscar falhas");
+        }
+    };
+
+    // Inside return...
     return (
         <div className="container mx-auto p-6">
+            <Dialog open={showFailuresModal} onOpenChange={setShowFailuresModal}>
+                <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+                    <DialogHeader>
+                        <DialogTitle>Relatório de Falhas</DialogTitle>
+                    </DialogHeader>
+                    <div className="space-y-2">
+                        {failures.length === 0 ? (
+                            <p className="text-center text-muted-foreground">Nenhuma falha registrada ou erro ao carregar.</p>
+                        ) : (
+                            failures.map((f, i) => (
+                                <div key={i} className="flex justify-between items-start border-b pb-2 text-sm">
+                                    <div>
+                                        <div className="font-semibold">{f.name || f.phone}</div>
+                                        <div className="text-xs text-muted-foreground">{f.phone}</div>
+                                    </div>
+                                    <div className="text-red-600 max-w-[60%] text-right font-medium text-xs">
+                                        {f.error_message || "Erro desconhecido"}
+                                        <div className="text-[10px] text-gray-400">
+                                            {f.failed_at ? new Date(f.failed_at).toLocaleString() : ''}
+                                        </div>
+                                    </div>
+                                </div>
+                            ))
+                        )}
+                    </div>
+                </DialogContent>
+            </Dialog>
+
             <Card>
                 <CardHeader className="flex flex-row items-center justify-between">
                     <CardTitle>Campanhas de WhatsApp</CardTitle>
@@ -454,7 +501,13 @@ const CampanhasPage = () => {
                                             <div className="flex gap-4 text-xs text-muted-foreground">
                                                 <span>Total: {campaign.total_contacts}</span>
                                                 <span className="text-green-600">Enviados: {campaign.sent_count}</span>
-                                                <span className="text-red-600">Falhas: {campaign.failed_count}</span>
+                                                <span
+                                                    className="text-red-600 cursor-pointer hover:underline font-bold"
+                                                    onClick={() => handleShowFailures(campaign.id)}
+                                                    title="Clique para ver detalhes das falhas"
+                                                >
+                                                    Falhas: {campaign.failed_count}
+                                                </span>
                                                 <span>⏰ {campaign.start_time} - {campaign.end_time}</span>
                                             </div>
                                         </div>
