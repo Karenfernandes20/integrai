@@ -653,3 +653,18 @@ async function sendWhatsAppMessage(
     }
 }
 
+// Get Campaign Failures
+export const getCampaignFailures = async (req: Request, res: Response) => {
+    try {
+        if (!pool) return res.status(500).json({ error: 'Database not configured' });
+        const { id } = req.params;
+        const result = await pool.query(
+            "SELECT phone, name, error_message, updated_at as failed_at FROM whatsapp_campaign_contacts WHERE campaign_id = $1 AND status = 'failed' ORDER BY id DESC",
+            [id]
+        );
+        res.json(result.rows);
+    } catch (e) {
+        console.error("Error fetching campaign failures:", e);
+        res.status(500).json({ error: 'Failed to fetch failures' });
+    }
+};
