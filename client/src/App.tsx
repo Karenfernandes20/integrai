@@ -22,6 +22,7 @@ import ContatosPage from "./pages/Contatos";
 import FollowUpPage from "./pages/FollowUp";
 import GruposPage from "./pages/Grupos";
 import CampanhasPage from "./pages/Campanhas";
+import FaqPage from "./pages/Faq";
 
 import { AuthProvider } from "./contexts/AuthContext";
 import AdminRoute from "./components/AdminRoute";
@@ -65,6 +66,7 @@ const App = () => (
               <Route path="configuracoes" element={<ConfiguracoesPage />} />
               <Route path="contatos" element={<ContatosPage />} />
               <Route path="follow-up" element={<FollowUpPage />} />
+              <Route path="faq" element={<FaqPage />} />
 
               {/* SuperAdmin Routes */}
               <Route element={<AdminRoute roles={['SUPERADMIN', 'ADMIN']} />}>

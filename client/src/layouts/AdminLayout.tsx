@@ -17,6 +17,7 @@ const SECTION_TITLES: Record<string, string> = {
   "/app/qr-code": "QR Code",
   "/app/configuracoes": "Configurações",
   "/app/relatorios": "Relatórios Gerenciais",
+  "/app/faq": "Ajuda / FAQ",
 };
 
 function getSectionTitle(pathname: string) {

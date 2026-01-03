@@ -22,6 +22,7 @@ import {
   Building2,
   FileText,
   CalendarCheck,
+  HelpCircle,
 } from "lucide-react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext";
@@ -41,6 +42,7 @@ const items = [
   { label: "Cidades", icon: MapPin, to: "/app/cidades" },
   { label: "QR Code", icon: QrCode, to: "/app/qr-code" },
   { label: "Configurações", icon: Settings, to: "/app/configuracoes" },
+  { label: "Ajuda / FAQ", icon: HelpCircle, to: "/app/faq" },
 ];
 
 export function AppSidebar() {
