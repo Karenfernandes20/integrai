@@ -281,6 +281,7 @@ const CrmPage = () => {
   const [contacts, setContacts] = useState<any[]>([]);
   const [contactSearchTerm, setContactSearchTerm] = useState("");
   const [isLoadingContacts, setIsLoadingContacts] = useState(false);
+  const [isLoadingData, setIsLoadingData] = useState(true);
 
   useEffect(() => {
     fetchData();
@@ -290,6 +291,7 @@ const CrmPage = () => {
 
   const fetchData = async () => {
     try {
+      setIsLoadingData(true);
       const [stagesRes, leadsRes] = await Promise.all([
         fetch("/api/crm/stages", { headers: { "Authorization": `Bearer ${token}` } }),
         fetch("/api/crm/leads", { headers: { "Authorization": `Bearer ${token}` } }),
@@ -316,6 +318,8 @@ const CrmPage = () => {
       }
     } catch (error) {
       console.error("Failed to fetch CRM data", error);
+    } finally {
+      setIsLoadingData(false);
     }
   };
 
@@ -698,50 +702,66 @@ const CrmPage = () => {
 
       <DndContext sensors={sensors} collisionDetection={closestCorners} onDragStart={handleDragStart} onDragOver={handleDragOver} onDragEnd={handleDragEnd}>
         <div className="flex h-[calc(100vh-210px)] gap-4 overflow-x-auto pb-6 scrollbar-thin scrollbar-thumb-slate-200">
-          {stages
-            .sort((a, b) => a.position - b.position)
-            .map((column) => (
-              <Card
-                key={column.id}
-                className="min-w-[320px] max-w-[320px] flex flex-col border-slate-200 shrink-0 h-full overflow-hidden"
-                style={{ backgroundColor: column.color ? `${column.color}20` : 'rgba(248, 250, 252, 0.5)' }}
-              >
-                <div
-                  className="h-1.5 w-full"
-                  style={{ backgroundColor: column.color || '#cbd5e1' }}
-                />
-                <CardHeader className="flex flex-row items-center justify-between p-3 border-b bg-white/80 backdrop-blur-sm shrink-0">
-                  <CardTitle className="text-xs font-bold uppercase tracking-wider text-slate-600 flex items-center justify-between w-full">
-                    <div className="flex items-center">
-                      {column.name}
-                      <Badge variant="secondary" className="ml-2 bg-slate-100 text-slate-600 border-none h-5 px-1.5">{leadsByStage(column.id).length}</Badge>
-                    </div>
-                    {column.name.toUpperCase() !== 'LEADS' && (
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-6 w-6 text-slate-400 hover:text-red-500"
-                        onClick={() => deleteStage(column.id)}
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    )}
-                  </CardTitle>
-                </CardHeader>
-
-                <DroppableColumn id={column.id.toString()}>
-                  <CardContent className="flex-1 p-2 overflow-y-auto custom-scrollbar">
-                    <SortableContext id={column.id.toString()} items={leadsByStage(column.id).map((l) => l.id)} strategy={verticalListSortingStrategy}>
-                      <div className="flex flex-col gap-2 min-h-[150px]">
-                        {leadsByStage(column.id).map((lead) => (
-                          <SortableLeadCard key={lead.id} lead={lead} onEdit={handleEditLead} onChat={handleChatLead} onFollowUp={handleFollowUpLead} onRemove={handleRemoveLead} />
-                        ))}
-                      </div>
-                    </SortableContext>
-                  </CardContent>
-                </DroppableColumn>
+          {stages.length === 0 && isLoadingData ? (
+            // Skeleton display while first load
+            Array.from({ length: 4 }).map((_, i) => (
+              <Card key={i} className="min-w-[320px] max-w-[320px] flex flex-col border-slate-200 shrink-0 h-full animate-pulse bg-slate-50/50">
+                <div className="h-1.5 w-full bg-slate-200" />
+                <div className="p-3 border-b flex justify-between">
+                  <div className="h-4 w-24 bg-slate-200 rounded" />
+                </div>
+                <div className="flex-1 p-2 space-y-2">
+                  <div className="h-20 w-full bg-slate-200 rounded" />
+                  <div className="h-20 w-full bg-slate-200 rounded" />
+                </div>
               </Card>
-            ))}
+            ))
+          ) : (
+            stages
+              .sort((a, b) => a.position - b.position)
+              .map((column) => (
+                <Card
+                  key={column.id}
+                  className="min-w-[320px] max-w-[320px] flex flex-col border-slate-200 shrink-0 h-full overflow-hidden"
+                  style={{ backgroundColor: column.color ? `${column.color}20` : 'rgba(248, 250, 252, 0.5)' }}
+                >
+                  <div
+                    className="h-1.5 w-full"
+                    style={{ backgroundColor: column.color || '#cbd5e1' }}
+                  />
+                  <CardHeader className="flex flex-row items-center justify-between p-3 border-b bg-white/80 backdrop-blur-sm shrink-0">
+                    <CardTitle className="text-xs font-bold uppercase tracking-wider text-slate-600 flex items-center justify-between w-full">
+                      <div className="flex items-center">
+                        {column.name}
+                        <Badge variant="secondary" className="ml-2 bg-slate-100 text-slate-600 border-none h-5 px-1.5">{leadsByStage(column.id).length}</Badge>
+                      </div>
+                      {column.name.toUpperCase() !== 'LEADS' && (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-6 w-6 text-slate-400 hover:text-red-500"
+                          onClick={() => deleteStage(column.id)}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      )}
+                    </CardTitle>
+                  </CardHeader>
+
+                  <DroppableColumn id={column.id.toString()}>
+                    <CardContent className="flex-1 p-2 overflow-y-auto custom-scrollbar">
+                      <SortableContext id={column.id.toString()} items={leadsByStage(column.id).map((l) => l.id)} strategy={verticalListSortingStrategy}>
+                        <div className="flex flex-col gap-2 min-h-[150px]">
+                          {leadsByStage(column.id).map((lead) => (
+                            <SortableLeadCard key={lead.id} lead={lead} onEdit={handleEditLead} onChat={handleChatLead} onFollowUp={handleFollowUpLead} onRemove={handleRemoveLead} />
+                          ))}
+                        </div>
+                      </SortableContext>
+                    </CardContent>
+                  </DroppableColumn>
+                </Card>
+              ))
+          )}
         </div>
 
         <DragOverlay dropAnimation={dropAnimation}>

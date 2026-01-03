@@ -727,10 +727,10 @@ const AtendimentoPage = () => {
 
   // Automatic fetch when switching to 'contatos' tab
   useEffect(() => {
-    if (activeTab === "contatos") {
+    if (activeTab === "contatos" && importedContacts.length === 0) {
       fetchEvolutionContacts();
     }
-  }, [activeTab]);
+  }, [activeTab, importedContacts.length]);
 
   const fetchEvolutionContacts = async () => {
     // Only fetch if WhatsApp is somewhat connected? 
@@ -1021,7 +1021,9 @@ const AtendimentoPage = () => {
       } catch (e) { }
     };
     pollStatus();
-    const interval = setInterval(pollStatus, 10000);
+    // Fetch contacts in background immediately after mount
+    fetchEvolutionContacts();
+    const interval = setInterval(pollStatus, 30000); // Poll less frequently
     return () => clearInterval(interval);
 
   }, [token]);
@@ -1975,8 +1977,8 @@ const AtendimentoPage = () => {
               <div className="flex-1 overflow-y-auto flex flex-col custom-scrollbar">
 
                 {/* List starts here */}
-                {isLoadingContacts && (
-                  <div className="flex flex-col items-center justify-center p-8 text-muted-foreground gap-2">
+                {isLoadingContacts && filteredContacts.length === 0 && (
+                  <div className="flex flex-col items-center justify-center p-8 text-muted-foreground gap-2 h-full">
                     <RefreshCcw className="h-5 w-5 animate-spin" />
                     <span className="text-xs">Carregando contatos do WhatsApp...</span>
                   </div>
