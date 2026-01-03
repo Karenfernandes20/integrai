@@ -40,6 +40,7 @@ import { Input } from "../components/ui/input";
 import { Button } from "../components/ui/button";
 import { ScrollArea } from "../components/ui/scroll-area";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "../components/ui/tabs";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../components/ui/dialog";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -185,6 +186,10 @@ const AtendimentoPage = () => {
 
   // Audio Speed State - Maps message ID to playback speed
   const [audioSpeeds, setAudioSpeeds] = useState<Record<string | number, number>>({});
+
+  // Delete Dialog State
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [messageToDelete, setMessageToDelete] = useState<Message | null>(null);
 
   const ITEMS_PER_PAGE = 50;
 
@@ -858,6 +863,66 @@ const AtendimentoPage = () => {
 
     setAudioSpeeds(prev => ({ ...prev, [messageId]: newSpeed }));
     audioElement.playbackRate = newSpeed;
+  };
+
+  const handleDeleteClick = (msg: Message) => {
+    setMessageToDelete(msg);
+    setDeleteDialogOpen(true);
+  };
+
+  const handleDeleteForMe = async () => {
+    if (!messageToDelete) return;
+
+    try {
+      const res = await fetch(`/api/evolution/messages/${messageToDelete.id}`, {
+        method: "DELETE",
+        headers: { "Authorization": `Bearer ${token}` }
+      });
+
+      if (res.ok) {
+        setMessages(prev => prev.filter(m => m.id !== messageToDelete.id));
+        toast.success("Mensagem apagada");
+      } else {
+        toast.error("Erro ao apagar mensagem");
+      }
+    } catch (e) {
+      console.error("Erro ao apagar mensagem", e);
+      toast.error("Erro de conexão");
+    } finally {
+      setDeleteDialogOpen(false);
+      setMessageToDelete(null);
+    }
+  };
+
+  const handleDeleteForEveryone = async () => {
+    if (!messageToDelete || !selectedConversation) return;
+
+    try {
+      const res = await fetch(`/api/evolution/messages/delete`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          messageId: messageToDelete.external_id || messageToDelete.id,
+          phone: selectedConversation.phone
+        })
+      });
+
+      if (res.ok) {
+        setMessages(prev => prev.filter(m => m.id !== messageToDelete.id));
+        toast.success("Mensagem apagada para todos");
+      } else {
+        toast.error("Erro ao apagar mensagem");
+      }
+    } catch (e) {
+      console.error("Erro ao apagar mensagem", e);
+      toast.error("Erro de conexão");
+    } finally {
+      setDeleteDialogOpen(false);
+      setMessageToDelete(null);
+    }
   };
 
   const syncAllPhotos = async () => {
@@ -2560,6 +2625,41 @@ const AtendimentoPage = () => {
           />
         </div>
       )}
+
+      {/* Delete Message Dialog */}
+      <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+        <DialogContent className="sm:max-w-[400px]">
+          <DialogHeader>
+            <DialogTitle className="text-center">Apagar mensagem?</DialogTitle>
+          </DialogHeader>
+          <div className="flex flex-col gap-3 py-4">
+            <Button
+              variant="outline"
+              className="w-full justify-start h-12 text-base hover:bg-red-50 dark:hover:bg-red-900/20 border-red-200 dark:border-red-800"
+              onClick={handleDeleteForEveryone}
+            >
+              <Trash2 className="mr-3 h-5 w-5 text-red-600 dark:text-red-400" />
+              Apagar para todos
+            </Button>
+            <Button
+              variant="outline"
+              className="w-full justify-start h-12 text-base"
+              onClick={handleDeleteForMe}
+            >
+              <Trash2 className="mr-3 h-5 w-5" />
+              Apagar somente para mim
+            </Button>
+            <Button
+              variant="ghost"
+              className="w-full h-12 text-base"
+              onClick={() => setDeleteDialogOpen(false)}
+            >
+              <XCircle className="mr-3 h-5 w-5" />
+              Cancelar
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
 
     </div >
   );
