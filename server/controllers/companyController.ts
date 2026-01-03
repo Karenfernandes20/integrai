@@ -59,7 +59,7 @@ export const createCompany = async (req: Request, res: Response) => {
         if (!pool) return res.status(500).json({ error: 'Database not configured' });
         const { name, cnpj, city, state, phone, evolution_instance, evolution_apikey, operation_type } = req.body;
 
-        let logo_url = req.body.logo_url;
+        let logo_url = null;
         if (req.file) {
             // Construct local URL
             const protocol = req.protocol;
@@ -71,7 +71,17 @@ export const createCompany = async (req: Request, res: Response) => {
             `INSERT INTO companies (name, cnpj, city, state, phone, logo_url, evolution_instance, evolution_apikey, operation_type) 
              VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) 
              RETURNING *`,
-            [name, cnpj, city, state, phone, logo_url, evolution_instance, evolution_apikey, operation_type || 'clientes']
+            [
+                name,
+                cnpj || null,
+                city || null,
+                state || null,
+                phone || null,
+                logo_url,
+                evolution_instance || null,
+                evolution_apikey || null,
+                operation_type || 'clientes'
+            ]
         );
 
         const newCompany = result.rows[0];
@@ -103,28 +113,49 @@ export const updateCompany = async (req: Request, res: Response) => {
         const { name, cnpj, city, state, phone, evolution_instance, evolution_apikey, operation_type, remove_logo } = req.body;
 
         let logo_url = null;
-        if (req.file) {
+        const isRemovingLogo = String(remove_logo) === 'true';
+
+        // Determine the logo_url value
+        let finalLogoUrl: string | null | undefined = undefined; // undefined means "don't change"
+
+        if (isRemovingLogo) {
+            finalLogoUrl = null;
+        } else if (req.file) {
             const protocol = req.protocol;
             const host = req.get('host');
-            logo_url = `${protocol}://${host}/uploads/${req.file.filename}`;
+            finalLogoUrl = `${protocol}://${host}/uploads/${req.file.filename}`;
         }
-
-        const isRemovingLogo = remove_logo === 'true' || remove_logo === true;
 
         const result = await pool.query(
             `UPDATE companies 
-             SET name = $1, cnpj = $2, city = $3, state = $4, phone = $5, 
+             SET name = $1, 
+                 cnpj = $2, 
+                 city = $3, 
+                 state = $4, 
+                 phone = $5, 
                  logo_url = CASE 
                     WHEN $11 = true THEN NULL 
                     WHEN $6 IS NOT NULL THEN $6 
                     ELSE logo_url 
                  END,
-                 evolution_instance = COALESCE($7, evolution_instance),
-                 evolution_apikey = COALESCE($8, evolution_apikey),
-                 operation_type = COALESCE($9, operation_type)
+                 evolution_instance = $7,
+                 evolution_apikey = $8,
+                 operation_type = $9
              WHERE id = $10 
              RETURNING *`,
-            [name, cnpj, city, state, phone, logo_url, evolution_instance, evolution_apikey, operation_type, id, isRemovingLogo]
+            [
+                name,
+                cnpj || null,
+                city || null,
+                state || null,
+                phone || null,
+                finalLogoUrl || null,
+                evolution_instance || null,
+                evolution_apikey || null,
+                operation_type || 'clientes',
+                id,
+                isRemovingLogo
+            ]
         );
 
         if (result.rowCount === 0) return res.status(404).json({ error: 'Company not found' });

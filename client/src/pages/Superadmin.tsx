@@ -35,8 +35,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from "../components/ui/select";
-import { Pencil, Trash2, Upload, Users, KeyRound } from "lucide-react";
+import { Pencil, Trash2, Upload, Users, KeyRound, RotateCcw } from "lucide-react";
 import { Checkbox } from "../components/ui/checkbox";
+import { cn } from "../lib/utils";
 
 const AVAILABLE_PERMISSIONS = [
   { id: "dashboard", label: "Dashboard" },
@@ -159,6 +160,7 @@ const SuperadminPage = () => {
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     if (event.target.files && event.target.files[0]) {
       setSelectedFile(event.target.files[0]);
+      setRemoveLogo(false); // If they selected a file, don't remove the existing one (the new one will replace it)
     }
   };
 
@@ -813,9 +815,51 @@ const SuperadminPage = () => {
                   />
                 </div>
 
-                <Separator className="my-2" />
-                <div className="space-y-1.5">
+                <div className="space-y-2">
                   <Label htmlFor="logo">Logo da empresa</Label>
+
+                  {editingCompany?.logo_url && !selectedFile && (
+                    <div className="flex items-center gap-3 p-2 rounded-lg border border-primary-soft/40 bg-primary-soft/5 mb-1.5 transition-all">
+                      <div className="relative">
+                        <img
+                          src={editingCompany.logo_url}
+                          alt="Logo"
+                          className={cn(
+                            "h-12 w-12 rounded object-contain bg-white border border-border/50",
+                            removeLogo && "opacity-40 grayscale"
+                          )}
+                        />
+                        {removeLogo && (
+                          <div className="absolute inset-0 flex items-center justify-center">
+                            <span className="h-0.5 w-6 bg-destructive absolute rotate-45" />
+                            <span className="h-0.5 w-6 bg-destructive absolute -rotate-45" />
+                          </div>
+                        )}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-xs font-semibold truncate leading-tight">
+                          {removeLogo ? "Marcar para remover" : "Logotipo atual"}
+                        </p>
+                        <p className="text-[10px] text-muted-foreground truncate">
+                          {removeLogo ? "A logo será apagada ao salvar" : "Imagem configurada no perfil"}
+                        </p>
+                      </div>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        className={cn(
+                          "h-8 w-8",
+                          removeLogo ? "text-primary hover:bg-primary/10" : "text-destructive hover:bg-destructive/10"
+                        )}
+                        onClick={() => setRemoveLogo(!removeLogo)}
+                        title={removeLogo ? "Cancelar remoção" : "Remover logotipo"}
+                      >
+                        {removeLogo ? <RotateCcw className="h-4 w-4" /> : <Trash2 className="h-4 w-4" />}
+                      </Button>
+                    </div>
+                  )}
+
                   <div className="flex items-center gap-2">
                     <Input
                       id="logo"
@@ -824,32 +868,26 @@ const SuperadminPage = () => {
                       accept="image/*"
                       ref={fileInputRef}
                       onChange={handleFileChange}
-                      className="flex-1 cursor-pointer"
+                      className="flex-1 cursor-pointer h-9 text-xs"
                     />
+                    {selectedFile && (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => {
+                          setSelectedFile(null);
+                          if (fileInputRef.current) fileInputRef.current.value = "";
+                        }}
+                        className="text-xs h-9 px-3"
+                      >
+                        Limpar
+                      </Button>
+                    )}
                   </div>
-                  {editingCompany?.logo_url && !selectedFile && (
-                    <p className="text-[11px] text-muted-foreground">
-                      Atual: <a href={editingCompany.logo_url} target="_blank" className="underline text-primary">Ver imagem</a>
-                    </p>
-                  )}
-                  <p className="text-[11px] text-muted-foreground">
+                  <p className="text-[10px] text-muted-foreground px-1">
                     Formatos aceitos: JPG, PNG, WEBP, GIF. Máx 5MB.
                   </p>
-                  {editingCompany?.logo_url && !selectedFile && (
-                    <div className="flex items-center space-x-2 pt-1">
-                      <Checkbox
-                        id="remove_logo"
-                        checked={removeLogo}
-                        onCheckedChange={(checked) => setRemoveLogo(checked as boolean)}
-                      />
-                      <label
-                        htmlFor="remove_logo"
-                        className="text-[11px] font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer text-destructive"
-                      >
-                        Remover logotipo atual
-                      </label>
-                    </div>
-                  )}
                 </div>
                 <div className="mt-2 flex items-center gap-2">
                   <Button type="submit" className="flex-1" size="lg" disabled={isSubmitting}>
