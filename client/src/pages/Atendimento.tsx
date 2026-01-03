@@ -30,6 +30,7 @@ import {
   MessageSquare,
   MessageCircle,
   ShieldAlert,
+  Download,
 } from "lucide-react";
 import { Badge } from "../components/ui/badge";
 import { FollowUpModal } from "../components/follow-up/FollowUpModal";
@@ -178,6 +179,9 @@ const AtendimentoPage = () => {
 
   // Reply State
   const [replyingTo, setReplyingTo] = useState<Message | null>(null);
+
+  // Image Zoom State
+  const [viewingImage, setViewingImage] = useState<string | null>(null);
 
   const ITEMS_PER_PAGE = 50;
 
@@ -2219,7 +2223,7 @@ const AtendimentoPage = () => {
                           return (
                             <div className="flex flex-col gap-1">
                               {msg.media_url ? (
-                                <div className="relative rounded-lg overflow-hidden bg-black/5 min-w-[200px] min-h-[150px]">
+                                <div className="relative rounded-lg overflow-hidden bg-black/5 min-w-[200px] min-h-[150px] cursor-pointer hover:opacity-90 transition-opacity" onClick={() => setViewingImage(getMediaUrl(msg))}>
                                   <img src={getMediaUrl(msg)} alt="Imagem" className="w-full h-auto object-cover max-h-[300px]" loading="lazy" />
                                 </div>
                               ) : (
@@ -2482,6 +2486,40 @@ const AtendimentoPage = () => {
           origin: "Atendimento"
         }}
       />
+
+      {/* Image Lightbox / Zoom Overlay */}
+      {viewingImage && (
+        <div className="fixed inset-0 z-50 bg-black/90 flex flex-col items-center justify-center animate-in fade-in duration-200" onClick={() => setViewingImage(null)}>
+          <div className="absolute top-4 right-4 flex gap-4">
+            <Button
+              variant="ghost"
+              className="text-white hover:bg-white/20"
+              onClick={(e) => {
+                e.stopPropagation();
+                const link = document.createElement('a');
+                link.href = viewingImage;
+                link.download = `imagem-${Date.now()}.jpg`;
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+              }}
+            >
+              <Download className="h-6 w-6" />
+            </Button>
+            <Button variant="ghost" className="text-white hover:bg-white/20" onClick={() => setViewingImage(null)}>
+              <XCircle className="h-8 w-8" />
+            </Button>
+          </div>
+
+          <img
+            src={viewingImage}
+            alt="Zoom"
+            className="max-h-[90vh] max-w-[90vw] object-contain shadow-2xl rounded-sm"
+            onClick={(e) => e.stopPropagation()} // Prevent clicking image from closing
+          />
+        </div>
+      )}
+
     </div >
   );
 };
