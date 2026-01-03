@@ -300,7 +300,7 @@ export const sendEvolutionMessage = async (req: Request, res: Response) => {
       return res.status(500).json({ error: "Evolution API not configured" });
     }
 
-    const { phone, message, text, to } = req.body;
+    const { phone, message, text, to, quoted } = req.body;
 
     // Normalize fields (User asked for "text" but we support "message" too for backward compat, and "to" or "phone")
     const targetPhone = phone || to;
@@ -331,6 +331,7 @@ export const sendEvolutionMessage = async (req: Request, res: Response) => {
         textMessage: {
           text: messageContent,
         },
+        quoted: quoted, // Support for replying
         text: messageContent, // Fallback for some versions/endpoints requiring root text
         message: messageContent // Fallback for older versions
       }),
@@ -1633,5 +1634,53 @@ export const setEvolutionWebhook = async (req: Request, res: Response) => {
   } catch (error: any) {
     console.error("Error setting webhook:", error);
     return res.status(500).json({ error: "Erro interno ao configurar webhook.", details: error.message });
+  }
+};
+export const deleteMessage = async (req: Request, res: Response) => {
+  const config = await getEvolutionConfig((req as any).user, 'deleteMessage');
+  const EVOLUTION_API_URL = config.url;
+  const EVOLUTION_API_KEY = config.apikey;
+  const EVOLUTION_INSTANCE = config.instance;
+
+  try {
+    const { messageId, remoteJid } = req.body;
+
+    if (!messageId || !remoteJid) {
+      return res.status(400).json({ error: "messageId and remoteJid are required" });
+    }
+
+    // Evolution API Endpoint for Deleting for Everyone
+    const url = `${EVOLUTION_API_URL.replace(/\/$/, "")}/message/deleteMessageForEveryone/${EVOLUTION_INSTANCE}`;
+
+    const response = await fetch(url, {
+      method: "DELETE",
+      headers: {
+        "Content-Type": "application/json",
+        "apikey": EVOLUTION_API_KEY
+      },
+      body: JSON.stringify({
+        messageId: messageId,
+        remoteJid: remoteJid
+      })
+    });
+
+    if (!response.ok) {
+      const text = await response.text();
+      console.error("Evolution Delete Error:", text);
+      return res.status(response.status).json({ error: "Failed to delete message", detail: text });
+    }
+
+    const data = await response.json();
+
+    // Remove from local DB
+    if (pool) {
+      await pool.query('DELETE FROM whatsapp_messages WHERE external_id = $1', [messageId]);
+    }
+
+    return res.json(data);
+
+  } catch (error) {
+    console.error("Error deleting message:", error);
+    return res.status(500).json({ error: "Internal Server Error" });
   }
 };

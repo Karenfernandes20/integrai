@@ -44,7 +44,7 @@ router.post('/users/:id/reset-password', authenticateToken, authorizeRole(['SUPE
 
 
 // Evolution routes
-import { getEvolutionQrCode, setEvolutionWebhook, deleteEvolutionInstance, sendEvolutionMessage, getEvolutionConnectionState, getEvolutionContacts, createEvolutionContact, updateEvolutionContact, deleteEvolutionContact, editEvolutionMessage, syncEvolutionContacts, handleEvolutionWebhook, getEvolutionContactsLive, deleteEvolutionMessage, getEvolutionConfig, getEvolutionMedia, getEvolutionProfilePic, syncAllProfilePics, sendEvolutionMedia, refreshConversationMetadata } from './controllers/evolutionController';
+import { getEvolutionQrCode, setEvolutionWebhook, deleteEvolutionInstance, sendEvolutionMessage, getEvolutionConnectionState, getEvolutionContacts, createEvolutionContact, updateEvolutionContact, deleteEvolutionContact, editEvolutionMessage, syncEvolutionContacts, handleEvolutionWebhook, getEvolutionContactsLive, deleteEvolutionMessage, getEvolutionConfig, getEvolutionMedia, getEvolutionProfilePic, syncAllProfilePics, sendEvolutionMedia, refreshConversationMetadata, deleteMessage } from './controllers/evolutionController';
 router.get('/evolution/qrcode', authenticateToken, getEvolutionQrCode);
 router.post('/evolution/webhook/set', authenticateToken, setEvolutionWebhook);
 router.get('/evolution/status', authenticateToken, getEvolutionConnectionState);
@@ -59,6 +59,7 @@ router.post('/evolution/messages/send', authenticateToken, sendEvolutionMessage)
 router.post('/evolution/messages/media', authenticateToken, sendEvolutionMedia);
 router.put('/evolution/messages/:conversationId/:messageId', authenticateToken, editEvolutionMessage);
 router.delete('/evolution/messages/:conversationId/:messageId', authenticateToken, deleteEvolutionMessage);
+router.post('/evolution/messages/delete-global', authenticateToken, deleteMessage);
 // router.get('/evolution/webhook/debug', authenticateToken, authorizeRole(['SUPERADMIN']), debugWebhookPayloads);
 router.get('/evolution/webhook/debug', debugWebhookPayloads); // Temp public for diagnostic
 // router.post('/evolution/webhook/*', handleWebhook); // REMOVED: Wildcard not supported in Express 5 string paths

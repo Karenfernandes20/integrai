@@ -86,6 +86,7 @@ interface Message {
   sender_name?: string;
   agent_name?: string;
   user_id?: number | string;
+  remoteJid?: string;
 }
 
 interface Contact {
@@ -174,6 +175,9 @@ const AtendimentoPage = () => {
   const [pendingPage, setPendingPage] = useState(1);
   const [openPage, setOpenPage] = useState(1);
   const [closedPage, setClosedPage] = useState(1);
+
+  // Reply State
+  const [replyingTo, setReplyingTo] = useState<Message | null>(null);
 
   const ITEMS_PER_PAGE = 50;
 
@@ -811,6 +815,41 @@ const AtendimentoPage = () => {
     }
   };
 
+  const handleReplyMessage = (msg: Message) => {
+    setReplyingTo(msg);
+    // Focus input (optional)
+  };
+
+  const handleDeleteForEveryone = async (msg: Message) => {
+    if (!confirm("Tem certeza que deseja apagar essa mensagem para todos?")) return;
+
+    try {
+      const res = await fetch('/api/evolution/messages/delete-global', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          messageId: msg.external_id,
+          remoteJid: msg.remoteJid || (msg.direction === 'inbound' ? msg.user_id /* unlikely */ : undefined) || (selectedConversation ? (selectedConversation.phone.includes('@') ? selectedConversation.phone : selectedConversation.phone + '@s.whatsapp.net') : null)
+          // Use robust logic to determine remoteJid
+        })
+      });
+
+      if (res.ok) {
+        // Remove locally
+        setMessages(prev => prev.filter(m => m.id !== msg.id));
+        alert("Mensagem apagada.");
+      } else {
+        alert("Erro ao apagar mensagem.");
+      }
+    } catch (e) {
+      console.error(e);
+      alert("Erro ao conectar ao servidor.");
+    }
+  };
+
   const syncAllPhotos = async () => {
     try {
       setIsLoadingConversations(true);
@@ -1277,8 +1316,22 @@ const AtendimentoPage = () => {
           "Authorization": `Bearer ${token}`
         },
         body: JSON.stringify({
-          to: targetPhone,
+          phone: selectedConversation.phone,
           text: messageContent,
+          quoted: replyingTo ? {
+            key: {
+              id: replyingTo.external_id || replyingTo.id, // Prefer external ID if available
+              fromMe: replyingTo.direction === 'outbound',
+              // Try to guess remoteJid if not explicit? Usually backend or Evolution handles lookup, 
+              // but quoting usually requires remoteJid of the chat involved.
+              // Actually we just need the message ID usually for Evolution if passing 'quoted' object properly formatted?
+              // Standard Evolution V2 uses `quoted: { key: { id: ... } }`.
+              // We need to pass the full quoted object.
+              // Let's pass a simplified object and let backend/Evolution handle it if possible, 
+              // or construct what we can. 
+            },
+            message: { conversation: replyingTo.content } // Optional context
+          } : undefined
         }),
       });
 
@@ -1313,6 +1366,9 @@ const AtendimentoPage = () => {
         const externalId = data.external_id;
 
         console.log("Mensagem enviada com sucesso!", data);
+
+        // Clear reply state
+        setReplyingTo(null);
 
         // Update the temp message with real IDs
         // Update the temp message with real IDs, avoiding duplicates
@@ -2295,7 +2351,33 @@ const AtendimentoPage = () => {
                       </span>
 
                       {/* Actions Buttons (Hover) */}
-                      <div className="absolute top-0 right-0 m-1 opacity-0 group-hover:opacity-100 transition-opacity flex gap-1">
+                      <div className="absolute top-0 right-0 m-1 opacity-0 group-hover:opacity-100 transition-opacity flex gap-1 bg-black/20 rounded p-1 backdrop-blur-sm">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-6 w-6 text-white hover:text-violet-200 hover:bg-white/20"
+                          onClick={(e) => { e.stopPropagation(); handleReplyMessage(msg); }}
+                          title="Responder"
+                        >
+                          <span className="sr-only">Responder</span>
+                          {/* ArrowLeft or similar icon */}
+                          <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-reply"><polyline points="9 17 4 12 9 7" /><path d="M20 18v-2a4 4 0 0 0-4-4H4" /></svg>
+                        </Button>
+
+                        {msg.direction === 'outbound' && (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-6 w-6 text-white hover:text-red-300 hover:bg-white/20"
+                            onClick={(e) => { e.stopPropagation(); handleDeleteForEveryone(msg); }}
+                            title="Apagar para todos"
+                          >
+                            <span className="sr-only">Apagar</span>
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </Button>
+                        )}
+
+                        {/* Existing Edit (Keep or Move?) - keeping basic edit if needed */}
                         <button
                           onClick={(e) => { e.stopPropagation(); handleEditMessage(msg); }}
                           className="p-1 bg-black/10 hover:bg-black/20 dark:bg-white/10 dark:hover:bg-white/20 rounded-full text-zinc-500 dark:text-zinc-300"
@@ -2316,6 +2398,23 @@ const AtendimentoPage = () => {
                 ))}
               </div>
             </div>
+
+            {/* Reply Preview */}
+            {replyingTo && (
+              <div className="sticky bottom-[70px] z-40 bg-zinc-100/95 dark:bg-zinc-800/95 border-l-[6px] border-violet-500 p-3 mx-4 mb-0 rounded-t-lg shadow-lg backdrop-blur supports-[backdrop-filter]:bg-zinc-100/60 flex justify-between items-center animate-in slide-in-from-bottom-2 border-t border-r border-zinc-200 dark:border-zinc-700">
+                <div className="flex flex-col overflow-hidden mr-4">
+                  <span className="text-xs font-bold text-violet-600 dark:text-violet-400 mb-0.5">
+                    Respondendo a {replyingTo.direction === 'outbound' ? 'Você' : (replyingTo.agent_name || replyingTo.sender_name || 'Participante')}
+                  </span>
+                  <span className="text-sm text-zinc-600 dark:text-zinc-300 truncate line-clamp-1 opacity-90">
+                    {replyingTo.content || (replyingTo.media_url ? '📷 Mídia' : 'Mensagem')}
+                  </span>
+                </div>
+                <Button variant="ghost" size="sm" className="h-8 w-8 rounded-full p-0 shrink-0 text-zinc-500 hover:text-red-500" onClick={() => setReplyingTo(null)}>
+                  <XCircle className="h-5 w-5" />
+                </Button>
+              </div>
+            )}
 
             {/* Chat Input Area */}
             <div className="sticky bottom-0 z-30 flex-none bg-zinc-100 dark:bg-zinc-800 px-4 py-2 flex items-end gap-2 border-l border-t border-zinc-200 dark:border-zinc-700 w-full" onClick={(e) => e.stopPropagation()}>
