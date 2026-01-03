@@ -504,8 +504,11 @@ const CampanhasPage = () => {
                                                 <span>Total: {campaign.total_contacts}</span>
                                                 <span className="text-green-600">Enviados: {campaign.sent_count}</span>
                                                 <span
-                                                    className="text-red-600 cursor-pointer hover:underline font-bold"
-                                                    onClick={() => handleShowFailures(campaign.id)}
+                                                    className="text-red-600 cursor-pointer hover:underline font-bold hover:text-red-800 transition-colors"
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        handleShowFailures(campaign.id);
+                                                    }}
                                                     title="Clique para ver detalhes das falhas"
                                                 >
                                                     Falhas: {campaign.failed_count}
