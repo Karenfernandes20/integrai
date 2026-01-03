@@ -51,7 +51,7 @@ export function FollowUpModal({ isOpen, onClose, initialData }: FollowUpModalPro
     const fetchContacts = async () => {
         setIsLoadingContacts(true);
         try {
-            const res = await fetch('/api/crm/contacts', {
+            const res = await fetch('/api/evolution/contacts', {
                 headers: { 'Authorization': `Bearer ${token}` }
             });
             if (res.ok) {
