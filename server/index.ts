@@ -75,6 +75,7 @@ app.use((req, res, next) => {
 import { createServer } from "http";
 import { Server } from "socket.io";
 import { runMigrations } from "./db/migrations";
+import { runFaqMigrations } from "./db/faqMigrations";
 
 // Create HTTP server
 const httpServer = createServer(app);
@@ -111,6 +112,7 @@ app.set("io", io);
 const startServer = async () => {
   try {
     await runMigrations();
+    await runFaqMigrations();
     console.log("Migrations check completed.");
   } catch (err) {
     console.error("Migration/DB check failed, starting server anyway for diagnostics:", err);

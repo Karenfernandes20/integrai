@@ -15,6 +15,11 @@ import {
     DialogTrigger,
 } from "../components/ui/dialog";
 import { toast } from "sonner";
+import { useAuth } from "../contexts/AuthContext";
+import { useEffect, useCallback } from "react";
+import { Loader2, Trash2, Reply } from "lucide-react";
+import { Badge } from "../components/ui/badge";
+import { Checkbox } from "../components/ui/checkbox";
 
 const faqData = [
     {
@@ -144,26 +149,121 @@ const faqData = [
 ];
 
 const FaqPage = () => {
+    const { token, user } = useAuth();
     const [searchTerm, setSearchTerm] = useState("");
     const [activeTab, setActiveTab] = useState("Primeiros Passos");
     const [userQuestion, setUserQuestion] = useState("");
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [isDialogOpen, setIsDialogOpen] = useState(false);
 
-    const handleSubmitQuestion = (e: React.FormEvent) => {
+    // User Questions State
+    const [dynamicQuestions, setDynamicQuestions] = useState<any[]>([]);
+    const [isLoadingQuestions, setIsLoadingQuestions] = useState(false);
+
+    // Answer Modal State
+    const [answeringQuestion, setAnsweringQuestion] = useState<any>(null);
+    const [answerText, setAnswerText] = useState("");
+    const [isPublic, setIsPublic] = useState(false);
+
+    const fetchQuestions = useCallback(async () => {
+        if (!token) return;
+        setIsLoadingQuestions(true);
+        try {
+            const res = await fetch("/api/faq/questions", {
+                headers: { Authorization: `Bearer ${token}` }
+            });
+            if (res.ok) {
+                const data = await res.json();
+                setDynamicQuestions(data);
+            }
+        } catch (error) {
+            console.error("Error fetching questions:", error);
+        } finally {
+            setIsLoadingQuestions(false);
+        }
+    }, [token]);
+
+    useEffect(() => {
+        fetchQuestions();
+    }, [fetchQuestions]);
+
+    const handleSubmitQuestion = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!userQuestion.trim()) return;
 
         setIsSubmitting(true);
-        // Simulating API call
-        setTimeout(() => {
-            console.log("Pergunta enviada:", userQuestion);
-            toast.success("Sua dúvida foi enviada com sucesso! Nossa equipe entrará em contato em breve.");
-            setUserQuestion("");
+        try {
+            const res = await fetch("/api/faq/questions", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    Authorization: `Bearer ${token}`
+                },
+                body: JSON.stringify({ question: userQuestion })
+            });
+
+            if (res.ok) {
+                toast.success("Sua dúvida foi enviada com sucesso!");
+                setUserQuestion("");
+                setIsDialogOpen(false);
+                fetchQuestions();
+            } else {
+                toast.error("Erro ao enviar pergunta.");
+            }
+        } catch (error) {
+            toast.error("Erro de conexão.");
+        } finally {
             setIsSubmitting(false);
-            setIsDialogOpen(false);
-        }, 1500);
+        }
     };
+
+    const handleAnswerQuestion = async () => {
+        if (!answerText.trim() || !answeringQuestion) return;
+        setIsSubmitting(true);
+        try {
+            const res = await fetch(`/api/faq/questions/${answeringQuestion.id}/answer`, {
+                method: "PUT",
+                headers: {
+                    "Content-Type": "application/json",
+                    Authorization: `Bearer ${token}`
+                },
+                body: JSON.stringify({ answer: answerText, is_public: isPublic })
+            });
+
+            if (res.ok) {
+                toast.success("Pergunta respondida com sucesso!");
+                setAnsweringQuestion(null);
+                setAnswerText("");
+                fetchQuestions();
+            } else {
+                toast.error("Erro ao responder.");
+            }
+        } catch (error) {
+            toast.error("Erro de conexão.");
+        } finally {
+            setIsSubmitting(false);
+        }
+    };
+
+    const handleDeleteQuestion = async (id: number) => {
+        if (!confirm("Deseja realmente excluir esta pergunta?")) return;
+        try {
+            const res = await fetch(`/api/faq/questions/${id}`, {
+                method: "DELETE",
+                headers: { Authorization: `Bearer ${token}` }
+            });
+            if (res.ok) {
+                toast.success("Pergunta excluída.");
+                fetchQuestions();
+            } else {
+                toast.error("Erro ao excluir.");
+            }
+        } catch (error) {
+            toast.error("Erro de conexão.");
+        }
+    };
+
+    const isSuperAdmin = user?.role?.toUpperCase() === 'SUPERADMIN';
 
     const filteredFaq = faqData.map(category => ({
         ...category,
@@ -247,6 +347,25 @@ const FaqPage = () => {
                                         <span className="whitespace-nowrap">{category.category}</span>
                                     </TabsTrigger>
                                 ))}
+                                <TabsTrigger
+                                    value="Dúvidas dos Usuários"
+                                    className="flex items-center gap-2 py-2.5 px-4 data-[state=active]:bg-background data-[state=active]:shadow-sm"
+                                >
+                                    <Users className="h-4 w-4" />
+                                    <span className="whitespace-nowrap">Dúvidas dos Usuários</span>
+                                </TabsTrigger>
+                                <TabsTrigger
+                                    value="Não Respondidas"
+                                    className="flex items-center gap-2 py-2.5 px-4 data-[state=active]:bg-background data-[state=active]:shadow-sm"
+                                >
+                                    <AlertCircle className="h-4 w-4" />
+                                    <span className="whitespace-nowrap">Não Respondidas</span>
+                                    {dynamicQuestions.filter(q => !q.is_answered).length > 0 && (
+                                        <Badge variant="destructive" className="ml-1 h-5 min-w-5 flex items-center justify-center p-0 text-[10px]">
+                                            {dynamicQuestions.filter(q => !q.is_answered).length}
+                                        </Badge>
+                                    )}
+                                </TabsTrigger>
                             </TabsList>
                         </div>
 
@@ -268,6 +387,70 @@ const FaqPage = () => {
                                 </div>
                             </TabsContent>
                         ))}
+
+                        <TabsContent value="Dúvidas dos Usuários" className="mt-0 animate-in slide-in-from-bottom-2 duration-300">
+                            <div className="bg-card border rounded-2xl p-2 shadow-sm">
+                                {isLoadingQuestions ? (
+                                    <div className="py-12 flex justify-center"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>
+                                ) : dynamicQuestions.filter(q => q.is_answered).length === 0 ? (
+                                    <div className="py-12 text-center text-muted-foreground">Nenhuma pergunta respondida ainda.</div>
+                                ) : (
+                                    <Accordion type="single" collapsible className="w-full">
+                                        {dynamicQuestions.filter(q => q.is_answered).map((q) => (
+                                            <AccordionItem key={q.id} value={`user-q-${q.id}`} className="border-none px-4 py-1">
+                                                <div className="flex items-center justify-between border-b last:border-0 border-muted">
+                                                    <AccordionTrigger className="hover:no-underline font-semibold text-lg text-left py-4 flex-1">
+                                                        <div className="flex flex-col gap-1">
+                                                            <span>{q.question}</span>
+                                                            <span className="text-[10px] uppercase tracking-wider text-primary font-bold">Por: {q.user_name || 'Usuário'}</span>
+                                                        </div>
+                                                    </AccordionTrigger>
+                                                    {(isSuperAdmin || Number(q.user_id) === Number(user?.id)) && (
+                                                        <Button variant="ghost" size="icon" className="text-destructive h-8 w-8" onClick={() => handleDeleteQuestion(q.id)}>
+                                                            <Trash2 className="h-4 w-4" />
+                                                        </Button>
+                                                    )}
+                                                </div>
+                                                <AccordionContent className="text-lg text-muted-foreground pt-2 pb-6 leading-relaxed">
+                                                    {q.answer}
+                                                </AccordionContent>
+                                            </AccordionItem>
+                                        ))}
+                                    </Accordion>
+                                )}
+                            </div>
+                        </TabsContent>
+
+                        <TabsContent value="Não Respondidas" className="mt-0 animate-in slide-in-from-bottom-2 duration-300">
+                            <div className="bg-card border rounded-2xl p-4 shadow-sm space-y-4">
+                                {isLoadingQuestions ? (
+                                    <div className="py-12 flex justify-center"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>
+                                ) : dynamicQuestions.filter(q => !q.is_answered).length === 0 ? (
+                                    <div className="py-12 text-center text-muted-foreground">Todas as perguntas foram respondidas! ✨</div>
+                                ) : (
+                                    dynamicQuestions.filter(q => !q.is_answered).map((q) => (
+                                        <div key={q.id} className="p-4 border rounded-xl bg-muted/30 flex items-start justify-between gap-4">
+                                            <div className="space-y-1 flex-1">
+                                                <p className="font-semibold text-lg">{q.question}</p>
+                                                <p className="text-xs text-muted-foreground">Enviada por <span className="font-bold text-primary">{q.user_name || 'Usuário'}</span> em {new Date(q.created_at).toLocaleDateString()}</p>
+                                            </div>
+                                            <div className="flex gap-2">
+                                                {isSuperAdmin && (
+                                                    <Button size="sm" onClick={() => { setAnsweringQuestion(q); setAnswerText(""); setIsPublic(false); }} className="gap-2">
+                                                        <Reply className="h-4 w-4" /> Responder
+                                                    </Button>
+                                                )}
+                                                {(isSuperAdmin || Number(q.user_id) === Number(user?.id)) && (
+                                                    <Button variant="outline" size="sm" className="text-destructive" onClick={() => handleDeleteQuestion(q.id)}>
+                                                        <Trash2 className="h-4 w-4" />
+                                                    </Button>
+                                                )}
+                                            </div>
+                                        </div>
+                                    ))
+                                )}
+                            </div>
+                        </TabsContent>
                     </Tabs>
                 )}
 
@@ -317,6 +500,41 @@ const FaqPage = () => {
                     </div>
                 </div>
             </div>
+
+            {/* Answer Modal (SuperAdmin Only) */}
+            <Dialog open={!!answeringQuestion} onOpenChange={(open) => !open && setAnsweringQuestion(null)}>
+                <DialogContent className="sm:max-w-md">
+                    <DialogHeader>
+                        <DialogTitle>Responder Pergunta</DialogTitle>
+                        <DialogDescription>
+                            Sua resposta ficará disponível para todos os usuários.
+                        </DialogDescription>
+                    </DialogHeader>
+                    <div className="space-y-4 py-4">
+                        <div className="p-3 bg-muted rounded-lg text-sm italic">
+                            "{answeringQuestion?.question}"
+                        </div>
+                        <Textarea
+                            placeholder="Escreva a resposta aqui..."
+                            className="min-h-[150px]"
+                            value={answerText}
+                            onChange={(e) => setAnswerText(e.target.value)}
+                        />
+                        <div className="flex items-center space-x-2">
+                            <Checkbox id="isPublic" checked={isPublic} onCheckedChange={(checked) => setIsPublic(checked as boolean)} />
+                            <label htmlFor="isPublic" className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
+                                Tornar esta resposta pública para todos
+                            </label>
+                        </div>
+                    </div>
+                    <DialogFooter>
+                        <Button variant="outline" onClick={() => setAnsweringQuestion(null)}>Cancelar</Button>
+                        <Button onClick={handleAnswerQuestion} disabled={isSubmitting || !answerText.trim()}>
+                            {isSubmitting ? "Enviando..." : "Salvar Resposta"}
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
         </div>
     );
 };

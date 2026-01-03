@@ -107,6 +107,9 @@ router.get('/reports/breakdown', authenticateToken, authorizeRole(['SUPERADMIN',
 router.get('/reports/indicators', authenticateToken, authorizeRole(['SUPERADMIN', 'ADMIN']), getFinancialIndicators);
 
 import { getPayables, getReceivables, getReceivablesByCity, getCashFlow, getFinancialStats, createFinancialTransaction, updateFinancialTransaction, deleteFinancialTransaction, reactivateFinancialTransaction, markAsPaid } from './controllers/financialController';
+// FAQ Routes
+import { createFaqQuestion, getFaqQuestions, answerFaqQuestion, deleteFaqQuestion } from './controllers/faqController';
+
 // Financial routes
 router.get('/financial/payables', authenticateToken, getPayables);
 router.get('/financial/receivables', authenticateToken, getReceivables);
@@ -118,6 +121,12 @@ router.put('/financial/transactions/:id', authenticateToken, updateFinancialTran
 router.delete('/financial/transactions/:id', authenticateToken, deleteFinancialTransaction);
 router.put('/financial/transactions/:id/reactivate', authenticateToken, reactivateFinancialTransaction);
 router.post('/financial/transactions/:id/pay', authenticateToken, markAsPaid);
+
+// FAQ
+router.get('/faq/questions', authenticateToken, getFaqQuestions);
+router.post('/faq/questions', authenticateToken, createFaqQuestion);
+router.put('/faq/questions/:id/answer', authenticateToken, authorizeRole(['SUPERADMIN']), answerFaqQuestion);
+router.delete('/faq/questions/:id', authenticateToken, deleteFaqQuestion);
 
 // Campaign routes
 import {
