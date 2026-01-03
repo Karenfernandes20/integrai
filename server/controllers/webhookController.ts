@@ -138,28 +138,34 @@ export const handleWebhook = async (req: Request, res: Response) => {
                     companyId = compLookup.rows[0].id;
                     console.log(`[Webhook] Exact match! Instance "${instance}" mapped to companyId ${companyId}`);
                 } else {
-                    // 2. Fuzzy match (if instance name contains "viamove" and company name contains "viamove")
-                    console.log(`[Webhook] No exact match for "${instance}". Trying fuzzy...`);
+                    // 2. Fuzzy match (if instance name contains "viamove" or company name contains part of instance)
+                    console.log(`[Webhook] No exact match for "${instance}". Trying fuzzy mapping...`);
+
                     const fuzzyLookup = await pool.query(
-                        'SELECT id FROM companies WHERE (LOWER($1) LIKE LOWER(CONCAT(\'%\', name, \'%\')) OR LOWER(name) LIKE LOWER(CONCAT(\'%\', $1, \'%\'))) LIMIT 1',
+                        `SELECT id FROM companies 
+                         WHERE (LOWER($1) LIKE LOWER(CONCAT('%', name, '%')) 
+                            OR LOWER(name) LIKE LOWER(CONCAT('%', $1, '%'))
+                            OR LOWER(evolution_instance) LIKE LOWER(CONCAT('%', $1, '%'))
+                            OR LOWER($1) LIKE LOWER(CONCAT('%', evolution_instance, '%')))
+                         LIMIT 1`,
                         [instance]
                     );
 
                     if (fuzzyLookup.rows.length > 0) {
                         companyId = fuzzyLookup.rows[0].id;
-                        console.log(`[Webhook] Fuzzy Match Success! Instance "${instance}" mapped to companyId ${companyId} (by name)`);
-                    } else if (instance.toLowerCase().includes('viamove')) {
-                        // Special manual fallback for viamove
-                        const viaLookup = await pool.query('SELECT id FROM companies WHERE LOWER(name) LIKE \'%viamove%\' LIMIT 1');
+                        console.log(`[Webhook] Fuzzy Match Success! Instance "${instance}" mapped to companyId ${companyId}`);
+                    } else if (instance.toLowerCase().includes('viamove') || instance.toLowerCase().includes('viams')) {
+                        // Special manual fallback for viamove variations
+                        const viaLookup = await pool.query("SELECT id FROM companies WHERE LOWER(name) LIKE '%via%move%' OR LOWER(name) LIKE '%viamove%' LIMIT 1");
                         if (viaLookup.rows.length > 0) {
                             companyId = viaLookup.rows[0].id;
-                            console.log(`[Webhook] Manual Fallback Success! Viamove instance "${instance}" mapped to companyId ${companyId}`);
+                            console.log(`[Webhook] Manual Fallback Success! Viamove variation "${instance}" mapped to companyId ${companyId}`);
                         }
                     }
 
                     // 3. Last resort fallback if still not found and there's only one company
                     if (!companyId) {
-                        const allCompanies = await pool.query('SELECT id, evolution_instance FROM companies');
+                        const allCompanies = await pool.query('SELECT id FROM companies');
                         if (allCompanies.rows.length === 1) {
                             companyId = allCompanies.rows[0].id;
                             console.log(`[Webhook] Single-Company Fallback: Mapping instance "${instance}" to companyId ${companyId}`);
