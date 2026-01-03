@@ -31,6 +31,7 @@ import { EditProfileModal } from "./EditProfileModal";
 
 const items = [
   { label: "Dashboard", icon: LayoutDashboard, to: "/app/dashboard" },
+  { label: "Ajuda / FAQ", icon: HelpCircle, to: "/app/faq" },
   { label: "Atendimento", icon: MessageCircle, to: "/app/atendimento" },
   { label: "Grupos", icon: Users, to: "/app/grupos" },
   { label: "Campanhas", icon: FileText, to: "/app/campanhas" },
@@ -42,7 +43,6 @@ const items = [
   { label: "Cidades", icon: MapPin, to: "/app/cidades" },
   { label: "QR Code", icon: QrCode, to: "/app/qr-code" },
   { label: "Configurações", icon: Settings, to: "/app/configuracoes" },
-  { label: "Ajuda / FAQ", icon: HelpCircle, to: "/app/faq" },
 ];
 
 export function AppSidebar() {
