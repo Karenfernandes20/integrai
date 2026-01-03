@@ -30,6 +30,23 @@ const CampanhasPage = () => {
     const [isLoading, setIsLoading] = useState(true);
     const [showCreateForm, setShowCreateForm] = useState(false);
 
+    const [showFailuresModal, setShowFailuresModal] = useState(false);
+    const [failures, setFailures] = useState<any[]>([]);
+
+    const handleShowFailures = async (id: number) => {
+        try {
+            const res = await fetch(`/api/campaigns/${id}/failures`, {
+                headers: { "Authorization": `Bearer ${token}` }
+            });
+            if (res.ok) {
+                setFailures(await res.json());
+                setShowFailuresModal(true);
+            }
+        } catch (e) {
+            toast.error("Erro ao buscar falhas");
+        }
+    };
+
     const [editingCampaignId, setEditingCampaignId] = useState<number | null>(null);
 
     // Form states
@@ -422,22 +439,7 @@ const CampanhasPage = () => {
         );
     }
 
-    const [showFailuresModal, setShowFailuresModal] = useState(false);
-    const [failures, setFailures] = useState<any[]>([]);
 
-    const handleShowFailures = async (id: number) => {
-        try {
-            const res = await fetch(`/api/campaigns/${id}/failures`, {
-                headers: { "Authorization": `Bearer ${token}` }
-            });
-            if (res.ok) {
-                setFailures(await res.json());
-                setShowFailuresModal(true);
-            }
-        } catch (e) {
-            toast.error("Erro ao buscar falhas");
-        }
-    };
 
     // Inside return...
     return (
