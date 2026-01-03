@@ -2027,7 +2027,10 @@ const AtendimentoPage = () => {
                           {contact.name}
                         </div>
                         <div className="text-[13px] text-zinc-500 font-normal whitespace-nowrap">
-                          {contact.phone?.replace(/\D/g, "")}
+                          {(() => {
+                            const raw = contact.phone?.replace(/\D/g, "") || "";
+                            return (raw.length >= 10 && raw.length <= 11) ? `55${raw}` : raw;
+                          })()}
                         </div>
                       </div>
 
