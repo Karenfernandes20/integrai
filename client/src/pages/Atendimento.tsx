@@ -1915,97 +1915,99 @@ const AtendimentoPage = () => {
 
 
           {/* CardContent removed to fix height/scroll issues */}
-          {/* Aba CONVERSAS - SINGLE COLUMN Vertical List */}
-          <TabsContent value="conversas" className="flex-1 flex flex-col min-h-0 m-0">
-            <div className="px-3 py-2 flex flex-col gap-2 border-b">
-              <div className="relative">
-                <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-                <Input
-                  placeholder="Pesquisar..."
-                  className="pl-9 h-9 bg-zinc-100 dark:bg-zinc-900 border-none rounded-lg text-sm"
-                  value={conversationSearchTerm}
-                  onChange={(e) => setConversationSearchTerm(e.target.value)}
-                />
+          {/* Aba CONVERSAS - SINGLE COLUMN Vertical List - Manually rendered to avoid Radix ID issues */}
+          {activeTab === 'conversas' && (
+            <div className="flex-1 flex flex-col min-h-0 m-0 animate-in slide-in-from-right-20 duration-200">
+              <div className="px-3 py-2 flex flex-col gap-2 border-b">
+                <div className="relative">
+                  <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    placeholder="Pesquisar..."
+                    className="pl-9 h-9 bg-zinc-100 dark:bg-zinc-900 border-none rounded-lg text-sm"
+                    value={conversationSearchTerm}
+                    onChange={(e) => setConversationSearchTerm(e.target.value)}
+                  />
+                </div>
+
+                {/* QUICK NAVIGATION TABS (Top Bar Style) */}
+                <div className="flex items-center gap-1 bg-zinc-100 dark:bg-zinc-900/50 p-1 rounded-xl shadow-inner border border-zinc-200/50 dark:border-zinc-800/50 w-full mt-2">
+
+                  <button
+                    onClick={() => setViewMode('PENDING')}
+                    className={cn(
+                      "text-[11px] px-1 py-1.5 rounded-lg font-bold uppercase transition-all flex items-center justify-center gap-2 flex-1",
+                      viewMode === 'PENDING' ? "bg-zinc-500 text-white shadow-sm" : "text-zinc-500 hover:text-zinc-700 hover:bg-black/5"
+                    )}
+                  >
+                    Pendentes <span className="opacity-50 text-[9px] bg-black/10 px-1.5 rounded">{pendingConversations.length}</span>
+                  </button>
+                  <button
+                    onClick={() => setViewMode('OPEN')}
+                    className={cn(
+                      "text-[11px] px-1 py-1.5 rounded-lg font-bold uppercase transition-all flex items-center justify-center gap-2 flex-1",
+                      viewMode === 'OPEN' ? "bg-[#008069] text-white shadow-sm" : "text-zinc-500 hover:text-zinc-700 hover:bg-black/5"
+                    )}
+                  >
+                    Abertos <span className="opacity-60 text-[9px] bg-white/20 px-1.5 rounded">{openConversations.length}</span>
+                  </button>
+                  <button
+                    onClick={() => setViewMode('CLOSED')}
+                    className={cn(
+                      "text-[11px] px-1 py-1.5 rounded-lg font-bold uppercase transition-all flex items-center justify-center gap-2 flex-1",
+                      viewMode === 'CLOSED' ? "bg-red-500 text-white shadow-sm" : "text-zinc-500 hover:text-zinc-700 hover:bg-black/5"
+                    )}
+                  >
+                    Fechados <span className="opacity-50 text-[9px] bg-black/10 px-1.5 rounded">{closedConversations.length}</span>
+                  </button>
+
+                </div>
               </div>
 
-              {/* QUICK NAVIGATION TABS (Top Bar Style) */}
-              <div className="flex items-center gap-1 bg-zinc-100 dark:bg-zinc-900/50 p-1 rounded-xl shadow-inner border border-zinc-200/50 dark:border-zinc-800/50 w-full mt-2">
+              <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar p-0 bg-zinc-50/50 dark:bg-zinc-900/10 flex flex-col">
+                <div className={cn("flex flex-col flex-1", ((viewMode === 'PENDING' && pendingConversations.length === 0) || (viewMode === 'OPEN' && openConversations.length === 0) || (viewMode === 'CLOSED' && closedConversations.length === 0)) ? "justify-center" : "py-2")}>
+                  {/* DYNAMIC LIST BASED ON VIEWMODE */}
 
-                <button
-                  onClick={() => setViewMode('PENDING')}
-                  className={cn(
-                    "text-[11px] px-1 py-1.5 rounded-lg font-bold uppercase transition-all flex items-center justify-center gap-2 flex-1",
-                    viewMode === 'PENDING' ? "bg-zinc-500 text-white shadow-sm" : "text-zinc-500 hover:text-zinc-700 hover:bg-black/5"
-                  )}
-                >
-                  Pendentes <span className="opacity-50 text-[9px] bg-black/10 px-1.5 rounded">{pendingConversations.length}</span>
-                </button>
-                <button
-                  onClick={() => setViewMode('OPEN')}
-                  className={cn(
-                    "text-[11px] px-1 py-1.5 rounded-lg font-bold uppercase transition-all flex items-center justify-center gap-2 flex-1",
-                    viewMode === 'OPEN' ? "bg-[#008069] text-white shadow-sm" : "text-zinc-500 hover:text-zinc-700 hover:bg-black/5"
-                  )}
-                >
-                  Abertos <span className="opacity-60 text-[9px] bg-white/20 px-1.5 rounded">{openConversations.length}</span>
-                </button>
-                <button
-                  onClick={() => setViewMode('CLOSED')}
-                  className={cn(
-                    "text-[11px] px-1 py-1.5 rounded-lg font-bold uppercase transition-all flex items-center justify-center gap-2 flex-1",
-                    viewMode === 'CLOSED' ? "bg-red-500 text-white shadow-sm" : "text-zinc-500 hover:text-zinc-700 hover:bg-black/5"
-                  )}
-                >
-                  Fechados <span className="opacity-50 text-[9px] bg-black/10 px-1.5 rounded">{closedConversations.length}</span>
-                </button>
+                  {viewMode === 'PENDING' && pendingConversations.length > 0 &&
+                    pendingConversations.slice((pendingPage - 1) * ITEMS_PER_PAGE, pendingPage * ITEMS_PER_PAGE).map(conv => renderConversationCard(conv))
+                  }
 
+                  {viewMode === 'PENDING' && Math.ceil(pendingConversations.length / ITEMS_PER_PAGE) > 1 && (
+                    <div className="flex justify-center p-2 mb-10"><span className="text-xs text-muted-foreground">Página {pendingPage}</span></div>
+                    // Added padding at bottom ensures user can scroll past last item easily
+                  )}
+
+
+                  {viewMode === 'OPEN' && openConversations.length > 0 &&
+                    openConversations.slice((openPage - 1) * ITEMS_PER_PAGE, openPage * ITEMS_PER_PAGE).map(conv => renderConversationCard(conv))
+                  }
+                  {viewMode === 'OPEN' && Math.ceil(openConversations.length / ITEMS_PER_PAGE) > 1 && (
+                    <div className="flex justify-center p-2 mb-10"><span className="text-xs text-muted-foreground">Página {openPage}</span></div>
+                  )}
+
+                  {viewMode === 'CLOSED' && closedConversations.length > 0 &&
+                    closedConversations.slice((closedPage - 1) * ITEMS_PER_PAGE, closedPage * ITEMS_PER_PAGE).map(conv => renderConversationCard(conv))
+                  }
+                  {viewMode === 'CLOSED' && Math.ceil(closedConversations.length / ITEMS_PER_PAGE) > 1 && (
+                    <div className="flex justify-center p-2 mb-10"><span className="text-xs text-muted-foreground">Página {closedPage}</span></div>
+                  )}
+
+                  {/* EMPTY STATES */}
+                  {((viewMode === 'PENDING' && pendingConversations.length === 0) ||
+                    (viewMode === 'OPEN' && openConversations.length === 0) ||
+                    (viewMode === 'CLOSED' && closedConversations.length === 0)) && (
+                      <div className="flex flex-col items-center justify-center text-center p-6 opacity-60 m-auto">
+                        <MessageSquare className="h-10 w-10 text-zinc-300 mb-2" />
+                        <p className="text-sm font-medium text-zinc-500">
+                          {viewMode === 'PENDING' ? 'Nenhuma conversa pendente' :
+                            viewMode === 'OPEN' ? 'Nenhum atendimento aberto' :
+                              'Nenhuma conversa finalizada'}
+                        </p>
+                      </div>
+                    )}
+                </div>
               </div>
             </div>
-
-            <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar p-0 bg-zinc-50/50 dark:bg-zinc-900/10 flex flex-col">
-              <div className={cn("flex flex-col flex-1", ((viewMode === 'PENDING' && pendingConversations.length === 0) || (viewMode === 'OPEN' && openConversations.length === 0) || (viewMode === 'CLOSED' && closedConversations.length === 0)) ? "justify-center" : "py-2")}>
-                {/* DYNAMIC LIST BASED ON VIEWMODE */}
-
-                {viewMode === 'PENDING' && pendingConversations.length > 0 &&
-                  pendingConversations.slice((pendingPage - 1) * ITEMS_PER_PAGE, pendingPage * ITEMS_PER_PAGE).map(conv => renderConversationCard(conv))
-                }
-
-                {viewMode === 'PENDING' && Math.ceil(pendingConversations.length / ITEMS_PER_PAGE) > 1 && (
-                  <div className="flex justify-center p-2 mb-10"><span className="text-xs text-muted-foreground">Página {pendingPage}</span></div>
-                  // Added padding at bottom ensures user can scroll past last item easily
-                )}
-
-
-                {viewMode === 'OPEN' && openConversations.length > 0 &&
-                  openConversations.slice((openPage - 1) * ITEMS_PER_PAGE, openPage * ITEMS_PER_PAGE).map(conv => renderConversationCard(conv))
-                }
-                {viewMode === 'OPEN' && Math.ceil(openConversations.length / ITEMS_PER_PAGE) > 1 && (
-                  <div className="flex justify-center p-2 mb-10"><span className="text-xs text-muted-foreground">Página {openPage}</span></div>
-                )}
-
-                {viewMode === 'CLOSED' && closedConversations.length > 0 &&
-                  closedConversations.slice((closedPage - 1) * ITEMS_PER_PAGE, closedPage * ITEMS_PER_PAGE).map(conv => renderConversationCard(conv))
-                }
-                {viewMode === 'CLOSED' && Math.ceil(closedConversations.length / ITEMS_PER_PAGE) > 1 && (
-                  <div className="flex justify-center p-2 mb-10"><span className="text-xs text-muted-foreground">Página {closedPage}</span></div>
-                )}
-
-                {/* EMPTY STATES */}
-                {((viewMode === 'PENDING' && pendingConversations.length === 0) ||
-                  (viewMode === 'OPEN' && openConversations.length === 0) ||
-                  (viewMode === 'CLOSED' && closedConversations.length === 0)) && (
-                    <div className="flex flex-col items-center justify-center text-center p-6 opacity-60 m-auto">
-                      <MessageSquare className="h-10 w-10 text-zinc-300 mb-2" />
-                      <p className="text-sm font-medium text-zinc-500">
-                        {viewMode === 'PENDING' ? 'Nenhuma conversa pendente' :
-                          viewMode === 'OPEN' ? 'Nenhum atendimento aberto' :
-                            'Nenhuma conversa finalizada'}
-                      </p>
-                    </div>
-                  )}
-              </div>
-            </div>
-          </TabsContent>
+          )}
 
           {/* Aba NOVA CONVERSA / CONTATOS - Manually rendered to avoid Radix ID issues */}
           {activeTab === 'contatos' && (
