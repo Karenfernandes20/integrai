@@ -241,6 +241,7 @@ const runWhatsappMigrations = async () => {
         await addColumn('whatsapp_campaigns', 'media_url', 'TEXT');
         await addColumn('whatsapp_campaigns', 'media_type', 'VARCHAR(20)');
         await addColumn('whatsapp_campaigns', 'completed_at', 'TIMESTAMP');
+        await addColumn('whatsapp_messages', 'campaign_id', 'INTEGER');
 
         // Ensure message uniqueness by external_id (WhatsApp message ID)
         try {

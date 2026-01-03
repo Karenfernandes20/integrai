@@ -395,7 +395,8 @@ async function processCampaign(campaignId: number, io?: any) {
                     campaign.user_id,
                     io,
                     campaign.media_url,
-                    campaign.media_type
+                    campaign.media_type,
+                    campaign.id
                 );
 
                 if (success) {
@@ -495,7 +496,8 @@ async function sendWhatsAppMessage(
     userId?: number | null,
     io?: any,
     mediaUrl?: string | null,
-    mediaType?: string | null
+    mediaType?: string | null,
+    campaignId?: number
 ): Promise<boolean> {
     try {
         if (!pool) return false;
@@ -617,8 +619,8 @@ async function sendWhatsAppMessage(
                 // Insert message
                 // Note: We should probably store media_url if it's a media message
                 const insertedMsg = await pool.query(
-                    'INSERT INTO whatsapp_messages (conversation_id, direction, content, sent_at, status, external_id, user_id, media_url, message_type) VALUES ($1, $2, $3, NOW(), $4, $5, $6, $7, $8) RETURNING id',
-                    [conversationId, 'outbound', message, 'sent', externalMessageId, userId, mediaUrl || null, mediaType || 'text']
+                    'INSERT INTO whatsapp_messages (conversation_id, direction, content, sent_at, status, external_id, user_id, media_url, message_type, campaign_id) VALUES ($1, $2, $3, NOW(), $4, $5, $6, $7, $8, $9) RETURNING id',
+                    [conversationId, 'outbound', message, 'sent', externalMessageId, userId, mediaUrl || null, mediaType || 'text', campaignId || null]
                 );
 
                 // Socket Emit

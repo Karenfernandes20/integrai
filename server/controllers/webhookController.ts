@@ -579,7 +579,11 @@ export const getMessages = async (req: Request, res: Response) => {
         }
 
         const result = await pool.query(
-            `SELECT m.*, u.full_name as agent_name 
+            `SELECT m.*, 
+                    CASE 
+                        WHEN m.campaign_id IS NOT NULL THEN 'Campanha'
+                        ELSE u.full_name 
+                    END as agent_name 
              FROM whatsapp_messages m 
              LEFT JOIN app_users u ON m.user_id = u.id 
              WHERE m.conversation_id = $1 
