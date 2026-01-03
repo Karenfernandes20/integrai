@@ -631,17 +631,15 @@ const AtendimentoPage = () => {
               }
             }
 
-            if (prev.find(m => m.id === newMessage.id)) return prev;
+            // Enhanced deduplication with loose equality and external_id check
+            if (prev.find(m => m.id == newMessage.id || (m.external_id && m.external_id === newMessage.external_id))) return prev;
             return [...prev, newMessage];
           });
 
-          // Imperative scroll logic compatible with Grupos.tsx
+          // Logic for scroll on new message
           if (isNearBottomRef.current || newMessage.direction === 'outbound') {
-            // Logic for scroll on new message
-            if (isNearBottomRef.current || newMessage.direction === 'outbound') {
-              isNearBottomRef.current = true;
-              // The useLayoutEffect [messages] will handle the actual scroll
-            }
+            isNearBottomRef.current = true;
+            // The useLayoutEffect [messages] will handle the actual scroll
           }
         }
       }
