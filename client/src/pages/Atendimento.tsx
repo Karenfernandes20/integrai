@@ -20,7 +20,7 @@ import {
   Mic,
   Video,
   MapPin,
-  Contact,
+  Contact as ContactIcon,
   Sticker,
   Volume2,
   VolumeX,
@@ -54,7 +54,7 @@ import { cn } from "../lib/utils";
 import { Avatar, AvatarFallback, AvatarImage } from "../components/ui/avatar";
 import { useAuth } from "../contexts/AuthContext";
 
-// ... existing code ...
+
 
 interface Conversation {
   id: number | string;
@@ -103,7 +103,7 @@ import { useSearchParams } from "react-router-dom";
 
 import EmojiPicker, { EmojiClickData } from "emoji-picker-react";
 
-// ... (existing imports remain the same, ensure this replaces the imports area if needed or just adds to it. Best to be safe and overwrite component start)
+
 
 const AtendimentoPage = () => {
   const { token, user } = useAuth();
@@ -118,7 +118,7 @@ const AtendimentoPage = () => {
   const [selectedConversation, setSelectedConversation] = useState<Conversation | null>(null);
   const [isLoadingConversations, setIsLoadingConversations] = useState(true);
 
-  // ... (existing state)
+
   const [messages, setMessages] = useState<Message[]>([]);
   const [isLoadingMessages, setIsLoadingMessages] = useState(false);
   const [contacts, setContacts] = useState<Contact[]>([]);
@@ -212,6 +212,15 @@ const AtendimentoPage = () => {
     if (!p) return '';
     if (p.includes('@g.us')) return p;
     return p.replace(/\D/g, '');
+  };
+
+  // Robust normalization for matching (ignores 55 at start for BR numbers)
+  const normalizePhoneForMatch = (p: string) => {
+    let digits = (p || '').replace(/\D/g, '');
+    if (digits.startsWith('55') && (digits.length === 12 || digits.length === 13)) {
+      return digits.slice(2);
+    }
+    return digits;
   };
 
   // Notification Sound Function (iPhone 16 "Rebound" style synthesis)
@@ -419,14 +428,8 @@ const AtendimentoPage = () => {
 
       // Find existing in conversations
       // Robust matching: strip non-numeric and match (unless it looks like a JID)
-      const normalize = (p: string) => {
-        if (!p) return '';
-        if (p.includes('@g.us') || p.includes('-')) return p; // Don't normalize group JIDs too much
-        return p.replace(/\D/g, '');
-      };
-      const targetClean = normalize(targetPhone);
-
-      const existing = conversations.find(c => normalize(c.phone) === targetClean || c.phone === targetPhone);
+      const targetClean = normalizePhoneForMatch(targetPhone);
+      const existing = conversations.find(c => normalizePhoneForMatch(c.phone) === targetClean || c.phone === targetPhone);
 
       if (existing) {
         setSelectedConversation(existing);
@@ -441,7 +444,7 @@ const AtendimentoPage = () => {
         // If we came from persistence, we might not have a name, so we try to find it in importedContacts or contacts
 
         if (!targetName) {
-          const foundContact = [...importedContacts, ...contacts].find(c => normalize(c.phone) === targetClean);
+          const foundContact = [...importedContacts, ...contacts].find(c => normalizePhoneForMatch(c.phone) === targetClean);
           if (foundContact) targetName = foundContact.name;
         }
 
@@ -515,7 +518,7 @@ const AtendimentoPage = () => {
     processQueue();
   }, [conversations.length, token]); // Run when list size changes (initial load or manual update)
 
-  // ... (Rest of the component)
+
 
   // Scroll Logic mimicking WhatsApp Web
   // Scroll Logic mimicking Grupos.tsx (Imperative Style)
@@ -1152,13 +1155,16 @@ const AtendimentoPage = () => {
     setNewContactPhone(formatBrazilianPhone(value));
     if (phoneError) setPhoneError(null);
   };
-
   const handleStartConversationFromContact = (contact: Contact) => {
-    const normalize = (p: string) => (p || '').replace(/\D/g, '');
-    const targetClean = normalize(contact.phone);
+    const targetClean = normalizePhoneForMatch(contact.phone);
+
+    // Clear search params to avoid fighting the selection in the useEffect
+    if (searchParams.get('phone')) {
+      setSearchParams({}, { replace: true });
+    }
 
     // 1. Search in existing conversations first to avoid duplicates
-    const existing = conversations.find(c => normalize(c.phone) === targetClean);
+    const existing = conversations.find(c => normalizePhoneForMatch(c.phone) === targetClean);
 
     if (existing) {
       // If found, auto-open it if it's not already open
@@ -2000,7 +2006,7 @@ const AtendimentoPage = () => {
                   CONTATOS DO WHATSAPP ({filteredContacts.length})
                 </div>
 
-                {filteredContacts
+                {[...filteredContacts]
                   .sort((a, b) => (a.name || "").localeCompare(b.name || ""))
                   .map((contact, idx) => (
                     <div
@@ -2355,7 +2361,7 @@ const AtendimentoPage = () => {
                           return (
                             <div className="flex items-center gap-3 bg-black/5 dark:bg-white/5 p-3 rounded-lg min-w-[200px]">
                               <div className="p-2 bg-blue-100 dark:bg-blue-900/30 rounded text-blue-600 dark:text-blue-400">
-                                <Contact className="h-6 w-6" />
+                                <ContactIcon className="h-6 w-6" />
                               </div>
                               <div className="flex flex-col gap-0.5 overflow-hidden flex-1">
                                 <span className="truncate font-bold text-sm">Contato Compartilhado</span>
