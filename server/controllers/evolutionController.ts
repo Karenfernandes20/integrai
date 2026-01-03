@@ -1452,6 +1452,7 @@ export const refreshConversationMetadata = async (req: Request, res: Response) =
         headers: { "Content-Type": "application/json", "apikey": EVOLUTION_API_KEY || "" }
       });
 
+      let nameFound = false;
       if (gRes.ok) {
         const gData = await gRes.json();
         const subject = gData.subject || gData.name;
@@ -1459,9 +1460,35 @@ export const refreshConversationMetadata = async (req: Request, res: Response) =
           updatedName = subject;
           await pool.query('UPDATE whatsapp_conversations SET contact_name = $1, group_name = $1 WHERE id = $2', [subject, conversationId]);
           console.log(`[Refresh] Updated group name: ${subject}`);
+          nameFound = true;
         }
       } else {
         console.warn(`[Refresh] Failed to fetch group info: ${gRes.status}`);
+      }
+
+      // Fallback: Fetch all groups if direct fetch failed
+      if (!nameFound) {
+        console.log(`[Refresh] Fallback: Fetching ALL groups to find ${groupJid}`);
+        try {
+          const allGroupsUrl = `${EVOLUTION_API_URL.replace(/\/$/, "")}/group/fetchAllGroups/${EVOLUTION_INSTANCE}?getParticipants=false`;
+          const allRes = await fetch(allGroupsUrl, {
+            method: "GET",
+            headers: { "Content-Type": "application/json", "apikey": EVOLUTION_API_KEY || "" }
+          });
+          if (allRes.ok) {
+            const allData = await allRes.json();
+            // Find the group with matching JID
+            const match = allData.find((g: any) => g.id === groupJid || g.id === remoteJid);
+            if (match && (match.subject || match.name)) {
+              const subject = match.subject || match.name;
+              updatedName = subject;
+              await pool.query('UPDATE whatsapp_conversations SET contact_name = $1, group_name = $1 WHERE id = $2', [subject, conversationId]);
+              console.log(`[Refresh] Fallback success! Updated group name: ${subject}`);
+            }
+          }
+        } catch (e) {
+          console.error("[Refresh] Fallback error:", e);
+        }
       }
     }
 
