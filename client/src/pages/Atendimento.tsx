@@ -2051,7 +2051,7 @@ const AtendimentoPage = () => {
       </div>
 
       {/* Area do Chat */}
-      <div className="flex-1 flex flex-col relative min-h-0 h-full min-w-0 bg-[#efeae2] dark:bg-[#0b141a] overflow-y-auto custom-scrollbar">
+      <div className="flex-1 flex flex-col relative min-h-0 h-full min-w-0 bg-[#efeae2] dark:bg-[#0b141a] overflow-hidden">
         {/* Chat Background Pattern */}
         <div className="absolute inset-0 z-0 opacity-[0.06] pointer-events-none" style={{
           backgroundImage: "url('https://user-images.githubusercontent.com/15075759/28719144-86dc0f70-73b1-11e7-911d-60d70fcded21.png')",
