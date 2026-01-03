@@ -568,7 +568,14 @@ const AtendimentoPage = () => {
             return [...prev, newMessage];
           });
 
-          // Let the effect handle the scroll based on isNearBottomRef
+          // Imperative scroll logic compatible with Grupos.tsx
+          if (isNearBottomRef.current || newMessage.direction === 'outbound') {
+            setTimeout(() => {
+              if (scrollRef.current) {
+                scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+              }
+            }, 100);
+          }
         }
       }
 
