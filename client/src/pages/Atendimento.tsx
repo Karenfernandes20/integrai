@@ -279,36 +279,20 @@ const AtendimentoPage = () => {
       return conv.group_name || conv.contact_name || 'Grupo';
     }
 
-    // 1. Tentar buscar no mapa de contatos (sincronizados)
+    // Priority 1: Check contacts database (saved in "Contatos" tab)
     const raw = conv.phone.replace(/\D/g, "");
     const fromDB = contactMap.get(raw);
     if (fromDB) {
       return fromDB;
     }
 
-    // 2. Se não, usa contact_name do banco (conversas), SE for diferente do telefone
-    // Mas agora consideraremos contact_push_name e last_sender_name como fallback
-
-    // Normaliza para comparação (remove caracteres não numéricos)
+    // Priority 2: Push Name from WhatsApp (name the person set on their WhatsApp)
     const normalize = (s: string) => s ? s.replace(/\D/g, "") : "";
-    const nameIsPhone = normalize(conv.contact_name) === normalize(conv.phone);
-    const hasRealContactName = conv.contact_name && !nameIsPhone;
-
-    if (hasRealContactName) {
-      return conv.contact_name;
-    }
-
-    // 3. Fallback: Push Name (do banco de contatos)
     if (conv.contact_push_name && normalize(conv.contact_push_name) !== normalize(conv.phone)) {
       return conv.contact_push_name;
     }
 
-    // 4. Fallback: Last Sender Name (histórico de mensagens)
-    if (conv.last_sender_name && normalize(conv.last_sender_name) !== normalize(conv.phone)) {
-      return conv.last_sender_name;
-    }
-
-    // 5. Último caso: Telefone formatado
+    // Priority 3: Phone number (formatted)
     return formatBrazilianPhone(conv.phone);
   }, [contactMap]);
 
