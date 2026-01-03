@@ -183,6 +183,9 @@ const AtendimentoPage = () => {
   // Image Zoom State
   const [viewingImage, setViewingImage] = useState<string | null>(null);
 
+  // Audio Speed State - Maps message ID to playback speed
+  const [audioSpeeds, setAudioSpeeds] = useState<Record<string | number, number>>({});
+
   const ITEMS_PER_PAGE = 50;
 
 
@@ -836,6 +839,25 @@ const AtendimentoPage = () => {
         await handleDeleteMessage(msg.id);
       }
     }
+  };
+
+  const handleAudioSpeedToggle = (messageId: string | number, audioElement: HTMLAudioElement | null) => {
+    if (!audioElement) return;
+
+    const currentSpeed = audioSpeeds[messageId] || 1;
+    let newSpeed: number;
+
+    // Cycle: 1x -> 1.5x -> 2x -> 1x
+    if (currentSpeed === 1) {
+      newSpeed = 1.5;
+    } else if (currentSpeed === 1.5) {
+      newSpeed = 2;
+    } else {
+      newSpeed = 1;
+    }
+
+    setAudioSpeeds(prev => ({ ...prev, [messageId]: newSpeed }));
+    audioElement.playbackRate = newSpeed;
   };
 
   const syncAllPhotos = async () => {
@@ -2236,18 +2258,42 @@ const AtendimentoPage = () => {
                         }
 
                         if (type === 'audio') {
+                          const audioSpeed = audioSpeeds[msg.id] || 1;
                           return (
-                            <div className="flex items-center gap-2 min-w-[200px]">
+                            <div className="flex items-center gap-2 min-w-[250px]">
                               <div className="p-2 bg-zinc-200 dark:bg-zinc-700 rounded-full">
                                 <Mic className="h-5 w-5" />
                               </div>
                               <div className="flex flex-col flex-1">
                                 {msg.media_url ? (
-                                  <audio controls src={getMediaUrl(msg)} className="w-full h-8" />
+                                  <audio
+                                    controls
+                                    src={getMediaUrl(msg)}
+                                    className="w-full h-8"
+                                    ref={(el) => {
+                                      if (el) {
+                                        el.playbackRate = audioSpeed;
+                                      }
+                                    }}
+                                  />
                                 ) : (
                                   <span className="italic opacity-80">Áudio indisponível</span>
                                 )}
                               </div>
+                              {msg.media_url && (
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="h-8 px-2 text-xs font-bold hover:bg-zinc-200 dark:hover:bg-zinc-700"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    const audioEl = e.currentTarget.parentElement?.querySelector('audio') as HTMLAudioElement;
+                                    handleAudioSpeedToggle(msg.id, audioEl);
+                                  }}
+                                >
+                                  {audioSpeed}x
+                                </Button>
+                              )}
                             </div>
                           );
                         }
