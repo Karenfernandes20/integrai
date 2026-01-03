@@ -173,7 +173,7 @@ const AtendimentoPage = () => {
   const [openPage, setOpenPage] = useState(1);
   const [closedPage, setClosedPage] = useState(1);
 
-  const ITEMS_PER_PAGE = 20;
+  const ITEMS_PER_PAGE = 50;
 
 
   // Helper para resolver o nome do contato baseado no banco de dados sincronizado
@@ -1660,227 +1660,227 @@ const AtendimentoPage = () => {
 
 
 
-          <CardContent className="flex-1 flex flex-col overflow-hidden p-0 min-h-0">
-            {/* Aba CONVERSAS - SINGLE COLUMN Vertical List */}
-            <TabsContent value="conversas" className="flex-1 flex flex-col min-h-0 m-0">
-              <div className="px-3 py-2 flex flex-col gap-2 border-b">
-                <div className="relative">
-                  <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-                  <Input
-                    placeholder="Pesquisar..."
-                    className="pl-9 h-9 bg-zinc-100 dark:bg-zinc-900 border-none rounded-lg text-sm"
-                    value={conversationSearchTerm}
-                    onChange={(e) => setConversationSearchTerm(e.target.value)}
-                  />
-                </div>
-
-                {/* QUICK NAVIGATION TABS (Top Bar Style) */}
-                <div className="flex items-center gap-1 bg-zinc-100 dark:bg-zinc-900/50 p-1 rounded-xl shadow-inner border border-zinc-200/50 dark:border-zinc-800/50 w-full mt-2">
-
-                  <button
-                    onClick={() => setViewMode('PENDING')}
-                    className={cn(
-                      "text-[11px] px-1 py-1.5 rounded-lg font-bold uppercase transition-all flex items-center justify-center gap-2 flex-1",
-                      viewMode === 'PENDING' ? "bg-zinc-500 text-white shadow-sm" : "text-zinc-500 hover:text-zinc-700 hover:bg-black/5"
-                    )}
-                  >
-                    Pendentes <span className="opacity-50 text-[9px] bg-black/10 px-1.5 rounded">{pendingConversations.length}</span>
-                  </button>
-                  <button
-                    onClick={() => setViewMode('OPEN')}
-                    className={cn(
-                      "text-[11px] px-1 py-1.5 rounded-lg font-bold uppercase transition-all flex items-center justify-center gap-2 flex-1",
-                      viewMode === 'OPEN' ? "bg-[#008069] text-white shadow-sm" : "text-zinc-500 hover:text-zinc-700 hover:bg-black/5"
-                    )}
-                  >
-                    Abertos <span className="opacity-60 text-[9px] bg-white/20 px-1.5 rounded">{openConversations.length}</span>
-                  </button>
-                  <button
-                    onClick={() => setViewMode('CLOSED')}
-                    className={cn(
-                      "text-[11px] px-1 py-1.5 rounded-lg font-bold uppercase transition-all flex items-center justify-center gap-2 flex-1",
-                      viewMode === 'CLOSED' ? "bg-red-500 text-white shadow-sm" : "text-zinc-500 hover:text-zinc-700 hover:bg-black/5"
-                    )}
-                  >
-                    Fechados <span className="opacity-50 text-[9px] bg-black/10 px-1.5 rounded">{closedConversations.length}</span>
-                  </button>
-
-                </div>
+          {/* CardContent removed to fix height/scroll issues */}
+          {/* Aba CONVERSAS - SINGLE COLUMN Vertical List */}
+          <TabsContent value="conversas" className="flex-1 flex flex-col min-h-0 m-0">
+            <div className="px-3 py-2 flex flex-col gap-2 border-b">
+              <div className="relative">
+                <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                <Input
+                  placeholder="Pesquisar..."
+                  className="pl-9 h-9 bg-zinc-100 dark:bg-zinc-900 border-none rounded-lg text-sm"
+                  value={conversationSearchTerm}
+                  onChange={(e) => setConversationSearchTerm(e.target.value)}
+                />
               </div>
 
-              <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar p-0 bg-zinc-50/50 dark:bg-zinc-900/10">
-                <div className={cn("flex flex-col min-h-full", ((viewMode === 'PENDING' && pendingConversations.length === 0) || (viewMode === 'OPEN' && openConversations.length === 0) || (viewMode === 'CLOSED' && closedConversations.length === 0)) ? "justify-center" : "py-2")}>
-                  {/* DYNAMIC LIST BASED ON VIEWMODE */}
+              {/* QUICK NAVIGATION TABS (Top Bar Style) */}
+              <div className="flex items-center gap-1 bg-zinc-100 dark:bg-zinc-900/50 p-1 rounded-xl shadow-inner border border-zinc-200/50 dark:border-zinc-800/50 w-full mt-2">
 
-                  {viewMode === 'PENDING' && pendingConversations.length > 0 &&
-                    pendingConversations.slice((pendingPage - 1) * ITEMS_PER_PAGE, pendingPage * ITEMS_PER_PAGE).map(conv => renderConversationCard(conv))
-                  }
-
-                  {viewMode === 'PENDING' && Math.ceil(pendingConversations.length / ITEMS_PER_PAGE) > 1 && (
-                    <div className="flex justify-center p-2 mb-10"><span className="text-xs text-muted-foreground">Página {pendingPage}</span></div>
-                    // Added padding at bottom ensures user can scroll past last item easily
+                <button
+                  onClick={() => setViewMode('PENDING')}
+                  className={cn(
+                    "text-[11px] px-1 py-1.5 rounded-lg font-bold uppercase transition-all flex items-center justify-center gap-2 flex-1",
+                    viewMode === 'PENDING' ? "bg-zinc-500 text-white shadow-sm" : "text-zinc-500 hover:text-zinc-700 hover:bg-black/5"
                   )}
-
-
-                  {viewMode === 'OPEN' && openConversations.length > 0 &&
-                    openConversations.slice((openPage - 1) * ITEMS_PER_PAGE, openPage * ITEMS_PER_PAGE).map(conv => renderConversationCard(conv))
-                  }
-                  {viewMode === 'OPEN' && Math.ceil(openConversations.length / ITEMS_PER_PAGE) > 1 && (
-                    <div className="flex justify-center p-2 mb-10"><span className="text-xs text-muted-foreground">Página {openPage}</span></div>
-                  )}
-
-                  {viewMode === 'CLOSED' && closedConversations.length > 0 &&
-                    closedConversations.slice((closedPage - 1) * ITEMS_PER_PAGE, closedPage * ITEMS_PER_PAGE).map(conv => renderConversationCard(conv))
-                  }
-                  {viewMode === 'CLOSED' && Math.ceil(closedConversations.length / ITEMS_PER_PAGE) > 1 && (
-                    <div className="flex justify-center p-2 mb-10"><span className="text-xs text-muted-foreground">Página {closedPage}</span></div>
-                  )}
-
-                  {/* EMPTY STATES */}
-                  {((viewMode === 'PENDING' && pendingConversations.length === 0) ||
-                    (viewMode === 'OPEN' && openConversations.length === 0) ||
-                    (viewMode === 'CLOSED' && closedConversations.length === 0)) && (
-                      <div className="flex flex-col items-center justify-center text-center p-6 opacity-60 m-auto">
-                        <MessageSquare className="h-10 w-10 text-zinc-300 mb-2" />
-                        <p className="text-sm font-medium text-zinc-500">
-                          {viewMode === 'PENDING' ? 'Nenhuma conversa pendente' :
-                            viewMode === 'OPEN' ? 'Nenhum atendimento aberto' :
-                              'Nenhuma conversa finalizada'}
-                        </p>
-                      </div>
-                    )}
-                </div>
-              </div>
-            </TabsContent>
-
-            {/* Aba NOVA CONVERSA / CONTATOS */}
-            <TabsContent value="contatos" className="flex-1 flex flex-col min-h-0 m-0 bg-white dark:bg-zinc-950">
-              {/* Header de Nova Conversa (Estilo WhatsApp) */}
-              <div className="h-[60px] bg-[#008069] dark:bg-zinc-800 flex items-center px-4 gap-4 text-white shrink-0">
-                <button onClick={() => setActiveTab("conversas")} className="hover:bg-white/10 rounded-full p-1 -ml-2">
-                  <span className="text-xl">←</span>
-                </button>
-                <div className="font-medium text-base">Nova conversa</div>
-                <div className="flex-1"></div>
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  className="h-8 w-8 p-0 text-white hover:bg-white/10"
-                  onClick={() => syncContacts()}
-                  disabled={isLoadingContacts}
-                  title="Sincronizar contatos do WhatsApp"
                 >
-                  <RefreshCcw className={cn("h-4 w-4", isLoadingContacts && "animate-spin")} />
-                </Button>
+                  Pendentes <span className="opacity-50 text-[9px] bg-black/10 px-1.5 rounded">{pendingConversations.length}</span>
+                </button>
+                <button
+                  onClick={() => setViewMode('OPEN')}
+                  className={cn(
+                    "text-[11px] px-1 py-1.5 rounded-lg font-bold uppercase transition-all flex items-center justify-center gap-2 flex-1",
+                    viewMode === 'OPEN' ? "bg-[#008069] text-white shadow-sm" : "text-zinc-500 hover:text-zinc-700 hover:bg-black/5"
+                  )}
+                >
+                  Abertos <span className="opacity-60 text-[9px] bg-white/20 px-1.5 rounded">{openConversations.length}</span>
+                </button>
+                <button
+                  onClick={() => setViewMode('CLOSED')}
+                  className={cn(
+                    "text-[11px] px-1 py-1.5 rounded-lg font-bold uppercase transition-all flex items-center justify-center gap-2 flex-1",
+                    viewMode === 'CLOSED' ? "bg-red-500 text-white shadow-sm" : "text-zinc-500 hover:text-zinc-700 hover:bg-black/5"
+                  )}
+                >
+                  Fechados <span className="opacity-50 text-[9px] bg-black/10 px-1.5 rounded">{closedConversations.length}</span>
+                </button>
+
               </div>
+            </div>
 
-              {/* Search Bar */}
-              <div className="p-3 bg-white dark:bg-zinc-950 border-b z-10">
-                <div className="relative">
-                  <Search className="absolute left-3 top-2.5 h-4 w-4 text-gray-500" />
-                  <Input
-                    placeholder="Pesquisar nome ou número"
-                    className="pl-10 bg-gray-100 dark:bg-zinc-800 border-none rounded-lg h-10 text-sm focus-visible:ring-0"
-                    value={contactSearchTerm}
-                    onChange={(e) => setContactSearchTerm(e.target.value)}
-                  />
-                </div>
-              </div>
+            <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar p-0 bg-zinc-50/50 dark:bg-zinc-900/10 flex flex-col">
+              <div className={cn("flex flex-col flex-1", ((viewMode === 'PENDING' && pendingConversations.length === 0) || (viewMode === 'OPEN' && openConversations.length === 0) || (viewMode === 'CLOSED' && closedConversations.length === 0)) ? "justify-center" : "py-2")}>
+                {/* DYNAMIC LIST BASED ON VIEWMODE */}
 
-              <div className="flex-1 overflow-y-auto flex flex-col custom-scrollbar">
+                {viewMode === 'PENDING' && pendingConversations.length > 0 &&
+                  pendingConversations.slice((pendingPage - 1) * ITEMS_PER_PAGE, pendingPage * ITEMS_PER_PAGE).map(conv => renderConversationCard(conv))
+                }
 
-                {/* List starts here */}
-                {isLoadingContacts && (
-                  <div className="flex flex-col items-center justify-center p-8 text-muted-foreground gap-2">
-                    <RefreshCcw className="h-5 w-5 animate-spin" />
-                    <span className="text-xs">Carregando contatos do WhatsApp...</span>
-                  </div>
+                {viewMode === 'PENDING' && Math.ceil(pendingConversations.length / ITEMS_PER_PAGE) > 1 && (
+                  <div className="flex justify-center p-2 mb-10"><span className="text-xs text-muted-foreground">Página {pendingPage}</span></div>
+                  // Added padding at bottom ensures user can scroll past last item easily
                 )}
 
-                {!isLoadingContacts && filteredContacts.length === 0 && !contactSearchTerm && (
-                  <div className="text-center text-gray-400 text-sm mt-8 px-4">
-                    Nenhum contato encontrado no WhatsApp.<br />Verifique se o celular está conectado.
-                  </div>
+
+                {viewMode === 'OPEN' && openConversations.length > 0 &&
+                  openConversations.slice((openPage - 1) * ITEMS_PER_PAGE, openPage * ITEMS_PER_PAGE).map(conv => renderConversationCard(conv))
+                }
+                {viewMode === 'OPEN' && Math.ceil(openConversations.length / ITEMS_PER_PAGE) > 1 && (
+                  <div className="flex justify-center p-2 mb-10"><span className="text-xs text-muted-foreground">Página {openPage}</span></div>
                 )}
 
-                {/* Remove Sync Button - Automatic Load on Tab Change implemented via useEffect below */}
+                {viewMode === 'CLOSED' && closedConversations.length > 0 &&
+                  closedConversations.slice((closedPage - 1) * ITEMS_PER_PAGE, closedPage * ITEMS_PER_PAGE).map(conv => renderConversationCard(conv))
+                }
+                {viewMode === 'CLOSED' && Math.ceil(closedConversations.length / ITEMS_PER_PAGE) > 1 && (
+                  <div className="flex justify-center p-2 mb-10"><span className="text-xs text-muted-foreground">Página {closedPage}</span></div>
+                )}
 
-                {/* Botão Novo Contato Manual */}
-                <div className="flex items-center gap-4 p-4 hover:bg-gray-100 dark:hover:bg-zinc-900 cursor-pointer transition-colors" onClick={() => {
-                  // Just focus input
-                }}>
-                  <div className="w-10 h-10 rounded-full bg-[#008069] flex items-center justify-center text-white shrink-0">
-                    <UserPlus className="h-5 w-5" />
-                  </div>
-                  <div className="flex flex-col text-left">
-                    <span className="text-base font-normal text-gray-900 dark:text-gray-100">Novo contato</span>
-                  </div>
-                </div>
-
-                <div className="px-4 py-3 text-[#008069] font-medium text-sm">
-                  CONTATOS DO WHATSAPP ({filteredContacts.length})
-                </div>
-
-                {filteredContacts
-                  .sort((a, b) => (a.name || "").localeCompare(b.name || ""))
-                  .map((contact, idx) => (
-                    <div
-                      key={contact.id || idx}
-                      className="flex items-center p-3 border-b border-gray-100 dark:border-zinc-800 hover:bg-zinc-50 dark:hover:bg-zinc-900 transition-colors gap-3 group"
-                    >
-                      <Avatar className="h-10 w-10 shrink-0">
-                        <AvatarImage src={contact.profile_pic_url} />
-                        <AvatarFallback className="bg-gray-200 text-gray-500">
-                          {(contact.name?.[0] || "?").toUpperCase()}
-                        </AvatarFallback>
-                      </Avatar>
-
-                      <div className="flex-1 min-w-0">
-                        <div className="font-medium text-[15px] text-zinc-900 dark:text-zinc-100 whitespace-nowrap overflow-hidden text-ellipsis" title={contact.name}>
-                          {contact.name}
-                        </div>
-                        <div className="text-[13px] text-zinc-500 font-normal whitespace-nowrap">
-                          {contact.phone}
-                        </div>
-                      </div>
-
-                      <Button
-                        size="icon"
-                        variant="ghost"
-                        className="h-10 w-10 text-[#008069] opacity-0 group-hover:opacity-100 transition-opacity rounded-full hover:bg-[#008069]/10"
-                        onClick={() => handleStartConversationFromContact(contact)}
-                        title="Iniciar conversa"
-                      >
-                        <MessageCircle className="h-5 w-5" />
-                      </Button>
+                {/* EMPTY STATES */}
+                {((viewMode === 'PENDING' && pendingConversations.length === 0) ||
+                  (viewMode === 'OPEN' && openConversations.length === 0) ||
+                  (viewMode === 'CLOSED' && closedConversations.length === 0)) && (
+                    <div className="flex flex-col items-center justify-center text-center p-6 opacity-60 m-auto">
+                      <MessageSquare className="h-10 w-10 text-zinc-300 mb-2" />
+                      <p className="text-sm font-medium text-zinc-500">
+                        {viewMode === 'PENDING' ? 'Nenhuma conversa pendente' :
+                          viewMode === 'OPEN' ? 'Nenhum atendimento aberto' :
+                            'Nenhuma conversa finalizada'}
+                      </p>
                     </div>
-                  ))}
+                  )}
+              </div>
+            </div>
+          </TabsContent>
 
-                {!isLoadingContacts && filteredContacts.length === 0 && contactSearchTerm && (
-                  <div className="p-8 text-center">
-                    <p className="text-gray-500 text-sm mb-4">Nenhum contato encontrado.</p>
+          {/* Aba NOVA CONVERSA / CONTATOS */}
+          <TabsContent value="contatos" className="flex-1 flex flex-col min-h-0 m-0 bg-white dark:bg-zinc-950">
+            {/* Header de Nova Conversa (Estilo WhatsApp) */}
+            <div className="h-[60px] bg-[#008069] dark:bg-zinc-800 flex items-center px-4 gap-4 text-white shrink-0">
+              <button onClick={() => setActiveTab("conversas")} className="hover:bg-white/10 rounded-full p-1 -ml-2">
+                <span className="text-xl">←</span>
+              </button>
+              <div className="font-medium text-base">Nova conversa</div>
+              <div className="flex-1"></div>
+              <Button
+                size="sm"
+                variant="ghost"
+                className="h-8 w-8 p-0 text-white hover:bg-white/10"
+                onClick={() => syncContacts()}
+                disabled={isLoadingContacts}
+                title="Sincronizar contatos do WhatsApp"
+              >
+                <RefreshCcw className={cn("h-4 w-4", isLoadingContacts && "animate-spin")} />
+              </Button>
+            </div>
+
+            {/* Search Bar */}
+            <div className="p-3 bg-white dark:bg-zinc-950 border-b z-10">
+              <div className="relative">
+                <Search className="absolute left-3 top-2.5 h-4 w-4 text-gray-500" />
+                <Input
+                  placeholder="Pesquisar nome ou número"
+                  className="pl-10 bg-gray-100 dark:bg-zinc-800 border-none rounded-lg h-10 text-sm focus-visible:ring-0"
+                  value={contactSearchTerm}
+                  onChange={(e) => setContactSearchTerm(e.target.value)}
+                />
+              </div>
+            </div>
+
+            <div className="flex-1 overflow-y-auto flex flex-col custom-scrollbar">
+
+              {/* List starts here */}
+              {isLoadingContacts && (
+                <div className="flex flex-col items-center justify-center p-8 text-muted-foreground gap-2">
+                  <RefreshCcw className="h-5 w-5 animate-spin" />
+                  <span className="text-xs">Carregando contatos do WhatsApp...</span>
+                </div>
+              )}
+
+              {!isLoadingContacts && filteredContacts.length === 0 && !contactSearchTerm && (
+                <div className="text-center text-gray-400 text-sm mt-8 px-4">
+                  Nenhum contato encontrado no WhatsApp.<br />Verifique se o celular está conectado.
+                </div>
+              )}
+
+              {/* Remove Sync Button - Automatic Load on Tab Change implemented via useEffect below */}
+
+              {/* Botão Novo Contato Manual */}
+              <div className="flex items-center gap-4 p-4 hover:bg-gray-100 dark:hover:bg-zinc-900 cursor-pointer transition-colors" onClick={() => {
+                // Just focus input
+              }}>
+                <div className="w-10 h-10 rounded-full bg-[#008069] flex items-center justify-center text-white shrink-0">
+                  <UserPlus className="h-5 w-5" />
+                </div>
+                <div className="flex flex-col text-left">
+                  <span className="text-base font-normal text-gray-900 dark:text-gray-100">Novo contato</span>
+                </div>
+              </div>
+
+              <div className="px-4 py-3 text-[#008069] font-medium text-sm">
+                CONTATOS DO WHATSAPP ({filteredContacts.length})
+              </div>
+
+              {filteredContacts
+                .sort((a, b) => (a.name || "").localeCompare(b.name || ""))
+                .map((contact, idx) => (
+                  <div
+                    key={contact.id || idx}
+                    className="flex items-center p-3 border-b border-gray-100 dark:border-zinc-800 hover:bg-zinc-50 dark:hover:bg-zinc-900 transition-colors gap-3 group"
+                  >
+                    <Avatar className="h-10 w-10 shrink-0">
+                      <AvatarImage src={contact.profile_pic_url} />
+                      <AvatarFallback className="bg-gray-200 text-gray-500">
+                        {(contact.name?.[0] || "?").toUpperCase()}
+                      </AvatarFallback>
+                    </Avatar>
+
+                    <div className="flex-1 min-w-0">
+                      <div className="font-medium text-[15px] text-zinc-900 dark:text-zinc-100 whitespace-nowrap overflow-hidden text-ellipsis" title={contact.name}>
+                        {contact.name}
+                      </div>
+                      <div className="text-[13px] text-zinc-500 font-normal whitespace-nowrap">
+                        {contact.phone}
+                      </div>
+                    </div>
+
                     <Button
-                      variant="outline"
-                      className="w-full text-[#008069]"
-                      onClick={() => {
-                        // Start chat with raw number
-                        const raw = contactSearchTerm.replace(/\D/g, '');
-                        if (raw.length >= 10) {
-                          handleStartConversationFromContact({
-                            id: 'temp-' + Date.now(),
-                            name: contactSearchTerm,
-                            phone: raw,
-                          });
-                        }
-                      }}
+                      size="icon"
+                      variant="ghost"
+                      className="h-10 w-10 text-[#008069] opacity-0 group-hover:opacity-100 transition-opacity rounded-full hover:bg-[#008069]/10"
+                      onClick={() => handleStartConversationFromContact(contact)}
+                      title="Iniciar conversa"
                     >
-                      Conversar com {contactSearchTerm}
+                      <MessageCircle className="h-5 w-5" />
                     </Button>
                   </div>
-                )}
-              </div>
-            </TabsContent>
-          </CardContent>
+                ))}
+
+              {!isLoadingContacts && filteredContacts.length === 0 && contactSearchTerm && (
+                <div className="p-8 text-center">
+                  <p className="text-gray-500 text-sm mb-4">Nenhum contato encontrado.</p>
+                  <Button
+                    variant="outline"
+                    className="w-full text-[#008069]"
+                    onClick={() => {
+                      // Start chat with raw number
+                      const raw = contactSearchTerm.replace(/\D/g, '');
+                      if (raw.length >= 10) {
+                        handleStartConversationFromContact({
+                          id: 'temp-' + Date.now(),
+                          name: contactSearchTerm,
+                          phone: raw,
+                        });
+                      }
+                    }}
+                  >
+                    Conversar com {contactSearchTerm}
+                  </Button>
+                </div>
+              )}
+            </div>
+          </TabsContent>
+          {/* End CardContent removed */}
         </Tabs>
       </div>
 
