@@ -2180,7 +2180,7 @@ const AtendimentoPage = () => {
               <div
                 ref={scrollRef}
                 onScroll={handleScroll}
-                className={cn("flex-1 overflow-y-auto p-4 flex flex-col gap-2 relative z-10 scrollbar-thin scrollbar-thumb-zinc-300 dark:scrollbar-thumb-zinc-800", messages.length === 0 && "items-center justify-center")}
+                className={cn("flex-1 overflow-y-auto p-4 flex flex-col gap-1 relative z-10 scrollbar-thin scrollbar-thumb-zinc-300 dark:scrollbar-thumb-zinc-800", messages.length === 0 && "items-center justify-center")}
               >
                 {messages.length === 0 && (
                   <div className="flex flex-col items-center justify-center p-8 text-center animate-in fade-in duration-700">
@@ -2204,12 +2204,12 @@ const AtendimentoPage = () => {
                     )}
                   >
                     {msg.direction === "outbound" && (
-                      <span className="text-[10px] font-bold text-zinc-500 dark:text-zinc-400 mb-0.5 px-1 uppercase tracking-wider">
+                      <span className="text-[10px] font-bold text-zinc-500 dark:text-zinc-400 px-1 uppercase tracking-wider">
                         {msg.user_id === user?.id ? user?.full_name : (msg.agent_name || "Celular")}
                       </span>
                     )}
                     {msg.direction === "inbound" && selectedConversation?.is_group && (
-                      <span className="text-[10px] font-bold text-violet-600 dark:text-violet-400 mb-0.5 px-1 tracking-tight">
+                      <span className="text-[10px] font-bold text-violet-600 dark:text-violet-400 px-1 tracking-tight">
                         {msg.sender_name || msg.sender_jid?.split('@')[0] || "Participante"}
                       </span>
                     )}
