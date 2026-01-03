@@ -100,28 +100,31 @@ export const updateCompany = async (req: Request, res: Response) => {
     try {
         if (!pool) return res.status(500).json({ error: 'Database not configured' });
         const { id } = req.params;
-        const { name, cnpj, city, state, phone, evolution_instance, evolution_apikey, operation_type } = req.body;
+        const { name, cnpj, city, state, phone, evolution_instance, evolution_apikey, operation_type, remove_logo } = req.body;
 
-        let logo_url = req.body.logo_url;
+        let logo_url = null;
         if (req.file) {
             const protocol = req.protocol;
             const host = req.get('host');
             logo_url = `${protocol}://${host}/uploads/${req.file.filename}`;
         }
 
-        // We need to fetch current data if some fields are missing (though frontend should send all)
-        // ideally we use COALESCE in SQL but here we are explicit
+        const isRemovingLogo = remove_logo === 'true' || remove_logo === true;
 
         const result = await pool.query(
             `UPDATE companies 
              SET name = $1, cnpj = $2, city = $3, state = $4, phone = $5, 
-                 logo_url = COALESCE($6, logo_url),
+                 logo_url = CASE 
+                    WHEN $11 = true THEN NULL 
+                    WHEN $6 IS NOT NULL THEN $6 
+                    ELSE logo_url 
+                 END,
                  evolution_instance = COALESCE($7, evolution_instance),
                  evolution_apikey = COALESCE($8, evolution_apikey),
                  operation_type = COALESCE($9, operation_type)
              WHERE id = $10 
              RETURNING *`,
-            [name, cnpj, city, state, phone, logo_url, evolution_instance, evolution_apikey, operation_type, id]
+            [name, cnpj, city, state, phone, logo_url, evolution_instance, evolution_apikey, operation_type, id, isRemovingLogo]
         );
 
         if (result.rowCount === 0) return res.status(404).json({ error: 'Company not found' });

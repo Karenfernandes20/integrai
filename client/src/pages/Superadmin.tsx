@@ -99,6 +99,7 @@ const SuperadminPage = () => {
     operation_type: "clientes", // Default
   });
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [removeLogo, setRemoveLogo] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [deletingId, setDeletingId] = useState<string | null>(null);
@@ -174,6 +175,7 @@ const SuperadminPage = () => {
       operation_type: company.operation_type ?? "clientes",
     });
     setSelectedFile(null);
+    setRemoveLogo(false);
     if (fileInputRef.current) fileInputRef.current.value = "";
   };
 
@@ -194,6 +196,7 @@ const SuperadminPage = () => {
       operation_type: "clientes",
     });
     setSelectedFile(null);
+    setRemoveLogo(false);
     if (fileInputRef.current) fileInputRef.current.value = "";
   };
 
@@ -238,6 +241,8 @@ const SuperadminPage = () => {
 
       if (selectedFile) {
         formData.append("logo", selectedFile);
+      } else if (removeLogo) {
+        formData.append("remove_logo", "true");
       }
 
       const res = await fetch(url, {
@@ -830,6 +835,21 @@ const SuperadminPage = () => {
                   <p className="text-[11px] text-muted-foreground">
                     Formatos aceitos: JPG, PNG, WEBP, GIF. Máx 5MB.
                   </p>
+                  {editingCompany?.logo_url && !selectedFile && (
+                    <div className="flex items-center space-x-2 pt-1">
+                      <Checkbox
+                        id="remove_logo"
+                        checked={removeLogo}
+                        onCheckedChange={(checked) => setRemoveLogo(checked as boolean)}
+                      />
+                      <label
+                        htmlFor="remove_logo"
+                        className="text-[11px] font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer text-destructive"
+                      >
+                        Remover logotipo atual
+                      </label>
+                    </div>
+                  )}
                 </div>
                 <div className="mt-2 flex items-center gap-2">
                   <Button type="submit" className="flex-1" size="lg" disabled={isSubmitting}>
