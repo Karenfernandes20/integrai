@@ -2289,16 +2289,35 @@ const AtendimentoPage = () => {
                 </div>
               </div>
               <div className="flex items-center gap-4 text-zinc-500">
-                {/* {isPending && (
-                  <div className="flex gap-2">
-                    <Button size="sm" onClick={() => handleStartAtendimento()} className="bg-[#008069] hover:bg-[#006d59] text-white h-8 text-xs font-bold gap-2">
-                      <Play className="h-3 w-3 fill-current" /> INICIAR ATENDIMENTO
-                    </Button>
-                    <Button size="sm" variant="outline" onClick={() => handleCloseAtendimento()} className="text-red-600 border-red-200 hover:bg-red-50 h-8 text-xs font-bold gap-2">
-                      <XCircle className="h-3 w-3" /> FECHAR
-                    </Button>
-                  </div>
-                )} */}
+                {(selectedConversation.status === 'PENDING' || !selectedConversation.status) && (
+                  <Button
+                    size="sm"
+                    onClick={() => handleStartAtendimento()}
+                    className="bg-[#008069] hover:bg-[#006d59] text-white h-8 text-xs font-bold gap-2 shadow-sm"
+                  >
+                    <Play className="h-3 w-3 fill-current" /> <span className="hidden sm:inline">INICIAR</span>
+                  </Button>
+                )}
+                {selectedConversation.status === 'OPEN' && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => handleCloseAtendimento()}
+                    className="text-red-600 border-red-200 hover:bg-red-50 h-8 text-xs font-bold gap-2 shadow-sm"
+                  >
+                    <XCircle className="h-3 w-3" /> <span className="hidden sm:inline">ENCERRAR</span>
+                  </Button>
+                )}
+                {selectedConversation.status === 'CLOSED' && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => handleReopenAtendimento()}
+                    className="text-blue-600 border-blue-200 hover:bg-blue-50 h-8 text-xs font-bold gap-2 shadow-sm"
+                  >
+                    <RotateCcw className="h-3 w-3" /> <span className="hidden sm:inline">REABRIR</span>
+                  </Button>
+                )}
                 <Search className="h-5 w-5 cursor-pointer hover:text-zinc-700" />
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
