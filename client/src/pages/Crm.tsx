@@ -247,7 +247,7 @@ function DroppableColumn({ id, children }: { id: string; children: React.ReactNo
     <div
       ref={setNodeRef}
       className={cn(
-        "flex-1 transition-colors",
+        "flex-1 transition-colors flex flex-col min-h-0",
         isOver && "bg-primary/5"
       )}
     >
@@ -755,7 +755,7 @@ const CrmPage = () => {
                   </CardHeader>
 
                   <DroppableColumn id={column.id.toString()}>
-                    <CardContent className="flex-1 p-2 overflow-y-auto custom-scrollbar">
+                    <CardContent className="flex-1 p-2 overflow-y-auto scrollbar-thin scrollbar-thumb-zinc-300 dark:scrollbar-thumb-zinc-700">
                       <SortableContext id={column.id.toString()} items={leadsByStage(column.id).map((l) => l.id)} strategy={verticalListSortingStrategy}>
                         <div className="flex flex-col gap-2 min-h-[150px]">
                           {leadsByStage(column.id).map((lead) => (

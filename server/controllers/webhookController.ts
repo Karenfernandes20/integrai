@@ -336,57 +336,66 @@ export const handleWebhook = async (req: Request, res: Response) => {
             // If duplicate message (conflict), we still want to emit conversation update
             if (insertedMsg.rows.length === 0) {
                 console.log(`[Webhook] Duplicate message detected for external_id ${externalId}. Signaling conversation update.`);
-                // We'll proceed to socket emission with the existing message data if possible
-                // or just skip if we don't have the original row. 
-                // For now, let's fetch the existing one to emit to socket.
+                // Fetch the existing message to emit to socket
                 const existingResult = await pool.query(`
                     SELECT wm.*, u.full_name as agent_name 
                     FROM whatsapp_messages wm
                     LEFT JOIN users u ON wm.user_id = u.id
                     WHERE wm.external_id = $1
                 `, [externalId]);
+
                 if (existingResult.rows.length > 0) {
                     const existingMsg = existingResult.rows[0];
                     const io = req.app.get('io');
                     if (io) {
                         const room = `company_${companyId}`;
-                        io.to(room).emit('message:received', {
+                        const payload = {
                             ...existingMsg,
                             phone: phone,
-                            contact_name: name,
-                            remoteJid: remoteJid,
-                            is_group: isGroup,
-                            group_name: groupName
-                        });
+                            contact_name: (checkConv.rows.length > 0 ? checkConv.rows[0].contact_name : name) || name,
+                            is_group: checkConv.rows.length > 0 ? checkConv.rows[0].is_group : isGroup,
+                            group_name: (checkConv.rows.length > 0 ? checkConv.rows[0].group_name : null) || groupName,
+                            profile_pic_url: checkConv.rows.length > 0 ? checkConv.rows[0].profile_pic_url : null,
+                            remoteJid,
+                            instance,
+                            company_id: companyId,
+                            status: currentStatus,
+                            sender_jid: existingMsg.sender_jid,
+                            sender_name: existingMsg.sender_name,
+                            agent_name: (existingMsg.direction === 'outbound' && !existingMsg.user_id) ? 'Agente de IA' : existingMsg.agent_name
+                        };
+                        io.to(room).emit('message:received', payload);
                     }
                 }
-                return;
-            }
 
-            console.log(`[Webhook] Message inserted into DB: "${content.substring(0, 30)}..."`);
+                // CRITICAL FIX: DO NOT RETURN HERE. CONTINUE TO POST-PROCESSING.
+                // We want to ensure conversation metadata (last_message, unread_count) is consistent 
+                // even if we received valid duplicate webhooks (e.g. SEND_MESSAGE + UPSERT)
+            } else {
+                console.log(`[Webhook] Message inserted into DB: "${content.substring(0, 30)}..."`);
 
-            // Emit Socket (Critical Path for UI Responsiveness)
-            const io = req.app.get('io');
-            // emission
-            if (io) {
-                const room = `company_${companyId}`;
-                const payload = {
-                    ...insertedMsg.rows[0],
-                    phone,
-                    contact_name: (checkConv.rows.length > 0 ? checkConv.rows[0].contact_name : name) || name,
-                    is_group: checkConv.rows.length > 0 ? checkConv.rows[0].is_group : isGroup,
-                    group_name: (checkConv.rows.length > 0 ? checkConv.rows[0].group_name : null) || groupName,
-                    profile_pic_url: checkConv.rows.length > 0 ? checkConv.rows[0].profile_pic_url : null,
-                    remoteJid,
-                    instance,
-                    company_id: companyId,
-                    status: currentStatus,
-                    sender_jid: insertedMsg.rows[0].sender_jid,
-                    sender_name: insertedMsg.rows[0].sender_name,
-                    agent_name: (direction === 'outbound' && !insertedMsg.rows[0].user_id) ? 'Agente de IA' : null
-                };
-                console.log(`[Webhook] Emitting message to room ${room}`);
-                io.to(room).emit('message:received', payload);
+                // Emit Socket (Critical Path for UI Responsiveness)
+                const io = req.app.get('io');
+                if (io) {
+                    const room = `company_${companyId}`;
+                    const payload = {
+                        ...insertedMsg.rows[0],
+                        phone,
+                        contact_name: (checkConv.rows.length > 0 ? checkConv.rows[0].contact_name : name) || name,
+                        is_group: checkConv.rows.length > 0 ? checkConv.rows[0].is_group : isGroup,
+                        group_name: (checkConv.rows.length > 0 ? checkConv.rows[0].group_name : null) || groupName,
+                        profile_pic_url: checkConv.rows.length > 0 ? checkConv.rows[0].profile_pic_url : null,
+                        remoteJid,
+                        instance,
+                        company_id: companyId,
+                        status: currentStatus,
+                        sender_jid: insertedMsg.rows[0].sender_jid,
+                        sender_name: insertedMsg.rows[0].sender_name,
+                        agent_name: (direction === 'outbound' && !insertedMsg.rows[0].user_id) ? 'Agente de IA' : null
+                    };
+                    console.log(`[Webhook] Emitting message to room ${room}`);
+                    io.to(room).emit('message:received', payload);
+                }
             }
 
             // 6. Non-critical post-processing (Metadata & CRM & Profile Pic)
@@ -400,6 +409,8 @@ export const handleWebhook = async (req: Request, res: Response) => {
                      WHERE id = $4`,
                     [sent_at, content, direction, conversationId]
                 );
+                // ... (rest of the block logic continues as is, no change needed in text replacement if I target carefully)
+
                 console.log(`[Webhook] Conversation ${conversationId} metadata updated.`);
 
                 const isGroup = remoteJid.endsWith('@g.us');
@@ -667,14 +678,14 @@ export const getMessages = async (req: Request, res: Response) => {
                             WHEN m.campaign_id IS NOT NULL THEN 'campaign'
                             WHEN m.follow_up_id IS NOT NULL THEN 'follow_up'
                             WHEN m.user_id IS NOT NULL THEN 'system_user'
-                            WHEN m.direction = 'outbound' AND m.user_id IS NULL THEN 'whatsapp_mobile'
+                            WHEN m.direction = 'outbound' AND m.user_id IS NULL THEN 'ai_agent'
                             ELSE 'unknown'
                         END as message_origin,
                         CASE 
                             WHEN m.campaign_id IS NOT NULL THEN 'Campanha'
                             WHEN m.follow_up_id IS NOT NULL THEN 'Follow-Up'
                             WHEN m.user_id IS NOT NULL THEN u.full_name 
-                            WHEN m.direction = 'outbound' AND m.user_id IS NULL THEN 'Celular'
+                            WHEN m.direction = 'outbound' AND m.user_id IS NULL THEN 'Agente de IA'
                             ELSE NULL 
                         END as agent_name 
                 FROM whatsapp_messages m 
