@@ -93,6 +93,7 @@ interface Message {
   remoteJid?: string;
   message_origin?: string;
   user_name?: string;
+  saved_name?: string;
 }
 
 interface Contact {
@@ -103,14 +104,15 @@ interface Contact {
   push_name?: string;
 }
 
-import { useSearchParams } from "react-router-dom";
+import { useSearchParams, useNavigate } from "react-router-dom";
 
 import EmojiPicker, { EmojiClickData } from "emoji-picker-react";
 
 
 
 const AtendimentoPage = () => {
-  const { token, user } = useAuth();
+  const { token, user, logout } = useAuth();
+  const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
 
   const [viewMode, setViewMode] = useState<'PENDING' | 'OPEN' | 'CLOSED'>('PENDING');
@@ -145,6 +147,13 @@ const AtendimentoPage = () => {
   const [isLoadingContacts, setIsLoadingContacts] = useState(false);
   const [contactSearchTerm, setContactSearchTerm] = useState("");
   const [filteredContacts, setFilteredContacts] = useState<Contact[]>([]);
+
+  // Fetch initial data on mount
+  useEffect(() => {
+    if (token) {
+      fetchConversations();
+    }
+  }, [token]);
 
   // Socket status for debugging
   const [socketStatus, setSocketStatus] = useState<"connected" | "disconnected" | "connecting">("connecting");
@@ -956,6 +965,12 @@ const AtendimentoPage = () => {
           "Authorization": `Bearer ${token}`
         }
       });
+      if (res.status === 403 || res.status === 401) {
+        toast.error("Sua sessão expirou. Por favor, entre novamente.");
+        logout();
+        navigate("/login");
+        return;
+      }
       if (res.ok) {
         const data: Conversation[] = await res.json();
         setConversations(data);
@@ -2323,6 +2338,23 @@ const AtendimentoPage = () => {
                   </Button>
                 )}
                 <div className="flex items-center gap-1">
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-9 w-9 text-zinc-500 hover:text-[#008069] hover:bg-zinc-200/50 rounded-full"
+                    onClick={() => {
+                      setFollowUpInitialData({
+                        conversation_id: selectedConversation.id,
+                        contact_name: getDisplayName(selectedConversation),
+                        phone: selectedConversation.phone,
+                        origin: 'Atendimento'
+                      });
+                      setIsFollowUpModalOpen(true);
+                    }}
+                    title="Novo Follow-up"
+                  >
+                    <CalendarCheck className="h-5 w-5" />
+                  </Button>
                   <Button variant="ghost" size="icon" className="h-9 w-9 text-zinc-500 hover:text-zinc-700 hover:bg-zinc-200/50 rounded-full">
                     <Search className="h-5 w-5" />
                   </Button>
@@ -2337,7 +2369,7 @@ const AtendimentoPage = () => {
                         onClick={() => {
                           setFollowUpInitialData({
                             conversation_id: selectedConversation.id,
-                            contact_name: selectedConversation.contact_name,
+                            contact_name: getDisplayName(selectedConversation),
                             phone: selectedConversation.phone,
                             origin: 'Atendimento'
                           });
@@ -2699,7 +2731,7 @@ const AtendimentoPage = () => {
       <FollowUpModal
         isOpen={isFollowUpModalOpen}
         onClose={() => setIsFollowUpModalOpen(false)}
-        initialData={{
+        initialData={followUpInitialData || {
           conversation_id: selectedConversation?.id,
           contact_name: getDisplayName(selectedConversation),
           phone: selectedConversation?.phone,
