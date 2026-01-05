@@ -1614,6 +1614,25 @@ const AtendimentoPage = () => {
     }
   };
 
+  const formatListDate = (dateString: string) => {
+    if (!dateString) return "";
+    const date = new Date(dateString);
+    const today = new Date();
+    const yesterday = new Date();
+    yesterday.setDate(today.getDate() - 1);
+
+    if (date.toDateString() === today.toDateString()) {
+      return "HOJE";
+    } else if (date.toDateString() === yesterday.toDateString()) {
+      return "ONTEM";
+    } else {
+      return date.toLocaleDateString("pt-BR", {
+        day: "2-digit",
+        month: "2-digit"
+      });
+    }
+  };
+
   const onEmojiClick = (emojiData: EmojiClickData) => {
     setNewMessage((prev) => prev + emojiData.emoji);
   };
@@ -1872,8 +1891,8 @@ const AtendimentoPage = () => {
                 </span>
               )}
             </div>
-            <span className="text-[10px] font-medium text-muted-foreground whitespace-nowrap opacity-80 pt-1">
-              {conv.last_message_at ? formatTime(conv.last_message_at) : ""}
+            <span className="text-[10px] font-bold text-[#008069] dark:text-[#00a884] whitespace-nowrap pt-1">
+              {conv.last_message_at ? formatListDate(conv.last_message_at) : ""}
             </span>
           </div>
 
@@ -2191,7 +2210,7 @@ const AtendimentoPage = () => {
                                       <span className="font-semibold text-sm text-zinc-900 dark:text-zinc-100 truncate flex-1 pr-2">
                                         {msg.contact_name || msg.group_name || msg.chat_phone}
                                       </span>
-                                      <span className="text-[10px] text-muted-foreground shrink-0">{formatTime(msg.sent_at)}</span>
+                                      <span className="text-[10px] text-[#008069] font-bold shrink-0">{formatListDate(msg.sent_at)}</span>
                                     </div>
                                     <p className="text-xs text-muted-foreground line-clamp-2 leading-relaxed">
                                       <HighlightedText text={msg.content} highlight={conversationSearchTerm} />
