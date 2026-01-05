@@ -362,7 +362,8 @@ export const handleWebhook = async (req: Request, res: Response) => {
                             status: currentStatus,
                             sender_jid: existingMsg.sender_jid,
                             sender_name: existingMsg.sender_name,
-                            agent_name: (existingMsg.direction === 'outbound' && !existingMsg.user_id) ? 'Agente de IA' : existingMsg.agent_name
+                            agent_name: (existingMsg.direction === 'outbound' && !existingMsg.user_id) ? 'Agente de IA' : existingMsg.agent_name,
+                            message_origin: (existingMsg.direction === 'outbound' && !existingMsg.user_id) ? 'ai_agent' : 'whatsapp_mobile' // Simple fallback, usually it's null user_id so ai_agent or legacy mobile
                         };
                         io.to(room).emit('message:received', payload);
                     }
@@ -391,7 +392,8 @@ export const handleWebhook = async (req: Request, res: Response) => {
                         status: currentStatus,
                         sender_jid: insertedMsg.rows[0].sender_jid,
                         sender_name: insertedMsg.rows[0].sender_name,
-                        agent_name: (direction === 'outbound' && !insertedMsg.rows[0].user_id) ? 'Agente de IA' : null
+                        agent_name: (direction === 'outbound' && !insertedMsg.rows[0].user_id) ? 'Agente de IA' : null,
+                        message_origin: (direction === 'outbound' && !insertedMsg.rows[0].user_id) ? 'ai_agent' : 'whatsapp_mobile'
                     };
                     console.log(`[Webhook] Emitting message to room ${room}`);
                     io.to(room).emit('message:received', payload);

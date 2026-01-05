@@ -2396,6 +2396,7 @@ const AtendimentoPage = () => {
                         if (msg.user_name) return msg.user_name;
                         if (msg.message_origin === 'campaign') return "Campanha";
                         if (msg.message_origin === 'follow_up') return "Follow-Up";
+                        if (msg.message_origin === 'ai_agent') return "Agente de IA";
 
                         return "Celular";
                       })()}
