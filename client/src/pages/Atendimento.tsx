@@ -1858,97 +1858,101 @@ const AtendimentoPage = () => {
           {/* Header da Sidebar */}
           <div className="bg-zinc-100/50 dark:bg-zinc-900/50 border-b">
             {/* Top Row: Title and Controls */}
-            <div className="flex items-center justify-between p-3">
-              <div className="flex items-center gap-2">
-                <Avatar className="h-8 w-8">
-                  <AvatarFallback>EU</AvatarFallback>
-                </Avatar>
-                <div>
-                  <CardTitle className="text-sm font-bold">Atendimentos</CardTitle>
-                  <div className="flex items-center gap-1.5">
-                    <p className="text-[10px] text-muted-foreground">integrai</p>
-                    <span className={cn(
-                      "w-1.5 h-1.5 rounded-full",
-                      socketStatus === "connected" ? "bg-green-500" : "bg-red-500"
-                    )} title={`Socket: ${socketStatus}`}></span>
+            {/* Top Row: Title and Controls */}
+            <div className="flex flex-col gap-2 p-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2 shrink-0">
+                  <Avatar className="h-8 w-8">
+                    <AvatarFallback>EU</AvatarFallback>
+                  </Avatar>
+                  <div>
+                    <CardTitle className="text-sm font-bold">Atendimentos</CardTitle>
+                    <div className="flex items-center gap-1.5">
+                      <p className="text-[10px] text-muted-foreground">integrai</p>
+                      <span className={cn(
+                        "w-1.5 h-1.5 rounded-full",
+                        socketStatus === "connected" ? "bg-green-500" : "bg-red-500"
+                      )} title={`Socket: ${socketStatus}`}></span>
+                    </div>
                   </div>
+                </div>
+
+                {/* Volume Controls - Right Aligned */}
+                <div className="flex items-center gap-1">
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    className="h-7 w-7 text-zinc-500 hover:text-[#008069]"
+                    onClick={syncAllPhotos}
+                    title="Sincronizar todas as fotos do WhatsApp"
+                  >
+                    <Image className="h-3.5 w-3.5" />
+                  </Button>
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    className="h-7 w-7"
+                    onClick={() => {
+                      const newMuted = !isNotificationMuted;
+                      setIsNotificationMuted(newMuted);
+                      localStorage.setItem('notification_muted', String(newMuted));
+                    }}
+                    title={isNotificationMuted ? "Ativar som" : "Silenciar"}
+                  >
+                    {isNotificationMuted ? (
+                      <VolumeX className="h-3.5 w-3.5 text-red-500" />
+                    ) : notificationVolume > 0.5 ? (
+                      <Volume2 className="h-3.5 w-3.5" />
+                    ) : (
+                      <Volume1 className="h-3.5 w-3.5" />
+                    )}
+                  </Button>
+                  {!isNotificationMuted && (
+                    <div className="hidden sm:flex items-center gap-1">
+                      <input
+                        type="range"
+                        min="0"
+                        max="1"
+                        step="0.1"
+                        value={notificationVolume}
+                        onChange={(e) => {
+                          const newVolume = parseFloat(e.target.value);
+                          setNotificationVolume(newVolume);
+                          localStorage.setItem('notification_volume', String(newVolume));
+                        }}
+                        className="w-12 h-1 bg-gray-200 rounded-lg appearance-none cursor-pointer dark:bg-gray-700"
+                        title={`Volume: ${Math.round(notificationVolume * 100)}%`}
+                      />
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="h-6 w-6 p-0 text-[10px]"
+                        onClick={() => playNotificationSound(false)}
+                        title="Testar som"
+                      >
+                        🔔
+                      </Button>
+                    </div>
+                  )}
                 </div>
               </div>
 
-              {/* Volume Controls */}
-              <div className="flex items-center gap-1">
-                <Button
-                  size="icon"
-                  variant="ghost"
-                  className="h-7 w-7 text-zinc-500 hover:text-[#008069]"
-                  onClick={syncAllPhotos}
-                  title="Sincronizar todas as fotos do WhatsApp"
-                >
-                  <Image className="h-3.5 w-3.5" />
-                </Button>
-                <Button
-                  size="icon"
-                  variant="ghost"
-                  className="h-7 w-7"
-                  onClick={() => {
-                    const newMuted = !isNotificationMuted;
-                    setIsNotificationMuted(newMuted);
-                    localStorage.setItem('notification_muted', String(newMuted));
-                  }}
-                  title={isNotificationMuted ? "Ativar som" : "Silenciar"}
-                >
-                  {isNotificationMuted ? (
-                    <VolumeX className="h-3.5 w-3.5 text-red-500" />
-                  ) : notificationVolume > 0.5 ? (
-                    <Volume2 className="h-3.5 w-3.5" />
-                  ) : (
-                    <Volume1 className="h-3.5 w-3.5" />
-                  )}
-                </Button>
-                {!isNotificationMuted && (
-                  <>
-                    <input
-                      type="range"
-                      min="0"
-                      max="1"
-                      step="0.1"
-                      value={notificationVolume}
-                      onChange={(e) => {
-                        const newVolume = parseFloat(e.target.value);
-                        setNotificationVolume(newVolume);
-                        localStorage.setItem('notification_volume', String(newVolume));
-                      }}
-                      className="w-12 h-1 bg-gray-200 rounded-lg appearance-none cursor-pointer dark:bg-gray-700"
-                      title={`Volume: ${Math.round(notificationVolume * 100)}%`}
-                    />
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      className="h-6 w-6 p-0 text-[10px]"
-                      onClick={() => playNotificationSound(false)}
-                      title="Testar som"
-                    >
-                      🔔
-                    </Button>
-                  </>
-                )}
-
-                {user?.role === 'SUPERADMIN' && availableCompanies.length > 0 && (
-                  <div className="flex items-center gap-2 ml-auto">
-                    <span className="text-[10px] text-zinc-500 uppercase font-bold">Filtro:</span>
-                    <select
-                      className="text-[10px] bg-zinc-100 dark:bg-zinc-800 border-none rounded px-1 py-0.5 font-medium outline-none"
-                      value={selectedCompanyFilter || ""}
-                      onChange={(e) => setSelectedCompanyFilter(e.target.value || null)}
-                    >
-                      <option value="">Todas Empresas</option>
-                      {availableCompanies.map(c => (
-                        <option key={c.id} value={c.id}>{c.name}</option>
-                      ))}
-                    </select>
-                  </div>
-                )}
-              </div>
+              {/* Filter Row - Full Width if needed */}
+              {user?.role === 'SUPERADMIN' && availableCompanies.length > 0 && (
+                <div className="flex items-center gap-2 bg-zinc-50 dark:bg-zinc-800/50 p-1.5 rounded-md border border-zinc-100 dark:border-zinc-800">
+                  <span className="text-[10px] text-zinc-500 uppercase font-bold whitespace-nowrap">Filtro:</span>
+                  <select
+                    className="text-[11px] bg-transparent border-none w-full font-medium outline-none text-zinc-700 dark:text-zinc-300"
+                    value={selectedCompanyFilter || ""}
+                    onChange={(e) => setSelectedCompanyFilter(e.target.value || null)}
+                  >
+                    <option value="">Todas Empresas</option>
+                    {availableCompanies.map(c => (
+                      <option key={c.id} value={c.id}>{c.name}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
             </div>
 
             {/* Bottom Row: Tabs */}

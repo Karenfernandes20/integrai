@@ -523,7 +523,7 @@ const SuperadminPage = () => {
                                     {companyUsers.length === 0 ? (
                                       <p className="text-sm text-muted-foreground">Nenhum usuário encontrado.</p>
                                     ) : (
-                                      <div className="space-y-2">
+                                      <div className="space-y-2 max-h-[300px] overflow-y-auto pr-2 custom-scrollbar">
                                         {companyUsers.map(user => (
                                           <div key={user.id} className="flex items-center justify-between rounded-lg border p-3 bg-muted/40">
                                             <div className="space-y-1">

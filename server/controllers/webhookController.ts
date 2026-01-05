@@ -63,6 +63,8 @@ export const handleWebhook = async (req: Request, res: Response) => {
             console.log(`[Webhook] Event: ${type} | Instance: ${instance}`);
             pushPayload({ type, instance, keys: Object.keys(body), body: body });
 
+
+
             if (!type) {
                 console.warn('[Webhook] Missing type/event in payload root. Body keys:', Object.keys(body));
                 return;
