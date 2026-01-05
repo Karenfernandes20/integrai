@@ -551,21 +551,37 @@ const FinanceiroPage = () => {
             <PieChart>
               <Pie
                 data={pieChartData}
-                innerRadius={80}
-                outerRadius={110}
-                paddingAngle={5}
+                innerRadius={70}
+                outerRadius={100}
+                paddingAngle={4}
                 dataKey="value"
-                label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
+                labelLine={false}
+                label={false}
               >
                 {pieChartData.map((entry, index) => (
                   <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} strokeWidth={0} />
                 ))}
               </Pie>
               <Tooltip
-                contentStyle={{ borderRadius: '12px', border: 'none' }}
-                formatter={(v: any) => `R$ ${v.toLocaleString("pt-BR")}`}
+                contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}
+                formatter={(v: any, name: any, props: any) => {
+                  const total = pieChartData.reduce((a: any, b: any) => a + b.value, 0);
+                  const percent = total > 0 ? (v / total * 100).toFixed(1) : 0;
+                  return [`R$ ${v.toLocaleString("pt-BR")} (${percent}%)`, name];
+                }}
               />
-              <Legend iconType="circle" layout="vertical" align="right" verticalAlign="middle" wrapperStyle={{ fontSize: '10px', fontWeight: 'bold' }} />
+              <Legend
+                layout="vertical"
+                align="right"
+                verticalAlign="middle"
+                wrapperStyle={{
+                  fontSize: '11px',
+                  fontWeight: '500',
+                  maxHeight: '300px',
+                  overflowY: 'auto',
+                  paddingLeft: '20px'
+                }}
+              />
             </PieChart>
           </ResponsiveContainer>
         </CardContent>
@@ -822,104 +838,106 @@ const FinanceiroPage = () => {
             </DropdownMenuContent>
           </DropdownMenu>
 
-          <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-            <DialogTrigger asChild>
-              <Button size="sm" className={cn(
-                "gap-2 h-10 text-xs font-bold shadow-lg transition-all",
-                mainTab === "revenues" ? "bg-[#008069] hover:bg-[#006d59]" : "bg-zinc-900 hover:bg-zinc-800"
-              )}>
-                <Plus className="h-4 w-4" /> {mainTab === "revenues" ? "NOVA RECEITA" : "NOVA DESPESA"}
-              </Button>
-            </DialogTrigger>
-            <DialogContent className="max-w-md max-h-[90vh] flex flex-col p-0 overflow-hidden">
-              <DialogHeader className="p-6 pb-2 shrink-0">
-                <DialogTitle>{formData.id ? "Editar Lançamento" : `Cadastrar ${mainTab === "revenues" ? 'Receita' : 'Despesa'}`}</DialogTitle>
-              </DialogHeader>
+          {mainTab !== 'cashflow' && (
+            <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+              <DialogTrigger asChild>
+                <Button size="sm" className={cn(
+                  "gap-2 h-10 text-xs font-bold shadow-lg transition-all",
+                  mainTab === "revenues" ? "bg-[#008069] hover:bg-[#006d59]" : "bg-zinc-900 hover:bg-zinc-800"
+                )}>
+                  <Plus className="h-4 w-4" /> {mainTab === "revenues" ? "NOVA RECEITA" : "NOVA DESPESA"}
+                </Button>
+              </DialogTrigger>
+              <DialogContent className="max-w-md max-h-[90vh] flex flex-col p-0 overflow-hidden">
+                <DialogHeader className="p-6 pb-2 shrink-0">
+                  <DialogTitle>{formData.id ? "Editar Lançamento" : `Cadastrar ${mainTab === "revenues" ? 'Receita' : 'Despesa'}`}</DialogTitle>
+                </DialogHeader>
 
-              <div className="flex-1 overflow-y-auto px-6 py-2">
-                <div className="grid gap-4 py-4">
-                  <div className="space-y-1">
-                    <label className="text-xs font-bold text-muted-foreground uppercase">{mainTab === "revenues" ? "Cliente / Origem" : "Fornecedor / Descrição"}</label>
-                    <Input
-                      value={formData.description}
-                      onChange={e => setFormData({ ...formData, description: e.target.value })}
-                      placeholder={mainTab === "revenues" ? "Nome do cliente, plataforma..." : "Vivo, Aluguel, Prolabore..."}
-                    />
-                  </div>
-                  <div className="grid grid-cols-2 gap-4">
+                <div className="flex-1 overflow-y-auto px-6 py-2">
+                  <div className="grid gap-4 py-4">
                     <div className="space-y-1">
-                      <label className="text-xs font-bold text-muted-foreground uppercase">Valor (R$)</label>
+                      <label className="text-xs font-bold text-muted-foreground uppercase">{mainTab === "revenues" ? "Cliente / Origem" : "Fornecedor / Descrição"}</label>
                       <Input
-                        type="number"
-                        step="0.01"
-                        value={formData.amount}
-                        onFocus={(e) => e.target.select()}
-                        onChange={e => setFormData({ ...formData, amount: Number(e.target.value) })}
+                        value={formData.description}
+                        onChange={e => setFormData({ ...formData, description: e.target.value })}
+                        placeholder={mainTab === "revenues" ? "Nome do cliente, plataforma..." : "Vivo, Aluguel, Prolabore..."}
                       />
                     </div>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-1">
+                        <label className="text-xs font-bold text-muted-foreground uppercase">Valor (R$)</label>
+                        <Input
+                          type="number"
+                          step="0.01"
+                          value={formData.amount}
+                          onFocus={(e) => e.target.select()}
+                          onChange={e => setFormData({ ...formData, amount: Number(e.target.value) })}
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-xs font-bold text-muted-foreground uppercase">Categoria</label>
+                        <Select value={formData.category || "Outros"} onValueChange={v => setFormData({ ...formData, category: v })}>
+                          <SelectTrigger>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {(mainTab === "revenues" ? CATEGORIES_REVENUES : CATEGORIES_EXPENSES).map(c =>
+                              <SelectItem key={c} value={c}>{c}</SelectItem>
+                            )}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-1">
+                        <label className="text-xs font-bold text-muted-foreground uppercase">Emissão</label>
+                        <Input
+                          type="date"
+                          value={formData.issue_date?.split('T')[0] || ""}
+                          onChange={e => setFormData({ ...formData, issue_date: e.target.value })}
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-xs font-bold text-muted-foreground uppercase">{mainTab === "revenues" ? "Recebimento" : "Vencimento"}</label>
+                        <Input
+                          type="date"
+                          value={formData.due_date?.split('T')[0] || ""}
+                          onChange={e => setFormData({ ...formData, due_date: e.target.value })}
+                        />
+                      </div>
+                    </div>
                     <div className="space-y-1">
-                      <label className="text-xs font-bold text-muted-foreground uppercase">Categoria</label>
-                      <Select value={formData.category || "Outros"} onValueChange={v => setFormData({ ...formData, category: v })}>
-                        <SelectTrigger>
+                      <label className="text-xs font-bold text-muted-foreground uppercase">Observações</label>
+                      <Input
+                        value={formData.notes || ""}
+                        onChange={e => setFormData({ ...formData, notes: e.target.value })}
+                        placeholder="Detalhes adicionais..."
+                      />
+                    </div>
+                    <div className="space-y-2 pb-4">
+                      <label className="text-xs font-bold text-muted-foreground uppercase">Status</label>
+                      <Select value={formData.status} onValueChange={(v: any) => setFormData({ ...formData, status: v })}>
+                        <SelectTrigger className="w-full">
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
-                          {(mainTab === "revenues" ? CATEGORIES_REVENUES : CATEGORIES_EXPENSES).map(c =>
-                            <SelectItem key={c} value={c}>{c}</SelectItem>
-                          )}
+                          <SelectItem value="pending">{mainTab === "revenues" ? "A receber" : "Pendente"}</SelectItem>
+                          <SelectItem value="paid">{mainTab === "revenues" ? "Recebido" : "Pago"}</SelectItem>
                         </SelectContent>
                       </Select>
                     </div>
                   </div>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-1">
-                      <label className="text-xs font-bold text-muted-foreground uppercase">Emissão</label>
-                      <Input
-                        type="date"
-                        value={formData.issue_date?.split('T')[0] || ""}
-                        onChange={e => setFormData({ ...formData, issue_date: e.target.value })}
-                      />
-                    </div>
-                    <div className="space-y-1">
-                      <label className="text-xs font-bold text-muted-foreground uppercase">{mainTab === "revenues" ? "Recebimento" : "Vencimento"}</label>
-                      <Input
-                        type="date"
-                        value={formData.due_date?.split('T')[0] || ""}
-                        onChange={e => setFormData({ ...formData, due_date: e.target.value })}
-                      />
-                    </div>
-                  </div>
-                  <div className="space-y-1">
-                    <label className="text-xs font-bold text-muted-foreground uppercase">Observações</label>
-                    <Input
-                      value={formData.notes || ""}
-                      onChange={e => setFormData({ ...formData, notes: e.target.value })}
-                      placeholder="Detalhes adicionais..."
-                    />
-                  </div>
-                  <div className="space-y-2 pb-4">
-                    <label className="text-xs font-bold text-muted-foreground uppercase">Status</label>
-                    <Select value={formData.status} onValueChange={(v: any) => setFormData({ ...formData, status: v })}>
-                      <SelectTrigger className="w-full">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="pending">{mainTab === "revenues" ? "A receber" : "Pendente"}</SelectItem>
-                        <SelectItem value="paid">{mainTab === "revenues" ? "Recebido" : "Pago"}</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
                 </div>
-              </div>
 
-              <DialogFooter className="p-6 pt-2 shrink-0 border-t bg-zinc-50/50">
-                <Button variant="outline" onClick={() => setIsDialogOpen(false)}>Cancelar</Button>
-                <Button onClick={handleSave} className={mainTab === 'revenues' ? "bg-[#008069] hover:bg-[#006d59]" : "bg-zinc-900 hover:bg-zinc-800"}>
-                  Salvar Lançamento
-                </Button>
-              </DialogFooter>
-            </DialogContent>
-          </Dialog>
+                <DialogFooter className="p-6 pt-2 shrink-0 border-t bg-zinc-50/50">
+                  <Button variant="outline" onClick={() => setIsDialogOpen(false)}>Cancelar</Button>
+                  <Button onClick={handleSave} className={mainTab === 'revenues' ? "bg-[#008069] hover:bg-[#006d59]" : "bg-zinc-900 hover:bg-zinc-800"}>
+                    Salvar Lançamento
+                  </Button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
+          )}
         </div>
       </div>
 

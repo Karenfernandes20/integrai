@@ -1,5 +1,8 @@
 import { Request, Response } from 'express';
 import { pool } from '../db';
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
 
 // Create Campaign
 export const createCampaign = async (req: Request, res: Response) => {
@@ -543,6 +546,40 @@ async function sendWhatsAppMessage(
 
         console.log(`[sendWhatsAppMessage] POST ${targetUrl} | Target: ${cleanPhone} | Type: ${isMedia ? mediaType : 'text'}`);
 
+        // FIX: Convert local media to Base64 for remote Evolution API
+        let finalMedia = mediaUrl;
+        if (isMedia && mediaUrl && (mediaUrl.includes('localhost') || mediaUrl.includes('127.0.0.1'))) {
+            try {
+                const part = mediaUrl.split('/uploads/')[1];
+                if (part) {
+                    const filename = part.split('?')[0]; // Remove query params if any
+                    const __filename = fileURLToPath(import.meta.url);
+                    const __dirname = path.dirname(__filename);
+                    const filePath = path.join(__dirname, '../uploads', filename);
+
+                    if (fs.existsSync(filePath)) {
+                        console.log(`[sendWhatsAppMessage] Converting local file to Base64: ${filename}`);
+                        const fileBuffer = fs.readFileSync(filePath);
+                        const base64 = fileBuffer.toString('base64');
+                        const ext = path.extname(filename).toLowerCase().replace('.', '');
+
+                        const mimes: Record<string, string> = {
+                            'png': 'image/png', 'jpg': 'image/jpeg', 'jpeg': 'image/jpeg', 'gif': 'image/gif', 'webp': 'image/webp',
+                            'pdf': 'application/pdf', 'mp4': 'video/mp4', 'mp3': 'audio/mpeg', 'ogg': 'audio/ogg',
+                            'doc': 'application/msword', 'docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+                            'xls': 'application/vnd.ms-excel', 'xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+                        };
+                        const mime = mimes[ext] || 'application/octet-stream';
+                        finalMedia = `data:${mime};base64,${base64}`;
+                    } else {
+                        console.warn(`[sendWhatsAppMessage] Local file not found: ${filePath}`);
+                    }
+                }
+            } catch (e) {
+                console.error(`[sendWhatsAppMessage] Failed to convert local media:`, e);
+            }
+        }
+
         let payload: any = {
             number: cleanPhone,
             options: {
@@ -556,7 +593,7 @@ async function sendWhatsAppMessage(
             payload.mediaMessage = {
                 mediatype: mediaType,
                 caption: message, // Caption is the text message
-                media: mediaUrl
+                media: finalMedia
             };
             // Evolution v2 might expect 'fileName' for documents, optional for others
             if (mediaType === 'document') {
