@@ -120,6 +120,9 @@ const SuperadminPage = () => {
     email: "",
     password: "",
     permissions: [] as string[],
+    city: "",
+    state: "",
+    phone: "",
   });
   const [creatingUser, setCreatingUser] = useState(false);
 
@@ -401,7 +404,7 @@ const SuperadminPage = () => {
 
       const createdUser = await res.json();
       setCompanyUsers((prev) => [createdUser, ...prev]);
-      setNewUser({ full_name: "", email: "", password: "", permissions: [] });
+      setNewUser({ full_name: "", email: "", password: "", permissions: [], city: "", state: "", phone: "" });
       toast({ title: "Usuário adicionado com sucesso!" });
     } catch (err: any) {
       toast({ title: err.message, variant: "destructive" });
@@ -601,21 +604,40 @@ const SuperadminPage = () => {
                                           value={newUser.email}
                                           onChange={(e) => setNewUser({ ...newUser, email: e.target.value })}
                                         />
-                                        <div className="flex gap-2">
-                                          <Input
-                                            placeholder="Senha"
-                                            type="password"
-                                            className="h-8 text-xs"
-                                            value={newUser.password}
-                                            onChange={(e) => setNewUser({ ...newUser, password: e.target.value })}
-                                          />
+                                        <Input
+                                          placeholder="Senha"
+                                          type="password"
+                                          className="h-8 text-xs"
+                                          value={newUser.password}
+                                          onChange={(e) => setNewUser({ ...newUser, password: e.target.value })}
+                                        />
+                                        <Input
+                                          placeholder="Telefone"
+                                          className="h-8 text-xs"
+                                          value={newUser.phone}
+                                          onChange={(e) => setNewUser({ ...newUser, phone: e.target.value })}
+                                        />
+                                        <Input
+                                          placeholder="Cidade"
+                                          className="h-8 text-xs"
+                                          value={newUser.city}
+                                          onChange={(e) => setNewUser({ ...newUser, city: e.target.value })}
+                                        />
+                                        <Input
+                                          placeholder="UF"
+                                          className="h-8 text-xs"
+                                          maxLength={2}
+                                          value={newUser.state}
+                                          onChange={(e) => setNewUser({ ...newUser, state: e.target.value.toUpperCase() })}
+                                        />
+                                        <div className="col-span-1 md:col-span-3 flex justify-end">
                                           <Button
                                             size="sm"
                                             className="h-8 text-xs"
                                             onClick={handleCreateUser}
                                             disabled={creatingUser}
                                           >
-                                            Adicionar
+                                            {creatingUser ? "Adicionando..." : "Adicionar Usuário"}
                                           </Button>
                                         </div>
                                       </div>

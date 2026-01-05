@@ -24,12 +24,40 @@ export const createUser = async (req: Request, res: Response) => {
   try {
     if (!pool) return res.status(500).json({ error: 'Database not configured' });
 
-    let { full_name, email, phone, user_type, city_id, state, company_id, password, role, permissions } = req.body;
+    let { full_name, email, phone, user_type, city_id, state, company_id, password, role, permissions, city } = req.body;
 
     // If not superadmin, force company_id to be the same as the creator
     const creator = (req as any).user;
     if (creator?.role !== 'SUPERADMIN') {
       company_id = creator?.company_id;
+    }
+
+    // Resolve City ID if name provided
+    if (city && !city_id) {
+      try {
+        let query = 'SELECT id FROM cities WHERE lower(name) = lower($1)';
+        const params: any[] = [city];
+        if (state) {
+          query += ' AND state = $2';
+          params.push(state);
+        }
+        query += ' LIMIT 1';
+
+        const cityCheck = await pool.query(query, params);
+        if (cityCheck.rows.length > 0) {
+          city_id = cityCheck.rows[0].id;
+        } else if (state) {
+          // Create new city if state is available
+          const newCity = await pool.query(
+            'INSERT INTO cities (name, state) VALUES ($1, $2) RETURNING id',
+            [city, state]
+          );
+          city_id = newCity.rows[0].id;
+        }
+      } catch (cityErr) {
+        console.error("Error resolving city:", cityErr);
+        // non-blocking, just leaves city_id null
+      }
     }
 
     // Optional: hash password if provided, otherwise default '123456'

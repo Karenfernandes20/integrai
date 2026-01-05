@@ -138,13 +138,13 @@ const startServer = async () => {
     console.log(`Server rodando na porta ${port}`);
 
     // Start Campaign Scheduler (every minute)
-    console.log("Starting Campaign Scheduler... [DISABLED FOR STABILITY TESTING]");
-    // setInterval(() => {
-    //   checkAndStartScheduledCampaigns(io);
-    // }, 60000);
+    console.log("Starting Campaign Scheduler...");
+    setInterval(() => {
+      checkAndStartScheduledCampaigns(io);
+    }, 60000);
 
     // Run immediately on start
-    // checkAndStartScheduledCampaigns(io);
+    checkAndStartScheduledCampaigns(io);
   });
 };
 

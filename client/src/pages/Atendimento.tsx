@@ -2288,14 +2288,14 @@ const AtendimentoPage = () => {
                   </span>
                 </div>
               </div>
-              <div className="flex items-center gap-4 text-zinc-500">
+              <div className="flex items-center gap-2 text-zinc-500">
                 {(selectedConversation.status === 'PENDING' || !selectedConversation.status) && (
                   <Button
                     size="sm"
                     onClick={() => handleStartAtendimento()}
-                    className="bg-[#008069] hover:bg-[#006d59] text-white h-8 text-xs font-bold gap-2 shadow-sm"
+                    className="bg-[#008069] hover:bg-[#006d59] text-white h-8 text-xs font-bold gap-1.5 shadow-sm shrink-0 px-3"
                   >
-                    <Play className="h-3 w-3 fill-current" /> <span className="hidden sm:inline">INICIAR</span>
+                    <Play className="h-3.5 w-3.5 fill-current" /> <span className="hidden sm:inline">INICIAR</span>
                   </Button>
                 )}
                 {selectedConversation.status === 'OPEN' && (
@@ -2303,9 +2303,9 @@ const AtendimentoPage = () => {
                     size="sm"
                     variant="outline"
                     onClick={() => handleCloseAtendimento()}
-                    className="text-red-600 border-red-200 hover:bg-red-50 h-8 text-xs font-bold gap-2 shadow-sm"
+                    className="text-red-600 border-red-200 hover:bg-red-50 h-8 text-xs font-bold gap-1.5 shadow-sm shrink-0 px-3"
                   >
-                    <XCircle className="h-3 w-3" /> <span className="hidden sm:inline">ENCERRAR</span>
+                    <XCircle className="h-3.5 w-3.5" /> <span className="hidden sm:inline">ENCERRAR</span>
                   </Button>
                 )}
                 {selectedConversation.status === 'CLOSED' && (
@@ -2313,41 +2313,47 @@ const AtendimentoPage = () => {
                     size="sm"
                     variant="outline"
                     onClick={() => handleReopenAtendimento()}
-                    className="text-blue-600 border-blue-200 hover:bg-blue-50 h-8 text-xs font-bold gap-2 shadow-sm"
+                    className="text-blue-600 border-blue-200 hover:bg-blue-50 h-8 text-xs font-bold gap-1.5 shadow-sm shrink-0 px-3"
                   >
-                    <RotateCcw className="h-3 w-3" /> <span className="hidden sm:inline">REABRIR</span>
+                    <RotateCcw className="h-3.5 w-3.5" /> <span className="hidden sm:inline">REABRIR</span>
                   </Button>
                 )}
-                <Search className="h-5 w-5 cursor-pointer hover:text-zinc-700" />
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <MoreVertical className="h-5 w-5 cursor-pointer hover:text-zinc-700" />
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end">
-                    <DropdownMenuItem
-                      onClick={() => {
-                        setFollowUpInitialData({
-                          conversation_id: selectedConversation.id,
-                          contact_name: selectedConversation.contact_name,
-                          phone: selectedConversation.phone,
-                          origin: 'Atendimento'
-                        });
-                        setIsFollowUpModalOpen(true);
-                      }}
-                      className="gap-2"
-                    >
-                      <CalendarCheck className="h-4 w-4" /> Novo Follow-up
-                    </DropdownMenuItem>
-                    <DropdownMenuItem onClick={handleRenameContact}>
-                      Editar nome do contato
-                    </DropdownMenuItem>
-                    {(selectedConversation.user_id === user?.id || user?.role === 'SUPERADMIN' || user?.role === 'ADMIN') && (
-                      <DropdownMenuItem onClick={handleDeleteConversation} className="text-red-600 focus:text-red-600">
-                        Deletar conversa
+                <div className="flex items-center gap-1">
+                  <Button variant="ghost" size="icon" className="h-9 w-9 text-zinc-500 hover:text-zinc-700 hover:bg-zinc-200/50 rounded-full">
+                    <Search className="h-5 w-5" />
+                  </Button>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button variant="ghost" size="icon" className="h-9 w-9 text-zinc-500 hover:text-zinc-700 hover:bg-zinc-200/50 rounded-full">
+                        <MoreVertical className="h-5 w-5" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                      <DropdownMenuItem
+                        onClick={() => {
+                          setFollowUpInitialData({
+                            conversation_id: selectedConversation.id,
+                            contact_name: selectedConversation.contact_name,
+                            phone: selectedConversation.phone,
+                            origin: 'Atendimento'
+                          });
+                          setIsFollowUpModalOpen(true);
+                        }}
+                        className="gap-2"
+                      >
+                        <CalendarCheck className="h-4 w-4" /> Novo Follow-up
                       </DropdownMenuItem>
-                    )}
-                  </DropdownMenuContent>
-                </DropdownMenu>
+                      <DropdownMenuItem onClick={handleRenameContact}>
+                        Editar nome do contato
+                      </DropdownMenuItem>
+                      {(selectedConversation.user_id === user?.id || user?.role === 'SUPERADMIN' || user?.role === 'ADMIN') && (
+                        <DropdownMenuItem onClick={handleDeleteConversation} className="text-red-600 focus:text-red-600">
+                          Deletar conversa
+                        </DropdownMenuItem>
+                      )}
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </div>
               </div>
             </div>
 
