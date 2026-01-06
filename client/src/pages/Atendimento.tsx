@@ -2024,8 +2024,28 @@ const AtendimentoPage = () => {
 
           <div className="flex-1 overflow-y-auto custom-scrollbar bg-[#111B21]">
             {activeTab === 'conversas' && (
-              <div className="flex flex-col">
-                {conversationSearchTerm && conversationSearchTerm.length >= 2 ? (
+              <div className="flex flex-col h-full">
+                {isLoadingConversations && !conversationSearchTerm && (
+                  <div className="flex flex-col items-center justify-center p-8 opacity-60 m-auto">
+                    <Loader2 className="h-8 w-8 animate-spin text-[#008069] mb-2" />
+                    <span className="text-xs text-[#8696A0]">Carregando conversas...</span>
+                  </div>
+                )}
+
+                {apiError && !isLoadingConversations && (
+                  <div className="flex flex-col items-center justify-center p-6 m-auto text-center">
+                    <div className="bg-red-500/10 p-3 rounded-full mb-2">
+                      <ShieldAlert className="h-6 w-6 text-red-500" />
+                    </div>
+                    <p className="text-sm font-medium text-red-400 mb-1">Erro de Conexão</p>
+                    <p className="text-xs text-[#8696A0] mb-3 max-w-[200px]">{apiError}</p>
+                    <Button variant="outline" size="sm" onClick={() => fetchConversations()} className="text-xs h-7 bg-transparent border-red-500/30 text-red-400 hover:bg-red-500/10">
+                      Tentar Novamente
+                    </Button>
+                  </div>
+                )}
+
+                {!isLoadingConversations && !apiError && conversationSearchTerm && conversationSearchTerm.length >= 2 ? (
                   <div className="flex flex-col flex-1 divide-y divide-zinc-100 dark:divide-zinc-800">
                     {isSearchingGlobal ? (
                       <div className="flex flex-col items-center justify-center p-12 gap-3">
