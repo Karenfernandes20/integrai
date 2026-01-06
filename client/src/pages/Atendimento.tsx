@@ -111,7 +111,7 @@ interface Contact {
 
 import { useSearchParams, useNavigate } from "react-router-dom";
 
-import EmojiPicker, { EmojiClickData } from "emoji-picker-react";
+import EmojiPicker, { EmojiClickData, Theme } from "emoji-picker-react";
 
 // Helper component to highlight search terms
 const HighlightedText = ({ text, highlight }: { text: string; highlight: string }) => {
