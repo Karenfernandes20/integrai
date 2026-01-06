@@ -88,7 +88,7 @@ export const runMigrations = async () => {
         const addColumnSimple = async (col: string, type: string) => {
             if (!pool) return;
             try {
-                await pool.query(`ALTER TABLE financial_transactions ADD COLUMN ${col} ${type};`);
+                await pool.query(`ALTER TABLE financial_transactions ADD COLUMN IF NOT EXISTS ${col} ${type};`);
             } catch (e) { }
         };
 
@@ -96,6 +96,21 @@ export const runMigrations = async () => {
         await addColumnSimple('paid_at', 'TIMESTAMP');
         await addColumnSimple('notes', 'TEXT');
         await addColumnSimple('company_id', 'INTEGER REFERENCES companies(id)');
+        await addColumnSimple('cost_center', 'VARCHAR(255)');
+
+        // 3. Financial Categories
+        try {
+            await pool.query(`
+                CREATE TABLE IF NOT EXISTS financial_categories (
+                    id SERIAL PRIMARY KEY,
+                    company_id INTEGER,
+                    name VARCHAR(255) NOT NULL,
+                    type VARCHAR(50) NOT NULL,
+                    created_at TIMESTAMP DEFAULT NOW()
+                );
+            `);
+            console.log("Verified table: financial_categories");
+        } catch (e) { console.error("Error creating financial_categories:", e); }
 
         // 4. CRM Tables
         await pool.query(`

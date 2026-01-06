@@ -77,7 +77,8 @@ import {
   FileDown,
   ArrowUpRight,
   ArrowDownRight,
-  Wallet
+  Wallet,
+  Settings
 } from "lucide-react";
 import {
   LineChart,
@@ -116,6 +117,7 @@ interface Transaction {
   company_id?: number | null;
   city_name?: string | null;
   city_state?: string | null;
+  cost_center?: string | null;
 }
 
 const CATEGORIES_EXPENSES = [
@@ -151,6 +153,23 @@ const FinanceiroPage = () => {
   const [selectedTransaction, setSelectedTransaction] = useState<Transaction | null>(null);
   const [isSheetOpen, setIsSheetOpen] = useState(false);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [isManageCategoriesOpen, setIsManageCategoriesOpen] = useState(false);
+  const [customCategories, setCustomCategories] = useState<{ id: number, name: string, type: string }[]>([]);
+  const [newCategoryName, setNewCategoryName] = useState("");
+
+  const fetchCategories = async () => {
+    try {
+      const res = await fetch("/api/financial/categories", {
+        headers: { "Authorization": `Bearer ${token}` }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setCustomCategories(data);
+      }
+    } catch (error) {
+      console.error("Erro ao buscar categorias", error);
+    }
+  };
 
   // Filters
   const [startDate, setStartDate] = useState(format(startOfDay(new Date()), "yyyy-MM-01"));
@@ -168,7 +187,8 @@ const FinanceiroPage = () => {
     category: "Outros",
     status: "pending",
     type: "payable",
-    notes: ""
+    notes: "",
+    cost_center: ""
   });
 
   const fetchData = async () => {
@@ -211,6 +231,7 @@ const FinanceiroPage = () => {
 
   useEffect(() => {
     fetchData();
+    fetchCategories();
   }, [mainTab, startDate, endDate, statusFilter, categoryFilter]);
 
   // Effect to handle default view for each tab
@@ -221,6 +242,39 @@ const FinanceiroPage = () => {
       setActiveView('table');
     }
   }, [mainTab]);
+
+  const handleAddCategory = async () => {
+    if (!newCategoryName.trim()) return;
+    try {
+      const type = mainTab === 'revenues' ? 'receivable' : 'payable';
+      const res = await fetch("/api/financial/categories", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
+        body: JSON.stringify({ name: newCategoryName, type })
+      });
+      if (res.ok) {
+        setNewCategoryName("");
+        fetchCategories();
+      }
+    } catch (error) {
+      console.error("Erro ao criar categoria", error);
+    }
+  };
+
+  const handleDeleteCategory = async (id: number) => {
+    if (!confirm("Remover esta categoria?")) return;
+    try {
+      const res = await fetch(`/api/financial/categories/${id}`, {
+        method: "DELETE",
+        headers: { "Authorization": `Bearer ${token}` }
+      });
+      if (res.ok) {
+        fetchCategories();
+      }
+    } catch (error) {
+      console.error("Erro ao remover categoria", error);
+    }
+  };
 
   const handleSave = async () => {
     if (!formData.description || !formData.amount) {
@@ -275,7 +329,8 @@ const FinanceiroPage = () => {
       category: "Outros",
       status: "pending",
       type: (mainTab === "revenues" ? "receivable" : "payable") as any,
-      notes: ""
+      notes: "",
+      cost_center: ""
     });
   };
 
@@ -875,15 +930,30 @@ const FinanceiroPage = () => {
                         />
                       </div>
                       <div className="space-y-1">
-                        <label className="text-xs font-bold text-muted-foreground uppercase">Categoria</label>
+                        <div className="flex items-center justify-between">
+                          <label className="text-xs font-bold text-muted-foreground uppercase">Categoria</label>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-5 w-5 text-muted-foreground hover:text-zinc-900"
+                            onClick={() => setIsManageCategoriesOpen(true)}
+                            title="Gerenciar Categorias"
+                            type="button"
+                          >
+                            <Settings className="h-3 w-3" />
+                          </Button>
+                        </div>
                         <Select value={formData.category || "Outros"} onValueChange={v => setFormData({ ...formData, category: v })}>
                           <SelectTrigger>
                             <SelectValue />
                           </SelectTrigger>
                           <SelectContent>
-                            {(mainTab === "revenues" ? CATEGORIES_REVENUES : CATEGORIES_EXPENSES).map(c =>
+                            {Array.from(new Set([
+                              ...(mainTab === "revenues" ? CATEGORIES_REVENUES : CATEGORIES_EXPENSES),
+                              ...customCategories.filter(c => c.type === (mainTab === "revenues" ? "receivable" : "payable")).map(c => c.name)
+                            ])).map(c => (
                               <SelectItem key={c} value={c}>{c}</SelectItem>
-                            )}
+                            ))}
                           </SelectContent>
                         </Select>
                       </div>
@@ -912,6 +982,14 @@ const FinanceiroPage = () => {
                         value={formData.notes || ""}
                         onChange={e => setFormData({ ...formData, notes: e.target.value })}
                         placeholder="Detalhes adicionais..."
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-xs font-bold text-muted-foreground uppercase">Centro de Custo</label>
+                      <Input
+                        value={formData.cost_center || ""}
+                        onChange={e => setFormData({ ...formData, cost_center: e.target.value })}
+                        placeholder="Ex: Marketing, Operacional, Administrativo..."
                       />
                     </div>
                     <div className="space-y-2 pb-4">
@@ -1120,7 +1198,10 @@ const FinanceiroPage = () => {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">Todas</SelectItem>
-                {(mainTab === 'revenues' ? CATEGORIES_REVENUES : CATEGORIES_EXPENSES).map(c =>
+                {Array.from(new Set([
+                  ...(mainTab === 'revenues' ? CATEGORIES_REVENUES : CATEGORIES_EXPENSES),
+                  ...customCategories.filter(c => c.type === (mainTab === 'revenues' ? 'receivable' : 'payable')).map(c => c.name)
+                ])).map(c =>
                   <SelectItem key={c} value={c}>{c}</SelectItem>
                 )}
               </SelectContent>
@@ -1240,6 +1321,12 @@ const FinanceiroPage = () => {
                     <span className="text-[10px] font-black text-zinc-400 uppercase tracking-widest">Cidade</span>
                     <span className="text-sm font-bold text-zinc-700">{selectedTransaction.city_name || "Geral"}</span>
                   </div>
+                  {selectedTransaction.cost_center && (
+                    <div className="flex flex-col gap-1 col-span-2 sm:col-span-1">
+                      <span className="text-[10px] font-black text-zinc-400 uppercase tracking-widest">Centro de Custo</span>
+                      <span className="text-sm font-bold text-zinc-700">{selectedTransaction.cost_center}</span>
+                    </div>
+                  )}
                   <div className="flex flex-col gap-1">
                     <span className="text-[10px] font-black text-zinc-400 uppercase tracking-widest">Data Emissão</span>
                     <span className="text-sm font-bold text-zinc-700">{safeFormat(selectedTransaction.issue_date, "dd/MM/yyyy")}</span>
@@ -1294,6 +1381,53 @@ const FinanceiroPage = () => {
           )}
         </SheetContent>
       </Sheet>
+
+      <Dialog open={isManageCategoriesOpen} onOpenChange={setIsManageCategoriesOpen}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Gerenciar Categorias ({mainTab === 'revenues' ? 'Receitas' : 'Despesas'})</DialogTitle>
+            <DialogDescription>Adicione ou remova categorias personalizadas.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="flex gap-2">
+              <Input
+                placeholder="Nova categoria"
+                value={newCategoryName}
+                onChange={e => setNewCategoryName(e.target.value)}
+              />
+              <Button onClick={handleAddCategory} size="sm">
+                <Plus className="h-4 w-4" />
+              </Button>
+            </div>
+            <div className="space-y-2">
+              <h4 className="text-xs font-bold text-muted-foreground uppercase">Personalizadas</h4>
+              <ScrollArea className="h-[200px] border rounded-md p-2">
+                {customCategories.filter(c => c.type === (mainTab === 'revenues' ? 'receivable' : 'payable')).length === 0 ? (
+                  <div className="text-sm text-muted-foreground italic text-center py-4">Nenhuma categoria personalizada.</div>
+                ) : (
+                  customCategories.filter(c => c.type === (mainTab === 'revenues' ? 'receivable' : 'payable')).map(c => (
+                    <div key={c.id} className="flex items-center justify-between p-2 hover:bg-zinc-50 rounded-lg">
+                      <span className="text-sm font-medium">{c.name}</span>
+                      <Button variant="ghost" size="icon" className="h-6 w-6 text-red-500 hover:text-red-700 hover:bg-red-50" onClick={() => handleDeleteCategory(c.id)}>
+                        <X className="h-3 w-3" />
+                      </Button>
+                    </div>
+                  ))
+                )}
+              </ScrollArea>
+
+              <h4 className="text-xs font-bold text-muted-foreground uppercase mt-4">Padrão do Sistema (Fixo)</h4>
+              <ScrollArea className="h-[100px] border rounded-md p-2 bg-zinc-50">
+                {(mainTab === "revenues" ? CATEGORIES_REVENUES : CATEGORIES_EXPENSES).map(c => (
+                  <div key={c} className="flex items-center justify-between p-2 opacity-50">
+                    <span className="text-sm font-medium">{c}</span>
+                  </div>
+                ))}
+              </ScrollArea>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
 
     </div>
   );

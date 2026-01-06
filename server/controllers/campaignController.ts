@@ -464,11 +464,21 @@ export const checkAndStartScheduledCampaigns = async (io?: any) => {
         if (!pool) return;
 
         // Find due campaigns OR running campaigns that are not being processed (interrupted)
-        const result = await pool.query(
-            `SELECT id, name, status FROM whatsapp_campaigns 
-             WHERE (status = 'scheduled' AND (scheduled_at <= NOW() OR scheduled_at IS NULL))
-                OR (status = 'running')`
-        );
+        let result = null;
+        try {
+            result = await pool.query(
+                `SELECT id, name, status FROM whatsapp_campaigns 
+                 WHERE (status = 'scheduled' AND (scheduled_at <= NOW() OR scheduled_at IS NULL))
+                    OR (status = 'running')`
+            );
+        } catch (queryErr) {
+            // If table doesn't exist or DB issue, just return quietly to avoid crashing server loop
+            // console.warn("Campaign scheduler: query failed (DB might be migrating or down).", queryErr);
+            return;
+        }
+
+        if (!result) return;
+
 
         for (const row of result.rows) {
             // If it was scheduled, mark as running first

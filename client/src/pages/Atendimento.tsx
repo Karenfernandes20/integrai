@@ -281,6 +281,7 @@ const AtendimentoPage = () => {
   // Delete Dialog State
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [messageToDelete, setMessageToDelete] = useState<Message | null>(null);
+  const [showNewMessageBanner, setShowNewMessageBanner] = useState(false);
 
   const ITEMS_PER_PAGE = 50;
 
@@ -631,7 +632,13 @@ const AtendimentoPage = () => {
     if (!scrollRef.current) return;
     const { scrollTop, scrollHeight, clientHeight } = scrollRef.current;
     const distanceFromBottom = scrollHeight - scrollTop - clientHeight;
-    isNearBottomRef.current = distanceFromBottom < 100;
+    // Rule 8: Check if near bottom
+    const nearBottom = distanceFromBottom < 80;
+    isNearBottomRef.current = nearBottom;
+
+    if (nearBottom) {
+      setShowNewMessageBanner(false);
+    }
   };
 
   const scrollToBottom = (behavior: 'auto' | 'smooth' = 'auto') => {
@@ -723,10 +730,13 @@ const AtendimentoPage = () => {
             return [...prev, newMessage];
           });
 
-          // Logic for scroll on new message
+          // Rule 8: Auto-scroll only if at bottom. Otherwise show indicator.
           if (isNearBottomRef.current || newMessage.direction === 'outbound') {
             isNearBottomRef.current = true;
-            // The useLayoutEffect [messages] will handle the actual scroll
+            setShowNewMessageBanner(false);
+            // The useEffect [messages] handles the actual scroll
+          } else {
+            setShowNewMessageBanner(true);
           }
         }
       }
@@ -845,9 +855,10 @@ const AtendimentoPage = () => {
 
       if (res.ok) {
         const data = await res.json();
-        // Backend now returns normalized objects { id, name, phone, profile_pic_url }
-        setImportedContacts(data);
-        setFilteredContacts(data);
+        if (Array.isArray(data)) {
+          setImportedContacts(data);
+          setFilteredContacts(data);
+        }
         // No alert needed for automatic background load unless critical error
       } else {
         const err = await res.json();
@@ -1045,16 +1056,20 @@ const AtendimentoPage = () => {
       }
       if (res.ok) {
         const data: Conversation[] = await res.json();
-        setConversations(data);
-        // Atualiza lista de contatos baseada nas conversas
-        setContacts((prev) => {
-          const map = new Map<string, Contact>();
-          prev.forEach(c => map.set(c.phone, c));
-          data.forEach(c => {
-            if (!map.has(c.phone)) map.set(c.phone, { id: c.id, name: c.contact_name || c.phone, phone: c.phone });
+        if (Array.isArray(data)) {
+          setConversations(data);
+          // Atualiza lista de contatos baseada nas conversas
+          setContacts((prev) => {
+            const map = new Map<string, Contact>();
+            prev.forEach(c => map.set(c.phone, c));
+            data.forEach(c => {
+              if (c && c.phone) {
+                if (!map.has(c.phone)) map.set(c.phone, { id: c.id, name: c.contact_name || c.phone, phone: c.phone });
+              }
+            });
+            return Array.from(map.values());
           });
-          return Array.from(map.values());
-        });
+        }
       }
     } catch (error) {
       console.error("Erro ao buscar conversas", error);
@@ -2382,243 +2397,249 @@ const AtendimentoPage = () => {
                 )}
 
                 {(() => {
-                  let currentLastDate = "";
+                  // Rule 2 & 3: Deduplication and Deterministic Ordering
                   const displayMessages = (messageSearchTerm ? messages.filter(m => m.content?.toLowerCase().includes(messageSearchTerm.toLowerCase())) : messages);
 
-                  return displayMessages.map((msg) => {
-                    const msgDateStr = msg.sent_at ? new Date(msg.sent_at).toDateString() : "";
-                    const isNewDay = msgDateStr !== currentLastDate;
-                    if (isNewDay) currentLastDate = msgDateStr;
+                  const processedMessages = (() => {
+                    const map = new Map<string, Message>();
+                    displayMessages.forEach(m => {
+                      const key = String(m.external_id || m.id);
+                      // If message already exists in map, update it (status etc)
+                      map.set(key, m);
+                    });
+
+                    return Array.from(map.values()).sort((a, b) => {
+                      const timeA = new Date(a.sent_at).getTime();
+                      const timeB = new Date(b.sent_at).getTime();
+                      if (timeA !== timeB) return timeA - timeB;
+                      return String(a.external_id || a.id).localeCompare(String(b.external_id || b.id));
+                    });
+                  })();
+
+                  // Rule 6: Rigid Grouping
+                  const groups: Message[][] = [];
+                  let currentGroup: Message[] = [];
+
+                  processedMessages.forEach((msg, idx) => {
+                    const prevMsg = processedMessages[idx - 1];
+                    const isSameSender = prevMsg && (
+                      prevMsg.direction === msg.direction &&
+                      (msg.direction === 'outbound' ? prevMsg.user_id === msg.user_id : prevMsg.sender_jid === msg.sender_jid)
+                    );
+                    const timeDiff = prevMsg ? (new Date(msg.sent_at).getTime() - new Date(prevMsg.sent_at).getTime()) / 1000 / 60 : 0;
+
+                    if (isSameSender && timeDiff <= 5) {
+                      currentGroup.push(msg);
+                    } else {
+                      currentGroup = [msg];
+                      groups.push(currentGroup);
+                    }
+                  });
+
+                  let lastDateLabel = "";
+
+                  return groups.map((group, groupIdx) => {
+                    const firstMsg = group[0];
+                    const msgDateStr = firstMsg.sent_at ? new Date(firstMsg.sent_at).toDateString() : "";
+                    const isNewDay = msgDateStr !== lastDateLabel;
+                    if (isNewDay) lastDateLabel = msgDateStr;
 
                     return (
-                      <Fragment key={msg.id}>
-                        {isNewDay && msg.sent_at && (
+                      <div key={`group-${groupIdx}`} className="flex flex-col w-full">
+                        {isNewDay && firstMsg.sent_at && (
                           <div className="flex justify-center my-4 sticky top-0 z-20">
                             <span className="bg-[#182229] px-3 py-1.5 rounded-lg text-[12.5px] text-[#8696A0] shadow-sm uppercase">
-                              {formatDateLabel(msg.sent_at)}
+                              {formatDateLabel(firstMsg.sent_at)}
                             </span>
                           </div>
                         )}
+
                         <div
                           className={cn(
-                            "flex flex-col w-full group relative mb-1",
-                            msg.direction === "outbound" ? "items-end" : "items-start"
+                            "flex flex-col w-full group/msg-group relative mb-2",
+                            firstMsg.direction === "outbound" ? "items-end" : "items-start"
                           )}
                         >
-                          {selectedConversation?.is_group && msg.direction === 'inbound' && (
+                          {/* Sender name for groups (only if inbound and first in group) */}
+                          {selectedConversation?.is_group && firstMsg.direction === 'inbound' && (
                             <span className="text-[12.5px] font-medium text-[#8696A0] px-2 mb-0.5">
-                              {msg.saved_name || msg.sender_name || msg.sender_jid?.split('@')[0] || "Participante"}
+                              {firstMsg.saved_name || firstMsg.sender_name || firstMsg.sender_jid?.split('@')[0] || "Participante"}
                             </span>
                           )}
-                          <div
-                            className={cn(
-                              "relative max-w-[65%] px-2 py-1.5 shadow-sm text-[14.2px] leading-[19px] break-words rounded-lg",
-                              msg.direction === "outbound"
-                                ? "bg-[#005C4B] text-[#E9EDEF]"
-                                : "bg-[#202C33] text-[#E9EDEF]"
-                            )}
-                          >
-                            {/* Render Message Content with Media Support */}
-                            {(() => {
-                              const type = msg.message_type || 'text';
 
-                              if (type === 'image') {
-                                return (
-                                  <div className="flex flex-col gap-1">
-                                    {msg.media_url ? (
-                                      <div className="relative rounded-lg overflow-hidden bg-black/5 min-w-[200px] min-h-[150px] cursor-pointer hover:opacity-90 transition-opacity" onClick={() => setViewingImage(getMediaUrl(msg))}>
-                                        <img src={getMediaUrl(msg)} alt="Imagem" className="w-full h-auto object-cover max-h-[300px]" loading="lazy" />
-                                      </div>
-                                    ) : (
-                                      <div className="flex items-center gap-2 bg-black/10 dark:bg-white/10 p-3 rounded-lg">
-                                        <Image className="h-5 w-5" /> <span className="italic opacity-80">Imagem indisponível</span>
-                                      </div>
-                                    )}
-                                    {msg.content && <span className="whitespace-pre-wrap pt-1">{msg.content}</span>}
-                                  </div>
-                                );
-                              }
+                          {group.map((msg, msgIdx) => {
+                            const isLastInGroup = msgIdx === group.length - 1;
+                            const type = msg.message_type || 'text';
 
-                              if (type === 'audio') {
-                                const audioSpeed = audioSpeeds[msg.id] || 1;
-                                return (
-                                  <div className="flex items-center gap-2 min-w-[250px]">
-                                    <div className="p-2 bg-zinc-200 dark:bg-zinc-700 rounded-full">
-                                      <Mic className="h-5 w-5" />
-                                    </div>
-                                    <div className="flex flex-col flex-1">
-                                      {msg.media_url ? (
-                                        <audio
-                                          controls
-                                          src={getMediaUrl(msg)}
-                                          className="w-full h-8"
-                                          ref={(el) => {
-                                            if (el) {
-                                              el.playbackRate = audioSpeed;
-                                            }
-                                          }}
-                                        />
+                            return (
+                              <div
+                                key={msg.id}
+                                className={cn(
+                                  "relative max-w-[65%] shadow-sm text-[14.2px] leading-[19px] break-words mb-[2px]",
+                                  msg.direction === "outbound"
+                                    ? "bg-[#005C4B] text-[#E9EDEF]"
+                                    : "bg-[#202C33] text-[#E9EDEF]",
+                                  // Tail logic (Simplified for now)
+                                  "rounded-lg px-2 py-1.5"
+                                )}
+                              >
+                                {/* Render Message Content */}
+                                {(() => {
+                                  if (type === 'image') {
+                                    return (
+                                      <div className="flex flex-col gap-1">
+                                        {msg.media_url ? (
+                                          <div className="relative rounded-lg overflow-hidden bg-black/5 min-w-[200px] min-h-[150px] cursor-pointer hover:opacity-90 transition-opacity" onClick={() => setViewingImage(getMediaUrl(msg))}>
+                                            <img src={getMediaUrl(msg)} alt="Imagem" className="w-full h-auto object-cover max-h-[300px]" loading="lazy" />
+                                          </div>
+                                        ) : (
+                                          <div className="flex items-center gap-2 bg-black/10 dark:bg-white/10 p-3 rounded-lg">
+                                            <Image className="h-5 w-5" /> <span className="italic opacity-80">Imagem indisponível</span>
+                                          </div>
+                                        )}
+                                        {msg.content && <span className="whitespace-pre-wrap pt-1">{msg.content}</span>}
+                                      </div>
+                                    );
+                                  }
+
+                                  if (type === 'audio') {
+                                    const audioSpeed = audioSpeeds[msg.id] || 1;
+                                    return (
+                                      <div className="flex items-center gap-2 min-w-[250px]">
+                                        <div className="p-2 bg-zinc-200 dark:bg-zinc-700 rounded-full">
+                                          <Mic className="h-5 w-5" />
+                                        </div>
+                                        <div className="flex flex-col flex-1">
+                                          {msg.media_url ? (
+                                            <audio
+                                              controls
+                                              src={getMediaUrl(msg)}
+                                              className="w-full h-8"
+                                              ref={(el) => { if (el) el.playbackRate = audioSpeed; }}
+                                            />
+                                          ) : (
+                                            <span className="italic opacity-80">Áudio indisponível</span>
+                                          )}
+                                        </div>
+                                        {msg.media_url && (
+                                          <Button
+                                            variant="ghost" size="sm" className="h-8 px-2 text-xs font-bold hover:bg-zinc-200 dark:hover:bg-zinc-700"
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              const audioEl = e.currentTarget.parentElement?.querySelector('audio') as HTMLAudioElement;
+                                              handleAudioSpeedToggle(msg.id, audioEl);
+                                            }}
+                                          >
+                                            {audioSpeed}x
+                                          </Button>
+                                        )}
+                                      </div>
+                                    );
+                                  }
+
+                                  if (type === 'video') {
+                                    return (
+                                      <div className="flex flex-col gap-1">
+                                        {msg.media_url ? (
+                                          <video controls src={getMediaUrl(msg)} className="w-full max-h-[300px] rounded-lg bg-black" />
+                                        ) : (
+                                          <div className="flex items-center gap-2 bg-black/10 dark:bg-white/10 p-3 rounded-lg">
+                                            <Video className="h-5 w-5" /> <span className="italic opacity-80">Vídeo indisponível</span>
+                                          </div>
+                                        )}
+                                        {msg.content && <span className="whitespace-pre-wrap pt-1">{msg.content}</span>}
+                                      </div>
+                                    );
+                                  }
+
+                                  if (type === 'document') {
+                                    return (
+                                      <div className="flex items-center gap-3 bg-black/5 dark:bg-white/5 p-2 rounded-lg min-w-[200px]">
+                                        <div className="p-2 bg-red-100 dark:bg-red-900/30 rounded text-red-600 dark:text-red-400">
+                                          <FileText className="h-6 w-6" />
+                                        </div>
+                                        <div className="flex flex-col gap-0.5 overflow-hidden flex-1">
+                                          <span className="truncate font-medium text-sm">{msg.content || 'Documento'}</span>
+                                          {msg.media_url && <a href={getMediaUrl(msg)} target="_blank" rel="noopener noreferrer" className="text-xs underline opacity-70 hover:opacity-100">Baixar arquivo</a>}
+                                        </div>
+                                      </div>
+                                    );
+                                  }
+
+                                  if (type === 'sticker') {
+                                    return (
+                                      <div className="flex flex-col gap-1">
+                                        {msg.media_url ? (
+                                          <div className="relative rounded-lg overflow-hidden bg-transparent min-w-[100px] max-w-[150px]">
+                                            <img src={getMediaUrl(msg)} alt="Sticker" className="w-full h-auto object-cover" loading="lazy" />
+                                          </div>
+                                        ) : (
+                                          <div className="flex items-center gap-2 bg-black/10 dark:bg-white/10 p-2 rounded-lg">
+                                            <Sticker className="h-5 w-5" /> <span className="italic opacity-80">Sticker</span>
+                                          </div>
+                                        )}
+                                      </div>
+                                    );
+                                  }
+
+                                  return (
+                                    <span className="block pr-12 pb-1 whitespace-pre-wrap break-words">
+                                      {messageSearchTerm ? (
+                                        <HighlightedText text={msg.content} highlight={messageSearchTerm} />
                                       ) : (
-                                        <span className="italic opacity-80">Áudio indisponível</span>
+                                        msg.content
                                       )}
-                                    </div>
-                                    {msg.media_url && (
-                                      <Button
-                                        variant="ghost"
-                                        size="sm"
-                                        className="h-8 px-2 text-xs font-bold hover:bg-zinc-200 dark:hover:bg-zinc-700"
-                                        onClick={(e) => {
-                                          e.stopPropagation();
-                                          const audioEl = e.currentTarget.parentElement?.querySelector('audio') as HTMLAudioElement;
-                                          handleAudioSpeedToggle(msg.id, audioEl);
-                                        }}
-                                      >
-                                        {audioSpeed}x
-                                      </Button>
-                                    )}
-                                  </div>
-                                );
-                              }
+                                    </span>
+                                  );
+                                })()}
 
-                              if (type === 'video') {
-                                return (
-                                  <div className="flex flex-col gap-1">
-                                    {msg.media_url ? (
-                                      <video controls src={getMediaUrl(msg)} className="w-full max-h-[300px] rounded-lg bg-black" />
-                                    ) : (
-                                      <div className="flex items-center gap-2 bg-black/10 dark:bg-white/10 p-3 rounded-lg">
-                                        <Video className="h-5 w-5" /> <span className="italic opacity-80">Vídeo indisponível</span>
-                                      </div>
-                                    )}
-                                    {msg.content && <span className="whitespace-pre-wrap pt-1">{msg.content}</span>}
-                                  </div>
-                                );
-                              }
+                                {/* Rule 7: Timestamp only on last message of group */}
+                                {isLastInGroup && (
+                                  <span className="absolute right-2 bottom-1 text-[11px] flex items-center gap-1 text-[#8696A0]">
+                                    {formatTime(msg.sent_at)}
+                                    {msg.direction === "outbound" && <CheckCheck className="h-4 w-4 text-[#53bdeb]" />}
+                                  </span>
+                                )}
 
-                              if (type === 'document') {
-                                return (
-                                  <div className="flex items-center gap-3 bg-black/5 dark:bg-white/5 p-2 rounded-lg min-w-[200px]">
-                                    <div className="p-2 bg-red-100 dark:bg-red-900/30 rounded text-red-600 dark:text-red-400">
-                                      <FileText className="h-6 w-6" />
-                                    </div>
-                                    <div className="flex flex-col gap-0.5 overflow-hidden flex-1">
-                                      <span className="truncate font-medium text-sm">{msg.content || 'Documento'}</span>
-                                      {msg.media_url && <a href={getMediaUrl(msg)} target="_blank" rel="noopener noreferrer" className="text-xs underline opacity-70 hover:opacity-100">Baixar arquivo</a>}
-                                    </div>
-                                  </div>
-                                );
-                              }
-
-                              if (type === 'sticker') {
-                                return (
-                                  <div className="flex flex-col gap-1">
-                                    {msg.media_url ? (
-                                      <div className="relative rounded-lg overflow-hidden bg-transparent min-w-[100px] max-w-[150px]">
-                                        <img src={getMediaUrl(msg)} alt="Sticker" className="w-full h-auto object-cover" loading="lazy" />
-                                      </div>
-                                    ) : (
-                                      <div className="flex items-center gap-2 bg-black/10 dark:bg-white/10 p-2 rounded-lg">
-                                        <Sticker className="h-5 w-5" /> <span className="italic opacity-80">Sticker</span>
-                                      </div>
-                                    )}
-                                  </div>
-                                );
-                              }
-
-                              if (type === 'location') {
-                                return (
-                                  <div className="flex items-center gap-3 bg-black/5 dark:bg-white/5 p-3 rounded-lg min-w-[200px]">
-                                    <div className="p-2 bg-orange-100 dark:bg-orange-900/30 rounded text-orange-600 dark:text-orange-400">
-                                      <MapPin className="h-6 w-6" />
-                                    </div>
-                                    <div className="flex flex-col gap-0.5 overflow-hidden flex-1">
-                                      <span className="truncate font-bold text-sm">Localização</span>
-                                      {msg.content && <span className="text-xs opacity-80 line-clamp-2">{msg.content}</span>}
-                                      {msg.media_url && (
-                                        <a href={`https://www.google.com/maps?q=${msg.media_url}`} target="_blank" rel="noopener noreferrer" className="text-xs underline text-blue-500 hover:text-blue-600 mt-1">
-                                          Ver no Maps
-                                        </a>
-                                      )}
-                                    </div>
-                                  </div>
-                                );
-                              }
-
-                              if (type === 'contact') {
-                                return (
-                                  <div className="flex items-center gap-3 bg-black/5 dark:bg-white/5 p-3 rounded-lg min-w-[200px]">
-                                    <div className="p-2 bg-blue-100 dark:bg-blue-900/30 rounded text-blue-600 dark:text-blue-400">
-                                      <ContactIcon className="h-6 w-6" />
-                                    </div>
-                                    <div className="flex flex-col gap-0.5 overflow-hidden flex-1">
-                                      <span className="truncate font-bold text-sm">Contato Compartilhado</span>
-                                      <span className="text-xs font-mono">{msg.content?.split('//')[0] || 'Ver detalhes'}</span>
-                                    </div>
-                                  </div>
-                                );
-                              }
-
-                              return (
-                                <span className="block pr-12 pb-1 whitespace-pre-wrap break-words">
-                                  {messageSearchTerm ? (
-                                    <HighlightedText text={msg.content} highlight={messageSearchTerm} />
-                                  ) : (
-                                    msg.content
+                                {/* Hover Actions */}
+                                <div className="absolute top-1 right-1 opacity-0 group-hover:opacity-100 transition-opacity flex gap-1 z-50">
+                                  <Button
+                                    variant="ghost" size="icon" className="h-6 w-6 bg-[#202C33]/90 rounded-full"
+                                    onClick={(e) => { e.stopPropagation(); handleReplyMessage(msg); }}
+                                  >
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-reply text-[#8696A0]"><polyline points="9 17 4 12 9 7" /><path d="M20 18v-2a4 4 0 0 0-4-4H4" /></svg>
+                                  </Button>
+                                  {msg.direction === 'outbound' && (
+                                    <Button
+                                      variant="ghost" size="icon" className="h-6 w-6 bg-[#202C33]/90 rounded-full"
+                                      onClick={(e) => { e.stopPropagation(); handleDeleteClick(msg); }}
+                                    >
+                                      <Trash2 className="h-3 w-3 text-red-500" />
+                                    </Button>
                                   )}
-                                </span>
-                              );
-                            })()}
-                            <span className="absolute right-2 bottom-1 text-[11px] flex items-center gap-1 text-[#8696A0]">
-                              {formatTime(msg.sent_at)}
-                              {msg.direction === "outbound" && <CheckCheck className="h-4 w-4 text-[#53bdeb]" />}
-                            </span>
-                          </div>
-
-                          {/* Actions Buttons (Hover) - WhatsApp Web Style Below Message */}
-                          <div className={cn(
-                            "flex gap-1 mt-1 opacity-0 group-hover:opacity-100 transition-opacity duration-200",
-                            msg.direction === "outbound" ? "justify-end" : "justify-start"
-                          )}>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="h-7 w-7 bg-white/90 dark:bg-zinc-800/90 hover:bg-white dark:hover:bg-zinc-700 shadow-sm border border-zinc-200 dark:border-zinc-700"
-                              onClick={(e) => { e.stopPropagation(); handleReplyMessage(msg); }}
-                              title="Responder"
-                            >
-                              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-reply text-zinc-600 dark:text-zinc-300"><polyline points="9 17 4 12 9 7" /><path d="M20 18v-2a4 4 0 0 0-4-4H4" /></svg>
-                            </Button>
-
-                            {msg.direction === 'outbound' && (
-                              <>
-                                <Button
-                                  variant="ghost"
-                                  size="icon"
-                                  className="h-7 w-7 bg-white/90 dark:bg-zinc-800/90 hover:bg-white dark:hover:bg-zinc-700 shadow-sm border border-zinc-200 dark:border-zinc-700"
-                                  onClick={(e) => { e.stopPropagation(); handleEditMessage(msg); }}
-                                  title="Editar mensagem"
-                                >
-                                  <Pencil className="h-3.5 w-3.5 text-zinc-600 dark:text-zinc-300" />
-                                </Button>
-
-                                <Button
-                                  variant="ghost"
-                                  size="icon"
-                                  className="h-7 w-7 bg-white/90 dark:bg-zinc-800/90 hover:bg-red-50 dark:hover:bg-red-900/20 shadow-sm border border-zinc-200 dark:border-zinc-700"
-                                  onClick={(e) => { e.stopPropagation(); handleDeleteClick(msg); }}
-                                  title="Apagar mensagem"
-                                >
-                                  <Trash2 className="h-3.5 w-3.5 text-red-600 dark:text-red-400" />
-                                </Button>
-                              </>
-                            )}
-                          </div>
+                                </div>
+                              </div>
+                            );
+                          })}
                         </div>
-                      </Fragment>
+                      </div>
                     );
                   });
                 })()}
                 <div ref={messagesEndRef} />
+
+                {showNewMessageBanner && (
+                  <div
+                    className="fixed bottom-[100px] left-1/2 md:left-[calc(360px+(100%-360px)/2)] -translate-x-1/2 z-50 bg-[#00a884] text-[#111B21] px-4 py-2 rounded-full shadow-2xl cursor-pointer flex items-center gap-2 animate-in fade-in slide-in-from-bottom-4 duration-300 hover:bg-[#008f70] transition-colors"
+                    onClick={() => {
+                      setShowNewMessageBanner(false);
+                      scrollToBottom('smooth');
+                    }}
+                  >
+                    <ChevronDown className="h-4 w-4" />
+                    <span className="text-xs font-bold">Nova mensagem</span>
+                  </div>
+                )}
               </div>
             </div>
 

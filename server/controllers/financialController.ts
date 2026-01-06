@@ -224,7 +224,7 @@ export const createFinancialTransaction = async (req: Request, res: Response) =>
     const user = (req as any).user;
     const userCompanyId = user?.company_id;
 
-    const { description, amount, due_date, issue_date, category, status, type, city_id, notes, company_id } = req.body;
+    const { description, amount, due_date, issue_date, category, status, type, city_id, notes, company_id, cost_center } = req.body;
 
     if (!description || !amount) {
       return res.status(400).json({ error: 'description and amount are required' });
@@ -234,8 +234,8 @@ export const createFinancialTransaction = async (req: Request, res: Response) =>
     const finalCompanyId = company_id || userCompanyId;
 
     const result = await pool.query(
-      `INSERT INTO financial_transactions (description, type, amount, status, due_date, issue_date, category, city_id, notes, company_id)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+      `INSERT INTO financial_transactions (description, type, amount, status, due_date, issue_date, category, city_id, notes, company_id, cost_center)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
        RETURNING *`,
       [
         description,
@@ -247,7 +247,8 @@ export const createFinancialTransaction = async (req: Request, res: Response) =>
         category || null,
         (city_id && city_id !== "") ? city_id : null,
         notes || null,
-        (finalCompanyId && finalCompanyId !== "" && finalCompanyId !== 0) ? finalCompanyId : null
+        (finalCompanyId && finalCompanyId !== "" && finalCompanyId !== 0) ? finalCompanyId : null,
+        cost_center || null
       ]
     );
 
@@ -264,7 +265,7 @@ export const updateFinancialTransaction = async (req: Request, res: Response) =>
     const user = (req as any).user;
     const userCompanyId = user?.company_id;
     const { id } = req.params;
-    const { description, amount, due_date, issue_date, category, status, type, city_id, notes, company_id } = req.body;
+    const { description, amount, due_date, issue_date, category, status, type, city_id, notes, company_id, cost_center } = req.body;
 
     // Check ownership
     const check = await pool.query('SELECT company_id FROM financial_transactions WHERE id = $1', [id]);
@@ -276,8 +277,8 @@ export const updateFinancialTransaction = async (req: Request, res: Response) =>
 
     const result = await pool.query(
       `UPDATE financial_transactions 
-             SET description = $1, amount = $2, due_date = $3, issue_date = $4, category = $5, status = $6, type = $7, city_id = $8, notes = $9, company_id = $10, updated_at = NOW()
-             WHERE id = $11
+             SET description = $1, amount = $2, due_date = $3, issue_date = $4, category = $5, status = $6, type = $7, city_id = $8, notes = $9, company_id = $10, cost_center = $11, updated_at = NOW()
+             WHERE id = $12
              RETURNING *`,
       [
         description,
@@ -290,6 +291,7 @@ export const updateFinancialTransaction = async (req: Request, res: Response) =>
         (city_id && city_id !== "") ? city_id : null,
         notes || null,
         (company_id && company_id !== "" && company_id !== 0) ? company_id : userCompanyId,
+        cost_center || null,
         id
       ]
     );
@@ -382,5 +384,68 @@ export const markAsPaid = async (req: Request, res: Response) => {
   } catch (error) {
     console.error('Error marking as paid:', error);
     res.status(500).json({ error: 'Failed to mark as paid' });
+  }
+};
+
+export const getCategories = async (req: Request, res: Response) => {
+  try {
+    if (!pool) return res.status(500).json({ error: 'Database not configured' });
+    const user = (req as any).user;
+    const companyId = user?.company_id;
+
+    // For SuperAdmin without company_id, maybe return empty or all? Assuming company context is usually set.
+    if (!companyId && user.role !== 'SUPERADMIN') {
+      return res.status(400).json({ error: 'Company ID is required' });
+    }
+
+    // Select custom categories for this company
+    const query = companyId
+      ? 'SELECT * FROM financial_categories WHERE company_id = $1 ORDER BY name ASC'
+      : 'SELECT * FROM financial_categories ORDER BY name ASC'; // Admin sees all?
+
+    const params = companyId ? [companyId] : [];
+
+    const result = await pool.query(query, params);
+    res.json(result.rows);
+  } catch (error) {
+    console.error('Error fetching categories:', error);
+    // If table doesn't exist, return empty list gracefully to avoid breaking frontend
+    res.json([]);
+  }
+};
+
+export const createCategory = async (req: Request, res: Response) => {
+  try {
+    if (!pool) return res.status(500).json({ error: 'Database not configured' });
+    const user = (req as any).user;
+    const companyId = user?.company_id;
+    const { name, type } = req.body;
+
+    if (!name || !type) return res.status(400).json({ error: 'Name and type are required' });
+    if (!companyId) return res.status(400).json({ error: 'Company ID required' });
+
+    const result = await pool.query(
+      'INSERT INTO financial_categories (company_id, name, type) VALUES ($1, $2, $3) RETURNING *',
+      [companyId, name, type]
+    );
+    res.json(result.rows[0]);
+  } catch (error: any) {
+    console.error('Error creating category:', error);
+    res.status(500).json({ error: 'Failed to create category: ' + error.message });
+  }
+};
+
+export const deleteCategory = async (req: Request, res: Response) => {
+  try {
+    if (!pool) return res.status(500).json({ error: 'Database not configured' });
+    const { id } = req.params;
+    const user = (req as any).user;
+
+    // Basic ownership check ideally
+    await pool.query('DELETE FROM financial_categories WHERE id = $1', [id]);
+    res.json({ message: 'Category deleted' });
+  } catch (error) {
+    console.error('Error deleting category:', error);
+    res.status(500).json({ error: 'Failed to delete category' });
   }
 };

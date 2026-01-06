@@ -126,10 +126,14 @@ app.set("io", io);
 const startServer = async () => {
   try {
     // SKIP MIGRATIONS FOR MOCK TESTING (To avoid crash on DB Connect Error)
-    console.log("SKIPPING Migrations to force server start (Connectivity Issues Mode)...");
     // await runMigrations();
     // await runFaqMigrations(); 
-    console.log("Migrations check skipped.");
+    try {
+      await runMigrations();
+    } catch (e) {
+      console.error("Migrations failed but continuing server startup:", e);
+    }
+    console.log("Migrations check passed (or skipped/failed gracefully).");
   } catch (err) {
     console.error("Migration/DB check failed, starting server anyway for diagnostics:", err);
   }

@@ -148,7 +148,7 @@ router.get('/reports/dre', authenticateToken, authorizeRole(['SUPERADMIN', 'ADMI
 router.get('/reports/breakdown', authenticateToken, authorizeRole(['SUPERADMIN', 'ADMIN']), getBreakdown);
 router.get('/reports/indicators', authenticateToken, authorizeRole(['SUPERADMIN', 'ADMIN']), getFinancialIndicators);
 
-import { getPayables, getReceivables, getReceivablesByCity, getCashFlow, getFinancialStats, createFinancialTransaction, updateFinancialTransaction, deleteFinancialTransaction, reactivateFinancialTransaction, markAsPaid } from './controllers/financialController';
+import { getPayables, getReceivables, getReceivablesByCity, getCashFlow, getFinancialStats, createFinancialTransaction, updateFinancialTransaction, deleteFinancialTransaction, reactivateFinancialTransaction, markAsPaid, getCategories, createCategory, deleteCategory } from './controllers/financialController';
 // FAQ Routes
 import { createFaqQuestion, getFaqQuestions, answerFaqQuestion, deleteFaqQuestion } from './controllers/faqController';
 
@@ -163,6 +163,10 @@ router.put('/financial/transactions/:id', authenticateToken, updateFinancialTran
 router.delete('/financial/transactions/:id', authenticateToken, deleteFinancialTransaction);
 router.put('/financial/transactions/:id/reactivate', authenticateToken, reactivateFinancialTransaction);
 router.post('/financial/transactions/:id/pay', authenticateToken, markAsPaid);
+
+router.get('/financial/categories', authenticateToken, getCategories);
+router.post('/financial/categories', authenticateToken, createCategory);
+router.delete('/financial/categories/:id', authenticateToken, deleteCategory);
 
 // FAQ
 router.get('/faq/questions', authenticateToken, getFaqQuestions);
