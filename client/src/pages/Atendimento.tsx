@@ -111,7 +111,7 @@ interface Contact {
 
 import { useSearchParams, useNavigate } from "react-router-dom";
 
-import EmojiPicker, { EmojiClickData, Theme } from "emoji-picker-react";
+import EmojiPicker, { EmojiClickData } from "emoji-picker-react";
 
 // Helper component to highlight search terms
 const HighlightedText = ({ text, highlight }: { text: string; highlight: string }) => {
@@ -141,27 +141,6 @@ const AtendimentoPage = () => {
   const { token, user, logout } = useAuth();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
-  const [chatTheme, setChatTheme] = useState<'light' | 'dark'>(() => {
-    const saved = localStorage.getItem('chat_theme');
-    return (saved as 'light' | 'dark') || 'dark';
-  });
-
-  useEffect(() => {
-    localStorage.setItem('chat_theme', chatTheme);
-  }, [chatTheme]);
-
-  const isDark = chatTheme === 'dark';
-
-  // Contact Map for efficient lookup by phone
-  const contactMap = useMemo(() => {
-    const map = new Map<string, string>();
-    contacts.forEach(c => {
-      if (!c.phone) return;
-      const raw = c.phone.replace(/\D/g, "");
-      if (raw) map.set(raw, c.name);
-    });
-    return map;
-  }, [contacts]);
 
   const [viewMode, setViewMode] = useState<'PENDING' | 'OPEN' | 'CLOSED'>('PENDING');
   const [conversations, setConversations] = useState<Conversation[]>([]);
@@ -306,6 +285,19 @@ const AtendimentoPage = () => {
   const ITEMS_PER_PAGE = 50;
 
 
+  // Helper para resolver o nome do contato baseado no banco de dados sincronizado
+  // Otimizado com useMemo para não recalcular o mapa a cada render
+  const contactMap = useMemo(() => {
+    const map = new Map<string, string>();
+    importedContacts.forEach(c => {
+      if (!c.phone) return;
+      const raw = c.phone.replace(/\D/g, "");
+      if (c.name && c.name.trim() !== "" && c.name !== c.phone) {
+        map.set(raw, c.name);
+      }
+    });
+    return map;
+  }, [importedContacts]);
 
   const normalizePhone = (p: string) => {
     if (!p) return '';
@@ -387,6 +379,30 @@ const AtendimentoPage = () => {
     }
   };
 
+  const getDisplayName = useMemo(() => (conv: Conversation | null): string => {
+    if (!conv) return "";
+
+    // For groups, prioritize group_name
+    if (conv.is_group) {
+      return conv.group_name || conv.contact_name || 'Grupo';
+    }
+
+    // Priority 1: Check contacts database (saved in "Contatos" tab)
+    const raw = conv.phone.replace(/\D/g, "");
+    const fromDB = contactMap.get(raw);
+    if (fromDB) {
+      return fromDB;
+    }
+
+    // Priority 2: Push Name from WhatsApp (name the person set on their WhatsApp)
+    const normalize = (s: string) => s ? s.replace(/\D/g, "") : "";
+    if (conv.contact_push_name && normalize(conv.contact_push_name) !== normalize(conv.phone)) {
+      return conv.contact_push_name;
+    }
+
+    // Priority 3: Phone number (formatted)
+    return conv.phone?.replace(/\D/g, "") || "";
+  }, [contactMap]);
 
   // Helper to extract real phone number from contact data
   const getContactPhone = (contact: Contact): string => {
@@ -1834,8 +1850,6 @@ const AtendimentoPage = () => {
 
   const renderConversationCard = (conv: Conversation) => {
     const isSelected = selectedConversation?.id === conv.id;
-    const isDark = chatTheme === 'dark';
-
     return (
       <div
         key={conv.id}
@@ -1844,20 +1858,14 @@ const AtendimentoPage = () => {
           setConversations(prev => prev.map(c => c.id === conv.id ? { ...c, unread_count: 0 } : c));
         }}
         className={cn(
-          "flex items-center h-[72px] px-4 py-3 cursor-pointer transition-colors border-b",
-          isDark ? "border-[#222E35]" : "border-[#E9EDEF]",
-          isSelected
-            ? (isDark ? "bg-[#2A3942]" : "bg-[#F0F2F5]")
-            : (isDark ? "bg-[#111B21] hover:bg-[#202C33]" : "bg-[#FFFFFF] hover:bg-[#F5F6F6]")
+          "flex items-center h-[72px] px-4 py-3 cursor-pointer transition-colors border-b border-[#222E35]",
+          isSelected ? "bg-[#2A3942]" : "bg-[#111B21] hover:bg-[#202C33]"
         )}
       >
         <div className="relative shrink-0 mr-3">
           <Avatar className="h-12 w-12 rounded-full border-none">
             <AvatarImage src={conv.profile_pic_url || `https://api.dicebear.com/7.x/initials/svg?seed=${getDisplayName(conv)}`} />
-            <AvatarFallback className={cn(
-              "text-white font-bold",
-              isDark ? "bg-[#6a7175]" : "bg-[#DFE5E7]"
-            )}>
+            <AvatarFallback className="bg-[#6a7175] text-white font-bold">
               {(getDisplayName(conv)?.[0] || "?").toUpperCase()}
             </AvatarFallback>
           </Avatar>
@@ -1865,17 +1873,12 @@ const AtendimentoPage = () => {
 
         <div className="flex-1 min-w-0 h-full flex flex-col justify-center">
           <div className="flex justify-between items-center mb-1">
-            <span className={cn(
-              "text-[16px] font-medium leading-5 truncate",
-              isDark ? "text-[#E9EDEF]" : "text-[#111B21]"
-            )}>
+            <span className="text-[16px] font-medium leading-5 text-[#E9EDEF] truncate">
               {getDisplayName(conv)}
             </span>
             <span className={cn(
               "text-[12px] whitespace-nowrap ml-2",
-              conv.unread_count && conv.unread_count > 0
-                ? "text-[#25D366] font-medium"
-                : (isDark ? "text-[#8696A0]" : "text-[#667781]")
+              conv.unread_count && conv.unread_count > 0 ? "text-[#25D366] font-medium" : "text-[#8696A0]"
             )}>
               {conv.last_message_at ? formatListDate(conv.last_message_at) : ""}
             </span>
@@ -1886,20 +1889,14 @@ const AtendimentoPage = () => {
               {isSelected && conv.status === 'OPEN' && conv.user_id && (
                 <div className="shrink-0 h-1.5 w-1.5 rounded-full bg-[#25D366]" title="Em atendimento"></div>
               )}
-              <p className={cn(
-                "text-[14px] leading-[18px] truncate max-w-full",
-                isDark ? "text-[#8696A0]" : "text-[#667781]"
-              )}>
+              <p className="text-[14px] leading-[18px] text-[#8696A0] truncate max-w-full">
                 {conv.last_message || <span className="italic opacity-60 italic">Iniciar conversa...</span>}
               </p>
             </div>
 
             {conv.unread_count && conv.unread_count > 0 ? (
               <div className="shrink-0 w-5 h-5 flex items-center justify-center rounded-full bg-[#25D366] ml-2">
-                <span className={cn(
-                  "text-[12px] font-bold",
-                  isDark ? "text-[#111B21]" : "text-white"
-                )}>
+                <span className="text-[12px] font-bold text-[#111B21]">
                   {conv.unread_count}
                 </span>
               </div>
@@ -1910,16 +1907,11 @@ const AtendimentoPage = () => {
     );
   };
 
-
   return (
-    <div className={cn(
-      "flex h-screen w-full overflow-hidden transition-colors",
-      isDark ? "bg-[#111B21]" : "bg-[#F0F2F5]"
-    )} onClick={() => setShowEmojiPicker(false)}>
+    <div className="flex h-screen w-full overflow-hidden bg-[#111B21]" onClick={() => setShowEmojiPicker(false)}>
       {/* Sidebar - Lista de Conversas / Contatos */}
       <div className={cn(
-        "flex flex-col border-r shrink-0 z-20 transition-all",
-        isDark ? "bg-[#111B21] border-[#222E35]" : "bg-[#FFFFFF] border-[#E9EDEF]",
+        "flex flex-col bg-[#111B21] border-r border-[#222E35] shrink-0 z-20 transition-all",
         "w-full md:w-[360px]",
         selectedConversation ? "hidden md:flex" : "flex"
       )}>
@@ -1929,27 +1921,21 @@ const AtendimentoPage = () => {
           className="flex flex-1 flex-col min-h-0"
         >
           {/* Header da Sidebar - WhatsApp Style */}
-          <div className={cn(
-            "h-[64px] flex items-center justify-between px-4 shrink-0",
-            isDark ? "bg-[#202C33]" : "bg-[#F0F2F5]"
-          )}>
+          <div className="h-[64px] bg-[#202C33] flex items-center justify-between px-4 shrink-0">
             <div className="flex items-center gap-2">
               <Avatar className="h-10 w-10">
-                <AvatarFallback className={cn(
-                  "text-white",
-                  isDark ? "bg-[#6a7175]" : "bg-[#DFE5E7]"
-                )}>EU</AvatarFallback>
+                <AvatarFallback className="bg-[#6a7175] text-white">EU</AvatarFallback>
               </Avatar>
             </div>
 
             <div className="flex items-center gap-2">
-              <Button size="icon" variant="ghost" className={cn("rounded-full", isDark ? "text-[#aebac1] hover:bg-white/10" : "text-[#54656F] hover:bg-black/5")} onClick={syncAllPhotos} title="Sincronizar fotos">
+              <Button size="icon" variant="ghost" className="text-[#aebac1] hover:bg-white/10 rounded-full" onClick={syncAllPhotos} title="Sincronizar fotos">
                 <Image className="h-5 w-5" />
               </Button>
               <Button
                 size="icon"
                 variant="ghost"
-                className={cn("rounded-full", isDark ? "text-[#aebac1] hover:bg-white/10" : "text-[#54656F] hover:bg-black/5")}
+                className="text-[#aebac1] hover:bg-white/10 rounded-full"
                 onClick={() => {
                   const newMuted = !isNotificationMuted;
                   setIsNotificationMuted(newMuted);
@@ -1960,18 +1946,12 @@ const AtendimentoPage = () => {
               </Button>
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <Button variant="ghost" size="icon" className={cn("rounded-full", isDark ? "text-[#aebac1] hover:bg-white/10" : "text-[#54656F] hover:bg-black/5")}>
+                  <Button variant="ghost" size="icon" className="text-[#aebac1] hover:bg-white/10 rounded-full">
                     <MoreVertical className="h-5 w-5" />
                   </Button>
                 </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className={cn(
-                  "border-none",
-                  isDark ? "bg-[#233138] text-[#E9EDEF]" : "bg-white text-zinc-900 shadow-lg border"
-                )}>
+                <DropdownMenuContent align="end" className="bg-[#233138] border-none text-[#E9EDEF]">
                   <DropdownMenuItem onClick={() => playNotificationSound(false)}>Testar som 🔔</DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => setChatTheme(isDark ? 'light' : 'dark')} className="gap-2">
-                    {isDark ? "Modo Claro ☀️" : "Modo Escuro 🌙"}
-                  </DropdownMenuItem>
                   {user?.role === 'SUPERADMIN' && (
                     <DropdownMenuItem onClick={() => setSelectedCompanyFilter(null)}>Todas Empresas</DropdownMenuItem>
                   )}
@@ -1981,21 +1961,15 @@ const AtendimentoPage = () => {
           </div>
 
           {/* Search/Filter Container */}
-          <div className={cn(
-            "p-2 border-b",
-            isDark ? "border-[#222E35]" : "border-[#E9EDEF]"
-          )}>
+          <div className="p-2 border-b border-[#222E35]">
             <div className="relative group">
               <div className="absolute left-3 top-[7px] z-10">
-                <Search className={cn("h-4 w-4", isDark ? "text-[#8696A0]" : "text-[#667781]")} />
+                <Search className="h-4 w-4 text-[#8696A0]" />
               </div>
               <Input
                 ref={sidebarSearchInputRef}
                 placeholder="Pesquisar ou começar uma nova conversa"
-                className={cn(
-                  "pl-12 h-9 border-none rounded-lg text-sm focus-visible:ring-0",
-                  isDark ? "bg-[#202C33] text-[#E9EDEF] placeholder-[#8696A0]" : "bg-[#F0F2F5] text-[#111B21] placeholder-[#667781]"
-                )}
+                className="pl-12 h-9 bg-[#202C33] border-none rounded-lg text-sm text-[#E9EDEF] placeholder-[#8696A0] focus-visible:ring-0"
                 value={conversationSearchTerm}
                 onChange={(e) => setConversationSearchTerm(e.target.value)}
               />
@@ -2007,9 +1981,7 @@ const AtendimentoPage = () => {
                 onClick={() => setViewMode('PENDING')}
                 className={cn(
                   "text-[12px] px-3 py-1 rounded-full transition-all",
-                  viewMode === 'PENDING'
-                    ? "bg-[#00a884] text-white font-medium"
-                    : (isDark ? "bg-[#202C33] text-[#8696A0] hover:bg-[#2A3942]" : "bg-[#F0F2F5] text-[#667781] hover:bg-[#E9EDEF]")
+                  viewMode === 'PENDING' ? "bg-[#00a884] text-[#111B21] font-medium" : "bg-[#202C33] text-[#8696A0] hover:bg-[#2A3942]"
                 )}
               >
                 Pendentes
@@ -2018,9 +1990,7 @@ const AtendimentoPage = () => {
                 onClick={() => setViewMode('OPEN')}
                 className={cn(
                   "text-[12px] px-3 py-1 rounded-full transition-all",
-                  viewMode === 'OPEN'
-                    ? "bg-[#00a884] text-white font-medium"
-                    : (isDark ? "bg-[#202C33] text-[#8696A0] hover:bg-[#2A3942]" : "bg-[#F0F2F5] text-[#667781] hover:bg-[#E9EDEF]")
+                  viewMode === 'OPEN' ? "bg-[#00a884] text-[#111B21] font-medium" : "bg-[#202C33] text-[#8696A0] hover:bg-[#2A3942]"
                 )}
               >
                 Abertos
@@ -2029,9 +1999,7 @@ const AtendimentoPage = () => {
                 onClick={() => setViewMode('CLOSED')}
                 className={cn(
                   "text-[12px] px-3 py-1 rounded-full transition-all",
-                  viewMode === 'CLOSED'
-                    ? "bg-[#00a884] text-white font-medium"
-                    : (isDark ? "bg-[#202C33] text-[#8696A0] hover:bg-[#2A3942]" : "bg-[#F0F2F5] text-[#667781] hover:bg-[#E9EDEF]")
+                  viewMode === 'CLOSED' ? "bg-[#00a884] text-[#111B21] font-medium" : "bg-[#202C33] text-[#8696A0] hover:bg-[#2A3942]"
                 )}
               >
                 Fechados
@@ -2050,13 +2018,10 @@ const AtendimentoPage = () => {
                         <span className="text-xs text-muted-foreground animate-pulse">Pesquisando no histórico...</span>
                       </div>
                     ) : (
-                      <div className="flex-1 overflow-y-auto flex flex-col custom-scrollbar pb-10">
+                      <>
                         {globalSearchResults.conversations.length > 0 && (
                           <div className="flex flex-col">
-                            <div className={cn(
-                              "px-4 py-2 text-[11px] font-bold text-[#00a884] uppercase tracking-wider sticky top-0 z-10 border-b",
-                              isDark ? "bg-[#111B21] border-[#222E35]" : "bg-[#F0F2F5] border-[#E9EDEF]"
-                            )}>
+                            <div className="px-4 py-2 bg-zinc-50 dark:bg-zinc-900/50 text-[11px] font-bold text-[#008069] uppercase tracking-wider sticky top-0 z-10 border-b border-zinc-100 dark:border-zinc-800">
                               Conversas
                             </div>
                             <div className="flex flex-col">
@@ -2066,17 +2031,11 @@ const AtendimentoPage = () => {
                         )}
 
                         <div className="flex flex-col mt-2">
-                          <div className={cn(
-                            "px-4 py-2 text-[11px] font-bold text-[#00a884] uppercase tracking-wider sticky top-0 z-10 border-b",
-                            isDark ? "bg-[#111B21] border-[#222E35]" : "bg-[#F0F2F5] border-[#E9EDEF]"
-                          )}>
+                          <div className="px-4 py-2 bg-zinc-50 dark:bg-zinc-900/50 text-[11px] font-bold text-[#008069] uppercase tracking-wider sticky top-0 z-10 border-b border-zinc-100 dark:border-zinc-800">
                             Mensagens
                           </div>
                           {globalSearchResults.messages.length > 0 ? (
-                            <div className={cn(
-                              "flex flex-col divide-y",
-                              isDark ? "divide-[#222E35]" : "divide-[#F5F6F6]"
-                            )}>
+                            <div className="flex flex-col divide-y divide-zinc-50 dark:divide-zinc-900/30">
                               {globalSearchResults.messages.map(msg => (
                                 <div
                                   key={msg.id}
@@ -2092,41 +2051,26 @@ const AtendimentoPage = () => {
                                     setSelectedConversation(conv);
                                     setConversationSearchTerm("");
                                   }}
-                                  className={cn(
-                                    "px-4 py-3 cursor-pointer flex gap-3 transition-colors group",
-                                    isDark ? "hover:bg-[#202C33]" : "hover:bg-[#F5F6F6]"
-                                  )}
+                                  className="px-4 py-3 hover:bg-zinc-50 dark:hover:bg-zinc-900 cursor-pointer flex gap-3 transition-colors group"
                                 >
                                   <Avatar className="h-10 w-10 shrink-0">
                                     <AvatarImage src={msg.profile_pic_url} />
-                                    <AvatarFallback className={cn(
-                                      "text-white text-[10px]",
-                                      isDark ? "bg-[#6a7175]" : "bg-[#DFE5E7]"
-                                    )}>
+                                    <AvatarFallback className="bg-zinc-100 dark:bg-zinc-800 text-[10px]">
                                       {((msg.contact_name || msg.group_name || "?")[0]).toUpperCase()}
                                     </AvatarFallback>
                                   </Avatar>
-                                  <div className="flex-1 min-w-0">
-                                    <div className="flex justify-between items-center w-full mb-0.5">
-                                      <span className={cn(
-                                        "font-medium text-sm truncate flex-1 pr-2",
-                                        isDark ? "text-[#E9EDEF]" : "text-[#111B21]"
-                                      )}>
+                                  <div className="flex flex-col gap-0.5 min-w-0 flex-1">
+                                    <div className="flex justify-between items-center w-full">
+                                      <span className="font-semibold text-sm text-zinc-900 dark:text-zinc-100 truncate flex-1 pr-2">
                                         {msg.contact_name || msg.group_name || msg.chat_phone}
                                       </span>
-                                      <span className={cn(
-                                        "text-[11px] shrink-0",
-                                        isDark ? "text-[#8696A0]" : "text-[#667781]"
-                                      )}>{formatListDate(msg.sent_at)}</span>
+                                      <span className="text-[10px] text-[#008069] font-bold shrink-0">{formatListDate(msg.sent_at)}</span>
                                     </div>
-                                    <p className={cn(
-                                      "text-xs line-clamp-2 leading-relaxed h-[34px]",
-                                      isDark ? "text-[#8696A0]" : "text-[#667781]"
-                                    )}>
+                                    <p className="text-xs text-muted-foreground line-clamp-2 leading-relaxed">
                                       <HighlightedText text={msg.content} highlight={conversationSearchTerm} />
                                     </p>
                                     {(msg.is_group || msg.group_name) && (
-                                      <span className="text-[9px] text-[#00a884] font-medium uppercase mt-1">Grupo</span>
+                                      <span className="text-[9px] text-[#008069] font-medium uppercase tracking-tighter mt-0.5">Grupo</span>
                                     )}
                                   </div>
                                 </div>
@@ -2139,7 +2083,7 @@ const AtendimentoPage = () => {
                             </div>
                           )}
                         </div>
-                      </div>
+                      </>
                     )}
                   </div>
                 ) : (
@@ -2190,20 +2134,11 @@ const AtendimentoPage = () => {
 
           {/* Aba NOVA CONVERSA / CONTATOS - Manually rendered to avoid Radix ID issues */}
           {activeTab === 'contatos' && (
-            <div className={cn(
-              "flex-1 flex flex-col min-h-0 m-0 animate-in slide-in-from-left-20 duration-200",
-              isDark ? "bg-[#111B21]" : "bg-[#FFFFFF]"
-            )}>
+            <div className="flex-1 flex flex-col min-h-0 m-0 bg-[#111B21] animate-in slide-in-from-left-20 duration-200">
               {/* Header de Nova Conversa (Estilo WhatsApp) */}
-              <div className={cn(
-                "h-[108px] flex flex-col px-4 gap-4 shrink-0 justify-end pb-3",
-                isDark ? "bg-[#202C33] text-[#E9EDEF]" : "bg-[#008069] text-white"
-              )}>
+              <div className="h-[108px] bg-[#202C33] flex flex-col px-4 gap-4 text-[#E9EDEF] shrink-0 justify-end pb-3">
                 <div className="flex items-center gap-4">
-                  <button onClick={() => setActiveTab("conversas")} className={cn(
-                    "rounded-full p-2 -ml-2",
-                    isDark ? "hover:bg-white/10 text-[#aebac1]" : "hover:bg-black/10 text-white"
-                  )}>
+                  <button onClick={() => setActiveTab("conversas")} className="hover:bg-white/10 rounded-full p-2 -ml-2 text-[#aebac1]">
                     <ChevronLeft className="h-6 w-6" />
                   </button>
                   <div className="font-medium text-[19px]">Nova conversa</div>
@@ -2211,20 +2146,12 @@ const AtendimentoPage = () => {
               </div>
 
               {/* Search Bar */}
-              <div className={cn(
-                "p-3 border-b z-10",
-                isDark ? "bg-[#111B21] border-[#222E35]" : "bg-[#FFFFFF] border-[#E9EDEF]"
-              )}>
+              <div className="p-3 bg-[#111B21] border-b border-[#222E35] z-10">
                 <div className="relative">
-                  <Search className={cn("absolute left-3 top-2.5 h-4 w-4", isDark ? "text-[#8696A0]" : "text-[#667781]")} />
+                  <Search className="absolute left-3 top-2.5 h-4 w-4 text-[#8696A0]" />
                   <Input
                     placeholder="Pesquisar nome ou número"
-                    className={cn(
-                      "pl-12 border-none rounded-lg h-9 text-sm focus-visible:ring-0",
-                      isDark
-                        ? "bg-[#202C33] text-[#E9EDEF] placeholder-[#8696A0]"
-                        : "bg-[#F0F2F5] text-[#111B21] placeholder-[#667781]"
-                    )}
+                    className="pl-12 bg-[#202C33] border-none rounded-lg h-9 text-sm text-[#E9EDEF] placeholder-[#8696A0] focus-visible:ring-0"
                     value={contactSearchTerm}
                     onChange={(e) => setContactSearchTerm(e.target.value)}
                   />
@@ -2242,31 +2169,26 @@ const AtendimentoPage = () => {
                 )}
 
                 {!isLoadingContacts && filteredContacts.length === 0 && !contactSearchTerm && (
-                  <div className={cn(
-                    "text-center text-sm mt-8 px-4",
-                    isDark ? "text-[#8696A0]" : "text-[#667781]"
-                  )}>
+                  <div className="text-center text-gray-400 text-sm mt-8 px-4">
                     Nenhum contato encontrado no WhatsApp.<br />Verifique se o celular está conectado.
                   </div>
                 )}
 
+                {/* Remove Sync Button - Automatic Load on Tab Change implemented via useEffect below */}
+
                 {/* Botão Novo Contato Manual */}
-                <div className={cn(
-                  "flex items-center gap-4 p-4 cursor-pointer transition-colors",
-                  isDark ? "hover:bg-[#202C33]" : "hover:bg-[#F5F6F6]"
-                )} onClick={() => { }}>
-                  <div className="w-10 h-10 rounded-full bg-[#00a884] flex items-center justify-center text-white shrink-0">
+                <div className="flex items-center gap-4 p-4 hover:bg-gray-100 dark:hover:bg-zinc-900 cursor-pointer transition-colors" onClick={() => {
+                  // Just focus input
+                }}>
+                  <div className="w-10 h-10 rounded-full bg-[#008069] flex items-center justify-center text-white shrink-0">
                     <UserPlus className="h-5 w-5" />
                   </div>
                   <div className="flex flex-col text-left">
-                    <span className={cn(
-                      "text-base font-normal",
-                      isDark ? "text-[#E9EDEF]" : "text-[#111B21]"
-                    )}>Novo contato</span>
+                    <span className="text-base font-normal text-gray-900 dark:text-gray-100">Novo contato</span>
                   </div>
                 </div>
 
-                <div className="px-4 py-3 text-[#00a884] font-medium text-sm">
+                <div className="px-4 py-3 text-[#008069] font-medium text-sm">
                   CONTATOS DO WHATSAPP ({filteredContacts.length})
                 </div>
 
@@ -2275,34 +2197,20 @@ const AtendimentoPage = () => {
                   .map((contact, idx) => (
                     <div
                       key={contact.phone || contact.id}
-                      className={cn(
-                        "flex items-center p-3 border-b transition-colors gap-3 group",
-                        isDark
-                          ? "border-[#222E35] hover:bg-[#202C33]"
-                          : "border-[#F5F6F6] hover:bg-[#F5F6F6]"
-                      )}
+                      className="flex items-center p-3 border-b border-gray-100 dark:border-zinc-800 hover:bg-zinc-50 dark:hover:bg-zinc-900 transition-colors gap-3 group"
                     >
                       <Avatar className="h-10 w-10 shrink-0">
                         <AvatarImage src={contact.profile_pic_url} />
-                        <AvatarFallback className={cn(
-                          "text-white font-bold",
-                          isDark ? "bg-[#6a7175]" : "bg-[#DFE5E7]"
-                        )}>
+                        <AvatarFallback className="bg-gray-200 text-gray-500">
                           {((contact.push_name || contact.name)?.[0] || "?").toUpperCase()}
                         </AvatarFallback>
                       </Avatar>
 
                       <div className="flex-1 min-w-0">
-                        <div className={cn(
-                          "font-medium text-[15px] whitespace-nowrap overflow-hidden text-ellipsis",
-                          isDark ? "text-[#E9EDEF]" : "text-[#111B21]"
-                        )} title={contact.push_name || contact.name || "Sem nome"}>
+                        <div className="font-medium text-[15px] text-zinc-900 dark:text-zinc-100 whitespace-nowrap overflow-hidden text-ellipsis" title={contact.push_name || contact.name || "Sem nome"}>
                           {contact.push_name || contact.name || "Sem nome"}
                         </div>
-                        <div className={cn(
-                          "text-[13px] font-normal whitespace-nowrap",
-                          isDark ? "text-[#8696A0]" : "text-[#667781]"
-                        )}>
+                        <div className="text-[13px] text-zinc-500 font-normal whitespace-nowrap">
                           {getContactPhone(contact)}
                         </div>
                       </div>
@@ -2310,7 +2218,7 @@ const AtendimentoPage = () => {
                       <Button
                         size="icon"
                         variant="ghost"
-                        className="h-10 w-10 text-[#00a884] opacity-0 group-hover:opacity-100 transition-opacity rounded-full hover:bg-[#00a884]/10"
+                        className="h-10 w-10 text-[#008069] opacity-0 group-hover:opacity-100 transition-opacity rounded-full hover:bg-[#008069]/10"
                         onClick={() => handleStartConversationFromContact(contact)}
                         title="Iniciar conversa"
                       >
@@ -2350,103 +2258,61 @@ const AtendimentoPage = () => {
 
       {/* Area do Chat */}
       <div className={cn(
-        "flex-1 flex flex-col transition-all relative overflow-hidden",
-        isDark ? "bg-[#0B141A]" : "bg-[#EFEAE2]",
+        "flex-1 flex-col relative min-h-0 h-full min-w-0 bg-[#efeae2] dark:bg-[#0b141a] overflow-hidden",
+        "flex-1 flex flex-col bg-[#0B141A] transition-all relative overflow-hidden",
         !selectedConversation ? "hidden md:flex" : "flex"
       )}>
         {!selectedConversation ? (
-          <div className={cn(
-            "flex-1 flex flex-col items-center justify-center text-center p-8",
-            isDark ? "bg-[#222E35]/20" : "bg-[#F0F2F5]"
-          )}>
-            <div className={cn(
-              "w-64 h-64 rounded-full flex items-center justify-center mb-8",
-              isDark ? "bg-zinc-800/20" : "bg-[#DFE5E7] opacity-60"
-            )}>
-              <MessageCircle className={cn(
-                "h-32 w-32",
-                isDark ? "text-[#8696A0] opacity-20" : "text-[#DFE5E7]"
-              )} />
+          <div className="flex-1 flex flex-col items-center justify-center bg-[#222E35]/20 text-center p-8">
+            <div className="w-64 h-64 bg-zinc-800/20 rounded-full flex items-center justify-center mb-8">
+              <MessageCircle className="h-32 w-32 text-[#8696A0] opacity-20" />
             </div>
-            <h2 className={cn(
-              "text-2xl font-light mb-2",
-              isDark ? "text-[#E9EDEF]" : "text-[#41525D]"
-            )}>WhatsApp Web</h2>
-            <p className={cn(
-              "text-sm max-w-sm leading-relaxed",
-              isDark ? "text-[#8696A0]" : "text-[#667781]"
-            )}>
+            <h2 className="text-2xl font-light text-[#E9EDEF] mb-2">WhatsApp Web</h2>
+            <p className="text-[#8696A0] text-sm max-w-sm leading-relaxed">
               Envie e receba mensagens sem precisar manter seu celular conectado.<br />
               Use o WhatsApp em até 4 dispositivos vinculados e 1 celular simultaneamente.
             </p>
-            <div className={cn(
-              "mt-auto pt-10 text-[12px] flex items-center gap-1 opacity-50",
-              isDark ? "text-[#8696A0]" : "text-[#667781]"
-            )}>
+            <div className="mt-auto pt-10 text-[#8696A0] text-[12px] flex items-center gap-1 opacity-50">
               <span className="text-[14px]">🔒</span> Criptografia de ponta a ponta
             </div>
           </div>
         ) : (
           <>
             {/* Header do Chat - WhatsApp Web Original Style */}
-            <div className={cn(
-              "h-[64px] border-b flex items-center justify-between px-4 shrink-0 z-30",
-              isDark ? "bg-[#202C33] border-[#222E35]" : "bg-[#F0F2F5] border-[#E9EDEF]"
-            )}>
+            <div className="h-[64px] bg-[#202C33] border-b border-[#222E35] flex items-center justify-between px-4 shrink-0 z-30">
               <div className="flex items-center gap-3 overflow-hidden">
                 <Button
                   variant="ghost"
                   size="icon"
-                  className={cn(
-                    "md:hidden -ml-2",
-                    isDark ? "text-[#aebac1] hover:bg-white/10" : "text-[#54656F] hover:bg-black/5"
-                  )}
+                  className="md:hidden -ml-2 text-[#aebac1]"
                   onClick={() => setSelectedConversation(null)}
                 >
                   <ChevronLeft className="h-6 w-6" />
                 </Button>
                 <Avatar className="h-10 w-10 cursor-pointer">
                   <AvatarImage src={selectedConversation.profile_pic_url || `https://api.dicebear.com/7.x/initials/svg?seed=${getDisplayName(selectedConversation)}`} />
-                  <AvatarFallback className={cn(
-                    "font-bold text-white",
-                    isDark ? "bg-[#6a7175]" : "bg-[#DFE5E7]"
-                  )}>{(getDisplayName(selectedConversation)?.[0] || "?").toUpperCase()}</AvatarFallback>
+                  <AvatarFallback className="bg-[#6a7175] text-white">{(getDisplayName(selectedConversation)?.[0] || "?").toUpperCase()}</AvatarFallback>
                 </Avatar>
                 <div className="flex flex-col cursor-pointer min-w-0" onClick={() => {
                   if (selectedConversation.is_group) handleRefreshMetadata();
                 }}>
-                  <span className={cn(
-                    "text-[16px] font-medium truncate leading-tight flex items-center gap-2",
-                    isDark ? "text-[#E9EDEF]" : "text-[#111B21]"
-                  )}>
+                  <span className="text-[16px] font-medium text-[#E9EDEF] truncate leading-tight flex items-center gap-2">
                     {getDisplayName(selectedConversation)}
                     {selectedConversation.is_group && (
-                      <span className={cn(
-                        "text-[10px] px-1 rounded uppercase border",
-                        isDark ? "bg-[#202C33] text-[#8696A0] border-[#222E35]" : "bg-[#F0F2F5] text-[#667781] border-[#E9EDEF]"
-                      )}>Grupo</span>
+                      <span className="text-[10px] bg-[#202C33] text-[#8696A0] border border-[#222E35] px-1 rounded uppercase">Grupo</span>
                     )}
                   </span>
-                  <span className={cn(
-                    "text-[13px] truncate leading-tight",
-                    isDark ? "text-[#8696A0]" : "text-[#667781]"
-                  )}>
+                  <span className="text-[13px] text-[#8696A0] truncate leading-tight">
                     {selectedConversation.status === 'OPEN' && selectedConversation.user_id ? "em atendimento" : "visto por último hoje às 15:42"}
                   </span>
                 </div>
               </div>
 
-              <div className={cn(
-                "flex items-center gap-4",
-                isDark ? "text-[#aebac1]" : "text-[#54656F]"
-              )}>
+              <div className="flex items-center gap-4 text-[#aebac1]">
                 <Button
                   variant="ghost"
                   size="icon"
-                  className={cn(
-                    "h-10 w-10 rounded-full",
-                    isDark ? "text-[#aebac1] hover:bg-white/10" : "text-[#54656F] hover:bg-black/5"
-                  )}
+                  className="h-10 w-10 text-[#aebac1] hover:bg-white/10 rounded-full"
                   onClick={() => setIsMessageSearchOpen(!isMessageSearchOpen)}
                   title="Pesquisar mensagens"
                 >
@@ -2455,17 +2321,11 @@ const AtendimentoPage = () => {
 
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
-                    <Button variant="ghost" size="icon" className={cn(
-                      "h-10 w-10 rounded-full",
-                      isDark ? "text-[#aebac1] hover:bg-white/10" : "text-[#54656F] hover:bg-black/5"
-                    )}>
+                    <Button variant="ghost" size="icon" className="h-10 w-10 text-[#aebac1] hover:bg-white/10 rounded-full">
                       <MoreVertical className="h-5 w-5" />
                     </Button>
                   </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end" className={cn(
-                    "border-none w-48",
-                    isDark ? "bg-[#233138] text-[#E9EDEF]" : "bg-white text-zinc-900 shadow-lg border"
-                  )}>
+                  <DropdownMenuContent align="end" className="bg-[#233138] border-none text-[#E9EDEF] w-48">
                     <DropdownMenuItem
                       onClick={() => {
                         setFollowUpInitialData({
@@ -2498,40 +2358,24 @@ const AtendimentoPage = () => {
               <div
                 ref={scrollRef}
                 onScroll={handleScroll}
-                className={cn(
-                  "flex-1 overflow-y-auto p-4 flex flex-col gap-1 relative z-10 scrollbar-thin",
-                  isDark ? "scrollbar-thumb-zinc-800" : "scrollbar-thumb-zinc-300",
-                  messages.length === 0 && "items-center justify-center"
-                )}
+                className={cn("flex-1 overflow-y-auto p-4 flex flex-col gap-1 relative z-10 scrollbar-thin scrollbar-thumb-zinc-300 dark:scrollbar-thumb-zinc-800", messages.length === 0 && "items-center justify-center")}
               >
                 {/* MESSAGE SEARCH HIGHLIGHTING/FILTERING */}
                 {messageSearchTerm && (
-                  <div className={cn(
-                    "sticky top-0 z-20 backdrop-blur-sm p-2 mb-2 rounded-lg border shadow-sm text-center",
-                    isDark ? "bg-[#202C33]/90 border-[#008069]/20 text-[#E9EDEF]" : "bg-white/90 border-[#E9EDEF] text-[#111B21]"
-                  )}>
-                    <p className="text-xs font-medium">
+                  <div className="sticky top-0 z-20 bg-zinc-100/90 dark:bg-zinc-800/90 backdrop-blur-sm p-2 mb-2 rounded-lg border border-[#008069]/20 shadow-sm text-center">
+                    <p className="text-xs text-zinc-600 dark:text-zinc-300 font-medium">
                       Mostrando resultados para: <span className="text-[#008069] font-bold">"{messageSearchTerm}"</span>
                     </p>
                   </div>
                 )}
                 {messages.length === 0 && (
                   <div className="flex flex-col items-center justify-center p-8 text-center animate-in fade-in duration-700">
-                    <div className={cn(
-                      "w-24 h-24 rounded-full flex items-center justify-center mb-4 shadow-sm",
-                      isDark ? "bg-zinc-800" : "bg-white"
-                    )}>
+                    <div className="w-24 h-24 bg-zinc-100 dark:bg-zinc-800 rounded-full flex items-center justify-center mb-4 shadow-sm">
                       <MessageSquare className="h-10 w-10 text-zinc-400" />
                     </div>
-                    <h3 className={cn(
-                      "text-lg font-semibold mb-1",
-                      isDark ? "text-zinc-400" : "text-zinc-600"
-                    )}>Nenhuma mensagem encontrada</h3>
+                    <h3 className="text-lg font-semibold text-zinc-600 dark:text-zinc-400 mb-1">Nenhuma mensagem encontrada</h3>
                     <p className="text-xs text-muted-foreground max-w-[250px] mb-6">Esta conversa ainda não possui mensagens no banco de dados.</p>
-                    <span className={cn(
-                      "text-[10px] px-3 py-1.5 rounded shadow-sm text-center max-w-[90%] flex items-center gap-2",
-                      isDark ? "bg-[#1f2c34] text-[#ffd279]" : "bg-[#ffeecd] text-zinc-800"
-                    )}>
+                    <span className="bg-[#ffeecd] dark:bg-[#1f2c34] text-zinc-800 dark:text-[#ffd279] text-[10px] px-3 py-1.5 rounded shadow-sm text-center max-w-[90%] flex items-center gap-2">
                       <ShieldAlert className="h-3 w-3" /> As mensagens são protegidas com criptografia de ponta a ponta.
                     </span>
                   </div>
@@ -2550,10 +2394,7 @@ const AtendimentoPage = () => {
                       <Fragment key={msg.id}>
                         {isNewDay && msg.sent_at && (
                           <div className="flex justify-center my-4 sticky top-0 z-20">
-                            <span className={cn(
-                              "px-3 py-1.5 rounded-lg text-[12.5px] uppercase shadow-sm",
-                              isDark ? "bg-[#182229] text-[#8696A0]" : "bg-white text-[#54656F]"
-                            )}>
+                            <span className="bg-[#182229] px-3 py-1.5 rounded-lg text-[12.5px] text-[#8696A0] shadow-sm uppercase">
                               {formatDateLabel(msg.sent_at)}
                             </span>
                           </div>
@@ -2573,8 +2414,8 @@ const AtendimentoPage = () => {
                             className={cn(
                               "relative max-w-[65%] px-2 py-1.5 shadow-sm text-[14.2px] leading-[19px] break-words rounded-lg",
                               msg.direction === "outbound"
-                                ? (isDark ? "bg-[#005C4B] text-[#E9EDEF]" : "bg-[#D9FDD3] text-[#111B21]")
-                                : (isDark ? "bg-[#202C33] text-[#E9EDEF]" : "bg-[#FFFFFF] text-[#111B21]")
+                                ? "bg-[#005C4B] text-[#E9EDEF]"
+                                : "bg-[#202C33] text-[#E9EDEF]"
                             )}
                           >
                             {/* Render Message Content with Media Support */}
@@ -2589,10 +2430,7 @@ const AtendimentoPage = () => {
                                         <img src={getMediaUrl(msg)} alt="Imagem" className="w-full h-auto object-cover max-h-[300px]" loading="lazy" />
                                       </div>
                                     ) : (
-                                      <div className={cn(
-                                        "flex items-center gap-2 p-3 rounded-lg",
-                                        isDark ? "bg-black/10" : "bg-black/5"
-                                      )}>
+                                      <div className="flex items-center gap-2 bg-black/10 dark:bg-white/10 p-3 rounded-lg">
                                         <Image className="h-5 w-5" /> <span className="italic opacity-80">Imagem indisponível</span>
                                       </div>
                                     )}
@@ -2605,10 +2443,7 @@ const AtendimentoPage = () => {
                                 const audioSpeed = audioSpeeds[msg.id] || 1;
                                 return (
                                   <div className="flex items-center gap-2 min-w-[250px]">
-                                    <div className={cn(
-                                      "p-2 rounded-full",
-                                      isDark ? "bg-zinc-700" : "bg-[#F0F2F5]"
-                                    )}>
+                                    <div className="p-2 bg-zinc-200 dark:bg-zinc-700 rounded-full">
                                       <Mic className="h-5 w-5" />
                                     </div>
                                     <div className="flex flex-col flex-1">
@@ -2631,10 +2466,7 @@ const AtendimentoPage = () => {
                                       <Button
                                         variant="ghost"
                                         size="sm"
-                                        className={cn(
-                                          "h-8 px-2 text-xs font-bold",
-                                          isDark ? "hover:bg-zinc-700" : "hover:bg-black/5"
-                                        )}
+                                        className="h-8 px-2 text-xs font-bold hover:bg-zinc-200 dark:hover:bg-zinc-700"
                                         onClick={(e) => {
                                           e.stopPropagation();
                                           const audioEl = e.currentTarget.parentElement?.querySelector('audio') as HTMLAudioElement;
@@ -2654,10 +2486,7 @@ const AtendimentoPage = () => {
                                     {msg.media_url ? (
                                       <video controls src={getMediaUrl(msg)} className="w-full max-h-[300px] rounded-lg bg-black" />
                                     ) : (
-                                      <div className={cn(
-                                        "flex items-center gap-2 p-3 rounded-lg",
-                                        isDark ? "bg-black/10" : "bg-black/5"
-                                      )}>
+                                      <div className="flex items-center gap-2 bg-black/10 dark:bg-white/10 p-3 rounded-lg">
                                         <Video className="h-5 w-5" /> <span className="italic opacity-80">Vídeo indisponível</span>
                                       </div>
                                     )}
@@ -2668,11 +2497,8 @@ const AtendimentoPage = () => {
 
                               if (type === 'document') {
                                 return (
-                                  <div className={cn(
-                                    "flex items-center gap-3 p-2 rounded-lg min-w-[200px]",
-                                    isDark ? "bg-black/5" : "bg-black/5"
-                                  )}>
-                                    <div className="p-2 bg-red-100/20 rounded text-red-500">
+                                  <div className="flex items-center gap-3 bg-black/5 dark:bg-white/5 p-2 rounded-lg min-w-[200px]">
+                                    <div className="p-2 bg-red-100 dark:bg-red-900/30 rounded text-red-600 dark:text-red-400">
                                       <FileText className="h-6 w-6" />
                                     </div>
                                     <div className="flex flex-col gap-0.5 overflow-hidden flex-1">
@@ -2691,10 +2517,7 @@ const AtendimentoPage = () => {
                                         <img src={getMediaUrl(msg)} alt="Sticker" className="w-full h-auto object-cover" loading="lazy" />
                                       </div>
                                     ) : (
-                                      <div className={cn(
-                                        "flex items-center gap-2 p-2 rounded-lg",
-                                        isDark ? "bg-black/10" : "bg-black/10"
-                                      )}>
+                                      <div className="flex items-center gap-2 bg-black/10 dark:bg-white/10 p-2 rounded-lg">
                                         <Sticker className="h-5 w-5" /> <span className="italic opacity-80">Sticker</span>
                                       </div>
                                     )}
@@ -2704,11 +2527,8 @@ const AtendimentoPage = () => {
 
                               if (type === 'location') {
                                 return (
-                                  <div className={cn(
-                                    "flex items-center gap-3 p-3 rounded-lg min-w-[200px]",
-                                    isDark ? "bg-black/5" : "bg-black/5"
-                                  )}>
-                                    <div className="p-2 bg-orange-100/20 rounded text-orange-500">
+                                  <div className="flex items-center gap-3 bg-black/5 dark:bg-white/5 p-3 rounded-lg min-w-[200px]">
+                                    <div className="p-2 bg-orange-100 dark:bg-orange-900/30 rounded text-orange-600 dark:text-orange-400">
                                       <MapPin className="h-6 w-6" />
                                     </div>
                                     <div className="flex flex-col gap-0.5 overflow-hidden flex-1">
@@ -2726,11 +2546,8 @@ const AtendimentoPage = () => {
 
                               if (type === 'contact') {
                                 return (
-                                  <div className={cn(
-                                    "flex items-center gap-3 p-3 rounded-lg min-w-[200px]",
-                                    isDark ? "bg-black/5" : "bg-black/5"
-                                  )}>
-                                    <div className="p-2 bg-blue-100/20 rounded text-blue-500">
+                                  <div className="flex items-center gap-3 bg-black/5 dark:bg-white/5 p-3 rounded-lg min-w-[200px]">
+                                    <div className="p-2 bg-blue-100 dark:bg-blue-900/30 rounded text-blue-600 dark:text-blue-400">
                                       <ContactIcon className="h-6 w-6" />
                                     </div>
                                     <div className="flex flex-col gap-0.5 overflow-hidden flex-1">
@@ -2751,10 +2568,7 @@ const AtendimentoPage = () => {
                                 </span>
                               );
                             })()}
-                            <span className={cn(
-                              "absolute right-2 bottom-1 text-[11px] flex items-center gap-1",
-                              isDark ? "text-[#8696A0]" : "text-[#667781]"
-                            )}>
+                            <span className="absolute right-2 bottom-1 text-[11px] flex items-center gap-1 text-[#8696A0]">
                               {formatTime(msg.sent_at)}
                               {msg.direction === "outbound" && <CheckCheck className="h-4 w-4 text-[#53bdeb]" />}
                             </span>
@@ -2768,16 +2582,11 @@ const AtendimentoPage = () => {
                             <Button
                               variant="ghost"
                               size="icon"
-                              className={cn(
-                                "h-7 w-7 shadow-sm border",
-                                isDark
-                                  ? "bg-[#202C33]/90 hover:bg-[#202C33] border-[#222E35] text-[#aebac1]"
-                                  : "bg-white/90 hover:bg-white border-[#E9EDEF] text-[#54656F]"
-                              )}
+                              className="h-7 w-7 bg-white/90 dark:bg-zinc-800/90 hover:bg-white dark:hover:bg-zinc-700 shadow-sm border border-zinc-200 dark:border-zinc-700"
                               onClick={(e) => { e.stopPropagation(); handleReplyMessage(msg); }}
                               title="Responder"
                             >
-                              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-reply"><polyline points="9 17 4 12 9 7" /><path d="M20 18v-2a4 4 0 0 0-4-4H4" /></svg>
+                              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-reply text-zinc-600 dark:text-zinc-300"><polyline points="9 17 4 12 9 7" /><path d="M20 18v-2a4 4 0 0 0-4-4H4" /></svg>
                             </Button>
 
                             {msg.direction === 'outbound' && (
@@ -2785,31 +2594,21 @@ const AtendimentoPage = () => {
                                 <Button
                                   variant="ghost"
                                   size="icon"
-                                  className={cn(
-                                    "h-7 w-7 shadow-sm border",
-                                    isDark
-                                      ? "bg-[#202C33]/90 hover:bg-[#202C33] border-[#222E35] text-[#aebac1]"
-                                      : "bg-white/90 hover:bg-white border-[#E9EDEF] text-[#54656F]"
-                                  )}
+                                  className="h-7 w-7 bg-white/90 dark:bg-zinc-800/90 hover:bg-white dark:hover:bg-zinc-700 shadow-sm border border-zinc-200 dark:border-zinc-700"
                                   onClick={(e) => { e.stopPropagation(); handleEditMessage(msg); }}
                                   title="Editar mensagem"
                                 >
-                                  <Pencil className="h-3.5 w-3.5" />
+                                  <Pencil className="h-3.5 w-3.5 text-zinc-600 dark:text-zinc-300" />
                                 </Button>
 
                                 <Button
                                   variant="ghost"
                                   size="icon"
-                                  className={cn(
-                                    "h-7 w-7 shadow-sm border",
-                                    isDark
-                                      ? "bg-[#202C33]/90 hover:bg-red-900/20 border-[#222E35] text-red-400"
-                                      : "bg-white/90 hover:bg-red-50 border-[#E9EDEF] text-red-600"
-                                  )}
+                                  className="h-7 w-7 bg-white/90 dark:bg-zinc-800/90 hover:bg-red-50 dark:hover:bg-red-900/20 shadow-sm border border-zinc-200 dark:border-zinc-700"
                                   onClick={(e) => { e.stopPropagation(); handleDeleteClick(msg); }}
                                   title="Apagar mensagem"
                                 >
-                                  <Trash2 className="h-3.5 w-3.5" />
+                                  <Trash2 className="h-3.5 w-3.5 text-red-600 dark:text-red-400" />
                                 </Button>
                               </>
                             )}
@@ -2825,39 +2624,28 @@ const AtendimentoPage = () => {
 
             {/* Reply Preview */}
             {replyingTo && (
-              <div className={cn(
-                "sticky bottom-[70px] z-40 border-l-[6px] border-violet-500 p-3 mx-4 mb-0 rounded-t-lg shadow-lg backdrop-blur supports-[backdrop-filter]:bg-opacity-60 flex justify-between items-center animate-in slide-in-from-bottom-2 border-t border-r",
-                isDark
-                  ? "bg-[#202C33]/95 border-[#222E35]"
-                  : "bg-white/95 border-[#E9EDEF]"
-              )}>
+              <div className="sticky bottom-[70px] z-40 bg-zinc-100/95 dark:bg-zinc-800/95 border-l-[6px] border-violet-500 p-3 mx-4 mb-0 rounded-t-lg shadow-lg backdrop-blur supports-[backdrop-filter]:bg-zinc-100/60 flex justify-between items-center animate-in slide-in-from-bottom-2 border-t border-r border-zinc-200 dark:border-zinc-700">
                 <div className="flex flex-col overflow-hidden mr-4">
-                  <span className="text-xs font-bold text-violet-500 mb-0.5">
+                  <span className="text-xs font-bold text-violet-600 dark:text-violet-400 mb-0.5">
                     Respondendo a {replyingTo.direction === 'outbound' ? 'Você' : (replyingTo.agent_name || replyingTo.sender_name || 'Participante')}
                   </span>
-                  <span className={cn(
-                    "text-sm truncate line-clamp-1 opacity-90",
-                    isDark ? "text-[#E9EDEF]" : "text-[#41525D]"
-                  )}>
+                  <span className="text-sm text-zinc-600 dark:text-zinc-300 truncate line-clamp-1 opacity-90">
                     {replyingTo.content || (replyingTo.media_url ? '📷 Mídia' : 'Mensagem')}
                   </span>
                 </div>
-                <Button variant="ghost" size="sm" className="h-8 w-8 rounded-full p-0 shrink-0 text-[#8696A0] hover:text-red-500" onClick={() => setReplyingTo(null)}>
+                <Button variant="ghost" size="sm" className="h-8 w-8 rounded-full p-0 shrink-0 text-zinc-500 hover:text-red-500" onClick={() => setReplyingTo(null)}>
                   <XCircle className="h-5 w-5" />
                 </Button>
               </div>
             )}
 
-            {/* Chat Input Area - WhatsApp Theme Support */}
-            <div className={cn(
-              "flex-none px-4 py-2 flex items-center gap-2 w-full min-h-[62px] z-30",
-              isDark ? "bg-[#202C33]" : "bg-[#F0F2F5]"
-            )} onClick={(e) => e.stopPropagation()}>
+            {/* Chat Input Area - WhatsApp Dark Style */}
+            <div className="flex-none bg-[#202C33] px-4 py-2 flex items-center gap-2 w-full min-h-[62px] z-30" onClick={(e) => e.stopPropagation()}>
 
               {/* Emoji Picker Popover */}
               {showEmojiPicker && (
                 <div className="absolute bottom-16 left-4 z-50 shadow-2xl border-none rounded-lg overflow-hidden">
-                  <EmojiPicker theme={isDark ? Theme.DARK : Theme.LIGHT} onEmojiClick={onEmojiClick} width={300} height={400} />
+                  <EmojiPicker theme={Theme.DARK} onEmojiClick={onEmojiClick} width={300} height={400} />
                 </div>
               )}
 
@@ -2865,11 +2653,7 @@ const AtendimentoPage = () => {
                 <Button
                   variant="ghost"
                   size="icon"
-                  className={cn(
-                    "rounded-full",
-                    isDark ? "text-[#8696A0] hover:bg-white/10" : "text-[#54656F] hover:bg-black/5",
-                    showEmojiPicker && "text-[#00a884]"
-                  )}
+                  className={cn("text-[#8696A0] hover:bg-white/10 rounded-full", showEmojiPicker && "text-[#00a884]")}
                   disabled={!selectedConversation}
                   onClick={() => setShowEmojiPicker(!showEmojiPicker)}
                   type="button"
@@ -2886,10 +2670,7 @@ const AtendimentoPage = () => {
                 <Button
                   variant="ghost"
                   size="icon"
-                  className={cn(
-                    "rounded-full",
-                    isDark ? "text-[#8696A0] hover:bg-white/10" : "text-[#54656F] hover:bg-black/5"
-                  )}
+                  className="text-[#8696A0] hover:bg-white/10 rounded-full"
                   disabled={!selectedConversation}
                   onClick={handleAttachmentClick}
                   type="button"
@@ -2904,12 +2685,7 @@ const AtendimentoPage = () => {
               >
                 <div className="flex-1 relative flex items-center">
                   <Input
-                    className={cn(
-                      "flex-1 border-none focus-visible:ring-0 focus-visible:ring-offset-0 min-h-[42px] py-2 rounded-lg text-sm",
-                      isDark
-                        ? "bg-[#2A3942] text-[#E9EDEF] placeholder-[#8696A0]"
-                        : "bg-[#FFFFFF] text-[#111B21] placeholder-[#667781]"
-                    )}
+                    className="flex-1 bg-[#2A3942] border-none text-[#E9EDEF] focus-visible:ring-0 focus-visible:ring-offset-0 placeholder:text-[#8696A0] min-h-[42px] py-2 rounded-lg text-sm"
                     placeholder={
                       !selectedConversation ? "Selecione um contato" :
                         (isPending && !selectedConversation.is_group) ? "Inicie o atendimento para responder" :
@@ -2923,17 +2699,11 @@ const AtendimentoPage = () => {
                 </div>
 
                 {newMessage.trim() && selectedConversation ? (
-                  <Button type="submit" size="icon" className={cn(
-                    "h-[42px] w-[42px] shrink-0 bg-transparent shadow-none rounded-full",
-                    isDark ? "text-[#8696A0] hover:text-[#00a884] hover:bg-white/5" : "text-[#54656F] hover:text-[#00a884] hover:bg-black/5"
-                  )}>
+                  <Button type="submit" size="icon" className="h-[42px] w-[42px] shrink-0 text-[#8696A0] hover:text-[#00a884] bg-transparent shadow-none hover:bg-white/5 rounded-full">
                     <Send className="h-6 w-6" />
                   </Button>
                 ) : (
-                  <Button type="button" size="icon" variant="ghost" className={cn(
-                    "h-[42px] w-[42px] shrink-0 rounded-full",
-                    isDark ? "text-[#8696A0] hover:bg-white/5" : "text-[#54656F] hover:bg-black/5"
-                  )} disabled={!selectedConversation}>
+                  <Button type="button" size="icon" variant="ghost" className="h-[42px] w-[42px] shrink-0 text-[#8696A0] hover:bg-white/5 rounded-full" disabled={!selectedConversation}>
                     <Mic className="h-6 w-6" />
                   </Button>
                 )}
