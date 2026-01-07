@@ -106,9 +106,8 @@ export const handleWebhook = async (req: Request, res: Response) => {
             }
 
             const msg: any = messages;
-            if (!msg || (!msg.key && !msg.id)) {
-                console.warn('[Webhook] Data structure mismatch. Could not find msg.key. Keys in messages:', msg ? Object.keys(msg) : 'null');
-                pushPayload({ error: 'Mismatch structure', data: messages });
+            if (!msg) {
+                console.warn('[Webhook] No message data found');
                 return;
             }
 
@@ -324,6 +323,12 @@ export const handleWebhook = async (req: Request, res: Response) => {
             if (typeof msg.conversation === 'string') {
                 content = msg.conversation;
             } else if (!m || typeof m !== 'object') {
+                // For messages.update events, we might not have the full message content
+                // These are often just status updates, so we can skip them or use a placeholder
+                if (normalizedType.includes('UPDATE')) {
+                    console.log('[Webhook] Skipping messages.update without content (likely status update)');
+                    return;
+                }
                 console.warn('[Webhook] No message content found in msg');
                 return;
             }
@@ -397,7 +402,8 @@ export const handleWebhook = async (req: Request, res: Response) => {
             }
 
             const sent_at = new Date((msg.messageTimestamp || msg.timestamp || Date.now() / 1000) * 1000);
-            const externalId = msg.key?.id || msg.id || `gen-${Date.now()}`;
+            // Handle both structures: msg.key.id (upsert) and msg.keyId/messageId (update)
+            const externalId = msg.key?.id || msg.keyId || msg.messageId || msg.id || `gen-${Date.now()}`;
 
             console.log(`[Webhook] Preparing to save message: direction=${direction}, externalId=${externalId}, convId=${conversationId}, content="${content.substring(0, 30)}..."`);
 
