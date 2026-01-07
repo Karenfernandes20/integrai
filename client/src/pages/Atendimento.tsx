@@ -2422,9 +2422,6 @@ const AtendimentoPage = () => {
                     ) : (
                       <DropdownMenuItem onClick={() => handleCloseAtendimento()} className="py-3 text-red-500">Encerrar Chat</DropdownMenuItem>
                     )}
-                    {(selectedConversation.user_id === user?.id || user?.role === 'SUPERADMIN' || user?.role === 'ADMIN') && (
-                      <DropdownMenuItem onClick={handleDeleteConversation} className="text-red-600 focus:text-red-400 py-3">Deletar conversa</DropdownMenuItem>
-                    )}
                   </DropdownMenuContent>
                 </DropdownMenu>
               </div>
@@ -2725,7 +2722,6 @@ const AtendimentoPage = () => {
                                         navigator.clipboard.writeText(msg.content);
                                         toast.success("Copiado!");
                                       }} className="gap-2"><FileText className="h-4 w-4" /> Copiar texto</DropdownMenuItem>
-                                      <DropdownMenuItem onClick={() => handleDeleteClick(msg)} className="gap-2 text-red-500"><Trash2 className="h-4 w-4" /> Apagar</DropdownMenuItem>
                                     </DropdownMenuContent>
                                   </DropdownMenu>
                                 </div>
@@ -2900,40 +2896,6 @@ const AtendimentoPage = () => {
         </div>
       )}
 
-      {/* Delete Message Dialog */}
-      <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
-        <DialogContent className="sm:max-w-[400px]">
-          <DialogHeader>
-            <DialogTitle className="text-center">Apagar mensagem?</DialogTitle>
-          </DialogHeader>
-          <div className="flex flex-col gap-3 py-4">
-            <Button
-              variant="outline"
-              className="w-full justify-start h-12 text-base hover:bg-red-50 dark:hover:bg-red-900/20 border-red-200 dark:border-red-800"
-              onClick={handleDeleteForEveryone}
-            >
-              <Trash2 className="mr-3 h-5 w-5 text-red-600 dark:text-red-400" />
-              Apagar para todos
-            </Button>
-            <Button
-              variant="outline"
-              className="w-full justify-start h-12 text-base"
-              onClick={handleDeleteForMe}
-            >
-              <Trash2 className="mr-3 h-5 w-5" />
-              Apagar somente para mim
-            </Button>
-            <Button
-              variant="ghost"
-              className="w-full h-12 text-base"
-              onClick={() => setDeleteDialogOpen(false)}
-            >
-              <XCircle className="mr-3 h-5 w-5" />
-              Cancelar
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
 
     </div>
   );

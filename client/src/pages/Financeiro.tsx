@@ -949,12 +949,14 @@ const FinanceiroPage = () => {
                         <div className="flex items-center justify-between">
                           <label className="text-xs font-bold text-muted-foreground uppercase">Categoria</label>
                           <Button
-                            variant="link"
-                            className="h-auto p-0 text-[10px] font-bold text-red-500 hover:text-red-700 decoration-red-500/30"
+                            variant="ghost"
+                            size="icon"
+                            className="h-5 w-5 text-muted-foreground hover:text-zinc-900"
                             onClick={() => setIsManageCategoriesOpen(true)}
+                            title="Gerenciar Categorias"
                             type="button"
                           >
-                            Excluir / Gerenciar
+                            <Settings className="h-3.5 w-3.5" />
                           </Button>
                         </div>
                         <Select value={formData.category || "Outros"} onValueChange={v => setFormData({ ...formData, category: v })}>
@@ -962,19 +964,45 @@ const FinanceiroPage = () => {
                             <SelectValue />
                           </SelectTrigger>
                           <SelectContent>
+                            <div className="p-2 border-b bg-zinc-50/50 flex items-center justify-between sticky top-0 z-10">
+                              <span className="text-[10px] font-bold text-zinc-400 uppercase">Categorias</span>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-5 px-2 text-[10px] font-bold text-blue-600"
+                                onClick={(e) => { e.stopPropagation(); setIsManageCategoriesOpen(true); }}
+                              >
+                                <Plus className="h-3 w-3 mr-1" /> NOVA
+                              </Button>
+                            </div>
                             {(() => {
                               const type = mainTab === 'revenues' ? 'receivable' : 'payable';
                               const relevantCategories = customCategories.filter(c => c.type === type);
 
-                              if (relevantCategories.length === 0) {
-                                // Fallback to hardcoded list if DB is empty
-                                return (mainTab === 'revenues' ? CATEGORIES_REVENUES_FALLBACK : CATEGORIES_EXPENSES_FALLBACK).map(c => (
-                                  <SelectItem key={c} value={c}>{c}</SelectItem>
-                                ));
-                              }
+                              const displayCategories = relevantCategories.length > 0
+                                ? relevantCategories
+                                : (mainTab === 'revenues' ? CATEGORIES_REVENUES_FALLBACK : CATEGORIES_EXPENSES_FALLBACK).map((c, i) => ({ id: `fallback-${i}`, name: c }));
 
-                              return relevantCategories.map(c => (
-                                <SelectItem key={c.id} value={c.name}>{c.name}</SelectItem>
+                              return displayCategories.map(c => (
+                                <div key={c.id} className="relative group/item flex items-center justify-between hover:bg-zinc-100 rounded-sm">
+                                  <SelectItem value={c.name} className="flex-1 cursor-pointer pr-10">
+                                    {c.name}
+                                  </SelectItem>
+                                  {(typeof c.id === 'number') && (
+                                    <button
+                                      type="button"
+                                      className="absolute right-1 opacity-0 group-hover/item:opacity-100 p-1.5 text-zinc-400 hover:text-red-500 transition-all z-20"
+                                      onClick={(e) => {
+                                        e.preventDefault();
+                                        e.stopPropagation();
+                                        handleDeleteCategory(c.id as number);
+                                      }}
+                                      title="Excluir categoria"
+                                    >
+                                      <Trash2 className="h-3.5 w-3.5" />
+                                    </button>
+                                  )}
+                                </div>
                               ));
                             })()}
                           </SelectContent>
