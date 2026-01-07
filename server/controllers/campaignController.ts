@@ -390,7 +390,7 @@ async function processCampaign(campaignId: number, io?: any) {
 
                 console.log(`[Campaign ${campaignId}] Sending to ${contact.phone}...`);
 
-                const success = await sendWhatsAppMessage(
+                const result = await sendWhatsAppMessage(
                     campaign.company_id,
                     contact.phone,
                     message,
@@ -402,7 +402,7 @@ async function processCampaign(campaignId: number, io?: any) {
                     campaign.id
                 );
 
-                if (success) {
+                if (result.success) {
                     await pool.query(
                         `UPDATE whatsapp_campaign_contacts SET status = 'sent', sent_at = NOW() WHERE id = $1`,
                         [contact.id]
@@ -413,9 +413,10 @@ async function processCampaign(campaignId: number, io?: any) {
                         [campaignId]
                     );
                 } else {
+                    const errorMsg = (result.error || 'Evolution API failed').substring(0, 255);
                     await pool.query(
-                        `UPDATE whatsapp_campaign_contacts SET status = 'failed', error_message = 'Evolution API failed' WHERE id = $1`,
-                        [contact.id]
+                        `UPDATE whatsapp_campaign_contacts SET status = 'failed', error_message = $1 WHERE id = $2`,
+                        [errorMsg, contact.id]
                     );
 
                     await pool.query(
@@ -511,9 +512,9 @@ async function sendWhatsAppMessage(
     mediaUrl?: string | null,
     mediaType?: string | null,
     campaignId?: number
-): Promise<boolean> {
+): Promise<{ success: boolean; error?: string }> {
     try {
-        if (!pool) return false;
+        if (!pool) return { success: false, error: 'Database not configured' };
 
         let evolution_instance = "integrai";
         let evolution_apikey = process.env.EVOLUTION_API_KEY;
@@ -539,7 +540,7 @@ async function sendWhatsAppMessage(
 
         if (!evolution_apikey) {
             console.error(`[sendWhatsAppMessage] No API Key found for campaign.`);
-            return false;
+            return { success: false, error: 'No API Key found' };
         }
 
         const EVOLUTION_API_BASE = (process.env.EVOLUTION_API_URL || 'https://freelasdekaren-evolution-api.nhvvzr.easypanel.host').replace(/\/$/, "");
@@ -626,7 +627,7 @@ async function sendWhatsAppMessage(
         if (!response.ok) {
             const errText = await response.text();
             console.error(`[sendWhatsAppMessage] Failed: ${response.status} - ${errText}`);
-            return false;
+            return { success: false, error: `${response.status} - ${errText}` };
         }
 
         const data = await response.json();
@@ -690,15 +691,16 @@ async function sendWhatsAppMessage(
                     };
                     io.to(`company_${companyId}`).emit('message:received', socketPayload);
                 }
-            } catch (dbErr) {
+            } catch (dbErr: any) {
                 console.error('[sendWhatsAppMessage] DB Sync Error:', dbErr);
+                // We still returned a success because the msg was sent, even if DB sync failed (handled gracefully)
             }
         }
 
-        return true;
+        return { success: true };
     } catch (error: any) {
         console.error('[sendWhatsAppMessage] Fatal Error:', error.message);
-        return false;
+        return { success: false, error: error.message };
     }
 }
 
