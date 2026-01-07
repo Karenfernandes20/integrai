@@ -36,6 +36,7 @@ import {
   ChevronDown,
   Smile,
   Plus,
+  ArrowLeft,
 } from "lucide-react";
 import { Badge } from "../components/ui/badge";
 import { FollowUpModal } from "../components/follow-up/FollowUpModal";
@@ -1838,6 +1839,33 @@ const AtendimentoPage = () => {
     }
   };
 
+  const handleReturnToPending = async (conversation?: Conversation) => {
+    const conv = conversation || selectedConversation;
+    if (!conv) return;
+    if (!confirm("Deseja devolver este atendimento para a fila de pendentes?")) return;
+
+    try {
+      const res = await fetch(`/api/crm/conversations/${conv.id}/pending`, {
+        method: "POST",
+        headers: { "Authorization": `Bearer ${token}` }
+      });
+      if (res.ok) {
+        setConversations(prev => prev.map(c =>
+          c.id === conv.id ? { ...c, status: 'PENDING' as const, user_id: undefined } : c
+        ));
+        if (selectedConversation?.id === conv.id) {
+          setSelectedConversation(null);
+        }
+      } else {
+        const err = await res.json();
+        alert(err.error || "Erro ao devolver para pendentes");
+      }
+    } catch (e) {
+      console.error(e);
+      alert("Erro de conexão.");
+    }
+  };
+
   const handleCloseAtendimento = async (conversation?: Conversation) => {
     const conv = conversation || selectedConversation;
     if (!conv) return;
@@ -1972,61 +2000,80 @@ const AtendimentoPage = () => {
         {/* Action Buttons */}
         <div className="flex gap-2 mt-2 w-full justify-end">
           {(!conv.status || conv.status === 'PENDING') && (
-            <Button
-              size="sm"
-              variant="outline"
-              className="h-7 text-[10px] uppercase font-bold text-[#00a884] border-[#00a884] hover:bg-[#00a884] hover:text-[#111B21]"
-              onClick={(e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                handleStartAtendimento(conv);
-              }}
-            >
-              Iniciar Conversa
-            </Button>
-          )}
-
-          {conv.status === 'OPEN' && (
             <>
               <Button
-                size="sm"
+                size="icon"
                 variant="outline"
-                className="h-7 text-[10px] uppercase font-bold text-[#00a884] border-[#00a884] hover:bg-[#00a884] hover:text-[#111B21]"
+                className="h-8 w-8 text-[#00a884] border-[#00a884] hover:bg-[#00a884] hover:text-[#111B21] rounded-full"
+                title="Iniciar Conversa"
                 onClick={(e) => {
                   e.preventDefault();
                   e.stopPropagation();
                   handleStartAtendimento(conv);
                 }}
               >
-                Iniciar Conversa
+                <Play className="h-4 w-4 fill-current" />
               </Button>
               <Button
-                size="sm"
+                size="icon"
                 variant="outline"
-                className="h-7 text-[10px] uppercase font-bold text-red-500 border-red-500 hover:bg-red-500 hover:text-white"
+                className="h-8 w-8 text-red-500 border-red-500 hover:bg-red-500 hover:text-white rounded-full"
+                title="Fechar Conversa" // User requested "open" and "close" icon in Pending.
                 onClick={(e) => {
                   e.preventDefault();
                   e.stopPropagation();
                   handleCloseAtendimento(conv);
                 }}
               >
-                Encerrar
+                <X className="h-4 w-4" />
+              </Button>
+            </>
+          )}
+
+          {conv.status === 'OPEN' && (
+            <>
+              <Button
+                size="icon"
+                variant="outline"
+                className="h-8 w-8 text-orange-500 border-orange-500 hover:bg-orange-500 hover:text-white rounded-full"
+                title="Voltar para Pendentes"
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  handleReturnToPending(conv);
+                }}
+              >
+                <ArrowLeft className="h-4 w-4" />
+              </Button>
+              <Button
+                size="icon"
+                variant="outline"
+                className="h-8 w-8 text-red-500 border-red-500 hover:bg-red-500 hover:text-white rounded-full"
+                title="Encerrar Conversa"
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  handleCloseAtendimento(conv);
+                }}
+              >
+                <X className="h-4 w-4" />
               </Button>
             </>
           )}
 
           {conv.status === 'CLOSED' && (
             <Button
-              size="sm"
+              size="icon"
               variant="outline"
-              className="h-7 text-[10px] uppercase font-bold text-zinc-400 border-zinc-600 hover:bg-zinc-700 hover:text-zinc-200"
+              className="h-8 w-8 text-zinc-400 border-zinc-600 hover:bg-zinc-700 hover:text-zinc-200 rounded-full"
+              title="Reabrir Conversa"
               onClick={(e) => {
                 e.preventDefault();
                 e.stopPropagation();
                 handleReopenAtendimento(conv);
               }}
             >
-              Reabrir
+              <RotateCcw className="h-4 w-4" />
             </Button>
           )}
         </div>
@@ -2103,11 +2150,11 @@ const AtendimentoPage = () => {
             </div>
 
             {/* QUICK NAVIGATION TABS */}
-            <div className="flex items-center gap-1 mt-2">
+            <div className="flex items-center gap-1 mt-2 w-full">
               <button
                 onClick={() => setViewMode('PENDING')}
                 className={cn(
-                  "text-[12px] px-3 py-1 rounded-full transition-all",
+                  "flex-1 justify-center text-[12px] px-3 py-1 rounded-full transition-all text-center",
                   viewMode === 'PENDING' ? "bg-[#00a884] text-[#111B21] font-medium" : "bg-[#202C33] text-[#8696A0] hover:bg-[#2A3942]"
                 )}
               >
@@ -2116,7 +2163,7 @@ const AtendimentoPage = () => {
               <button
                 onClick={() => setViewMode('OPEN')}
                 className={cn(
-                  "text-[12px] px-3 py-1 rounded-full transition-all",
+                  "flex-1 justify-center text-[12px] px-3 py-1 rounded-full transition-all text-center",
                   viewMode === 'OPEN' ? "bg-[#00a884] text-[#111B21] font-medium" : "bg-[#202C33] text-[#8696A0] hover:bg-[#2A3942]"
                 )}
               >
@@ -2125,7 +2172,7 @@ const AtendimentoPage = () => {
               <button
                 onClick={() => setViewMode('CLOSED')}
                 className={cn(
-                  "text-[12px] px-3 py-1 rounded-full transition-all",
+                  "flex-1 justify-center text-[12px] px-3 py-1 rounded-full transition-all text-center",
                   viewMode === 'CLOSED' ? "bg-[#00a884] text-[#111B21] font-medium" : "bg-[#202C33] text-[#8696A0] hover:bg-[#2A3942]"
                 )}
               >

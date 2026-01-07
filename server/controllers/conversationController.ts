@@ -230,3 +230,44 @@ export const deleteConversation = async (req: AuthenticatedRequest, res: Respons
         return res.status(500).json({ error: "Failed to delete" });
     }
 };
+
+// Return to Pending
+export const returnToPending = async (req: AuthenticatedRequest, res: Response) => {
+    try {
+        if (!pool) return res.status(500).json({ error: "DB not configured" });
+
+        const { id } = req.params;
+        const userId = req.user.id;
+        const companyId = req.user.company_id;
+        const isAdmin = req.user.role === 'SUPERADMIN' || req.user.role === 'ADMIN';
+
+        const check = await pool.query('SELECT status, user_id, company_id FROM whatsapp_conversations WHERE id = $1', [id]);
+        if (check.rows.length === 0) return res.status(404).json({ error: "Conversation not found" });
+
+        const conv = check.rows[0];
+
+        if (req.user.role !== 'SUPERADMIN' && conv.company_id && conv.company_id !== companyId) {
+            return res.status(403).json({ error: "Permissão negada." });
+        }
+
+        if (conv.user_id && conv.user_id !== userId && !isAdmin) {
+            return res.status(403).json({ error: "Apenas o responsável pode devolver para a fila." });
+        }
+
+        await pool.query(
+            `UPDATE whatsapp_conversations SET status = 'PENDING', user_id = NULL, company_id = COALESCE(company_id, $1) WHERE id = $2`,
+            [companyId, id]
+        );
+
+        await auditLog(Number(id), userId, 'RETURN_PENDING');
+
+        if (companyId) {
+            req.app.get('io')?.to(`company_${companyId}`).emit('conversation:update', { id, status: 'PENDING', user_id: null });
+        }
+
+        return res.json({ status: 'success' });
+    } catch (e) {
+        console.error("Error returning to pending:", e);
+        return res.status(500).json({ error: "Internal Server Error" });
+    }
+};

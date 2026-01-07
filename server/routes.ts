@@ -19,7 +19,7 @@ import { getCities, createCity } from './controllers/cityController';
 import { login, register } from './controllers/authController';
 import { authenticateToken, authorizeRole } from './middleware/authMiddleware';
 import { getCompanies, createCompany, updateCompany, deleteCompany, getCompanyUsers, getCompany } from './controllers/companyController';
-import { startConversation, closeConversation, updateContactNameWithAudit, deleteConversation } from './controllers/conversationController';
+import { startConversation, closeConversation, updateContactNameWithAudit, deleteConversation, returnToPending } from './controllers/conversationController';
 import { getFollowUps, createFollowUp, updateFollowUp, deleteFollowUp, getFollowUpStats } from './controllers/followUpController';
 
 const router = express.Router();
@@ -126,6 +126,7 @@ router.post('/evolution/profile-pic/sync', authenticateToken, syncAllProfilePics
 router.get('/crm/dashboard', authenticateToken, getCrmDashboardStats);
 router.post('/crm/conversations/:id/start', authenticateToken, startConversation);
 router.post('/crm/conversations/:id/close', authenticateToken, closeConversation);
+router.post('/crm/conversations/:id/pending', authenticateToken, returnToPending);
 router.put('/crm/conversations/:id/name', authenticateToken, updateContactNameWithAudit);
 router.delete('/crm/conversations/:id', authenticateToken, deleteConversation);
 
