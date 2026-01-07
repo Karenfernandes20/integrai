@@ -443,6 +443,8 @@ export const handleWebhook = async (req: Request, res: Response) => {
 
                 if (existingResult.rows.length > 0) {
                     const existingMsg = existingResult.rows[0];
+                    console.log(`[Webhook] Found existing message: ID=${existingMsg.id}, direction=${existingMsg.direction}, content="${existingMsg.content?.substring(0, 30)}..."`);
+
                     const io = req.app.get('io');
                     if (io) {
                         const room = `company_${companyId}`;
@@ -463,9 +465,14 @@ export const handleWebhook = async (req: Request, res: Response) => {
                             agent_name: (existingMsg.direction === 'outbound' && !existingMsg.user_id) ? 'Agente de IA' : existingMsg.agent_name,
                             message_origin: (existingMsg.direction === 'outbound' && !existingMsg.user_id) ? 'ai_agent' : 'whatsapp_mobile' // Simple fallback, usually it's null user_id so ai_agent or legacy mobile
                         };
+                        console.log(`[Webhook] Emitting duplicate message to rooms ${room}, ${instanceRoom} | Direction: ${existingMsg.direction}`);
                         io.to(room).emit('message:received', payload);
                         io.to(instanceRoom).emit('message:received', payload);
+                    } else {
+                        console.warn('[Webhook] Socket.io not available for duplicate message emission');
                     }
+                } else {
+                    console.warn(`[Webhook] Could not find existing message with external_id ${externalId} in database`);
                 }
 
                 // CRITICAL FIX: DO NOT RETURN HERE. CONTINUE TO POST-PROCESSING.
