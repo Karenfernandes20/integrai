@@ -117,39 +117,48 @@ export const handleWebhook = async (req: Request, res: Response) => {
                 return;
             }
 
-            // Robust isFromMe detection with multiple fallbacks for different API versions
-            const isFromMe = (
-                msg.key?.fromMe === true ||
-                msg.fromMe === true ||
-                msg.isSent === true ||
-                msg.data?.fromMe === true ||
-                msg.data?.key?.fromMe === true ||
-                (typeof msg.fromMe === 'string' && msg.fromMe === 'true') ||
-                normalizedType === 'SEND_MESSAGE' ||
-                normalizedType === 'MESSAGE_SEND' ||
-                msg.status === 'sent' ||
-                msg.status === 'delivered' ||
-                msg.status === 'read' ||
-                // Evolution API v2 fields for API-sent messages
-                msg.messageSource === 'api' ||
-                msg.data?.messageSource === 'api' ||
-                msg.messageSource === 'system' ||
-                // If it's a message event and fromMe is not explicitly false, but status is 'sent', it's likely ours
-                (msg.status !== undefined && ['sent', 'delivered', 'read'].includes(msg.status)) ||
-                // ID prefixes for outbound messages
-                (msg.key?.id && /^(BAE5|3EB0|3A|BAE|ACK|SNT)/.test(msg.key.id)) ||
-                (msg.key && !msg.key.remoteJid?.includes('@s.whatsapp.net') && !msg.key.remoteJid?.includes('@g.us') && msg.key.fromMe !== false)
-            );
+            // MODIFIED logic for robust isFromMe detection
+            let isFromMe = false;
+            let fromMeSource = "default(false)";
 
-            const fromMeSource = normalizedType === 'SEND_MESSAGE' ? "event:SEND_MESSAGE" :
-                (msg.key?.fromMe !== undefined ? `msg.key.fromMe(${msg.key.fromMe})` :
-                    (msg.fromMe !== undefined ? `msg.fromMe(${msg.fromMe})` :
-                        (msg.isSent !== undefined ? `msg.isSent(${msg.isSent})` :
-                            (msg.messageSource === 'api' ? "msg.messageSource:api" :
-                                (msg.key?.id && /^(BAE5|3EB0|3A|BAE|ACK)/.test(msg.key.id) ? `prefix:${msg.key.id.substring(0, 4)}` :
-                                    (msg.status === 'sent' ? "msg.status:sent" : "default(false)"))))));
+            // 1. Explicit fromMe flags are highest priority
+            if (msg.key?.fromMe !== undefined) {
+                isFromMe = msg.key.fromMe === true || msg.key.fromMe === 'true';
+                fromMeSource = `key.fromMe:${isFromMe}`;
+            } else if (msg.fromMe !== undefined) {
+                isFromMe = msg.fromMe === true || msg.fromMe === 'true';
+                fromMeSource = `fromMe:${isFromMe}`;
+            }
+            // 2. Event type is very strong indicator for API-sent messages
+            else if (normalizedType === 'SEND_MESSAGE' || normalizedType === 'MESSAGE_SEND') {
+                isFromMe = true;
+                fromMeSource = `event:${normalizedType}`;
+            }
+            // 3. System/API source indicators
+            else if (msg.messageSource === 'api' || msg.messageSource === 'system' || msg.data?.messageSource === 'api' || msg.data?.messageSource === 'system') {
+                isFromMe = true;
+                fromMeSource = "messageSource:api/system";
+            }
+            // 4. ID-based Heuristics (BAE5, 3EB0, 3A, BAE are common sent prefixes)
+            else {
+                const idPrefix = (msg.key?.id || msg.id || "").substring(0, 4);
+                if (/^(BAE5|3EB0|3A|BAE)/.test(idPrefix)) {
+                    isFromMe = true;
+                    fromMeSource = `prefix:${idPrefix}`;
+                } else if (msg.status === 'sent') {
+                    // We only trust 'sent' status. 'delivered' and 'read' can occur for inbound messages too.
+                    isFromMe = true;
+                    fromMeSource = "status:sent";
+                }
+            }
 
-            console.log(`[Webhook] JID: ${remoteJid} | fromMe: ${isFromMe} (${fromMeSource}) | Type: ${normalizedType} | Instance: ${instance}`);
+            // FINAL OVERRIDE: If any explicit field says it is NOT from me, we must honor that.
+            if (msg.key?.fromMe === false || msg.fromMe === false || msg.key?.fromMe === 'false' || msg.fromMe === 'false') {
+                isFromMe = false;
+                fromMeSource = "explicit:false_override";
+            }
+
+            console.log(`[Webhook] Classified JID: ${remoteJid} | isFromMe: ${isFromMe} (${fromMeSource}) | Type: ${normalizedType}`);
             if (isFromMe && !msg.user_id) {
                 console.log(`[Webhook] Potential AI message detected. Raw msg keys:`, Object.keys(msg));
                 // console.log(`[Webhook] Raw message object:`, JSON.stringify(msg)); // Too verbose, enable if needed
