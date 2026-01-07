@@ -111,6 +111,11 @@ export const handleWebhook = async (req: Request, res: Response) => {
                 return;
             }
 
+            // Debug logging for UPDATE events to see structure
+            if (normalizedType.includes('UPDATE')) {
+                console.log('[Webhook DEBUG] messages.update event structure:', JSON.stringify(msg, null, 2));
+            }
+
             // Normalize message structure (some versions put message at root, others inside messages array)
             const remoteJid = msg.key?.remoteJid || msg.remoteJid || msg.jid;
             if (!remoteJid) {
