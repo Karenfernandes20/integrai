@@ -983,14 +983,14 @@ const FinanceiroPage = () => {
                           <SelectTrigger>
                             <SelectValue />
                           </SelectTrigger>
-                          <SelectContent>
+                          <SelectContent className="max-h-[300px] overflow-y-auto">
                             <div className="p-2 border-b bg-zinc-50/50 flex items-center justify-between sticky top-0 z-10">
                               <span className="text-[10px] font-bold text-zinc-400 uppercase">Categorias</span>
                               <Button
                                 variant="ghost"
                                 size="sm"
                                 className="h-5 px-2 text-[10px] font-bold text-blue-600"
-                                onClick={(e) => { e.stopPropagation(); setIsManageCategoriesOpen(true); }}
+                                onClick={(e) => { e.preventDefault(); e.stopPropagation(); setIsManageCategoriesOpen(true); }}
                               >
                                 <Plus className="h-3 w-3 mr-1" /> NOVA
                               </Button>
@@ -1004,25 +1004,9 @@ const FinanceiroPage = () => {
                                 : (mainTab === 'revenues' ? CATEGORIES_REVENUES_FALLBACK : CATEGORIES_EXPENSES_FALLBACK).map((c, i) => ({ id: `fallback-${i}`, name: c }));
 
                               return displayCategories.map(c => (
-                                <div key={c.id} className="relative group/item flex items-center justify-between hover:bg-zinc-100 rounded-sm">
-                                  <SelectItem value={c.name} className="flex-1 cursor-pointer pr-10">
-                                    {c.name}
-                                  </SelectItem>
-                                  {(typeof c.id === 'number') && (
-                                    <button
-                                      type="button"
-                                      className="absolute right-1 opacity-0 group-hover/item:opacity-100 p-1.5 text-zinc-400 hover:text-red-500 transition-all z-20"
-                                      onClick={(e) => {
-                                        e.preventDefault();
-                                        e.stopPropagation();
-                                        handleDeleteCategory(c.id as number);
-                                      }}
-                                      title="Excluir categoria"
-                                    >
-                                      <Trash2 className="h-3.5 w-3.5" />
-                                    </button>
-                                  )}
-                                </div>
+                                <SelectItem key={c.id} value={c.name} className="cursor-pointer">
+                                  {c.name}
+                                </SelectItem>
                               ));
                             })()}
                           </SelectContent>
