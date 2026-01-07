@@ -1061,7 +1061,14 @@ const AtendimentoPage = () => {
   };
 
   const getMediaUrl = (msg: Message) => {
-    if (!msg.media_url) return "";
+    if (!msg.media_url) {
+      // If it's a media message type, we can try to fetch it via our proxy
+      if (['image', 'audio', 'video', 'document'].includes(msg.message_type || '')) {
+        return `/api/evolution/media/${msg.id}?token=${token}`;
+      }
+      return "";
+    }
+
     if (msg.media_url.startsWith('http')) {
       // If it's a direct WhatsApp MMS URL, we must proxy it to handle auth and CORS
       if (msg.media_url.includes('fbcdn.net') || msg.media_url.includes('mmg.whatsapp.net')) {
@@ -2534,21 +2541,6 @@ const AtendimentoPage = () => {
                             </span>
                           )}
 
-                          {/* Origin label for outbound (AI Agent, Mobile, etc) */}
-                          {firstMsg.direction === 'outbound' && !firstMsg.user_id && (
-                            <span className="text-[11px] font-medium text-[#8696A0] px-2 mb-0.5 uppercase tracking-wider flex items-center gap-1">
-                              <span className="w-1.5 h-1.5 bg-cyan-500 rounded-full animate-pulse" />
-                              {firstMsg.agent_name || "Agente de IA / Celular"}
-                            </span>
-                          )}
-
-                          {/* Sender name for outbound if sent by another system user */}
-                          {firstMsg.direction === 'outbound' && firstMsg.user_id && String(firstMsg.user_id) !== String(user?.id) && (
-                            <span className="text-[11px] font-medium text-[#8696A0] px-2 mb-0.5 uppercase tracking-wider">
-                              {firstMsg.agent_name || "Outro Operador"}
-                            </span>
-                          )}
-
                           {group.map((msg, msgIdx) => {
                             const isFirstInGroup = msgIdx === 0;
                             const isLastInGroup = msgIdx === group.length - 1;
@@ -2588,12 +2580,14 @@ const AtendimentoPage = () => {
 
                                 {/* Render Message Content */}
                                 {(() => {
+                                  const mediaUrl = getMediaUrl(msg);
+
                                   if (type === 'image') {
                                     return (
                                       <div className="flex flex-col gap-1 -m-1">
-                                        {msg.media_url ? (
-                                          <div className="relative rounded overflow-hidden bg-black/5 min-w-[200px] min-h-[150px] cursor-pointer hover:opacity-95 transition-opacity" onClick={() => setViewingImage(getMediaUrl(msg))}>
-                                            <img src={getMediaUrl(msg)} alt="Imagem" className="w-full h-auto object-cover max-h-[300px]" loading="lazy" />
+                                        {mediaUrl ? (
+                                          <div className="relative rounded overflow-hidden bg-black/5 min-w-[200px] min-h-[150px] cursor-pointer hover:opacity-95 transition-opacity" onClick={() => setViewingImage(mediaUrl)}>
+                                            <img src={mediaUrl} alt="Imagem" className="w-full h-auto object-cover max-h-[300px]" loading="lazy" />
                                           </div>
                                         ) : (
                                           <div className="flex items-center gap-2 bg-black/10 dark:bg-white/10 p-3 rounded-lg">
@@ -2613,10 +2607,10 @@ const AtendimentoPage = () => {
                                           <Mic className="h-5 w-5 text-[#008069]" />
                                         </div>
                                         <div className="flex flex-col flex-1">
-                                          {msg.media_url ? (
+                                          {mediaUrl ? (
                                             <audio
                                               controls
-                                              src={getMediaUrl(msg)}
+                                              src={mediaUrl}
                                               className="w-full h-8"
                                               ref={(el) => { if (el) el.playbackRate = audioSpeed; }}
                                             />
@@ -2624,7 +2618,7 @@ const AtendimentoPage = () => {
                                             <span className="italic opacity-80">Áudio indisponível</span>
                                           )}
                                         </div>
-                                        {msg.media_url && (
+                                        {mediaUrl && (
                                           <Button
                                             variant="ghost" size="sm" className="h-8 px-2 text-xs font-bold hover:bg-black/5"
                                             onClick={(e) => {
@@ -2643,14 +2637,14 @@ const AtendimentoPage = () => {
                                   if (type === 'video') {
                                     return (
                                       <div className="flex flex-col gap-1 -m-1">
-                                        {msg.media_url ? (
-                                          <video controls src={getMediaUrl(msg)} className="w-full max-h-[300px] rounded-t bg-black" />
+                                        {mediaUrl ? (
+                                          <video controls src={mediaUrl} className="w-full max-h-[300px] rounded-t bg-black" />
                                         ) : (
                                           <div className="flex items-center gap-2 bg-black/10 dark:bg-white/10 p-3 rounded-lg">
                                             <Video className="h-5 w-5" /> <span className="italic opacity-80">Vídeo indisponível</span>
                                           </div>
                                         )}
-                                        {msg.content && <span className="whitespace-pre-wrap pt-1 px-2 pb-2">{msg.content}</span>}
+                                        {msg.content && <span className="whitespace-pre-wrap pt-1 px-1 pb-1">{msg.content}</span>}
                                       </div>
                                     );
                                   }
