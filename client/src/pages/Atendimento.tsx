@@ -546,7 +546,15 @@ const AtendimentoPage = () => {
         user_id: user?.id ? Number(user.id) : undefined
       };
       setViewMode('OPEN');
-      setConversations(prev => [newConv, ...prev]);
+      setConversations(prev => {
+        // Ensure we don't add duplicates
+        const conversationMap = new Map<string | number, Conversation>();
+        prev.forEach(c => conversationMap.set(String(c.id), c));
+        conversationMap.set(String(newConv.id), newConv);
+        return Array.from(conversationMap.values()).sort(
+          (a, b) => new Date(b.last_message_at || 0).getTime() - new Date(a.last_message_at || 0).getTime()
+        );
+      });
       setSelectedConversation(newConv);
     }
 
@@ -764,7 +772,6 @@ const AtendimentoPage = () => {
       setConversations((prev) => {
         const msgPhoneMatch = normalizePhoneForMatch(newMessage.phone);
         const existingIndex = prev.findIndex((c) => normalizePhoneForMatch(c.phone) === msgPhoneMatch || c.id == newMessage.conversation_id);
-        let updatedList = [...prev];
         let conversationToUpdate: Conversation;
 
         const isChatOpen = selectedConvRef.current?.phone === newMessage.phone;
@@ -780,8 +787,6 @@ const AtendimentoPage = () => {
             unread_count: (existing.unread_count || 0) + (newMessage.direction === 'inbound' && !isChatOpen ? 1 : 0),
             status: newMessage.status || existing.status
           };
-          // Remove da posição atual
-          updatedList.splice(existingIndex, 1);
         } else {
           conversationToUpdate = {
             id: newMessage.conversation_id,
@@ -797,8 +802,26 @@ const AtendimentoPage = () => {
           };
         }
 
-        // Adiciona no topo
-        updatedList.unshift(conversationToUpdate);
+        // Create a Map to prevent duplicates (keyed by conversation ID)
+        const conversationMap = new Map<string | number, Conversation>();
+
+        // Add all existing conversations except the one we're updating
+        prev.forEach(c => {
+          if (existingIndex >= 0 && String(c.id) === String(prev[existingIndex].id)) {
+            // Skip the old version of the conversation we're updating
+            return;
+          }
+          conversationMap.set(String(c.id), c);
+        });
+
+        // Add the updated conversation
+        conversationMap.set(String(conversationToUpdate.id), conversationToUpdate);
+
+        // Convert back to array and sort by most recent message
+        const updatedList = Array.from(conversationMap.values()).sort(
+          (a, b) => new Date(b.last_message_at || 0).getTime() - new Date(a.last_message_at || 0).getTime()
+        );
+
         return updatedList;
       });
     });
@@ -1399,8 +1422,15 @@ const AtendimentoPage = () => {
       user_id: user?.id ? Number(user.id) : undefined
     };
 
-    // Add to list
-    setConversations(prev => [newConversation, ...prev]);
+    // Add to list with deduplication
+    setConversations(prev => {
+      const conversationMap = new Map<string | number, Conversation>();
+      prev.forEach(c => conversationMap.set(String(c.id), c));
+      conversationMap.set(String(newConversation.id), newConversation);
+      return Array.from(conversationMap.values()).sort(
+        (a, b) => new Date(b.last_message_at || 0).getTime() - new Date(a.last_message_at || 0).getTime()
+      );
+    });
 
     setSelectedConversation(newConversation);
     setMessages([]);
@@ -1598,8 +1628,9 @@ const AtendimentoPage = () => {
 
         const targetMatch = normalizePhoneForMatch(targetPhone);
         setConversations(prev => {
-          return prev.map(c => {
-            if (normalizePhoneForMatch(c.phone) === targetMatch || c.id == selectedConversation.id) {
+          // Update the conversation
+          const updated = prev.map(c => {
+            if (normalizePhoneForMatch(c.phone) === targetMatch || String(c.id) === String(selectedConversation.id)) {
               return {
                 ...c,
                 id: convId || c.id,
@@ -1609,7 +1640,18 @@ const AtendimentoPage = () => {
               };
             }
             return c;
-          }).sort((a, b) => new Date(b.last_message_at || 0).getTime() - new Date(a.last_message_at || 0).getTime());
+          });
+
+          // Create a Map to prevent duplicates
+          const conversationMap = new Map<string | number, Conversation>();
+          updated.forEach(c => {
+            conversationMap.set(String(c.id), c);
+          });
+
+          // Convert back to array and sort by most recent message
+          return Array.from(conversationMap.values()).sort(
+            (a, b) => new Date(b.last_message_at || 0).getTime() - new Date(a.last_message_at || 0).getTime()
+          );
         });
 
         // Ensure selected conversation matches the new ID if it was temp
