@@ -391,6 +391,12 @@ export const handleWebhook = async (req: Request, res: Response) => {
                 }
 
                 if (!content) {
+                    // If this is an UPDATE event without content, skip it (it's just a status update)
+                    if (normalizedType.includes('UPDATE')) {
+                        console.log('[Webhook] Skipping messages.update without real content (status update only)');
+                        return;
+                    }
+
                     const keys = Object.keys(realM);
                     if (keys.length > 0) {
                         const k = keys[0].replace('Message', '');
