@@ -37,7 +37,8 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-  DialogTrigger
+  DialogTrigger,
+  DialogDescription
 } from "../components/ui/dialog";
 import {
   Sheet,
@@ -164,7 +165,7 @@ const FinanceiroPage = () => {
       });
       if (res.ok) {
         const data = await res.json();
-        setCustomCategories(data);
+        setCustomCategories(Array.isArray(data) ? data : []);
       }
     } catch (error) {
       console.error("Erro ao buscar categorias", error);
@@ -211,7 +212,10 @@ const FinanceiroPage = () => {
       });
       if (res.ok) {
         const data = await res.json();
-        setTransactions(data);
+        setTransactions(Array.isArray(data) ? data : []);
+      } else {
+        const errText = await res.text();
+        console.error("Erro ao buscar transações:", errText);
       }
 
       // Always fetch stats for the period
@@ -230,9 +234,11 @@ const FinanceiroPage = () => {
   };
 
   useEffect(() => {
-    fetchData();
-    fetchCategories();
-  }, [mainTab, startDate, endDate, statusFilter, categoryFilter]);
+    if (token) {
+      fetchData();
+      fetchCategories();
+    }
+  }, [mainTab, startDate, endDate, statusFilter, categoryFilter, token]);
 
   // Effect to handle default view for each tab
   useEffect(() => {
@@ -286,15 +292,13 @@ const FinanceiroPage = () => {
       const method = formData.id ? "PUT" : "POST";
       const url = formData.id ? `/api/financial/transactions/${formData.id}` : "/api/financial/transactions";
 
-      // Ensure type and company_id are correct if not editing
-      if (!formData.id) {
-        formData.type = (mainTab === "revenues" ? "receivable" : "payable") as any;
-        if (user?.company_id) {
-          formData.company_id = user.company_id;
-        }
-      }
+      const dataToSave = {
+        ...formData,
+        type: (mainTab === "revenues" ? "receivable" : "payable"),
+        company_id: formData.company_id || user?.company_id
+      };
 
-      console.log("Enviando dados:", formData);
+      console.log("Enviando dados:", dataToSave);
 
       const res = await fetch(url, {
         method,
@@ -302,7 +306,7 @@ const FinanceiroPage = () => {
           "Content-Type": "application/json",
           "Authorization": `Bearer ${token}`
         },
-        body: JSON.stringify(formData)
+        body: JSON.stringify(dataToSave)
       });
 
       if (res.ok) {
@@ -660,11 +664,15 @@ const FinanceiroPage = () => {
 
   const totals = useMemo(() => {
     if (!Array.isArray(filteredData)) return { pending: 0, paid: 0, overdue: 0, total: 0 };
+    const getAmount = (t: Transaction) => {
+      const val = Number(t.amount);
+      return isNaN(val) ? 0 : val;
+    };
     return {
-      pending: filteredData.filter(t => t.status === "pending").reduce((sum, t) => sum + Number(t.amount || 0), 0),
-      paid: filteredData.filter(t => t.status === "paid").reduce((sum, t) => sum + Number(t.amount || 0), 0),
-      overdue: filteredData.filter(t => t.status !== "paid" && isOverdue(t.due_date)).reduce((sum, t) => sum + Number(t.amount || 0), 0),
-      total: filteredData.reduce((sum, t) => sum + Number(t.amount || 0), 0)
+      pending: filteredData.filter(t => t.status === "pending").reduce((sum, t) => sum + getAmount(t), 0),
+      paid: filteredData.filter(t => t.status === "paid").reduce((sum, t) => sum + getAmount(t), 0),
+      overdue: filteredData.filter(t => t.status !== "paid" && isOverdue(t.due_date)).reduce((sum, t) => sum + getAmount(t), 0),
+      total: filteredData.reduce((sum, t) => sum + getAmount(t), 0)
     };
   }, [filteredData]);
 
@@ -673,9 +681,10 @@ const FinanceiroPage = () => {
     const grouped = filteredData.reduce((acc: any, t) => {
       const date = safeFormat(t.due_date, "dd/MM");
       if (!acc[date]) acc[date] = { date, pendente: 0, pago: 0, total: 0 };
-      if (t.status === "paid") acc[date].pago += Number(t.amount || 0);
-      else acc[date].pendente += Number(t.amount || 0);
-      acc[date].total += Number(t.amount || 0);
+      const amount = isNaN(Number(t.amount)) ? 0 : Number(t.amount);
+      if (t.status === "paid") acc[date].pago += amount;
+      else acc[date].pendente += amount;
+      acc[date].total += amount;
       return acc;
     }, {});
     return Object.values(grouped).sort((a: any, b: any) => a.date.localeCompare(b.date));
@@ -685,7 +694,8 @@ const FinanceiroPage = () => {
     const grouped = filteredData.reduce((acc: any, t) => {
       const cat = t.category || "Outros";
       if (!acc[cat]) acc[cat] = 0;
-      acc[cat] += Number(t.amount);
+      const amount = isNaN(Number(t.amount)) ? 0 : Number(t.amount);
+      acc[cat] += amount;
       return acc;
     }, {});
     return Object.entries(grouped)

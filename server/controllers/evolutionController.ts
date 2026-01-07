@@ -386,19 +386,18 @@ export const sendEvolutionMessage = async (req: Request, res: Response) => {
 
         const externalMessageId = data?.key?.id;
 
-        // Insert message WITH USER_ID
+        // Insert message WITH USER_ID and company_id
         const insertedMsg = await pool.query(
-          'INSERT INTO whatsapp_messages (conversation_id, direction, content, sent_at, status, external_id, user_id) VALUES ($1, $2, $3, NOW(), $4, $5, $6) RETURNING id',
-          [conversationId, 'outbound', messageContent, 'sent', externalMessageId, user.id]
+          'INSERT INTO whatsapp_messages (conversation_id, direction, content, sent_at, status, external_id, user_id, company_id) VALUES ($1, $2, $3, NOW(), $4, $5, $6, $7) RETURNING *',
+          [conversationId, 'outbound', messageContent, 'sent', externalMessageId, user.id, resolvedCompanyId]
         );
         console.log(`[Evolution] Saved message to DB successfully with ID: ${insertedMsg.rows[0].id}.`);
 
         // Include the DB ID and external ID in the response so frontend can use them
         const resultPayload = {
-          ...data,
+          ...insertedMsg.rows[0],
           databaseId: insertedMsg.rows[0].id,
           conversationId: conversationId,
-          external_id: externalMessageId,
           content: messageContent,
           direction: 'outbound',
           sent_at: new Date().toISOString(),
@@ -522,13 +521,13 @@ export const sendEvolutionMedia = async (req: Request, res: Response) => {
         const externalMessageId = data?.key?.id;
 
         const insertedMsg = await pool.query(
-          'INSERT INTO whatsapp_messages (conversation_id, direction, content, sent_at, status, external_id, user_id, message_type, media_url) VALUES ($1, $2, $3, NOW(), $4, $5, $6, $7, $8) ON CONFLICT DO NOTHING RETURNING id',
-          [conversationId, 'outbound', content, 'sent', externalMessageId, user.id, mediaType, (media.startsWith('http') ? media : null)]
+          'INSERT INTO whatsapp_messages (conversation_id, direction, content, sent_at, status, external_id, user_id, message_type, media_url, company_id) VALUES ($1, $2, $3, NOW(), $4, $5, $6, $7, $8, $9) ON CONFLICT DO NOTHING RETURNING *',
+          [conversationId, 'outbound', content, 'sent', externalMessageId, user.id, mediaType, (media.startsWith('http') ? media : null), resolvedCompanyId]
         );
 
         const resultPayload = {
-          ...data,
-          id: insertedMsg.rows[0]?.id, // Ensure frontend receives the Database ID as the primary ID
+          ...insertedMsg.rows[0],
+          id: insertedMsg.rows[0]?.id,
           databaseId: insertedMsg.rows[0]?.id,
           conversationId: conversationId,
           external_id: externalMessageId,
@@ -550,9 +549,8 @@ export const sendEvolutionMedia = async (req: Request, res: Response) => {
         }
 
         return res.status(200).json(resultPayload);
-
-      } catch (e) {
-        console.error("Failed to save media message to DB:", e);
+      } catch (dbError: any) {
+        console.error("Failed to save media message to DB:", dbError);
       }
     }
 
@@ -560,7 +558,7 @@ export const sendEvolutionMedia = async (req: Request, res: Response) => {
 
   } catch (error: any) {
     console.error("Error sending media:", error);
-    return res.status(500).json({ error: "Internal Error" });
+    return res.status(500).json({ error: "Internal Error", details: error.message });
   }
 };
 

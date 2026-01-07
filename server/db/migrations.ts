@@ -252,6 +252,7 @@ const runWhatsappMigrations = async () => {
         await addColumn('whatsapp_messages', 'sender_jid', 'VARCHAR(100)');
         await addColumn('whatsapp_messages', 'sender_name', 'VARCHAR(255)');
         await addColumn('whatsapp_conversations', 'last_message_source', 'VARCHAR(20)');
+        await addColumn('whatsapp_messages', 'company_id', 'INTEGER REFERENCES companies(id)');
 
         // Ensure campaign columns exist (safely)
         await addColumn('whatsapp_campaigns', 'media_url', 'TEXT');

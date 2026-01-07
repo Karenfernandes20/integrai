@@ -189,7 +189,8 @@ export const handleWebhook = async (req: Request, res: Response) => {
             // Prepare Data
             const isFromMe = msg.key?.fromMe || msg.fromMe || false;
             const direction = isFromMe ? 'outbound' : 'inbound';
-            const phone = remoteJid.includes('@') ? remoteJid.split('@')[0] : remoteJid;
+            // Normalize phone: remove JID suffix and any device suffix (e.g. 5511999999999:1@s.whatsapp.net -> 5511999999999)
+            const phone = remoteJid.split('@')[0].split(':')[0];
             const name = msg.pushName || msg.pushname || phone;
             const isGroup = remoteJid.includes('@g.us');
             const senderJid = msg.key?.participant || msg.participant || (isGroup ? null : remoteJid);
@@ -329,10 +330,10 @@ export const handleWebhook = async (req: Request, res: Response) => {
 
             // Insert Message into database
             const insertedMsg = await pool.query(
-                `INSERT INTO whatsapp_messages (conversation_id, direction, content, sent_at, status, external_id, message_type, media_url, user_id, sender_jid, sender_name) 
-                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) 
+                `INSERT INTO whatsapp_messages (conversation_id, direction, content, sent_at, status, external_id, message_type, media_url, user_id, sender_jid, sender_name, company_id) 
+                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12) 
                  ON CONFLICT (external_id) DO NOTHING RETURNING *`,
-                [conversationId, direction, content, sent_at, 'received', externalId, messageType, mediaUrl, null, senderJid, senderName]
+                [conversationId, direction, content, sent_at, 'received', externalId, messageType, mediaUrl, null, senderJid, senderName, companyId]
             );
 
             // If duplicate message (conflict), we still want to emit conversation update

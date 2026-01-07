@@ -706,38 +706,52 @@ const AtendimentoPage = () => {
 
       // 1. Se a mensagem for da conversa aberta, adiciona na lista
       const currentSelected = selectedConvRef.current;
+      console.log(`[Socket] Received msg for ${newMessage.phone}. Selected: ${currentSelected?.phone || 'none'} (ID: ${currentSelected?.id || 'none'})`);
+
       if (currentSelected) {
         // Normalize IDs for comparison (handle LIDs and Phones)
         const currentPhoneMatch = normalizePhoneForMatch(currentSelected.phone);
         const msgPhoneMatch = normalizePhoneForMatch(newMessage.phone);
         const msgJidMatch = normalizePhoneForMatch(newMessage.remoteJid || '');
 
-        if (currentPhoneMatch === msgPhoneMatch || currentPhoneMatch === msgJidMatch || currentSelected.id == newMessage.conversation_id) {
+        const isMatch = (currentPhoneMatch === msgPhoneMatch || currentPhoneMatch === msgJidMatch || String(currentSelected.id) == String(newMessage.conversation_id));
+
+        if (isMatch) {
+          console.log(`[Socket] Message matches currently open chat.`);
           setMessages((prev) => {
             // Prevent duplication: If we sent this message (outbound) and we have a pending message with same content, ignore socket.
-            // Use loose equality for IDs to handle string/number differences
-            if (newMessage.direction === 'outbound' && newMessage.user_id == user?.id) {
+            if (newMessage.direction === 'outbound' && String(newMessage.user_id) == String(user?.id)) {
               // Check if we have a pending message with similar content
-              const hasPending = prev.some(m => m.status === 'sending' && m.content === newMessage.content);
+              const hasPending = prev.some(m => (m.status === 'sending' || typeof m.id === 'string' && m.id.startsWith('temp')) && m.content === newMessage.content);
               if (hasPending) {
-                console.log("Ignoring socket message because we have a pending optimistic one");
+                console.log("[Socket] Ignoring socket message because we have a pending optimistic one (will be promoted by POST response)");
                 return prev;
               }
             }
 
             // Enhanced deduplication with loose equality and external_id check
-            if (prev.find(m => m.id == newMessage.id || (m.external_id && m.external_id === newMessage.external_id))) return prev;
+            const isDuplicate = prev.some(m =>
+              String(m.id) == String(newMessage.id) ||
+              (m.external_id && newMessage.external_id && m.external_id === newMessage.external_id)
+            );
+
+            if (isDuplicate) {
+              console.log("[Socket] Message is already in the list (Duplicate).");
+              return prev;
+            }
+
+            console.log("[Socket] Adding new message to the list.");
             return [...prev, newMessage];
           });
 
-          // Rule 8: Auto-scroll only if at bottom. Otherwise show indicator.
           if (isNearBottomRef.current || newMessage.direction === 'outbound') {
             isNearBottomRef.current = true;
             setShowNewMessageBanner(false);
-            // The useEffect [messages] handles the actual scroll
           } else {
             setShowNewMessageBanner(true);
           }
+        } else {
+          console.log(`[Socket] Message does NOT match current chat (Match info: phones: ${currentPhoneMatch}/${msgPhoneMatch} jidMatch: ${currentPhoneMatch}/${msgJidMatch} IDMatch: ${currentSelected.id}/${newMessage.conversation_id})`);
         }
       }
 
@@ -1463,7 +1477,7 @@ const AtendimentoPage = () => {
       return;
     }
 
-    const tempMessageId = Date.now();
+    const tempMessageId = `temp-${Date.now()}`;
     try {
       // 2. Optimistic Update (Immediate Feedback)
       const optimisticMsg: Message = {
@@ -1539,12 +1553,14 @@ const AtendimentoPage = () => {
         // Update the temp message with real IDs
         // Update the temp message with real IDs, avoiding duplicates
         setMessages(prev => {
-          if (prev.find(m => m.id === dbId)) {
-            // Socket already added the real message, remove optimistic
-            return prev.filter(m => m.id !== tempMessageId);
+          const alreadyHasReal = prev.find(m => String(m.id) == String(dbId));
+          if (alreadyHasReal) {
+            console.log("[POST Response] Real message already in list (from socket), removing temp.");
+            return prev.filter(m => String(m.id) !== String(tempMessageId));
           }
+          console.log("[POST Response] Promoting temp message to real.");
           return prev.map(m =>
-            m.id === tempMessageId ? { ...m, id: dbId, external_id: externalId, status: 'sent', user_id: user?.id, agent_name: user?.full_name } : m
+            String(m.id) === String(tempMessageId) ? { ...m, id: dbId, external_id: externalId, status: 'sent', user_id: user?.id, agent_name: user?.full_name } : m
           );
         });
 
