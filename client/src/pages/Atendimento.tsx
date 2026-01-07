@@ -1649,9 +1649,9 @@ const AtendimentoPage = () => {
     yesterday.setDate(today.getDate() - 1);
 
     if (isSameDay(date, today)) {
-      return "HOJE";
+      return "Hoje";
     } else if (isSameDay(date, yesterday)) {
-      return "ONTEM";
+      return "Ontem";
     } else {
       return date.toLocaleDateString("pt-BR", {
         day: "2-digit",
@@ -2362,7 +2362,7 @@ const AtendimentoPage = () => {
                     )}
                   </span>
                   <span className="text-[13px] text-[#8696A0] truncate leading-tight">
-                    {selectedConversation.status === 'OPEN' && selectedConversation.user_id ? "em atendimento" : "visto por último hoje às 15:42"}
+                    {selectedConversation.status === 'OPEN' && selectedConversation.user_id ? "em atendimento" : "online"}
                   </span>
                 </div>
               </div>
@@ -2417,7 +2417,16 @@ const AtendimentoPage = () => {
               <div
                 ref={scrollRef}
                 onScroll={handleScroll}
-                className={cn("flex-1 overflow-y-auto p-4 flex flex-col gap-1 relative z-10 scrollbar-thin scrollbar-thumb-zinc-300 dark:scrollbar-thumb-zinc-800", messages.length === 0 && "items-center justify-center")}
+                className={cn(
+                  "flex-1 overflow-y-auto p-4 flex flex-col gap-1 relative z-10 scrollbar-thin scrollbar-thumb-zinc-300 dark:scrollbar-thumb-zinc-800",
+                  "bg-[#efeae2] dark:bg-[#0b141a] bg-opacity-95",
+                  messages.length === 0 && "items-center justify-center"
+                )}
+                style={{
+                  backgroundImage: `url('https://user-images.githubusercontent.com/15075759/28719144-86dc0f70-73b1-11e7-911d-60d70fcded21.png')`,
+                  backgroundBlendMode: 'overlay',
+                  backgroundAttachment: 'fixed'
+                }}
               >
                 {/* MESSAGE SEARCH HIGHLIGHTING/FILTERING */}
                 {messageSearchTerm && (
@@ -2492,7 +2501,7 @@ const AtendimentoPage = () => {
                       <div key={`group-${groupIdx}`} className="flex flex-col w-full">
                         {isNewDay && firstMsg.sent_at && (
                           <div className="flex justify-center my-4 sticky top-0 z-20">
-                            <span className="bg-[#182229] px-3 py-1.5 rounded-lg text-[12.5px] text-[#8696A0] shadow-sm uppercase">
+                            <span className="bg-[#D9FDD3]/80 dark:bg-[#182229] px-3 py-1.5 rounded-lg text-[12.5px] text-[#54656f] dark:text-[#8696A0] shadow-sm border border-black/5">
                               {formatDateLabel(firstMsg.sent_at)}
                             </span>
                           </div>
@@ -2527,6 +2536,7 @@ const AtendimentoPage = () => {
                           )}
 
                           {group.map((msg, msgIdx) => {
+                            const isFirstInGroup = msgIdx === 0;
                             const isLastInGroup = msgIdx === group.length - 1;
                             const type = msg.message_type || 'text';
 
@@ -2534,21 +2544,41 @@ const AtendimentoPage = () => {
                               <div
                                 key={msg.id}
                                 className={cn(
-                                  "relative max-w-[65%] shadow-sm text-[14.2px] leading-[19px] break-words mb-[2px]",
+                                  "relative max-w-[65%] min-w-[80px] shadow-[0_1px_0.5px_rgba(0,0,0,0.13)] text-[14.2px] leading-[19px] break-words mb-[2px] group",
                                   msg.direction === "outbound"
-                                    ? "bg-[#005C4B] text-[#E9EDEF]"
-                                    : "bg-[#202C33] text-[#E9EDEF]",
-                                  // Tail logic (Simplified for now)
-                                  "rounded-lg px-2 py-1.5"
+                                    ? "bg-[#dcf8c6] dark:bg-[#005C4B] text-[#111B21] dark:text-[#E9EDEF] self-end"
+                                    : "bg-white dark:bg-[#202C33] text-[#111B21] dark:text-[#E9EDEF] self-start",
+                                  // Border radius logic for grouping
+                                  isFirstInGroup && msg.direction === 'outbound' ? "rounded-l-lg rounded-tr-none rounded-br-lg" :
+                                    isFirstInGroup && msg.direction === 'inbound' ? "rounded-r-lg rounded-tl-none rounded-bl-lg" : "rounded-lg",
+                                  "px-[12px] py-[8px]"
                                 )}
                               >
+                                {/* Message Tail (Bico) - Only for first in group */}
+                                {isFirstInGroup && (
+                                  <div className={cn(
+                                    "absolute top-0 w-3 h-4",
+                                    msg.direction === "outbound"
+                                      ? "right-[-8px] text-[#dcf8c6] dark:text-[#005C4B]"
+                                      : "left-[-8px] text-white dark:text-[#202C33]"
+                                  )}>
+                                    <svg viewBox="0 0 8 13" width="8" height="13" className="fill-current">
+                                      {msg.direction === "outbound" ? (
+                                        <path d="M5.188 1H0v11.193l6.467-8.625C7.526 2.156 6.958 1 5.188 1z" />
+                                      ) : (
+                                        <path d="M2.812 1H8v11.193L1.533 3.568C.474 2.156 1.042 1 2.812 1z" />
+                                      )}
+                                    </svg>
+                                  </div>
+                                )}
+
                                 {/* Render Message Content */}
                                 {(() => {
                                   if (type === 'image') {
                                     return (
-                                      <div className="flex flex-col gap-1">
+                                      <div className="flex flex-col gap-1 -m-1">
                                         {msg.media_url ? (
-                                          <div className="relative rounded-lg overflow-hidden bg-black/5 min-w-[200px] min-h-[150px] cursor-pointer hover:opacity-90 transition-opacity" onClick={() => setViewingImage(getMediaUrl(msg))}>
+                                          <div className="relative rounded overflow-hidden bg-black/5 min-w-[200px] min-h-[150px] cursor-pointer hover:opacity-95 transition-opacity" onClick={() => setViewingImage(getMediaUrl(msg))}>
                                             <img src={getMediaUrl(msg)} alt="Imagem" className="w-full h-auto object-cover max-h-[300px]" loading="lazy" />
                                           </div>
                                         ) : (
@@ -2556,7 +2586,7 @@ const AtendimentoPage = () => {
                                             <Image className="h-5 w-5" /> <span className="italic opacity-80">Imagem indisponível</span>
                                           </div>
                                         )}
-                                        {msg.content && <span className="whitespace-pre-wrap pt-1">{msg.content}</span>}
+                                        {msg.content && <span className="whitespace-pre-wrap pt-1 px-1 pb-1">{msg.content}</span>}
                                       </div>
                                     );
                                   }
@@ -2564,9 +2594,9 @@ const AtendimentoPage = () => {
                                   if (type === 'audio') {
                                     const audioSpeed = audioSpeeds[msg.id] || 1;
                                     return (
-                                      <div className="flex items-center gap-2 min-w-[250px]">
-                                        <div className="p-2 bg-zinc-200 dark:bg-zinc-700 rounded-full">
-                                          <Mic className="h-5 w-5" />
+                                      <div className="flex items-center gap-2 min-w-[250px] py-1">
+                                        <div className="p-2 bg-[#d6eeba] dark:bg-[#1d3d3a] rounded-full">
+                                          <Mic className="h-5 w-5 text-[#008069]" />
                                         </div>
                                         <div className="flex flex-col flex-1">
                                           {msg.media_url ? (
@@ -2582,7 +2612,7 @@ const AtendimentoPage = () => {
                                         </div>
                                         {msg.media_url && (
                                           <Button
-                                            variant="ghost" size="sm" className="h-8 px-2 text-xs font-bold hover:bg-zinc-200 dark:hover:bg-zinc-700"
+                                            variant="ghost" size="sm" className="h-8 px-2 text-xs font-bold hover:bg-black/5"
                                             onClick={(e) => {
                                               e.stopPropagation();
                                               const audioEl = e.currentTarget.parentElement?.querySelector('audio') as HTMLAudioElement;
@@ -2598,28 +2628,28 @@ const AtendimentoPage = () => {
 
                                   if (type === 'video') {
                                     return (
-                                      <div className="flex flex-col gap-1">
+                                      <div className="flex flex-col gap-1 -m-1">
                                         {msg.media_url ? (
-                                          <video controls src={getMediaUrl(msg)} className="w-full max-h-[300px] rounded-lg bg-black" />
+                                          <video controls src={getMediaUrl(msg)} className="w-full max-h-[300px] rounded-t bg-black" />
                                         ) : (
                                           <div className="flex items-center gap-2 bg-black/10 dark:bg-white/10 p-3 rounded-lg">
                                             <Video className="h-5 w-5" /> <span className="italic opacity-80">Vídeo indisponível</span>
                                           </div>
                                         )}
-                                        {msg.content && <span className="whitespace-pre-wrap pt-1">{msg.content}</span>}
+                                        {msg.content && <span className="whitespace-pre-wrap pt-1 px-2 pb-2">{msg.content}</span>}
                                       </div>
                                     );
                                   }
 
                                   if (type === 'document') {
                                     return (
-                                      <div className="flex items-center gap-3 bg-black/5 dark:bg-white/5 p-2 rounded-lg min-w-[200px]">
+                                      <div className="flex items-center gap-3 bg-black/5 dark:bg-white/5 p-2 rounded-lg min-w-[200px] border border-black/5">
                                         <div className="p-2 bg-red-100 dark:bg-red-900/30 rounded text-red-600 dark:text-red-400">
                                           <FileText className="h-6 w-6" />
                                         </div>
                                         <div className="flex flex-col gap-0.5 overflow-hidden flex-1">
                                           <span className="truncate font-medium text-sm">{msg.content || 'Documento'}</span>
-                                          {msg.media_url && <a href={getMediaUrl(msg)} target="_blank" rel="noopener noreferrer" className="text-xs underline opacity-70 hover:opacity-100">Baixar arquivo</a>}
+                                          {msg.media_url && <a href={getMediaUrl(msg)} target="_blank" rel="noopener noreferrer" className="text-[11px] underline opacity-70 hover:opacity-100">Baixar arquivo</a>}
                                         </div>
                                       </div>
                                     );
@@ -2642,7 +2672,7 @@ const AtendimentoPage = () => {
                                   }
 
                                   return (
-                                    <span className="block pr-12 pb-1 whitespace-pre-wrap break-words">
+                                    <span className="block pr-12 pb-1 whitespace-pre-wrap break-words leading-[1.4]">
                                       {messageSearchTerm ? (
                                         <HighlightedText text={msg.content} highlight={messageSearchTerm} />
                                       ) : (
@@ -2652,30 +2682,35 @@ const AtendimentoPage = () => {
                                   );
                                 })()}
 
-                                {/* Rule 7: Timestamp only on last message of group */}
-                                {isLastInGroup && (
-                                  <span className="absolute right-2 bottom-1 text-[11px] flex items-center gap-1 text-[#8696A0]">
-                                    {formatTime(msg.sent_at)}
-                                    {msg.direction === "outbound" && <CheckCheck className="h-4 w-4 text-[#53bdeb]" />}
-                                  </span>
-                                )}
-
-                                {/* Hover Actions */}
-                                <div className="absolute top-1 right-1 opacity-0 group-hover:opacity-100 transition-opacity flex gap-1 z-50">
-                                  <Button
-                                    variant="ghost" size="icon" className="h-6 w-6 bg-[#202C33]/90 rounded-full"
-                                    onClick={(e) => { e.stopPropagation(); handleReplyMessage(msg); }}
-                                  >
-                                    <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-reply text-[#8696A0]"><polyline points="9 17 4 12 9 7" /><path d="M20 18v-2a4 4 0 0 0-4-4H4" /></svg>
-                                  </Button>
-                                  {msg.direction === 'outbound' && (
-                                    <Button
-                                      variant="ghost" size="icon" className="h-6 w-6 bg-[#202C33]/90 rounded-full"
-                                      onClick={(e) => { e.stopPropagation(); handleDeleteClick(msg); }}
-                                    >
-                                      <Trash2 className="h-3 w-3 text-red-500" />
-                                    </Button>
+                                {/* Timestamp & Status */}
+                                <span className="absolute right-2 bottom-[4px] text-[10px] flex items-center gap-1 text-[#8696A0] dark:text-[#8696A0]">
+                                  {formatTime(msg.sent_at)}
+                                  {msg.direction === "outbound" && (
+                                    msg.status === 'sending' ? <Loader2 className="h-3 w-3 animate-spin" /> :
+                                      <CheckCheck className={cn("h-4 w-4", msg.status === 'read' ? "text-[#53bdeb]" : "text-[#8696A0]")} />
                                   )}
+                                </span>
+
+                                {/* Hover Actions Menu */}
+                                <div className="absolute top-1 right-1 opacity-0 group-hover:opacity-100 transition-opacity flex gap-1 z-50">
+                                  <DropdownMenu>
+                                    <DropdownMenuTrigger asChild>
+                                      <Button variant="ghost" size="icon" className="h-6 w-6 hover:bg-black/10 rounded-full">
+                                        <ChevronDown className="h-4 w-4 text-[#8696A0]" />
+                                      </Button>
+                                    </DropdownMenuTrigger>
+                                    <DropdownMenuContent align="end" className="bg-white dark:bg-[#233138] border-none text-[#111B21] dark:text-[#E9EDEF]">
+                                      <DropdownMenuItem onClick={() => handleReplyMessage(msg)} className="gap-2"><Plus className="h-4 w-4" /> Responder</DropdownMenuItem>
+                                      {msg.direction === 'outbound' && (
+                                        <DropdownMenuItem onClick={() => handleEditMessage(msg)} className="gap-2"><Pencil className="h-4 w-4" /> Editar</DropdownMenuItem>
+                                      )}
+                                      <DropdownMenuItem onClick={() => {
+                                        navigator.clipboard.writeText(msg.content);
+                                        toast.success("Copiado!");
+                                      }} className="gap-2"><FileText className="h-4 w-4" /> Copiar texto</DropdownMenuItem>
+                                      <DropdownMenuItem onClick={() => handleDeleteClick(msg)} className="gap-2 text-red-500"><Trash2 className="h-4 w-4" /> Apagar</DropdownMenuItem>
+                                    </DropdownMenuContent>
+                                  </DropdownMenu>
                                 </div>
                               </div>
                             );
@@ -2764,15 +2799,27 @@ const AtendimentoPage = () => {
                 onSubmit={handleSendMessage}
               >
                 <div className="flex-1 relative flex items-center">
-                  <Input
-                    className="flex-1 bg-[#2A3942] border-none text-[#E9EDEF] focus-visible:ring-0 focus-visible:ring-offset-0 placeholder:text-[#8696A0] min-h-[42px] py-2 rounded-lg text-sm"
+                  <textarea
+                    className="flex-1 bg-[#2A3942] border-none text-[#E9EDEF] focus-visible:ring-0 focus-visible:ring-offset-0 placeholder:text-[#8696A0] py-[10px] px-[12px] rounded-lg text-[15px] resize-none overflow-y-auto max-h-[200px] min-h-[42px] leading-[20px] scrollbar-thin"
                     placeholder={
                       !selectedConversation ? "Selecione um contato" :
                         (isPending && !selectedConversation.is_group) ? "Inicie o atendimento para responder" :
                           (isClosed && !selectedConversation.is_group) ? "Conversa encerrada" : "Digite uma mensagem"
                     }
+                    rows={1}
                     value={newMessage}
-                    onChange={(e) => setNewMessage(e.target.value)}
+                    onChange={(e) => {
+                      setNewMessage(e.target.value);
+                      // Auto-resize
+                      e.target.style.height = 'auto';
+                      e.target.style.height = `${Math.min(e.target.scrollHeight, 200)}px`;
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && !e.shiftKey) {
+                        e.preventDefault();
+                        handleSendMessage(e as any);
+                      }
+                    }}
                     disabled={!selectedConversation || isReadOnly}
                     onFocus={() => setShowEmojiPicker(false)}
                   />
