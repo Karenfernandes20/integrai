@@ -159,10 +159,14 @@ const FinanceiroPage = () => {
   const [customCategories, setCustomCategories] = useState<{ id: number, name: string, type: string }[]>([]);
   const [newCategoryName, setNewCategoryName] = useState("");
 
+  // Cost Centers Management
+  const [isManageCostCentersOpen, setIsManageCostCentersOpen] = useState(false);
+  const [costCenters, setCostCenters] = useState<{ id: number, name: string }[]>([]);
+  const [newCostCenterName, setNewCostCenterName] = useState("");
+
   const fetchCategories = async () => {
     try {
       const res = await fetch("/api/financial/categories", {
-        headers: { "Authorization": `Bearer ${token}` }
       });
       if (res.ok) {
         const data = await res.json();
@@ -170,6 +174,20 @@ const FinanceiroPage = () => {
       }
     } catch (error) {
       console.error("Erro ao buscar categorias", error);
+    }
+  };
+
+  const fetchCostCenters = async () => {
+    try {
+      const res = await fetch("/api/financial/cost-centers", {
+        headers: { "Authorization": `Bearer ${token}` }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setCostCenters(Array.isArray(data) ? data : []);
+      }
+    } catch (error) {
+      console.error("Erro ao buscar centros de custo", error);
     }
   };
 
