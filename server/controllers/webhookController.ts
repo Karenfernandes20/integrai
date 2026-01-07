@@ -130,6 +130,8 @@ export const handleWebhook = async (req: Request, res: Response) => {
                 msg.status === 'sent' ||
                 msg.status === 'delivered' ||
                 msg.status === 'read' ||
+                // Many integrations use prefixes like 'BAE5' or '3EB0' for outbound/system messages
+                (msg.key?.id && /^(BAE5|3EB0|3A|BAE)/.test(msg.key.id)) ||
                 (msg.key && !msg.key.remoteJid?.includes('@s.whatsapp.net') && !msg.key.remoteJid?.includes('@g.us') && msg.key.fromMe !== false)
             );
 
@@ -137,7 +139,8 @@ export const handleWebhook = async (req: Request, res: Response) => {
                 (msg.key?.fromMe !== undefined ? `msg.key.fromMe(${msg.key.fromMe})` :
                     (msg.fromMe !== undefined ? `msg.fromMe(${msg.fromMe})` :
                         (msg.isSent !== undefined ? `msg.isSent(${msg.isSent})` :
-                            (msg.status === 'sent' ? "msg.status:sent" : "default(false)"))));
+                            (msg.key?.id && /^(BAE5|3EB0|3A|BAE)/.test(msg.key.id) ? `prefix:${msg.key.id.substring(0, 4)}` :
+                                (msg.status === 'sent' ? "msg.status:sent" : "default(false)")))));
 
             console.log(`[Webhook] JID: ${remoteJid} | fromMe: ${isFromMe} (${fromMeSource}) | Type: ${normalizedType} | Instance: ${instance}`);
 
@@ -231,14 +234,17 @@ export const handleWebhook = async (req: Request, res: Response) => {
                 [remoteJid, instance, companyId]
             );
 
-            // Fallback: If not found by JID, try by phone number (Evolution sometimes sends different JID formats)
+            // Fallback: If not found by JID, try by phone number variations
             if (checkConv.rows.length === 0 && !isGroup) {
                 const phoneCheck = await pool.query(
-                    `SELECT id, status, is_group, contact_name, group_name, profile_pic_url FROM whatsapp_conversations WHERE phone = $1 AND instance = $2 AND company_id = $3`,
-                    [phone, instance, companyId]
+                    `SELECT id, status, is_group, contact_name, group_name, profile_pic_url 
+                     FROM whatsapp_conversations 
+                     WHERE (phone = $1 OR phone = $2 OR phone = $3) 
+                       AND instance = $4 AND company_id = $5`,
+                    [phone, phone.startsWith('55') ? phone.slice(2) : `55${phone}`, phone.length === 13 && phone.startsWith('55') ? phone.slice(0, 4) + phone.slice(5) : phone, instance, companyId]
                 );
                 if (phoneCheck.rows.length > 0) {
-                    console.log(`[Webhook] Conversation found by phone fallback: ${phone}`);
+                    console.log(`[Webhook] Conversation found by phone fallback: ${phone} (Matched ID: ${phoneCheck.rows[0].id})`);
                     checkConv = phoneCheck;
                 }
             }
@@ -437,7 +443,7 @@ export const handleWebhook = async (req: Request, res: Response) => {
                         agent_name: (direction === 'outbound' && !insertedMsg.rows[0].user_id) ? (msg.agent_name || 'Agente de IA') : null,
                         message_origin: (direction === 'outbound' && !insertedMsg.rows[0].user_id) ? 'ai_agent' : 'whatsapp_mobile'
                     };
-                    console.log(`[Webhook] Emitting outbound AI message to room ${room} for JID ${remoteJid}`);
+                    console.log(`[Webhook] Emitting message to room ${room} | Conversation: ${conversationId} | Direction: ${direction}`);
                     io.to(room).emit('message:received', payload);
                 }
             }

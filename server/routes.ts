@@ -9,7 +9,12 @@ import {
   updateProfile,
 } from './controllers/userController';
 import { getStages, getLeads, updateLeadStage, updateLead, createStage, deleteStage, getCrmDashboardStats } from './controllers/crmController';
-import { handleWebhook, getConversations, getMessages, debugWebhookPayloads } from './controllers/webhookController';
+import {
+  handleWebhook,
+  getConversations,
+  getMessages,
+  debugWebhookPayloads
+} from './controllers/webhookController';
 import { getCities, createCity } from './controllers/cityController';
 import { login, register } from './controllers/authController';
 import { authenticateToken, authorizeRole } from './middleware/authMiddleware';
@@ -46,9 +51,6 @@ router.post('/users/:id/reset-password', authenticateToken, authorizeRole(['SUPE
 // Evolution routes
 import { getEvolutionQrCode, setEvolutionWebhook, getEvolutionWebhook, deleteEvolutionInstance, sendEvolutionMessage, getEvolutionConnectionState, getEvolutionContacts, createEvolutionContact, updateEvolutionContact, deleteEvolutionContact, editEvolutionMessage, syncEvolutionContacts, handleEvolutionWebhook, getEvolutionContactsLive, deleteEvolutionMessage, getEvolutionConfig, getEvolutionMedia, getEvolutionProfilePic, syncAllProfilePics, sendEvolutionMedia, refreshConversationMetadata, deleteMessage, searchEverything } from './controllers/evolutionController';
 router.get('/evolution/search', authenticateToken, searchEverything);
-router.get('/evolution/qrcode', authenticateToken, getEvolutionQrCode);
-router.get('/evolution/webhook/get', authenticateToken, getEvolutionWebhook);
-router.post('/evolution/webhook/set', authenticateToken, setEvolutionWebhook);
 router.get('/evolution/status', authenticateToken, getEvolutionConnectionState);
 router.get('/evolution/contacts', authenticateToken, getEvolutionContacts);
 router.post('/evolution/contacts', authenticateToken, createEvolutionContact);
@@ -105,9 +107,12 @@ router.post('/evolution/debug/fix-viamove', async (req, res) => {
     res.status(500).json({ error: e.message });
   }
 });
-// router.post('/evolution/webhook/*', handleWebhook); // REMOVED: Wildcard not supported in Express 5 string paths
-router.post('/evolution/webhook/:type', handleWebhook); // Catch /webhook/messages-upsert etc.
-router.post('/evolution/webhook', handleWebhook); // Catch base /webhook
+router.get('/evolution/qrcode', authenticateToken, getEvolutionQrCode);
+router.get('/evolution/webhook/get', authenticateToken, getEvolutionWebhook);
+router.post('/evolution/webhook/set', authenticateToken, setEvolutionWebhook);
+router.post('/evolution/webhook/:type', handleWebhook);
+router.post('/evolution/webhook', handleWebhook);
+router.get('/evolution/webhook-debug', debugWebhookPayloads);
 router.get('/evolution/conversations', authenticateToken, getConversations);
 router.post('/evolution/conversations/:conversationId/refresh', authenticateToken, refreshConversationMetadata);
 router.get('/evolution/messages/:conversationId', authenticateToken, getMessages);
