@@ -393,23 +393,49 @@ export const getCategories = async (req: Request, res: Response) => {
     const user = (req as any).user;
     const companyId = user?.company_id;
 
-    // For SuperAdmin without company_id, maybe return empty or all? Assuming company context is usually set.
     if (!companyId && user.role !== 'SUPERADMIN') {
       return res.status(400).json({ error: 'Company ID is required' });
     }
 
-    // Select custom categories for this company
+    // 1. Check if company has categories
+    const checkQuery = companyId
+      ? 'SELECT count(*) FROM financial_categories WHERE company_id = $1'
+      : 'SELECT count(*) FROM financial_categories';
+    const checkParams = companyId ? [companyId] : [];
+    const checkResult = await pool.query(checkQuery, checkParams);
+
+    // 2. If zero, and we have a company context, seed them
+    if (Number(checkResult.rows[0].count) === 0 && companyId) {
+      console.log(`[Categories] Seeding defaults for company ${companyId}...`);
+      const defaults = [
+        // Expenses
+        { n: 'Luz', t: 'payable' }, { n: 'Internet', t: 'payable' }, { n: 'Aluguel', t: 'payable' },
+        { n: 'Combustível', t: 'payable' }, { n: 'Manutenção', t: 'payable' }, { n: 'Impostos', t: 'payable' },
+        { n: 'Salários', t: 'payable' }, { n: 'Marketing', t: 'payable' }, { n: 'Limpeza', t: 'payable' },
+        { n: 'Outros', t: 'payable' },
+        // Revenues
+        { n: 'Corrida', t: 'receivable' }, { n: 'Assinatura', t: 'receivable' }, { n: 'Serviço', t: 'receivable' },
+        { n: 'Comissão', t: 'receivable' }, { n: 'Outros', t: 'receivable' }
+      ];
+
+      for (const d of defaults) {
+        await pool.query(
+          'INSERT INTO financial_categories (company_id, name, type) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING',
+          [companyId, d.n, d.t]
+        );
+      }
+    }
+
+    // 3. Return categories
     const query = companyId
       ? 'SELECT * FROM financial_categories WHERE company_id = $1 ORDER BY name ASC'
-      : 'SELECT * FROM financial_categories ORDER BY name ASC'; // Admin sees all?
+      : 'SELECT * FROM financial_categories ORDER BY name ASC';
 
     const params = companyId ? [companyId] : [];
-
     const result = await pool.query(query, params);
     res.json(result.rows);
   } catch (error) {
     console.error('Error fetching categories:', error);
-    // If table doesn't exist, return empty list gracefully to avoid breaking frontend
     res.json([]);
   }
 };

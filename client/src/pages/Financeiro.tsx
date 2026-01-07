@@ -121,12 +121,13 @@ interface Transaction {
   cost_center?: string | null;
 }
 
-const CATEGORIES_EXPENSES = [
+// Keep as fallbacks only if DB is empty/loading
+const CATEGORIES_EXPENSES_FALLBACK = [
   "Luz", "Internet", "Aluguel", "Combustível", "Manutenção",
   "Impostos", "Salários", "Marketing", "Limpeza", "Outros"
 ];
 
-const CATEGORIES_REVENUES = [
+const CATEGORIES_REVENUES_FALLBACK = [
   "Corrida", "Assinatura", "Serviço", "Comissão", "Outros"
 ];
 
@@ -275,6 +276,11 @@ const FinanceiroPage = () => {
         headers: { "Authorization": `Bearer ${token}` }
       });
       if (res.ok) {
+        // Find if we were using this category in the form
+        const deletedCat = customCategories.find(c => c.id === id);
+        if (deletedCat && formData.category === deletedCat.name) {
+          setFormData(prev => ({ ...prev, category: "Outros" }));
+        }
         fetchCategories();
       }
     } catch (error) {
@@ -943,14 +949,12 @@ const FinanceiroPage = () => {
                         <div className="flex items-center justify-between">
                           <label className="text-xs font-bold text-muted-foreground uppercase">Categoria</label>
                           <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-5 w-5 text-muted-foreground hover:text-zinc-900"
+                            variant="link"
+                            className="h-auto p-0 text-[10px] font-bold text-red-500 hover:text-red-700 decoration-red-500/30"
                             onClick={() => setIsManageCategoriesOpen(true)}
-                            title="Gerenciar Categorias"
                             type="button"
                           >
-                            <Settings className="h-3 w-3" />
+                            Excluir / Gerenciar
                           </Button>
                         </div>
                         <Select value={formData.category || "Outros"} onValueChange={v => setFormData({ ...formData, category: v })}>
@@ -958,12 +962,21 @@ const FinanceiroPage = () => {
                             <SelectValue />
                           </SelectTrigger>
                           <SelectContent>
-                            {Array.from(new Set([
-                              ...(mainTab === "revenues" ? CATEGORIES_REVENUES : CATEGORIES_EXPENSES),
-                              ...customCategories.filter(c => c.type === (mainTab === "revenues" ? "receivable" : "payable")).map(c => c.name)
-                            ])).map(c => (
-                              <SelectItem key={c} value={c}>{c}</SelectItem>
-                            ))}
+                            {(() => {
+                              const type = mainTab === 'revenues' ? 'receivable' : 'payable';
+                              const relevantCategories = customCategories.filter(c => c.type === type);
+
+                              if (relevantCategories.length === 0) {
+                                // Fallback to hardcoded list if DB is empty
+                                return (mainTab === 'revenues' ? CATEGORIES_REVENUES_FALLBACK : CATEGORIES_EXPENSES_FALLBACK).map(c => (
+                                  <SelectItem key={c} value={c}>{c}</SelectItem>
+                                ));
+                              }
+
+                              return relevantCategories.map(c => (
+                                <SelectItem key={c.id} value={c.name}>{c.name}</SelectItem>
+                              ));
+                            })()}
                           </SelectContent>
                         </Select>
                       </div>
@@ -1208,12 +1221,20 @@ const FinanceiroPage = () => {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">Todas</SelectItem>
-                {Array.from(new Set([
-                  ...(mainTab === 'revenues' ? CATEGORIES_REVENUES : CATEGORIES_EXPENSES),
-                  ...customCategories.filter(c => c.type === (mainTab === 'revenues' ? 'receivable' : 'payable')).map(c => c.name)
-                ])).map(c =>
-                  <SelectItem key={c} value={c}>{c}</SelectItem>
-                )}
+                {(() => {
+                  const type = mainTab === 'revenues' ? 'receivable' : 'payable';
+                  const relevantCategories = customCategories.filter(c => c.type === type);
+
+                  if (relevantCategories.length === 0) {
+                    return (mainTab === 'revenues' ? CATEGORIES_REVENUES_FALLBACK : CATEGORIES_EXPENSES_FALLBACK).map(c => (
+                      <SelectItem key={c} value={c}>{c}</SelectItem>
+                    ));
+                  }
+
+                  return relevantCategories.map(c => (
+                    <SelectItem key={c.id} value={c.name}>{c.name}</SelectItem>
+                  ));
+                })()}
               </SelectContent>
             </Select>
           </div>
@@ -1409,31 +1430,35 @@ const FinanceiroPage = () => {
                 <Plus className="h-4 w-4" />
               </Button>
             </div>
-            <div className="space-y-2">
-              <h4 className="text-xs font-bold text-muted-foreground uppercase">Personalizadas</h4>
-              <ScrollArea className="h-[200px] border rounded-md p-2">
-                {customCategories.filter(c => c.type === (mainTab === 'revenues' ? 'receivable' : 'payable')).length === 0 ? (
-                  <div className="text-sm text-muted-foreground italic text-center py-4">Nenhuma categoria personalizada.</div>
-                ) : (
-                  customCategories.filter(c => c.type === (mainTab === 'revenues' ? 'receivable' : 'payable')).map(c => (
-                    <div key={c.id} className="flex items-center justify-between p-2 hover:bg-zinc-50 rounded-lg">
-                      <span className="text-sm font-medium">{c.name}</span>
-                      <Button variant="ghost" size="icon" className="h-6 w-6 text-red-500 hover:text-red-700 hover:bg-red-50" onClick={() => handleDeleteCategory(c.id)}>
-                        <X className="h-3 w-3" />
+            <div className="space-y-4">
+              <ScrollArea className="h-[300px] border rounded-2xl p-2 bg-zinc-50/50">
+                {(() => {
+                  const type = mainTab === 'revenues' ? 'receivable' : 'payable';
+                  const filtered = customCategories.filter(c => c.type === type);
+
+                  if (filtered.length === 0) {
+                    return <div className="text-sm text-muted-foreground italic text-center py-10">Nenhuma categoria cadastrada.</div>;
+                  }
+
+                  return filtered.map(c => (
+                    <div key={c.id} className="flex items-center justify-between p-3 hover:bg-white hover:shadow-sm transition-all rounded-xl mb-1 border border-transparent hover:border-zinc-100">
+                      <span className="text-sm font-bold text-zinc-700">{c.name}</span>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8 text-red-500 hover:text-red-700 hover:bg-red-50 rounded-full"
+                        onClick={() => handleDeleteCategory(c.id)}
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
                       </Button>
                     </div>
-                  ))
-                )}
+                  ));
+                })()}
               </ScrollArea>
 
-              <h4 className="text-xs font-bold text-muted-foreground uppercase mt-4">Padrão do Sistema (Fixo)</h4>
-              <ScrollArea className="h-[100px] border rounded-md p-2 bg-zinc-50">
-                {(mainTab === "revenues" ? CATEGORIES_REVENUES : CATEGORIES_EXPENSES).map(c => (
-                  <div key={c} className="flex items-center justify-between p-2 opacity-50">
-                    <span className="text-sm font-medium">{c}</span>
-                  </div>
-                ))}
-              </ScrollArea>
+              <div className="text-[10px] text-zinc-400 font-medium px-2 italic">
+                * As categorias excluídas não afetarão lançamentos antigos, mas não aparecerão mais para novos cadastros.
+              </div>
             </div>
           </div>
         </DialogContent>
