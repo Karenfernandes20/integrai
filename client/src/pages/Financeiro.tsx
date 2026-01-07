@@ -435,15 +435,15 @@ const FinanceiroPage = () => {
       <Table>
         <TableHeader className="bg-zinc-50/50">
           <TableRow>
-            <TableHead className="w-[300px] text-[10px] font-bold uppercase">Descrição / Origem</TableHead>
-            <TableHead className="text-[10px] font-bold uppercase">Categoria</TableHead>
-            <TableHead className="text-center text-[10px] font-bold uppercase">Emissão</TableHead>
-            <TableHead className="text-center text-[10px] font-bold uppercase">
+            <TableHead className="w-[30%] min-w-[200px] text-[10px] font-bold uppercase">Descrição / Origem</TableHead>
+            <TableHead className="w-[15%] text-[10px] font-bold uppercase">Categoria</TableHead>
+            <TableHead className="w-[10%] text-center text-[10px] font-bold uppercase">Emissão</TableHead>
+            <TableHead className="w-[10%] text-center text-[10px] font-bold uppercase">
               {mainTab === 'revenues' ? 'Recebimento' : 'Vencimento'}
             </TableHead>
-            <TableHead className="text-right text-[10px] font-bold uppercase">Valor</TableHead>
-            <TableHead className="text-center text-[10px] font-bold uppercase">Status</TableHead>
-            <TableHead className="text-center text-[10px] font-bold uppercase w-[150px]">Ações</TableHead>
+            <TableHead className="w-[15%] text-right text-[10px] font-bold uppercase">Valor</TableHead>
+            <TableHead className="w-[10%] text-center text-[10px] font-bold uppercase">Status</TableHead>
+            <TableHead className="w-[10%] text-center text-[10px] font-bold uppercase w-[150px]">Ações</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -464,17 +464,17 @@ const FinanceiroPage = () => {
                 className="cursor-pointer hover:bg-zinc-50/80 group transition-colors"
                 onClick={() => { setSelectedTransaction(t); setIsSheetOpen(true); }}
               >
-                <TableCell>
+                <TableCell className="max-w-[300px]">
                   <div className="flex items-center gap-3">
                     <div className={cn(
-                      "p-2.5 rounded-xl shadow-sm",
+                      "p-2.5 rounded-xl shadow-sm shrink-0",
                       t.type === 'receivable' ? "bg-emerald-50 text-emerald-600" : "bg-red-50 text-red-600"
                     )}>
                       {t.type === 'receivable' ? <ArrowUpRight className="h-4 w-4" /> : <ArrowDownRight className="h-4 w-4" />}
                     </div>
-                    <div className="flex flex-col">
-                      <span className="font-bold text-sm text-zinc-900">{t.description}</span>
-                      <span className="text-[10px] text-zinc-400 font-medium">#{t.id} • {t.notes || "Sem observações"}</span>
+                    <div className="flex flex-col overflow-hidden">
+                      <span className="font-bold text-sm text-zinc-900 truncate" title={t.description}>{t.description}</span>
+                      <span className="text-[10px] text-zinc-400 font-medium truncate" title={t.notes || ""}>#{t.id} • {t.notes || "Sem observações"}</span>
                     </div>
                   </div>
                 </TableCell>
@@ -878,7 +878,7 @@ const FinanceiroPage = () => {
     if (itemStatus === "paid") {
       return (
         <Badge className={cn(
-          "border-none text-[10px] font-bold",
+          "border-none text-[10px] font-bold whitespace-nowrap px-2 py-0.5 min-w-[80px] justify-center",
           t.type === "receivable" ? "bg-emerald-500 hover:bg-emerald-600 text-white" : "bg-emerald-500 hover:bg-emerald-600 text-white"
         )}>
           {t.type === "receivable" ? "RECEBIDO" : "PAGO"}
@@ -888,14 +888,14 @@ const FinanceiroPage = () => {
 
     if (dueDate && isBefore(dueDate, now)) {
       return (
-        <Badge variant="destructive" className="animate-pulse shadow-sm flex items-center gap-1 text-[10px] font-bold">
+        <Badge variant="destructive" className="animate-pulse shadow-sm flex items-center justify-center gap-1 text-[10px] font-bold whitespace-nowrap px-2 py-0.5 min-w-[80px]">
           <AlertCircle className="h-2.5 w-2.5" /> VENCIDO
         </Badge>
       );
     }
 
     return (
-      <Badge variant="secondary" className="bg-amber-100 text-amber-700 hover:bg-amber-200 border-none text-[10px] font-bold">
+      <Badge variant="secondary" className="bg-amber-100 text-amber-700 hover:bg-amber-200 border-none text-[10px] font-bold whitespace-nowrap px-2 py-0.5 min-w-[80px] justify-center">
         {t.type === "receivable" ? "A RECEBER" : "PENDENTE"}
       </Badge>
     );
