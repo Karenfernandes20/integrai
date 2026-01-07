@@ -765,18 +765,143 @@ async function sendWhatsAppMessage(
     }
 }
 
-// Get Campaign Failures
+// Get Campaign Failures - ULTRA ROBUST VERSION
+// NUNCA retorna erro 500, sempre retorna formato consistente
 export const getCampaignFailures = async (req: Request, res: Response) => {
+    // Formato de resposta padrão - SEMPRE retornamos isso
+    const standardResponse = {
+        failures: [] as Array<{
+            phone: string | null;
+            error_message: string;
+            created_at: string;
+        }>,
+        hasError: false
+    };
+
     try {
-        if (!pool) return res.status(500).json({ error: 'Database not configured' });
+        // Validação 1: Database
+        if (!pool) {
+            console.error('[getCampaignFailures] Database not configured');
+            standardResponse.hasError = true;
+            return res.status(200).json(standardResponse); // 200, não 500!
+        }
+
+        // Validação 2: ID da campanha
         const { id } = req.params;
-        const result = await pool.query(
-            "SELECT phone, name, error_message, updated_at as failed_at FROM whatsapp_campaign_contacts WHERE campaign_id = $1 AND status = 'failed' ORDER BY id DESC",
-            [id]
-        );
-        res.json(result.rows);
-    } catch (e) {
-        console.error("Error fetching campaign failures:", e);
-        res.status(500).json({ error: 'Failed to fetch failures' });
+        if (!id || isNaN(Number(id))) {
+            console.error('[getCampaignFailures] Invalid campaign ID:', id);
+            return res.status(200).json(standardResponse);
+        }
+
+        // Query com try/catch interno
+        let result;
+        try {
+            result = await pool.query(
+                `SELECT 
+                    phone, 
+                    name, 
+                    error_message, 
+                    updated_at as failed_at,
+                    created_at
+                FROM whatsapp_campaign_contacts 
+                WHERE campaign_id = $1 AND status = 'failed' 
+                ORDER BY updated_at DESC 
+                LIMIT 1000`,
+                [id]
+            );
+        } catch (dbError) {
+            console.error('[getCampaignFailures] Database query error:', dbError);
+            standardResponse.hasError = true;
+            return res.status(200).json(standardResponse);
+        }
+
+        // Validação 3: Resultado da query
+        if (!result || !result.rows) {
+            console.warn('[getCampaignFailures] No result from database');
+            return res.status(200).json(standardResponse);
+        }
+
+        // Processar cada falha com tratamento robusto
+        standardResponse.failures = result.rows.map((row: any) => {
+            // Função helper para normalizar error_message
+            const normalizeErrorMessage = (errorMsg: any): string => {
+                // Se for null/undefined
+                if (errorMsg === null || errorMsg === undefined) {
+                    return 'Erro não especificado';
+                }
+
+                // Se for string, usar diretamente
+                if (typeof errorMsg === 'string') {
+                    // Se for vazio
+                    if (!errorMsg.trim()) {
+                        return 'Erro não especificado';
+                    }
+
+                    // Tentar fazer parse se parecer JSON
+                    if (errorMsg.trim().startsWith('{')) {
+                        try {
+                            const parsed = JSON.parse(errorMsg);
+                            // Extrair mensagem do objeto
+                            return parsed.message ||
+                                parsed.error ||
+                                parsed.error_message ||
+                                JSON.stringify(parsed);
+                        } catch {
+                            // Não é JSON válido, retornar string original
+                            return errorMsg;
+                        }
+                    }
+
+                    return errorMsg;
+                }
+
+                // Se for objeto
+                if (typeof errorMsg === 'object') {
+                    try {
+                        return errorMsg.message ||
+                            errorMsg.error ||
+                            JSON.stringify(errorMsg);
+                    } catch {
+                        return 'Erro ao processar mensagem de erro';
+                    }
+                }
+
+                // Fallback final
+                return String(errorMsg);
+            };
+
+            // Normalizar data
+            const normalizeDate = (date: any): string => {
+                try {
+                    if (!date) return new Date().toISOString();
+                    const dateObj = new Date(date);
+                    if (isNaN(dateObj.getTime())) {
+                        return new Date().toISOString();
+                    }
+                    return dateObj.toISOString();
+                } catch {
+                    return new Date().toISOString();
+                }
+            };
+
+            // Retornar objeto normalizado
+            return {
+                phone: row.phone || null,
+                error_message: normalizeErrorMessage(row.error_message),
+                created_at: normalizeDate(row.failed_at || row.created_at)
+            };
+        });
+
+        // Log para debug (mas não quebra)
+        console.log(`[getCampaignFailures] Returning ${standardResponse.failures.length} failures for campaign ${id}`);
+
+        // SEMPRE retorna 200 com formato padrão
+        return res.status(200).json(standardResponse);
+
+    } catch (unexpectedError) {
+        // Última linha de defesa - NUNCA deixa quebrar
+        console.error('[getCampaignFailures] UNEXPECTED ERROR:', unexpectedError);
+        standardResponse.hasError = true;
+        return res.status(200).json(standardResponse);
     }
 };

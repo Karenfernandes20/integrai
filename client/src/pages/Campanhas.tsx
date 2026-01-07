@@ -45,20 +45,55 @@ const CampanhasPage = () => {
             const res = await fetch(`/api/campaigns/${id}/failures`, {
                 headers: { "Authorization": `Bearer ${token}` }
             });
+
+            // O endpoint SEMPRE retorna 200 agora
             if (res.ok) {
                 const data = await res.json();
-                setFailures(data);
+
+                // Validar estrutura da resposta
+                if (data && typeof data === 'object') {
+                    // Novo formato: { failures: [], hasError: false }
+                    if (Array.isArray(data.failures)) {
+                        setFailures(data.failures);
+
+                        // Se hasError for true, avisar mas ainda mostrar dados
+                        if (data.hasError) {
+                            toast.warning("Relatório carregado com avisos");
+                        }
+                    }
+                    // Formato antigo (array direto) - compatibilidade
+                    else if (Array.isArray(data)) {
+                        setFailures(data);
+                    }
+                    // Nenhum formato reconhecido
+                    else {
+                        setFailures([]);
+                        console.warn('Formato de resposta inesperado:', data);
+                    }
+                } else {
+                    setFailures([]);
+                    console.warn('Resposta não é um objeto válido:', data);
+                }
             } else {
-                setFailuresError("Não foi possível carregar os detalhes. Erro no servidor.");
+                // Mesmo com status não-ok, tentar extrair dados
+                try {
+                    const errorData = await res.json();
+                    setFailuresError(errorData.message || "Não foi possível carregar os detalhes.");
+                } catch {
+                    setFailuresError("Erro no servidor ao buscar falhas.");
+                }
                 toast.error("Erro ao buscar falhas");
             }
         } catch (e) {
+            // Erro de rede/conexão
             setFailuresError("Erro de conexão ao buscar falhas.");
             toast.error("Erro de conexão");
+            console.error('Erro ao buscar falhas:', e);
         } finally {
             setIsLoadingFailures(false);
         }
     };
+
 
 
 
@@ -496,7 +531,7 @@ const CampanhasPage = () => {
                                     <div className="flex flex-col items-end gap-1 shrink-0">
                                         <span className="text-[10px] font-bold text-zinc-400 uppercase">Ocorreu em</span>
                                         <span className="text-xs font-mono text-zinc-600">
-                                            {f.failed_at ? new Date(f.failed_at).toLocaleString('pt-BR') : '--/--/-- --:--'}
+                                            {f.created_at ? new Date(f.created_at).toLocaleString('pt-BR') : '--/--/-- --:--'}
                                         </span>
                                     </div>
                                 </div>
