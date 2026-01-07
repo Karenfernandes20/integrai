@@ -116,7 +116,22 @@ export const handleWebhook = async (req: Request, res: Response) => {
                 console.warn('[Webhook] Missing remoteJid in message');
                 return;
             }
-            console.log(`[Webhook] Message JID: ${remoteJid} | fromMe: ${msg.key?.fromMe}`);
+
+            // Robust isFromMe detection with multiple fallbacks for different API versions
+            const isFromMe = (
+                msg.key?.fromMe === true ||
+                msg.fromMe === true ||
+                msg.isSent === true ||
+                msg.data?.fromMe === true ||
+                msg.data?.key?.fromMe === true ||
+                (typeof msg.fromMe === 'string' && msg.fromMe === 'true')
+            );
+
+            const fromMeSource = msg.key?.fromMe !== undefined ? "msg.key.fromMe" :
+                (msg.fromMe !== undefined ? "msg.fromMe" :
+                    (msg.isSent !== undefined ? "msg.isSent" : "default(false)"));
+
+            console.log(`[Webhook] JID: ${remoteJid} | fromMe: ${isFromMe} (${fromMeSource}) | Type: ${normalizedType} | Instance: ${instance}`);
 
             if (remoteJid === 'status@broadcast') return;
 
@@ -187,7 +202,6 @@ export const handleWebhook = async (req: Request, res: Response) => {
             }
 
             // Prepare Data
-            const isFromMe = msg.key?.fromMe || msg.fromMe || false;
             const direction = isFromMe ? 'outbound' : 'inbound';
             // Normalize phone: remove JID suffix and any device suffix (e.g. 5511999999999:1@s.whatsapp.net -> 5511999999999)
             const phone = remoteJid.split('@')[0].split(':')[0];

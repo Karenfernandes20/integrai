@@ -713,8 +713,15 @@ const AtendimentoPage = () => {
         const currentPhoneMatch = normalizePhoneForMatch(currentSelected.phone);
         const msgPhoneMatch = normalizePhoneForMatch(newMessage.phone);
         const msgJidMatch = normalizePhoneForMatch(newMessage.remoteJid || '');
+        const msgPhoneRaw = (newMessage.phone || '').replace(/\D/g, '');
+        const currentPhoneRaw = (currentSelected.phone || '').replace(/\D/g, '');
 
-        const isMatch = (currentPhoneMatch === msgPhoneMatch || currentPhoneMatch === msgJidMatch || String(currentSelected.id) == String(newMessage.conversation_id));
+        const isMatch = (
+          currentPhoneMatch === msgPhoneMatch ||
+          currentPhoneMatch === msgJidMatch ||
+          String(currentSelected.id) === String(newMessage.conversation_id) ||
+          (msgPhoneRaw !== '' && currentPhoneRaw !== '' && (msgPhoneRaw.endsWith(currentPhoneRaw) || currentPhoneRaw.endsWith(msgPhoneRaw)))
+        );
 
         if (isMatch) {
           console.log(`[Socket] Message matches currently open chat.`);
@@ -2497,10 +2504,25 @@ const AtendimentoPage = () => {
                             firstMsg.direction === "outbound" ? "items-end" : "items-start"
                           )}
                         >
-                          {/* Sender name for groups (only if inbound and first in group) */}
+                          {/* Sender name for groups (inbound) */}
                           {selectedConversation?.is_group && firstMsg.direction === 'inbound' && (
                             <span className="text-[12.5px] font-medium text-[#8696A0] px-2 mb-0.5">
                               {firstMsg.saved_name || firstMsg.sender_name || firstMsg.sender_jid?.split('@')[0] || "Participante"}
+                            </span>
+                          )}
+
+                          {/* Origin label for outbound (AI Agent, Mobile, etc) */}
+                          {firstMsg.direction === 'outbound' && !firstMsg.user_id && (
+                            <span className="text-[11px] font-medium text-[#8696A0] px-2 mb-0.5 uppercase tracking-wider flex items-center gap-1">
+                              <span className="w-1.5 h-1.5 bg-cyan-500 rounded-full animate-pulse" />
+                              {firstMsg.agent_name || "Agente de IA / Celular"}
+                            </span>
+                          )}
+
+                          {/* Sender name for outbound if sent by another system user */}
+                          {firstMsg.direction === 'outbound' && firstMsg.user_id && String(firstMsg.user_id) !== String(user?.id) && (
+                            <span className="text-[11px] font-medium text-[#8696A0] px-2 mb-0.5 uppercase tracking-wider">
+                              {firstMsg.agent_name || "Outro Operador"}
                             </span>
                           )}
 
