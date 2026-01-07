@@ -124,12 +124,20 @@ export const handleWebhook = async (req: Request, res: Response) => {
                 msg.isSent === true ||
                 msg.data?.fromMe === true ||
                 msg.data?.key?.fromMe === true ||
-                (typeof msg.fromMe === 'string' && msg.fromMe === 'true')
+                (typeof msg.fromMe === 'string' && msg.fromMe === 'true') ||
+                normalizedType === 'SEND_MESSAGE' ||
+                normalizedType === 'MESSAGE_SEND' ||
+                msg.status === 'sent' ||
+                msg.status === 'delivered' ||
+                msg.status === 'read' ||
+                (msg.key && !msg.key.remoteJid?.includes('@s.whatsapp.net') && !msg.key.remoteJid?.includes('@g.us') && msg.key.fromMe !== false)
             );
 
-            const fromMeSource = msg.key?.fromMe !== undefined ? "msg.key.fromMe" :
-                (msg.fromMe !== undefined ? "msg.fromMe" :
-                    (msg.isSent !== undefined ? "msg.isSent" : "default(false)"));
+            const fromMeSource = normalizedType === 'SEND_MESSAGE' ? "event:SEND_MESSAGE" :
+                (msg.key?.fromMe !== undefined ? `msg.key.fromMe(${msg.key.fromMe})` :
+                    (msg.fromMe !== undefined ? `msg.fromMe(${msg.fromMe})` :
+                        (msg.isSent !== undefined ? `msg.isSent(${msg.isSent})` :
+                            (msg.status === 'sent' ? "msg.status:sent" : "default(false)"))));
 
             console.log(`[Webhook] JID: ${remoteJid} | fromMe: ${isFromMe} (${fromMeSource}) | Type: ${normalizedType} | Instance: ${instance}`);
 
@@ -218,10 +226,22 @@ export const handleWebhook = async (req: Request, res: Response) => {
 
             // UPSERT Conversation
             let conversationId: number;
-            const checkConv = await pool.query(
+            let checkConv = await pool.query(
                 `SELECT id, status, is_group, contact_name, group_name, profile_pic_url FROM whatsapp_conversations WHERE external_id = $1 AND instance = $2 AND company_id = $3`,
                 [remoteJid, instance, companyId]
             );
+
+            // Fallback: If not found by JID, try by phone number (Evolution sometimes sends different JID formats)
+            if (checkConv.rows.length === 0 && !isGroup) {
+                const phoneCheck = await pool.query(
+                    `SELECT id, status, is_group, contact_name, group_name, profile_pic_url FROM whatsapp_conversations WHERE phone = $1 AND instance = $2 AND company_id = $3`,
+                    [phone, instance, companyId]
+                );
+                if (phoneCheck.rows.length > 0) {
+                    console.log(`[Webhook] Conversation found by phone fallback: ${phone}`);
+                    checkConv = phoneCheck;
+                }
+            }
 
             let currentStatus: string = 'PENDING';
 
@@ -232,7 +252,10 @@ export const handleWebhook = async (req: Request, res: Response) => {
 
                 let newStatus = currentStatus;
                 if (direction === 'inbound' && currentStatus === 'CLOSED') newStatus = 'PENDING';
-                else if (direction === 'outbound' && currentStatus !== 'OPEN') newStatus = 'OPEN';
+                else if (direction === 'outbound' && currentStatus !== 'OPEN' && currentStatus !== 'CLOSED') newStatus = 'OPEN';
+                // If it's outbound and CLOSED, we might want to keep it closed or reopen?
+                // Logic: messages from AI/Mobile should probably reopen the chat if they are sent to a contact.
+                if (direction === 'outbound' && currentStatus === 'CLOSED') newStatus = 'OPEN';
 
                 currentStatus = newStatus;
 
@@ -274,6 +297,7 @@ export const handleWebhook = async (req: Request, res: Response) => {
             }
 
             const getRealMessage = (mBody: any) => {
+                if (!mBody) return {};
                 if (mBody.viewOnceMessageV2?.message) return mBody.viewOnceMessageV2.message;
                 if (mBody.viewOnceMessage?.message) return mBody.viewOnceMessage.message;
                 if (mBody.ephemeralMessage?.message) return mBody.ephemeralMessage.message;
@@ -282,6 +306,7 @@ export const handleWebhook = async (req: Request, res: Response) => {
 
             const realM = getRealMessage(m);
 
+            // Determine message type and extract content/mediaUrl
             if (realM.conversation) {
                 content = realM.conversation;
             } else if (realM.extendedTextMessage?.text) {
@@ -409,10 +434,10 @@ export const handleWebhook = async (req: Request, res: Response) => {
                         status: currentStatus,
                         sender_jid: insertedMsg.rows[0].sender_jid,
                         sender_name: insertedMsg.rows[0].sender_name,
-                        agent_name: (direction === 'outbound' && !insertedMsg.rows[0].user_id) ? 'Agente de IA' : null,
+                        agent_name: (direction === 'outbound' && !insertedMsg.rows[0].user_id) ? (msg.agent_name || 'Agente de IA') : null,
                         message_origin: (direction === 'outbound' && !insertedMsg.rows[0].user_id) ? 'ai_agent' : 'whatsapp_mobile'
                     };
-                    console.log(`[Webhook] Emitting message to room ${room} for JID ${remoteJid}`);
+                    console.log(`[Webhook] Emitting outbound AI message to room ${room} for JID ${remoteJid}`);
                     io.to(room).emit('message:received', payload);
                 }
             }
