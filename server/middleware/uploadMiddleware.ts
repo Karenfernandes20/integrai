@@ -31,8 +31,8 @@ const fileFilter = (_req: any, file: Express.Multer.File, cb: multer.FileFilterC
     // application/pdf
     // image/...
 
-    // Simplistic regex for extensions
-    const allowedExtensions = /jpeg|jpg|png|gif|webp|mp3|ogg|mp4|pdf|doc|docx|xls|xlsx|txt/;
+    // Expanded list of allowed extensions for campaigns
+    const allowedExtensions = /jpeg|jpg|png|gif|webp|svg|bmp|tiff|mp3|ogg|aac|wav|m4a|mp4|avi|mov|wmv|pdf|doc|docx|xls|xlsx|txt|zip|rar/;
     const extname = allowedExtensions.test(path.extname(file.originalname).toLowerCase().replace('.', ''));
     // mime type check is often safer but can be tricky with some audio types on some systems
     // relying on extension + basic mime group
@@ -40,12 +40,12 @@ const fileFilter = (_req: any, file: Express.Multer.File, cb: multer.FileFilterC
     if (extname) {
         return cb(null, true);
     } else {
-        cb(new Error('File type not allowed. Allowed: images, audio, video, pdf, docs.'));
+        cb(new Error('Tipo de arquivo não permitido. Permitidos: imagens, áudio, vídeo, pdf, documentos.'));
     }
 };
 
 export const upload = multer({
     storage: storage,
-    limits: { fileSize: 5 * 1024 * 1024 }, // 5MB limit
+    limits: { fileSize: 16 * 1024 * 1024 }, // 16MB limit (increased from 5MB)
     fileFilter: fileFilter
 });

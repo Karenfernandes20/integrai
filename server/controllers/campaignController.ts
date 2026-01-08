@@ -585,8 +585,12 @@ async function sendWhatsAppMessage(
                             path.join(process.cwd(), 'uploads', filename) // cwd relative (root)
                         ];
 
+                        console.log(`[sendWhatsAppMessage] MEDIA DEBUG - Searching for file: ${filename}`);
+                        console.log(`[sendWhatsAppMessage] MEDIA DEBUG - Possible paths:`, possiblePaths);
+
                         let fileFoundPath = null;
                         for (const p of possiblePaths) {
+                            console.log(`[sendWhatsAppMessage] MEDIA DEBUG - Checking: ${p} - Exists: ${fs.existsSync(p)}`);
                             if (fs.existsSync(p)) {
                                 fileFoundPath = p;
                                 break;
@@ -594,31 +598,84 @@ async function sendWhatsAppMessage(
                         }
 
                         if (fileFoundPath) {
-                            console.log(`[sendWhatsAppMessage] Local file found at: ${fileFoundPath}. Converting to Base64...`);
+                            console.log(`[sendWhatsAppMessage] ✓ Local file found at: ${fileFoundPath}`);
+
+                            // Read file
                             const fileBuffer = fs.readFileSync(fileFoundPath);
+                            const fileSizeKB = (fileBuffer.length / 1024).toFixed(2);
+                            console.log(`[sendWhatsAppMessage] File size: ${fileSizeKB} KB`);
+
+                            // Check file size limit (Evolution API typically has limits)
+                            const maxSizeMB = 16; // 16MB limit
+                            if (fileBuffer.length > maxSizeMB * 1024 * 1024) {
+                                console.error(`[sendWhatsAppMessage] File too large: ${fileSizeKB} KB (max ${maxSizeMB}MB)`);
+                                return { success: false, error: `Arquivo muito grande (${fileSizeKB}KB). Máximo: ${maxSizeMB}MB` };
+                            }
+
+                            // Convert to base64
                             const base64 = fileBuffer.toString('base64');
                             const ext = path.extname(filename).toLowerCase().replace('.', '');
 
                             const mimes: Record<string, string> = {
-                                'png': 'image/png', 'jpg': 'image/jpeg', 'jpeg': 'image/jpeg', 'gif': 'image/gif', 'webp': 'image/webp',
-                                'pdf': 'application/pdf', 'mp4': 'video/mp4', 'mp3': 'audio/mpeg', 'ogg': 'audio/ogg',
-                                'doc': 'application/msword', 'docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-                                'xls': 'application/vnd.ms-excel', 'xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+                                // Images
+                                'png': 'image/png', 'jpg': 'image/jpeg', 'jpeg': 'image/jpeg',
+                                'gif': 'image/gif', 'webp': 'image/webp', 'svg': 'image/svg+xml',
+                                'bmp': 'image/bmp', 'tiff': 'image/tiff',
+                                // Videos
+                                'mp4': 'video/mp4', 'avi': 'video/x-msvideo', 'mov': 'video/quicktime',
+                                'wmv': 'video/x-ms-wmv', 'mpeg': 'video/mpeg',
+                                // Audio
+                                'mp3': 'audio/mpeg', 'ogg': 'audio/ogg', 'aac': 'audio/aac',
+                                'wav': 'audio/wav', 'm4a': 'audio/mp4',
+                                // Documents
+                                'pdf': 'application/pdf',
+                                'doc': 'application/msword',
+                                'docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+                                'xls': 'application/vnd.ms-excel',
+                                'xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                                // Archives
+                                'zip': 'application/zip',
+                                'rar': 'application/x-rar-compressed'
                             };
                             finalMimeType = mimes[ext] || 'application/octet-stream';
                             finalMedia = `data:${finalMimeType};base64,${base64}`;
+
+                            console.log(`[sendWhatsAppMessage] ✓ Base64 conversion successful. Extension: ${ext}, MIME: ${finalMimeType}, Base64 length: ${base64.length}`);
                         } else {
-                            console.warn(`[sendWhatsAppMessage] Local file expected but NOT found in any likely path. Filename: ${filename}`);
+                            console.error(`[sendWhatsAppMessage] ✗ File NOT found in any path!`);
+                            console.error(`[sendWhatsAppMessage] Original URL: ${mediaUrl}`);
+                            console.error(`[sendWhatsAppMessage] Extracted filename: ${filename}`);
+                            console.error(`[sendWhatsAppMessage] Current directory: ${process.cwd()}`);
+
+                            // List actual files in upload directory for debugging
+                            try {
+                                const uploadDir = path.join(process.cwd(), 'server/uploads');
+                                if (fs.existsSync(uploadDir)) {
+                                    const files = fs.readdirSync(uploadDir);
+                                    console.error(`[sendWhatsAppMessage] Files in ${uploadDir}:`, files.slice(0, 10));
+                                } else {
+                                    console.error(`[sendWhatsAppMessage] Upload directory does not exist: ${uploadDir}`);
+                                }
+                            } catch (listErr) {
+                                console.error(`[sendWhatsAppMessage] Could not list upload directory:`, listErr);
+                            }
+
                             // If we can't find the file locally, and it's a localhost URL, Evolution will definitely fail.
                             if (mediaUrl.includes('localhost') || mediaUrl.includes('127.0.0.1')) {
-                                return { success: false, error: `Local media file not found: ${filename}` };
+                                return { success: false, error: `Arquivo de mídia não encontrado no servidor: ${filename}` };
                             }
                         }
+                    } else {
+                        console.error(`[sendWhatsAppMessage] Could not extract filename from URL: ${mediaUrl}`);
+                        return { success: false, error: 'URL de mídia inválida - não foi possível extrair o nome do arquivo' };
                     }
+                } else {
+                    console.log(`[sendWhatsAppMessage] Using remote media URL directly: ${mediaUrl}`);
                 }
             } catch (e) {
-                console.error(`[sendWhatsAppMessage] Failed to process media:`, e);
-                return { success: false, error: `Media processing failed: ${(e as Error).message}` };
+                console.error(`[sendWhatsAppMessage] ✗ EXCEPTION processing media:`, e);
+                console.error(`[sendWhatsAppMessage] Stack trace:`, (e as Error).stack);
+                return { success: false, error: `Falha ao processar mídia: ${(e as Error).message}` };
             }
         }
 
