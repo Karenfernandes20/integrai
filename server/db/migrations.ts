@@ -720,9 +720,8 @@ const runWhatsappMigrations = async () => {
                 await pool.query('DELETE FROM plans'); // Clear placeholders
                 await pool.query(`
                     INSERT INTO plans (name, max_users, max_whatsapp_users, max_connections, max_queues, use_campaigns, use_schedules, use_internal_chat, use_external_api, use_kanban) VALUES 
-                    ('Básico', 1, 1, 1, 3, false, true, false, false, true),
-                    ('Profissional', 5, 5, 2, 10, true, true, true, true, true),
-                    ('Enterprise', 9999, 9999, 10, 9999, true, true, true, true, true);
+                    ('Básico', 5, 5, 1, 10, true, true, true, true, true),
+                    ('Avançado', 9999, 9999, 3, 9999, true, true, true, true, true);
                 `);
             }
 

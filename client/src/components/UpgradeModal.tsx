@@ -9,48 +9,41 @@ import { Badge } from "./ui/badge";
 
 const PLANS = [
     {
-        name: "Starter",
-        description: "Para solopreneurs e pequenas equipes iniciando.",
-        monthly: 97,
-        annual: 77,
+        name: "Básico",
+        description: "Estrutura completa para profissionalizar seu atendimento e vendas.",
+        monthly: 497,
+        annual: 497 * 0.8, // 20% off roughly or just manual if preferred. Let's keep the math dynamic or fixed. User gave 497. 
+        // User didn't specify annual pricing, but component uses 'annual' field.
+        // Let's assume 497 is monthly.
+        // 497 * 12 = 5964.
+        // If discount, maybe 397 * 12? 
+        // Use logic proportional to previous. 97 -> 77 (~20% off).
+        // 497 - 20% = 397.6. Let's say 397 to be clean? Or just 497/month and calculate annual.
+        // Let's use 397 for annual monthly equivalent.
         features: [
-            "Até 2 Usuários",
-            "CRM Básico",
+            "Até 5 Usuários",
+            "CRM Completo",
             "1 Conexão WhatsApp",
-            "Sem Automações",
+            "Automações de Mensagens",
+            "Agendamentos",
             "Suporte via Email"
         ],
         highlight: false
     },
     {
-        name: "Pro",
-        description: "Para empresas em crescimento que precisam de escala.",
-        monthly: 297,
-        annual: 247,
-        features: [
-            "Até 10 Usuários",
-            "CRM Completo & Funis",
-            "3 Conexões WhatsApp",
-            "Automações Avançadas",
-            "Disparos em Massa",
-            "Suporte Prioritário"
-        ],
-        highlight: true
-    },
-    {
-        name: "Enterprise",
-        description: "Para grandes operações com necessidades customizadas.",
-        monthly: 997,
-        annual: 897,
+        name: "Avançado",
+        description: "Potência máxima com IA e múltiplos canais para escalar.",
+        monthly: 597,
+        annual: 497, // 597 - 100 roughly.
         features: [
             "Usuários Ilimitados",
-            "Múltiplos WhatsApps",
-            "IA Customizada",
-            "API Aberta",
-            "Gerente de Contas",
-            "White Label Completo"
+            "3 Conexões WhatsApp",
+            "Agentes de IA Ilimitados",
+            "Automações Avançadas (n8n)",
+            "Disparos em Massa",
+            "Gerente de Contas"
         ],
-        highlight: false
+        highlight: true
     }
 ];
 
