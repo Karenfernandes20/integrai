@@ -424,8 +424,40 @@ const runWhatsappMigrations = async () => {
         await pool.query('CREATE INDEX IF NOT EXISTS idx_campaigns_company ON whatsapp_campaigns(company_id, status)');
         await pool.query('CREATE INDEX IF NOT EXISTS idx_campaign_contacts_campaign ON whatsapp_campaign_contacts(campaign_id, status)');
 
+        // Admin Tasks Tables
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS admin_tasks (
+                id SERIAL PRIMARY KEY,
+                title VARCHAR(255) NOT NULL,
+                description TEXT,
+                status VARCHAR(20) DEFAULT 'pending', -- pending, in_progress, completed
+                priority VARCHAR(20) DEFAULT 'medium', -- low, medium, high
+                due_date TIMESTAMP,
+                responsible_id INTEGER REFERENCES app_users(id),
+                company_id INTEGER REFERENCES companies(id),
+                created_by INTEGER REFERENCES app_users(id),
+                created_at TIMESTAMP DEFAULT NOW(),
+                updated_at TIMESTAMP DEFAULT NOW(),
+                completed_at TIMESTAMP
+            );
+        `);
+
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS admin_task_history (
+                id SERIAL PRIMARY KEY,
+                task_id INTEGER REFERENCES admin_tasks(id) ON DELETE CASCADE,
+                user_id INTEGER REFERENCES app_users(id),
+                action TEXT NOT NULL,
+                created_at TIMESTAMP DEFAULT NOW()
+            );
+        `);
+
+        await pool.query('CREATE INDEX IF NOT EXISTS idx_admin_tasks_status ON admin_tasks(status)');
+        await pool.query('CREATE INDEX IF NOT EXISTS idx_admin_tasks_priority ON admin_tasks(priority)');
+
+        console.log("Admin tasks migrations finished.");
         console.log("WhatsApp migrations finished.");
     } catch (error) {
-        console.error("Error creating WhatsApp tables:", error);
+        console.error("Error creating WhatsApp/Admin tables:", error);
     }
 };

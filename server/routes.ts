@@ -201,11 +201,21 @@ import {
 router.post('/campaigns', authenticateToken, createCampaign);
 router.get('/campaigns', authenticateToken, getCampaigns);
 router.get('/campaigns/:id', authenticateToken, getCampaignById);
-router.get('/campaigns/:id/failures', authenticateToken, getCampaignFailures);
-router.put('/campaigns/:id', authenticateToken, updateCampaign);
 router.post('/campaigns/:id/start', authenticateToken, startCampaign);
 router.post('/campaigns/:id/pause', authenticateToken, pauseCampaign);
+router.put('/campaigns/:id', authenticateToken, updateCampaign);
 router.delete('/campaigns/:id', authenticateToken, deleteCampaign);
+router.get('/campaigns/:id/failures', authenticateToken, getCampaignFailures);
+
+// Admin Tasks
+import { getTasks, createTask, updateTask, deleteTask, getTaskHistory, getPendingTasksCount } from './controllers/taskController';
+router.get('/admin/tasks', authenticateToken, authorizeRole(['SUPERADMIN']), getTasks);
+router.get('/admin/tasks/count', authenticateToken, authorizeRole(['SUPERADMIN']), getPendingTasksCount);
+router.post('/admin/tasks', authenticateToken, authorizeRole(['SUPERADMIN']), createTask);
+router.put('/admin/tasks/:id', authenticateToken, authorizeRole(['SUPERADMIN']), updateTask);
+router.delete('/admin/tasks/:id', authenticateToken, authorizeRole(['SUPERADMIN']), deleteTask);
+router.get('/admin/tasks/:id/history', authenticateToken, authorizeRole(['SUPERADMIN']), getTaskHistory);
+
 router.post('/campaigns/upload', authenticateToken, upload.single('file'), (req: Request, res: Response) => {
   if (!req.file) {
     return res.status(400).json({ error: 'No file uploaded' });

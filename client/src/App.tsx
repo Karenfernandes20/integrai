@@ -23,6 +23,7 @@ import FollowUpPage from "./pages/FollowUp";
 import GruposPage from "./pages/Grupos";
 import CampanhasPage from "./pages/Campanhas";
 import FaqPage from "./pages/Faq";
+import TasksPage from "./pages/Tasks";
 
 import { AuthProvider } from "./contexts/AuthContext";
 import AdminRoute from "./components/AdminRoute";
@@ -72,6 +73,7 @@ const App = () => (
               <Route element={<AdminRoute roles={['SUPERADMIN', 'ADMIN']} />}>
                 <Route path="empresas" element={<SuperadminPage />} />
                 <Route path="relatorios" element={<RelatoriosPage />} />
+                <Route path="tarefas" element={<TasksPage />} />
               </Route>
             </Route>
 

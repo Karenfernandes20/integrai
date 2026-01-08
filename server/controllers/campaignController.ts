@@ -577,21 +577,20 @@ async function sendWhatsAppMessage(
                         const __filename = fileURLToPath(import.meta.url);
                         const __dirname = path.dirname(__filename);
 
-                        // Try typical paths
+                        const projectRoot = process.cwd();
                         const possiblePaths = [
-                            path.join(__dirname, '../uploads', filename), // source layout
-                            path.join(__dirname, '../../uploads', filename), // dist/server/controllers layout
-                            path.join(process.cwd(), 'server/uploads', filename), // cwd relative
-                            path.join(process.cwd(), 'uploads', filename) // cwd relative (root)
+                            path.join(projectRoot, 'server', 'uploads', filename),
+                            path.join(projectRoot, 'uploads', filename),
+                            path.join(__dirname, '..', 'uploads', filename),
+                            path.join(__dirname, '..', '..', 'uploads', filename)
                         ];
 
                         console.log(`[sendWhatsAppMessage] MEDIA DEBUG - Searching for file: ${filename}`);
-                        console.log(`[sendWhatsAppMessage] MEDIA DEBUG - Possible paths:`, possiblePaths);
-
                         let fileFoundPath = null;
                         for (const p of possiblePaths) {
-                            console.log(`[sendWhatsAppMessage] MEDIA DEBUG - Checking: ${p} - Exists: ${fs.existsSync(p)}`);
-                            if (fs.existsSync(p)) {
+                            const exists = fs.existsSync(p);
+                            console.log(`[sendWhatsAppMessage] -> Checking: ${p} | Exists: ${exists}`);
+                            if (exists) {
                                 fileFoundPath = p;
                                 break;
                             }
@@ -599,70 +598,29 @@ async function sendWhatsAppMessage(
 
                         if (fileFoundPath) {
                             console.log(`[sendWhatsAppMessage] ✓ Local file found at: ${fileFoundPath}`);
-
-                            // Read file
                             const fileBuffer = fs.readFileSync(fileFoundPath);
                             const fileSizeKB = (fileBuffer.length / 1024).toFixed(2);
                             console.log(`[sendWhatsAppMessage] File size: ${fileSizeKB} KB`);
 
-                            // Check file size limit (Evolution API typically has limits)
-                            const maxSizeMB = 16; // 16MB limit
-                            if (fileBuffer.length > maxSizeMB * 1024 * 1024) {
-                                console.error(`[sendWhatsAppMessage] File too large: ${fileSizeKB} KB (max ${maxSizeMB}MB)`);
-                                return { success: false, error: `Arquivo muito grande (${fileSizeKB}KB). Máximo: ${maxSizeMB}MB` };
-                            }
-
-                            // Convert to base64
                             const base64 = fileBuffer.toString('base64');
-                            const ext = path.extname(filename).toLowerCase().replace('.', '');
-
+                            const ext = filename.split('.').pop()?.toLowerCase() || '';
                             const mimes: Record<string, string> = {
-                                // Images
-                                'png': 'image/png', 'jpg': 'image/jpeg', 'jpeg': 'image/jpeg',
-                                'gif': 'image/gif', 'webp': 'image/webp', 'svg': 'image/svg+xml',
-                                'bmp': 'image/bmp', 'tiff': 'image/tiff',
-                                // Videos
-                                'mp4': 'video/mp4', 'avi': 'video/x-msvideo', 'mov': 'video/quicktime',
-                                'wmv': 'video/x-ms-wmv', 'mpeg': 'video/mpeg',
-                                // Audio
-                                'mp3': 'audio/mpeg', 'ogg': 'audio/ogg', 'aac': 'audio/aac',
-                                'wav': 'audio/wav', 'm4a': 'audio/mp4',
-                                // Documents
-                                'pdf': 'application/pdf',
-                                'doc': 'application/msword',
-                                'docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-                                'xls': 'application/vnd.ms-excel',
-                                'xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-                                // Archives
-                                'zip': 'application/zip',
-                                'rar': 'application/x-rar-compressed'
+                                'jpg': 'image/jpeg', 'jpeg': 'image/jpeg', 'png': 'image/png', 'gif': 'image/gif', 'webp': 'image/webp',
+                                'mp3': 'audio/mpeg', 'ogg': 'audio/ogg', 'mp4': 'video/mp4', 'pdf': 'application/pdf',
+                                'doc': 'application/msword', 'docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
                             };
                             finalMimeType = mimes[ext] || 'application/octet-stream';
                             finalMedia = `data:${finalMimeType};base64,${base64}`;
 
-                            console.log(`[sendWhatsAppMessage] ✓ Base64 conversion successful. Extension: ${ext}, MIME: ${finalMimeType}, Base64 length: ${base64.length}`);
+                            console.log(`[sendWhatsAppMessage] ✓ Base64 conversion successful. MIME: ${finalMimeType}, Length: ${base64.length}`);
                         } else {
-                            console.error(`[sendWhatsAppMessage] ✗ File NOT found in any path!`);
-                            console.error(`[sendWhatsAppMessage] Original URL: ${mediaUrl}`);
-                            console.error(`[sendWhatsAppMessage] Extracted filename: ${filename}`);
-                            console.error(`[sendWhatsAppMessage] Current directory: ${process.cwd()}`);
-
-                            // List actual files in upload directory for debugging
-                            try {
-                                const uploadDir = path.join(process.cwd(), 'server/uploads');
-                                if (fs.existsSync(uploadDir)) {
-                                    const files = fs.readdirSync(uploadDir);
-                                    console.error(`[sendWhatsAppMessage] Files in ${uploadDir}:`, files.slice(0, 10));
-                                } else {
-                                    console.error(`[sendWhatsAppMessage] Upload directory does not exist: ${uploadDir}`);
-                                }
-                            } catch (listErr) {
-                                console.error(`[sendWhatsAppMessage] Could not list upload directory:`, listErr);
-                            }
-
-                            // If we can't find the file locally, and it's a localhost URL, Evolution will definitely fail.
-                            if (mediaUrl.includes('localhost') || mediaUrl.includes('127.0.0.1')) {
-                                return { success: false, error: `Arquivo de mídia não encontrado no servidor: ${filename}` };
+                            console.error(`[sendWhatsAppMessage] ✗ File NOT found locally: ${filename}`);
+                            // Fallback: If it's NOT a localhost URL, permit Evolution to fetch directly
+                            if (!mediaUrl.includes('localhost') && !mediaUrl.includes('127.0.0.1')) {
+                                console.log(`[sendWhatsAppMessage] ! URL is NOT localhost, permitting Evolution to fetch directly: ${mediaUrl}`);
+                                finalMedia = mediaUrl;
+                            } else {
+                                return { success: false, error: `Arquivo local não encontrado: ${filename}` };
                             }
                         }
                     } else {
@@ -691,32 +649,22 @@ async function sendWhatsAppMessage(
         };
 
         if (isMedia) {
-            // Robust Media Payload for Evolution API
-            // Some versions expect 'mediatype', others 'type'. Some accept 'mimetype'.
-            // Providing comprehensive payload.
+            // Simplified and documented payload structure matching Atendimento/evolutionController logic
             payload.mediaMessage = {
-                mediatype: mediaType, // Primary for many versions
-                type: mediaType,      // Fallback/Alternative
-                caption: message,
-                media: finalMedia,
-                mimetype: finalMimeType
+                mediatype: mediaType, // image, video, audio, document
+                caption: message || "",
+                media: finalMedia, // Base64 or URL
+                fileName: (mediaUrl?.split('/').pop() || 'file').split('?')[0]
             };
 
-            // If document, add fileName
-            if (mediaType === 'document') {
-                payload.mediaMessage.fileName = mediaUrl!.split('/').pop() || 'document.pdf';
-            }
-
-            // LOG THE MEDIA PAYLOAD (SENSITIVE)
-            console.log("[sendWhatsAppMessage] MEDIA PAYLOAD PREVIEW:", JSON.stringify({
+            // LOG THE MEDIA PAYLOAD (MASKED)
+            console.log(`[sendWhatsAppMessage] PAYLOAD PREVIEW (Media):`, JSON.stringify({
                 ...payload,
                 mediaMessage: {
                     ...payload.mediaMessage,
-                    media: "BASE64_CONTENT_HIDDEN_FOR_LOGS",
-                    mediaLength: finalMedia?.length,
+                    media: finalMedia && finalMedia.length > 100 ? `${finalMedia.substring(0, 50)}... [Total: ${finalMedia.length} chars]` : finalMedia
                 }
             }, null, 2));
-
         } else {
             payload.textMessage = { text: message };
             payload.text = message; // backward compat key

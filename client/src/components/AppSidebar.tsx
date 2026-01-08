@@ -22,11 +22,12 @@ import {
   Building2,
   FileText,
   CalendarCheck,
+  CheckSquare,
   HelpCircle,
 } from "lucide-react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { EditProfileModal } from "./EditProfileModal";
 
 const items = [
@@ -50,7 +51,29 @@ export function AppSidebar() {
   const navigate = useNavigate();
   const { user, logout } = useAuth();
   const [isEditProfileOpen, setIsEditProfileOpen] = useState(false);
+  const [taskCount, setTaskCount] = useState(0);
   const currentPath = location.pathname;
+
+  const { token } = useAuth();
+
+  useEffect(() => {
+    if (user?.role === 'SUPERADMIN' && token) {
+      const fetchTaskCount = async () => {
+        try {
+          const res = await fetch('/api/admin/tasks/count', {
+            headers: { 'Authorization': `Bearer ${token}` }
+          });
+          if (res.ok) {
+            const data = await res.json();
+            setTaskCount(data.count);
+          }
+        } catch (e) { }
+      };
+      fetchTaskCount();
+      const interval = setInterval(fetchTaskCount, 60000); // Poll every minute
+      return () => clearInterval(interval);
+    }
+  }, [user, token]);
 
   const handleLogout = () => {
     const role = user?.role;
@@ -65,6 +88,7 @@ export function AppSidebar() {
   const navItems = [...items];
   if (user?.role === 'SUPERADMIN') {
     navItems.splice(1, 0, { label: "Clientes", icon: Building2, to: "/app/empresas" });
+    navItems.splice(2, 0, { label: "Tarefas", icon: CheckSquare, to: "/app/tarefas" });
   }
 
   if (user?.role === 'SUPERADMIN' || user?.role === 'ADMIN') {
@@ -170,7 +194,12 @@ export function AppSidebar() {
                   >
                     <Icon className="h-4 w-4" />
                     <span className="truncate">{item.label}</span>
-                    {isActive && (
+                    {item.label === "Tarefas" && taskCount > 0 && (
+                      <span className="ml-auto bg-accent text-accent-foreground text-[10px] px-1.5 py-0.5 rounded-full font-bold">
+                        {taskCount}
+                      </span>
+                    )}
+                    {isActive && item.label !== "Tarefas" && (
                       <span className="ml-auto h-1.5 w-1.5 rounded-full bg-accent" aria-hidden="true" />
                     )}
                   </NavLink>
