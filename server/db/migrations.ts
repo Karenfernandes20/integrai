@@ -455,7 +455,27 @@ const runWhatsappMigrations = async () => {
         await pool.query('CREATE INDEX IF NOT EXISTS idx_admin_tasks_status ON admin_tasks(status)');
         await pool.query('CREATE INDEX IF NOT EXISTS idx_admin_tasks_priority ON admin_tasks(priority)');
 
+        // System Logs Table
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS system_logs (
+                id SERIAL PRIMARY KEY,
+                event_type VARCHAR(50) NOT NULL,
+                origin VARCHAR(50) NOT NULL,
+                status VARCHAR(20) NOT NULL,
+                conversation_id INTEGER,
+                phone VARCHAR(50),
+                message TEXT,
+                details JSONB DEFAULT '{}',
+                created_at TIMESTAMPTZ DEFAULT NOW()
+            );
+        `);
+        await pool.query('CREATE INDEX IF NOT EXISTS idx_system_logs_event_type ON system_logs(event_type)');
+        await pool.query('CREATE INDEX IF NOT EXISTS idx_system_logs_status ON system_logs(status)');
+        await pool.query('CREATE INDEX IF NOT EXISTS idx_system_logs_created_at ON system_logs(created_at)');
+        await pool.query('CREATE INDEX IF NOT EXISTS idx_system_logs_phone ON system_logs(phone)');
+
         console.log("Admin tasks migrations finished.");
+        console.log("System logs migrations finished.");
         console.log("WhatsApp migrations finished.");
     } catch (error) {
         console.error("Error creating WhatsApp/Admin tables:", error);

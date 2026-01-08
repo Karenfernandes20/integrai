@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import { pool } from '../db';
+import { logEvent } from '../logger';
 
 // Tipo simplificado da mensagem
 interface WebhookMessage {
@@ -377,6 +378,16 @@ export const handleWebhook = async (req: Request, res: Response) => {
 
             if (insertedMsg.rows.length > 0) {
                 console.log(`[Webhook] ✅ Message SAVED to DB: ID=${insertedMsg.rows[0].id}, direction=${direction}, external_id=${externalId}`);
+
+                await logEvent({
+                    eventType: direction === 'inbound' ? 'message_in' : 'message_out',
+                    origin: 'webhook',
+                    status: 'success',
+                    message: `Mensagem ${direction === 'inbound' ? 'recebida' : 'enviada'} (${messageType})`,
+                    conversationId,
+                    phone,
+                    details: { content: content.substring(0, 500), instance, externalId }
+                });
             }
 
             // If duplicate message (conflict), we still want to emit conversation update

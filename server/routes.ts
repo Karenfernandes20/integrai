@@ -216,6 +216,11 @@ router.put('/admin/tasks/:id', authenticateToken, authorizeRole(['SUPERADMIN']),
 router.delete('/admin/tasks/:id', authenticateToken, authorizeRole(['SUPERADMIN']), deleteTask);
 router.get('/admin/tasks/:id/history', authenticateToken, authorizeRole(['SUPERADMIN']), getTaskHistory);
 
+// System Logs
+import { getSystemLogs, getLogStats } from './controllers/logController';
+router.get('/admin/logs', authenticateToken, authorizeRole(['SUPERADMIN']), getSystemLogs);
+router.get('/admin/logs/stats', authenticateToken, authorizeRole(['SUPERADMIN']), getLogStats);
+
 router.post('/campaigns/upload', authenticateToken, upload.single('file'), (req: Request, res: Response) => {
   if (!req.file) {
     return res.status(400).json({ error: 'No file uploaded' });

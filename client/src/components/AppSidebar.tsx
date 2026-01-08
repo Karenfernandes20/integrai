@@ -23,6 +23,7 @@ import {
   FileText,
   CalendarCheck,
   CheckSquare,
+  Terminal,
   HelpCircle,
 } from "lucide-react";
 import { useLocation, useNavigate } from "react-router-dom";
@@ -89,6 +90,7 @@ export function AppSidebar() {
   if (user?.role === 'SUPERADMIN') {
     navItems.splice(1, 0, { label: "Clientes", icon: Building2, to: "/app/empresas" });
     navItems.splice(2, 0, { label: "Tarefas", icon: CheckSquare, to: "/app/tarefas" });
+    navItems.splice(3, 0, { label: "Logs", icon: Terminal, to: "/app/logs" });
   }
 
   if (user?.role === 'SUPERADMIN' || user?.role === 'ADMIN') {

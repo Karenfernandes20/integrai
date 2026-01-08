@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import { pool } from '../db';
+import { logEvent } from '../logger';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -411,6 +412,15 @@ async function processCampaign(campaignId: number, io?: any) {
                         `UPDATE whatsapp_campaigns SET sent_count = sent_count + 1, updated_at = NOW() WHERE id = $1`,
                         [campaignId]
                     );
+
+                    await logEvent({
+                        eventType: 'campaign_success',
+                        origin: 'system',
+                        status: 'success',
+                        message: `Campanha ${campaignId}: Mensagem enviada para ${contact.phone}`,
+                        phone: contact.phone,
+                        details: { campaignId, contactId: contact.id }
+                    });
                 } else {
                     let errorMsg = (result.error || 'Evolution API failed (Unknown Error)').substring(0, 255);
                     if (!errorMsg || errorMsg.trim() === "") {
@@ -428,6 +438,15 @@ async function processCampaign(campaignId: number, io?: any) {
                         `UPDATE whatsapp_campaigns SET failed_count = failed_count + 1, updated_at = NOW() WHERE id = $1`,
                         [campaignId]
                     );
+
+                    await logEvent({
+                        eventType: 'campaign_fail',
+                        origin: 'system',
+                        status: 'error',
+                        message: `Campanha ${campaignId}: Falha para ${contact.phone}: ${errorMsg}`,
+                        phone: contact.phone,
+                        details: { campaignId, contactId: contact.id, error: errorMsg }
+                    });
                 }
 
                 // Random delay between messages

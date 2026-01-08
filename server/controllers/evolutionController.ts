@@ -1,5 +1,6 @@
 import { Request, Response } from "express";
 import { pool } from "../db";
+import { logEvent } from "../logger";
 
 /**
  * Evolution API controller
@@ -122,6 +123,13 @@ export const getEvolutionQrCode = async (req: Request, res: Response) => {
     if (!response.ok) {
       const errorText = await response.text();
       console.error(`[Evolution] Error response from API: ${response.status}`, errorText);
+      await logEvent({
+        eventType: 'evolution_error',
+        origin: 'evolution',
+        status: 'error',
+        message: `Erro ao gerar QR Code (${EVOLUTION_INSTANCE}): ${response.status}`,
+        details: { status: response.status, body: errorText }
+      });
       return res.status(response.status).json({
         error: "Evolution API error",
         status: response.status,
@@ -130,6 +138,13 @@ export const getEvolutionQrCode = async (req: Request, res: Response) => {
     }
 
     const data = await response.json();
+    await logEvent({
+      eventType: 'webhook_received', // Using a generic one or should use evolution_connect if existed
+      origin: 'system',
+      status: 'info',
+      message: `QR Code solicitado para instância ${EVOLUTION_INSTANCE}`,
+      details: { instance: EVOLUTION_INSTANCE }
+    } as any);
 
     // AUTO-REGISTER WEBHOOK whenever we request a QR Code (to be sure)
     try {
