@@ -92,10 +92,12 @@ const App = () => (
                 <Route path="ia" element={<IAPage />} />
                 <Route path="auditoria" element={<AuditoriaPage />} />
                 <Route path="workflows" element={<WorkflowsPage />} />
+                <Route path="relatorios/conversao" element={<ConversionReports />} />
+              </Route>
+
+              <Route element={<AdminRoute roles={['SUPERADMIN']} />}>
                 <Route path="templates" element={<TemplatesPage />} />
                 <Route path="roadmap" element={<RoadmapPage />} />
-                <Route path="roadmap" element={<RoadmapPage />} />
-                <Route path="relatorios/conversao" element={<ConversionReports />} />
               </Route>
             </Route>
 

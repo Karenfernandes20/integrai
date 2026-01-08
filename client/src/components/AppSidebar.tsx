@@ -51,8 +51,6 @@ const items = [
   { label: "Cidades", icon: MapPin, to: "/app/cidades" },
   { label: "QR Code", icon: QrCode, to: "/app/qr-code" },
   { label: "Ajuda / FAQ", icon: HelpCircle, to: "/app/faq" },
-  { label: "Templates", icon: LayoutTemplate, to: "/app/templates" },
-  { label: "Roadmap", icon: Map, to: "/app/roadmap" },
   { label: "Configurações", icon: Settings, to: "/app/configuracoes" },
 ];
 
@@ -114,6 +112,8 @@ export function AppSidebar() {
     navItems.splice(6, 0, { label: "IA", icon: Bot, to: "/app/ia" });
     navItems.splice(7, 0, { label: "Auditoria", icon: Fingerprint, to: "/app/auditoria" });
     navItems.splice(8, 0, { label: "Workflows", icon: GitBranch, to: "/app/workflows" });
+    navItems.splice(9, 0, { label: "Templates", icon: LayoutTemplate, to: "/app/templates" });
+    navItems.splice(10, 0, { label: "Roadmap", icon: Map, to: "/app/roadmap" });
   }
 
   if (user?.role === 'SUPERADMIN' || user?.role === 'ADMIN') {
