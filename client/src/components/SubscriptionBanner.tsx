@@ -37,9 +37,10 @@ export function SubscriptionBanner() {
             icon = <AlertTriangle className="h-4 w-4" />;
         }
     } else if (subStatus === 'active') {
-        // Here we could check limits if we had them in 'status' object
-        // For now, if active, show nothing unless we add a "Upsell" trigger
-        return null;
+        // Since we filtered for Test plan above, if it's active, it's an active Test plan.
+        message = "🚀 Você está no Plano Teste. Faça um upgrade para ter acesso ilimitado.";
+        actionLabel = "Fazer Upgrade";
+        variant = "promo";
     } else if (subStatus === 'past_due' || subStatus === 'cancelled') {
         message = "⚠️ Sua assinatura está pendente ou cancelada. Evite o bloqueio do sistema.";
         icon = <AlertTriangle className="h-4 w-4" />;
