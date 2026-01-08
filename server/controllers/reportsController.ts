@@ -209,3 +209,129 @@ export const getFinancialIndicators = async (req: Request, res: Response) => {
         res.status(500).json({ error: 'Failed to fetch indicators' });
     }
 };
+// 4. Relatórios Operacionais (Mensagens, Falhas, IA, Tarefas)
+export const getOperationalReports = async (req: Request, res: Response) => {
+    try {
+        if (!pool) return res.status(500).json({ error: 'Database not configured' });
+
+        const { startDate, endDate, cityId } = req.query;
+        const user = (req as any).user;
+        const companyIdFilter = user?.company_id;
+        const params: any[] = [];
+
+        let dateFilter = "";
+        if (startDate) {
+            params.push(startDate);
+            dateFilter += ` AND created_at >= $${params.length}`;
+        }
+        if (endDate) {
+            params.push(endDate);
+            dateFilter += ` AND created_at <= $${params.length}`;
+        }
+
+        let companyFilter = "";
+        if (user.role !== 'SUPERADMIN' || companyIdFilter) {
+            const idx = params.push(companyIdFilter);
+            companyFilter = ` AND (company_id = $${idx} OR company_id IS NULL)`;
+        }
+
+        // 1. Message Volume (Last 30 days or selected period)
+        const msgParams = [...params]; // Copy params for distinct queries if needed, but here simple reuse is tricky due to different column names
+        // Let's rebuild params for each query to be safe and simple
+
+        const buildParams = (dateCol: string) => {
+            const p = [];
+            let w = "WHERE 1=1";
+            if (startDate) {
+                p.push(startDate);
+                w += ` AND ${dateCol} >= $${p.length}`;
+            }
+            if (endDate) {
+                p.push(endDate);
+                w += ` AND ${dateCol} <= $${p.length}`;
+            }
+            if (user.role !== 'SUPERADMIN' || companyIdFilter) {
+                p.push(companyIdFilter);
+                w += ` AND (company_id = $${p.length} OR company_id IS NULL)`;
+            }
+            return { w, p };
+        };
+
+        // Messages
+        const msgQ = buildParams('sent_at');
+        const messagesQuery = `
+            SELECT 
+                to_char(sent_at, 'YYYY-MM-DD') as date,
+                COUNT(*) as count,
+                SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) as failed,
+                SUM(CASE WHEN direction = 'outbound' THEN 1 ELSE 0 END) as outbound,
+                SUM(CASE WHEN direction = 'inbound' THEN 1 ELSE 0 END) as inbound
+            FROM whatsapp_messages
+            ${msgQ.w.replace('created_at', 'sent_at')} 
+            GROUP BY date
+            ORDER BY date ASC
+        `;
+
+        // Tasks
+        const taskQ = buildParams('updated_at');
+        const tasksQuery = `
+            SELECT COUNT(*) as completed_count
+            FROM admin_tasks
+            ${taskQ.w} AND status = 'completed'
+        `;
+
+        // Campaigns
+        const campQ = buildParams('created_at');
+        const campaignsQuery = `
+            SELECT 
+                SUM(sent_count) as total_sent,
+                SUM(failed_count) as total_failed
+            FROM whatsapp_campaigns
+            ${campQ.w}
+        `;
+
+        // AI Usage (Mock or Audit)
+        // Assuming AI usage is logged in audit_logs with resource_type='ai_agent'
+        const auditQ = buildParams('created_at');
+        const aiQuery = `
+            SELECT COUNT(*) as count
+            FROM audit_logs
+            ${auditQ.w} AND resource_type = 'ai_agent'
+        `;
+
+        const [msgRes, taskRes, campRes, aiRes] = await Promise.all([
+            pool.query(messagesQuery, msgQ.p),
+            pool.query(tasksQuery, taskQ.p),
+            pool.query(campaignsQuery, campQ.p),
+            pool.query(aiQuery, auditQ.p)
+        ]);
+
+        // Process Message Data
+        const messageVolume = msgRes.rows;
+        const totalMessages = messageVolume.reduce((acc, curr) => acc + parseInt(curr.count), 0);
+        const totalFailedMessages = messageVolume.reduce((acc, curr) => acc + parseInt(curr.failed), 0);
+        const failureRateMsg = totalMessages > 0 ? (totalFailedMessages / totalMessages) * 100 : 0;
+
+        // Campaigns
+        const campSent = parseInt(campRes.rows[0]?.total_sent || 0);
+        const campFailed = parseInt(campRes.rows[0]?.total_failed || 0);
+        const campTotal = campSent + campFailed; // Approximation
+        const failureRateCamp = campTotal > 0 ? (campFailed / campTotal) * 100 : 0;
+
+        res.json({
+            messageVolume,
+            summary: {
+                totalMessages,
+                avgResponseTime: "2m 30s", // Mock for now
+                tasksCompleted: parseInt(taskRes.rows[0]?.completed_count || 0),
+                aiInteractions: parseInt(aiRes.rows[0]?.count || 0),
+                failureRateMsg: failureRateMsg.toFixed(2),
+                failureRateCamp: failureRateCamp.toFixed(2)
+            }
+        });
+
+    } catch (error) {
+        console.error('Error fetching operational reports:', error);
+        res.status(500).json({ error: 'Failed to report' });
+    }
+};

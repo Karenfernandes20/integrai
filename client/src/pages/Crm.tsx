@@ -55,6 +55,7 @@ import { Textarea } from "../components/ui/textarea";
 import { Badge } from "../components/ui/badge";
 import { Label } from "../components/ui/label";
 import { useAuth } from "../contexts/AuthContext";
+import RelationshipManager from "../components/RelationshipManager";
 
 // Tipos
 type Lead = {
@@ -827,6 +828,10 @@ const CrmPage = () => {
                 <Button className="flex-1 gap-2" variant="outline" onClick={() => handleChatLead(editingLead)}>
                   <MessageCircle className="h-4 w-4" /> Abrir Conversa
                 </Button>
+              </div>
+
+              <div className="pt-6 border-t">
+                <RelationshipManager entityType="document" entityId={editingLead.id} />
               </div>
             </div>
           )}

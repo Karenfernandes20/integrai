@@ -9,6 +9,12 @@ import { CrmFunnel } from "./CrmFunnel";
 import { CrmRealTime } from "./CrmRealTime";
 import { CrmFollowUps } from "./CrmFollowUps";
 import { RefreshCw } from "lucide-react";
+import { TrialChecklist } from "../TrialChecklist";
+import { ValueTip } from "../ValueTip";
+import { CommunityStats } from "../CommunityStats";
+
+
+
 
 interface CrmDashboardProps {
     company: CompanySummary;
@@ -97,6 +103,12 @@ export const CrmDashboard = ({ company }: CrmDashboardProps) => {
             </div>
 
             {/* 1. VISÃO GERAL */}
+            <TrialChecklist />
+            <ValueTip
+                feature="ai"
+                title="Sua IA já está ativa!"
+                description="Criamos um Assistente Virtual pronto para uso. Ele pode responder seus clientes 24/7. Tente enviar uma mensagem para 'Teste' para ver a mágica acontecer."
+            />
             <CrmOverviewCards data={dashboardData?.overview} />
 
             <div className="grid lg:grid-cols-3 gap-6">
@@ -108,6 +120,8 @@ export const CrmDashboard = ({ company }: CrmDashboardProps) => {
                     <CrmRealTime activities={dashboardData?.activities} />
                 </div>
             </div>
+
+            <CommunityStats />
         </div>
     );
 };

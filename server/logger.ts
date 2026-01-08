@@ -1,4 +1,5 @@
 import { pool } from './db';
+import { triggerWorkflow } from './controllers/workflowController';
 
 export type LogEventType =
     | 'message_in'
@@ -10,10 +11,14 @@ export type LogEventType =
     | 'db_error'
     | 'campaign_fail'
     | 'campaign_success'
+    | 'campaign_retry'
+    | 'evolution_success'
     | 'system_error'
-    | 'auth_event';
+    | 'auth_event'
+    | 'subscription_created'
+    | 'subscription_renewed';
 
-export type LogOrigin = 'webhook' | 'user' | 'ia' | 'system' | 'evolution';
+export type LogOrigin = 'webhook' | 'user' | 'ia' | 'system' | 'evolution' | 'billing';
 
 export type LogStatus = 'success' | 'error' | 'warning' | 'info';
 
@@ -23,6 +28,7 @@ interface LogData {
     status: LogStatus;
     message: string;
     conversationId?: number;
+    companyId?: number;
     phone?: string;
     details?: any;
 }
@@ -35,12 +41,12 @@ export const logEvent = async (data: LogData) => {
             return;
         }
 
-        const { eventType, origin, status, message, conversationId, phone, details } = data;
+        const { eventType, origin, status, message, conversationId, companyId, phone, details } = data;
 
         const result = await pool.query(
-            `INSERT INTO system_logs (event_type, origin, status, message, conversation_id, phone, details)
-             VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id`,
-            [eventType, origin, status, message, conversationId, phone, details || {}]
+            `INSERT INTO system_logs (event_type, origin, status, message, conversation_id, company_id, phone, details)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id`,
+            [eventType, origin, status, message, conversationId, companyId, phone, details || {}]
         );
 
         const logId = result.rows[0]?.id;
@@ -52,6 +58,14 @@ export const logEvent = async (data: LogData) => {
                  VALUES ($1, $2, $3)`,
                 [eventType, message, logId]
             );
+
+            // Trigger Workflow Engine
+            triggerWorkflow('error_detected', {
+                event_type: eventType,
+                message: message,
+                origin: origin,
+                details: details
+            }).catch(e => console.error('[Workflow Trigger Error]:', e));
         }
 
         // Also output to console for server logs visibility

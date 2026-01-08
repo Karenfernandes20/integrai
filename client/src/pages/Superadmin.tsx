@@ -35,7 +35,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "../components/ui/select";
-import { Pencil, Trash2, Upload, Users, KeyRound, RotateCcw } from "lucide-react";
+import { Pencil, Trash2, Upload, Users, KeyRound, RotateCcw, ShieldAlert } from "lucide-react";
 import { Checkbox } from "../components/ui/checkbox";
 import { cn } from "../lib/utils";
 
@@ -126,6 +126,54 @@ const SuperadminPage = () => {
   });
   const [creatingUser, setCreatingUser] = useState(false);
 
+  // System Mode State
+  const [currentMode, setCurrentMode] = useState("normal");
+  const [isChangingMode, setIsChangingMode] = useState(false);
+
+  const loadMode = async () => {
+    try {
+      const res = await fetch("/api/admin/system/mode", {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setCurrentMode(data.mode);
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const handleModeChange = async (newMode: string) => {
+    setIsChangingMode(true);
+    try {
+      const res = await fetch("/api/admin/system/mode", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ mode: newMode }),
+      });
+
+      if (!res.ok) throw new Error("Falha ao trocar modo");
+
+      toast({
+        title: "Modo alterado",
+        description: `Sistema operando agora em modo: ${newMode.toUpperCase()}`,
+      });
+      setCurrentMode(newMode);
+    } catch (e: any) {
+      toast({
+        title: "Erro ao trocar modo",
+        description: e.message,
+        variant: "destructive",
+      });
+    } finally {
+      setIsChangingMode(false);
+    }
+  };
+
   const loadCompanies = async () => {
     setIsLoading(true);
     try {
@@ -148,7 +196,10 @@ const SuperadminPage = () => {
   };
 
   useEffect(() => {
-    if (token) loadCompanies();
+    if (token) {
+      loadCompanies();
+      loadMode();
+    }
   }, [token]);
 
   const handleChange = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -316,7 +367,7 @@ const SuperadminPage = () => {
     setLoadingUsers(true);
     setCompanyUsers([]);
     setCompanyUsers([]);
-    setNewUser({ full_name: "", email: "", password: "", permissions: [] }); // Reset form
+    setNewUser({ full_name: "", email: "", password: "", permissions: [], city: "", state: "", phone: "" }); // Reset form
     try {
       const res = await fetch(`/api/companies/${company.id}/users`, {
         headers: { Authorization: `Bearer ${token}` },
@@ -729,7 +780,62 @@ const SuperadminPage = () => {
           </Card>
         </section>
 
-        <section className="w-full max-w-md">
+        <section className="w-full max-w-md space-y-6">
+          <Card className="border border-primary-soft/70 bg-card/95 shadow-strong">
+            <CardHeader>
+              <CardTitle className="text-base sm:text-lg flex items-center gap-2">
+                <ShieldAlert className="h-4 w-4 text-primary" />
+                Modos Operacionais
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid grid-cols-2 gap-2">
+                <Button
+                  variant={currentMode === "normal" ? "default" : "outline"}
+                  className={cn("h-16 flex-col gap-1", currentMode === "normal" && "border-2 border-primary")}
+                  onClick={() => handleModeChange("normal")}
+                  disabled={isChangingMode}
+                >
+                  <span className="font-bold">Normal</span>
+                  <span className="text-[10px] opacity-70">Padrão</span>
+                </Button>
+                <Button
+                  variant={currentMode === "maintenance" ? "default" : "outline"}
+                  className={cn("h-16 flex-col gap-1", currentMode === "maintenance" && "bg-amber-500 hover:bg-amber-600 text-white")}
+                  onClick={() => handleModeChange("maintenance")}
+                  disabled={isChangingMode}
+                >
+                  <span className="font-bold">Manutenção</span>
+                  <span className="text-[10px] opacity-70">Admin apenas</span>
+                </Button>
+                <Button
+                  variant={currentMode === "emergency" ? "default" : "outline"}
+                  className={cn("h-16 flex-col gap-1", currentMode === "emergency" && "bg-red-600 hover:bg-red-700 text-white")}
+                  onClick={() => handleModeChange("emergency")}
+                  disabled={isChangingMode}
+                >
+                  <span className="font-bold">Emergência</span>
+                  <span className="text-[10px] opacity-70">SuperAdmin</span>
+                </Button>
+                <Button
+                  variant={currentMode === "readonly" ? "default" : "outline"}
+                  className={cn("h-16 flex-col gap-1", currentMode === "readonly" && "bg-blue-600 hover:bg-blue-700 text-white")}
+                  onClick={() => handleModeChange("readonly")}
+                  disabled={isChangingMode}
+                >
+                  <span className="font-bold">Somente Leitura</span>
+                  <span className="text-[10px] opacity-70">Bloqueia escrita</span>
+                </Button>
+              </div>
+
+              <div className="bg-muted/50 p-3 rounded-lg border text-xs text-muted-foreground space-y-1">
+                <p>● <b>Normal:</b> Acesso total para todos.</p>
+                <p>● <b>Manutenção:</b> Apenas administradores entram.</p>
+                <p>● <b>Emergência:</b> Apenas SuperAdmin entra.</p>
+                <p>● <b>Somente Leitura:</b> Ninguém pode salvar ou deletar.</p>
+              </div>
+            </CardContent>
+          </Card>
           <Card className="border border-primary-soft/70 bg-card/95 shadow-strong">
             <CardHeader>
               <CardTitle className="text-base sm:text-lg">Novo Cliente</CardTitle>

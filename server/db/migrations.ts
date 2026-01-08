@@ -35,7 +35,9 @@ export const runMigrations = async () => {
                     logo_url TEXT,
                     evolution_instance VARCHAR(100),
                     evolution_apikey VARCHAR(255),
+                    evolution_apikey VARCHAR(255),
                     operation_type VARCHAR(20) DEFAULT 'clientes',
+                    onboarding_step INTEGER DEFAULT 1, -- 1: Company, 2: User, 3: Channel, 4: AI, 5: Complete
                     created_at TIMESTAMP DEFAULT NOW()
                 );
             `);
@@ -183,6 +185,21 @@ export const runMigrations = async () => {
             console.error("Error adding operation_type to companies:", e);
         }
 
+        try {
+            await pool.query(`
+                DO $$ 
+                BEGIN 
+                    ALTER TABLE companies ADD COLUMN IF NOT EXISTS primary_color VARCHAR(20) DEFAULT '#0e99b0';
+                    ALTER TABLE companies ADD COLUMN IF NOT EXISTS secondary_color VARCHAR(20) DEFAULT '#1e293b';
+                    ALTER TABLE companies ADD COLUMN IF NOT EXISTS system_name VARCHAR(100) DEFAULT 'Viamovecar Hub';
+                    ALTER TABLE companies ADD COLUMN IF NOT EXISTS custom_domain VARCHAR(255);
+                END $$;
+            `);
+            console.log("White Label columns updated.");
+        } catch (e) {
+            console.error("Error adding White Label columns:", e);
+        }
+
         // 6. User Permissions
         try {
             await pool.query(`ALTER TABLE app_users ADD COLUMN permissions JSONB DEFAULT '[]'`);
@@ -197,6 +214,24 @@ export const runMigrations = async () => {
             await pool.query('ALTER TABLE app_users DROP CONSTRAINT IF EXISTS app_users_user_type_check');
             console.log("Dropped app_users_user_type_check");
         } catch (e) { console.error("Error dropping constraint:", e); }
+
+        // 8. System Settings
+        try {
+            await pool.query(`
+                CREATE TABLE IF NOT EXISTS system_settings (
+                    key VARCHAR(255) PRIMARY KEY,
+                    value JSONB NOT NULL,
+                    updated_at TIMESTAMP DEFAULT NOW(),
+                    updated_by INTEGER REFERENCES app_users(id)
+                );
+            `);
+            await pool.query(`
+                INSERT INTO system_settings (key, value)
+                VALUES ('operational_mode', '"normal"')
+                ON CONFLICT (key) DO NOTHING;
+            `);
+            console.log("Verified table: system_settings");
+        } catch (e) { console.error("Error creating system_settings:", e); }
 
         console.log("Migrations finished.");
     } catch (e) {
@@ -491,7 +526,293 @@ const runWhatsappMigrations = async () => {
         console.log("Admin tasks migrations finished.");
         console.log("System logs migrations finished.");
         console.log("Admin alerts migrations finished.");
+        // AI Agents Table
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS ai_agents (
+                id SERIAL PRIMARY KEY,
+                company_id INTEGER REFERENCES companies(id) ON DELETE CASCADE,
+                name VARCHAR(255) NOT NULL,
+                prompt TEXT NOT NULL,
+                provider VARCHAR(50) DEFAULT 'openai',
+                model VARCHAR(100) DEFAULT 'gpt-4o',
+                status VARCHAR(20) DEFAULT 'active', -- active, paused
+                apikey TEXT,
+                temperature DECIMAL(3,2) DEFAULT 0.7,
+                created_at TIMESTAMP DEFAULT NOW(),
+                updated_at TIMESTAMP DEFAULT NOW()
+            );
+        `);
+
+        // Insert default global agent if no agents exist
+        const aiCheck = await pool.query('SELECT COUNT(*) FROM ai_agents');
+        if (parseInt(aiCheck.rows[0].count) === 0) {
+            await pool.query(`
+                INSERT INTO ai_agents (name, prompt, status) 
+                VALUES ('Agente Geral Integrai', 'Você é um assistente virtual prestativo da Integrai. Responda de forma clara e profissional.', 'active')
+            `);
+        }
+
+        // Audit Logs Table (Universal)
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS audit_logs (
+                id SERIAL PRIMARY KEY,
+                user_id INTEGER REFERENCES app_users(id),
+                company_id INTEGER REFERENCES companies(id),
+                action VARCHAR(20) NOT NULL, -- create, update, delete
+                resource_type VARCHAR(50) NOT NULL, -- user, task, document, setting, etc.
+                resource_id VARCHAR(100),
+                old_values JSONB DEFAULT '{}',
+                new_values JSONB DEFAULT '{}',
+                details TEXT,
+                ip_address VARCHAR(45),
+                created_at TIMESTAMP DEFAULT NOW()
+            );
+        `);
+        await pool.query('CREATE INDEX IF NOT EXISTS idx_audit_logs_user ON audit_logs(user_id)');
+        await pool.query('CREATE INDEX IF NOT EXISTS idx_audit_logs_resource ON audit_logs(resource_type, resource_id)');
+        await pool.query('CREATE INDEX IF NOT EXISTS idx_audit_logs_created_at ON audit_logs(created_at)');
+
+        // System Workflows Table
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS system_workflows (
+                id SERIAL PRIMARY KEY,
+                company_id INTEGER REFERENCES companies(id),
+                name VARCHAR(255) NOT NULL,
+                event_type VARCHAR(50) NOT NULL, -- message_received, error_detected, task_created, document_updated
+                conditions JSONB DEFAULT '[]',
+                actions JSONB DEFAULT '[]',
+                status VARCHAR(20) DEFAULT 'active', -- active, inactive
+                is_test_mode BOOLEAN DEFAULT FALSE,
+                created_by INTEGER REFERENCES app_users(id),
+                created_at TIMESTAMP DEFAULT NOW(),
+                updated_at TIMESTAMP DEFAULT NOW()
+            );
+        `);
+
+        // Workflow Executions Table (History)
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS workflow_executions (
+                id SERIAL PRIMARY KEY,
+                workflow_id INTEGER REFERENCES system_workflows(id) ON DELETE CASCADE,
+                event_data JSONB,
+                actions_taken JSONB,
+                status VARCHAR(20), -- success, failed
+                error_message TEXT,
+                executed_at TIMESTAMP DEFAULT NOW()
+            );
+        `);
+
+        // Entity Relationships Table
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS entity_links (
+                id SERIAL PRIMARY KEY,
+                source_type VARCHAR(50) NOT NULL, -- task, document, conversation, user, contract
+                source_id VARCHAR(100) NOT NULL,
+                target_type VARCHAR(50) NOT NULL,
+                target_id VARCHAR(100) NOT NULL,
+                link_type VARCHAR(50) DEFAULT 'related',
+                created_by INTEGER REFERENCES app_users(id),
+                created_at TIMESTAMP DEFAULT NOW()
+            );
+        `);
+        await pool.query('CREATE INDEX IF NOT EXISTS idx_entity_links_source ON entity_links(source_type, source_id)');
+        await pool.query('CREATE INDEX IF NOT EXISTS idx_entity_links_target ON entity_links(target_type, target_id)');
+
+        // Multi-Tenant Isolation Updates
+        console.log("Applying Multi-Tenant Isolation Updates...");
+        try {
+            await pool.query(`ALTER TABLE system_logs ADD COLUMN IF NOT EXISTS company_id INTEGER REFERENCES companies(id)`);
+            await pool.query(`CREATE INDEX IF NOT EXISTS idx_system_logs_company ON system_logs(company_id)`);
+
+            await pool.query(`ALTER TABLE entity_links ADD COLUMN IF NOT EXISTS company_id INTEGER REFERENCES companies(id)`);
+            await pool.query(`CREATE INDEX IF NOT EXISTS idx_entity_links_company ON entity_links(company_id)`);
+
+            // Backfill entity_links company_id from source if possible? 
+            // Too complex for auto-migration without logic. Leaving null for old links or manual fix.
+        } catch (e) {
+            console.error("Error applying multi-tenant updates:", e);
+        }
+
+        // Global Templates Table
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS global_templates (
+                id SERIAL PRIMARY KEY,
+                parent_id INTEGER REFERENCES global_templates(id) ON DELETE SET NULL,
+                company_id INTEGER REFERENCES companies(id),
+                name VARCHAR(255) NOT NULL,
+                type VARCHAR(50) NOT NULL, -- message, document, task, contract
+                content TEXT NOT NULL,
+                variables JSONB DEFAULT '[]',
+                version INTEGER DEFAULT 1,
+                is_active BOOLEAN DEFAULT TRUE,
+                created_by INTEGER REFERENCES app_users(id),
+                created_at TIMESTAMP DEFAULT NOW(),
+                updated_at TIMESTAMP DEFAULT NOW()
+            );
+        `);
+        await pool.query('CREATE INDEX IF NOT EXISTS idx_templates_company ON global_templates(company_id)');
+        await pool.query('CREATE INDEX IF NOT EXISTS idx_templates_type ON global_templates(type)');
+
+        console.log("Global Templates migrations finished.");
+
+        // Roadmap Tables
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS roadmap_items (
+                id SERIAL PRIMARY KEY,
+                company_id INTEGER REFERENCES companies(id),
+                title VARCHAR(255) NOT NULL,
+                description TEXT,
+                status VARCHAR(50) DEFAULT 'planned', -- planned, in_development, in_test, completed
+                priority VARCHAR(20) DEFAULT 'medium', -- low, medium, high, critical
+                target_date TIMESTAMP,
+                created_by INTEGER REFERENCES app_users(id),
+                created_at TIMESTAMP DEFAULT NOW(),
+                updated_at TIMESTAMP DEFAULT NOW()
+            );
+        `);
+        await pool.query('CREATE INDEX IF NOT EXISTS idx_roadmap_company ON roadmap_items(company_id)');
+        await pool.query('CREATE INDEX IF NOT EXISTS idx_roadmap_status ON roadmap_items(status)');
+
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS roadmap_comments (
+                id SERIAL PRIMARY KEY,
+                roadmap_item_id INTEGER REFERENCES roadmap_items(id) ON DELETE CASCADE,
+                user_id INTEGER REFERENCES app_users(id),
+                content TEXT NOT NULL,
+                created_at TIMESTAMP DEFAULT NOW()
+            );
+        `);
+        await pool.query('CREATE INDEX IF NOT EXISTS idx_roadmap_comments_item ON roadmap_comments(roadmap_item_id)');
+
+        // Plans & Limits Migration
+        console.log("Applying Plans and Limits Migration...");
+        try {
+            await pool.query(`
+                CREATE TABLE IF NOT EXISTS plans (
+                    id SERIAL PRIMARY KEY,
+                    name VARCHAR(100) NOT NULL UNIQUE,
+                    max_users INTEGER DEFAULT 1,
+                    max_whatsapp_users INTEGER DEFAULT 1, -- New granular limit
+                    max_connections INTEGER DEFAULT 1, -- WhatsApp connections
+                    max_queues INTEGER DEFAULT 3, 
+                    max_open_sessions INTEGER DEFAULT 1, -- Active chats
+                    use_campaigns BOOLEAN DEFAULT FALSE,
+                    use_schedules BOOLEAN DEFAULT FALSE,
+                    use_internal_chat BOOLEAN DEFAULT FALSE,
+                    use_external_api BOOLEAN DEFAULT FALSE,
+                    use_kanban BOOLEAN DEFAULT FALSE,
+                    created_at TIMESTAMP DEFAULT NOW(),
+                    updated_at TIMESTAMP DEFAULT NOW()
+                );
+            `);
+
+            // Seed default plans if empty
+            const plansCount = await pool.query('SELECT COUNT(*) FROM plans');
+            if (parseInt(plansCount.rows[0].count) === 0) {
+                await pool.query(`
+                    INSERT INTO plans (name, max_users, max_connections, max_queues, use_campaigns, use_schedules, use_internal_chat, use_external_api, use_kanban) VALUES 
+                    ('Plano 1', 5, 2, 5, true, true, true, true, true),
+                    ('Plano 2', 10, 4, 10, true, true, true, true, true),
+                    ('Plano 3', 100, 10, 100, true, true, true, true, true); 
+                `); // Using generic names as placeholders, user requested Basic/Pro/Enterprise logic but we can map them.
+                // Let's actually use the requested names: Basic, Profissional, Enterprise.
+
+                await pool.query('DELETE FROM plans'); // Clear placeholders
+                await pool.query(`
+                    INSERT INTO plans (name, max_users, max_whatsapp_users, max_connections, max_queues, use_campaigns, use_schedules, use_internal_chat, use_external_api, use_kanban) VALUES 
+                    ('Básico', 1, 1, 1, 3, false, true, false, false, true),
+                    ('Profissional', 5, 5, 2, 10, true, true, true, true, true),
+                    ('Enterprise', 9999, 9999, 10, 9999, true, true, true, true, true);
+                `);
+            }
+
+            // company_limits / usage (Though we might just query live for counts, except messages)
+            // But we need to link company to plan.
+            await pool.query(`ALTER TABLE companies ADD COLUMN IF NOT EXISTS plan_id INTEGER REFERENCES plans(id)`);
+            await pool.query(`ALTER TABLE companies ADD COLUMN IF NOT EXISTS due_date DATE`);
+            await pool.query(`ALTER TABLE companies ADD COLUMN IF NOT EXISTS recurrence VARCHAR(20) DEFAULT 'MENSAL'`); // MENSAL, ANUAL
+
+            // Set default plan for existing companies (Basic) if null
+            // First get Basic plan ID
+            const basicPlan = await pool.query("SELECT id FROM plans WHERE name = 'Básico' LIMIT 1");
+            if (basicPlan.rows.length > 0) {
+                await pool.query("UPDATE companies SET plan_id = $1 WHERE plan_id IS NULL", [basicPlan.rows[0].id]);
+            }
+
+            // Add missing columns if they don't exist
+            try {
+                await pool.query(`ALTER TABLE plans ADD COLUMN IF NOT EXISTS max_ai_agents INTEGER DEFAULT 1`);
+                await pool.query(`ALTER TABLE plans ADD COLUMN IF NOT EXISTS max_automations INTEGER DEFAULT 5`);
+                await pool.query(`ALTER TABLE plans ADD COLUMN IF NOT EXISTS max_messages_month INTEGER DEFAULT 1000`);
+            } catch (e) { }
+
+            // Company Usage Tracking
+            await pool.query(`
+                CREATE TABLE IF NOT EXISTS company_usage (
+                    id SERIAL PRIMARY KEY,
+                    company_id INTEGER REFERENCES companies(id) ON DELETE CASCADE,
+                    month_year VARCHAR(7) NOT NULL, -- 'YYYY-MM'
+                    messages_count INTEGER DEFAULT 0,
+                    ai_tokens_used INTEGER DEFAULT 0,
+                    created_at TIMESTAMP DEFAULT NOW(),
+                    updated_at TIMESTAMP DEFAULT NOW(),
+                    UNIQUE(company_id, month_year)
+                );
+            `);
+            await pool.query('CREATE INDEX IF NOT EXISTS idx_company_usage_period ON company_usage(company_id, month_year)');
+
+        } catch (e) {
+            console.error("Error applying plans migration:", e);
+        }
+        console.log("Workflows migrations finished.");
+        console.log("Universal Audit logs migration finished.");
+        console.log("AI Agents migrations finished.");
         console.log("WhatsApp migrations finished.");
+
+        // Billing & Subscriptions
+        console.log("Applying Billing & Subscriptions Migration...");
+        try {
+            await pool.query(`
+                CREATE TABLE IF NOT EXISTS subscriptions (
+                    id SERIAL PRIMARY KEY,
+                    company_id INTEGER REFERENCES companies(id) ON DELETE CASCADE,
+                    plan_id INTEGER REFERENCES plans(id),
+                    status VARCHAR(20) NOT NULL CHECK (status IN ('active', 'past_due', 'cancelled', 'trialing')),
+                    current_period_start TIMESTAMPTZ,
+                    current_period_end TIMESTAMPTZ,
+                    cancel_at_period_end BOOLEAN DEFAULT FALSE,
+                    trial_end TIMESTAMPTZ,
+                    created_at TIMESTAMPTZ DEFAULT NOW(),
+                    updated_at TIMESTAMPTZ DEFAULT NOW(),
+                    UNIQUE(company_id) -- One active subscription per company for now
+                );
+            `);
+            await pool.query('CREATE INDEX IF NOT EXISTS idx_subscriptions_company ON subscriptions(company_id)');
+            await pool.query('CREATE INDEX IF NOT EXISTS idx_subscriptions_status ON subscriptions(status)');
+
+            await pool.query(`
+                CREATE TABLE IF NOT EXISTS invoices (
+                    id SERIAL PRIMARY KEY,
+                    subscription_id INTEGER REFERENCES subscriptions(id) ON DELETE SET NULL,
+                    company_id INTEGER REFERENCES companies(id),
+                    amount NUMERIC(10,2) NOT NULL,
+                    currency CHAR(3) DEFAULT 'BRL',
+                    status VARCHAR(20) NOT NULL CHECK (status IN ('paid', 'open', 'void', 'uncollectible', 'draft')),
+                    due_date TIMESTAMPTZ,
+                    paid_at TIMESTAMPTZ,
+                    pdf_url TEXT,
+                    items JSONB DEFAULT '[]', -- breakdown of charges
+                    created_at TIMESTAMPTZ DEFAULT NOW()
+                );
+            `);
+            await pool.query('CREATE INDEX IF NOT EXISTS idx_invoices_company ON invoices(company_id)');
+            await pool.query('CREATE INDEX IF NOT EXISTS idx_invoices_status ON invoices(status)');
+
+            console.log("Billing migrations finished.");
+        } catch (e) {
+            console.error("Error creating Billing tables:", e);
+        }
+
     } catch (error) {
         console.error("Error creating WhatsApp/Admin tables:", error);
     }

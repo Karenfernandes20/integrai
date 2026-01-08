@@ -1,14 +1,15 @@
 import { Request, Response } from 'express';
 import { pool } from '../db';
+import { logAudit } from '../auditLogger';
+import { triggerWorkflow } from './workflowController';
 
 export const getTasks = async (req: Request, res: Response) => {
     try {
         if (!pool) return res.status(500).json({ error: 'Database not configured' });
 
         const user = (req as any).user;
-        if (user.role !== 'SUPERADMIN') {
-            return res.status(403).json({ error: 'Access denied' });
-        }
+        const companyId = user.company_id;
+        const isSuperAdmin = user.role === 'SUPERADMIN';
 
         const { status, priority, responsible_id, search, filter } = req.query;
 
@@ -20,6 +21,12 @@ export const getTasks = async (req: Request, res: Response) => {
             WHERE 1=1
         `;
         const params: any[] = [];
+
+        // Tenant Filter
+        if (!isSuperAdmin) {
+            params.push(companyId);
+            query += ` AND t.company_id = $${params.length}`;
+        }
 
         if (status) {
             params.push(status);
@@ -69,20 +76,25 @@ export const createTask = async (req: Request, res: Response) => {
         if (!pool) return res.status(500).json({ error: 'Database not configured' });
 
         const user = (req as any).user;
-        if (user.role !== 'SUPERADMIN') {
-            return res.status(403).json({ error: 'Access denied' });
-        }
+        const companyId = user.company_id; // Always use authenticated user's company unless Superadmin overrides
 
-        const { title, description, priority, due_date, responsible_id, company_id } = req.body;
+        const { title, description, priority, due_date, responsible_id } = req.body;
 
         if (!title) {
             return res.status(400).json({ error: 'Title is required' });
         }
 
+        // If user is Superadmin, they might send company_id in body, otherwise force own company
+        const targetCompanyId = (user.role === 'SUPERADMIN' && req.body.company_id) ? req.body.company_id : companyId;
+
+        if (!targetCompanyId && user.role !== 'SUPERADMIN') {
+            return res.status(400).json({ error: 'Company ID required' });
+        }
+
         const result = await pool.query(
             `INSERT INTO admin_tasks (title, description, priority, due_date, responsible_id, company_id, created_by)
              VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
-            [title, description, priority || 'medium', due_date, responsible_id, company_id, user.id]
+            [title, description, priority || 'medium', due_date, responsible_id, targetCompanyId, user.id]
         );
 
         const newTask = result.rows[0];
@@ -92,6 +104,25 @@ export const createTask = async (req: Request, res: Response) => {
             `INSERT INTO admin_task_history (task_id, user_id, action) VALUES ($1, $2, $3)`,
             [newTask.id, user.id, 'Tarefa criada']
         );
+
+        // Universal Audit Log
+        await logAudit({
+            userId: user.id,
+            companyId: targetCompanyId,
+            action: 'create',
+            resourceType: 'task',
+            resourceId: newTask.id,
+            newValues: newTask,
+            details: `Criou tarefa: ${newTask.title}`
+        });
+
+        // Trigger Workflow Engine
+        triggerWorkflow('task_created', {
+            task_id: newTask.id,
+            title: newTask.title,
+            company_id: newTask.company_id,
+            responsible_id: newTask.responsible_id
+        }).catch(e => console.error('[Workflow Trigger Error]:', e));
 
         res.status(201).json(newTask);
     } catch (error) {
@@ -105,17 +136,20 @@ export const updateTask = async (req: Request, res: Response) => {
         if (!pool) return res.status(500).json({ error: 'Database not configured' });
 
         const user = (req as any).user;
-        if (user.role !== 'SUPERADMIN') {
-            return res.status(403).json({ error: 'Access denied' });
-        }
-
         const { id } = req.params;
         const { title, description, status, priority, due_date, responsible_id } = req.body;
 
-        // Get current state for history comparison
+        const isSuperAdmin = user.role === 'SUPERADMIN';
+
+        // Get current state for history comparison and permission check
         const currentRes = await pool.query('SELECT * FROM admin_tasks WHERE id = $1', [id]);
         if (currentRes.rowCount === 0) return res.status(404).json({ error: 'Task not found' });
         const current = currentRes.rows[0];
+
+        // Access Check
+        if (!isSuperAdmin && current.company_id !== user.company_id) {
+            return res.status(403).json({ error: 'Access denied' });
+        }
 
         let completed_at = current.completed_at;
         if (status === 'completed' && current.status !== 'completed') {
@@ -151,6 +185,18 @@ export const updateTask = async (req: Request, res: Response) => {
                 `INSERT INTO admin_task_history (task_id, user_id, action) VALUES ($1, $2, $3)`,
                 [id, user.id, changes.join(', ')]
             );
+
+            // Universal Audit Log
+            await logAudit({
+                userId: user.id,
+                companyId: updated.company_id,
+                action: 'update',
+                resourceType: 'task',
+                resourceId: id,
+                oldValues: current,
+                newValues: updated,
+                details: `Atualizou tarefa: ${updated.title}. Alterações: ${changes.join(', ')}`
+            });
         }
 
         res.json(updated);
@@ -165,6 +211,17 @@ export const getTaskHistory = async (req: Request, res: Response) => {
         if (!pool) return res.status(500).json({ error: 'Database not configured' });
 
         const { id } = req.params;
+        const user = (req as any).user;
+        const isSuperAdmin = user.role === 'SUPERADMIN';
+
+        // Check ownership first
+        const check = await pool.query('SELECT company_id FROM admin_tasks WHERE id = $1', [id]);
+        if (check.rows.length === 0) return res.status(404).json({ error: 'Task not found' });
+
+        if (!isSuperAdmin && check.rows[0].company_id !== user.company_id) {
+            return res.status(403).json({ error: 'Access denied' });
+        }
+
         const result = await pool.query(
             `SELECT h.*, u.full_name as user_name
              FROM admin_task_history h
@@ -186,11 +243,18 @@ export const getPendingTasksCount = async (req: Request, res: Response) => {
         if (!pool) return res.status(500).json({ error: 'Database not configured' });
 
         const user = (req as any).user;
-        if (user?.role !== 'SUPERADMIN') return res.json({ count: 0 });
+        const companyId = user.company_id;
+        const isSuperAdmin = user.role === 'SUPERADMIN';
 
-        const result = await pool.query(
-            "SELECT COUNT(*) FROM admin_tasks WHERE status != 'completed'"
-        );
+        let query = "SELECT COUNT(*) FROM admin_tasks WHERE status != 'completed'";
+        const params: any[] = [];
+
+        if (!isSuperAdmin) {
+            query += " AND company_id = $1";
+            params.push(companyId);
+        }
+
+        const result = await pool.query(query, params);
         res.json({ count: parseInt(result.rows[0].count) });
     } catch (error) {
         res.status(500).json({ error: 'Failed to fetch count' });
@@ -202,12 +266,31 @@ export const deleteTask = async (req: Request, res: Response) => {
         if (!pool) return res.status(500).json({ error: 'Database not configured' });
 
         const user = (req as any).user;
-        if (user.role !== 'SUPERADMIN') {
+        const { id } = req.params;
+        const isSuperAdmin = user.role === 'SUPERADMIN';
+
+        const taskRes = await pool.query('SELECT * FROM admin_tasks WHERE id = $1', [id]);
+        if (taskRes.rowCount === 0) return res.status(404).json({ error: 'Task not found' });
+        const deletedTask = taskRes.rows[0];
+
+        // Access Check
+        if (!isSuperAdmin && deletedTask.company_id !== user.company_id) {
             return res.status(403).json({ error: 'Access denied' });
         }
 
-        const { id } = req.params;
         await pool.query('DELETE FROM admin_tasks WHERE id = $1', [id]);
+
+        // Universal Audit Log
+        await logAudit({
+            userId: user.id,
+            companyId: deletedTask.company_id,
+            action: 'delete',
+            resourceType: 'task',
+            resourceId: id,
+            oldValues: deletedTask,
+            details: `Removeu tarefa: ${deletedTask.title}`
+        });
+
         res.json({ message: 'Task deleted' });
     } catch (error) {
         res.status(500).json({ error: 'Failed to delete task' });

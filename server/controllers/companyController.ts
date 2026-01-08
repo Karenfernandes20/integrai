@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import { pool } from '../db';
+import { logAudit } from '../auditLogger';
 
 
 export const getCompanies = async (req: Request, res: Response) => {
@@ -61,7 +62,8 @@ export const getCompany = async (req: Request, res: Response) => {
         const result = await pool.query(`
             SELECT 
                 id, name, cnpj, city, state, phone, logo_url, evolution_instance, evolution_apikey, created_at,
-                COALESCE(operation_type, 'clientes') as operation_type 
+                COALESCE(operation_type, 'clientes') as operation_type,
+                primary_color, secondary_color, system_name, custom_domain
             FROM companies WHERE id = $1
         `, [id]);
 
@@ -106,6 +108,20 @@ export const createCompany = async (req: Request, res: Response) => {
         );
 
         const newCompany = result.rows[0];
+        const user = (req as any).user;
+
+        // Audit Log
+        if (user) {
+            await logAudit({
+                userId: user.id,
+                companyId: user.company_id,
+                action: 'create',
+                resourceType: 'company',
+                resourceId: newCompany.id,
+                newValues: newCompany,
+                details: `Cadastrou nova empresa: ${newCompany.name}`
+            });
+        }
 
         // Auto-create default CRM stage "LEADS" for this company
         try {
@@ -120,6 +136,52 @@ export const createCompany = async (req: Request, res: Response) => {
             // Don't fail company creation if stage creation fails
         }
 
+        // --- VALUE PROOF SEEDING ---
+        try {
+            // 1. Create Sample Lead (Proof of Kanban)
+            // Fetch the just created stage ID or use a guess if previous passed. 
+            // Better to re-query the stage we just made or know it from a strict select.
+            const stageRes = await pool.query('SELECT id FROM crm_stages WHERE company_id = $1 AND name = $2 LIMIT 1', [newCompany.id, 'LEADS']);
+            if (stageRes.rows.length > 0) {
+                await pool.query(
+                    `INSERT INTO crm_leads (name, phone, stage_id, company_id, description, value, origin) 
+                     VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+                    ['João Silva (Exemplo)', '5511999999999', stageRes.rows[0].id, newCompany.id, 'Este é um lead de exemplo. Arraste-o para mover de fase!', 1500.00, 'Simulação']
+                );
+            }
+
+            // 2. Create Active AI Agent (Proof of Automation)
+            await pool.query(
+                `INSERT INTO ai_agents (company_id, name, prompt, status, model)
+                 VALUES ($1, $2, $3, 'active', 'gpt-4o')`,
+                [
+                    newCompany.id,
+                    'Assistente de Vendas',
+                    'Você é um assistente comercial focado em qualificar leads. Seja breve e cordial.'
+                ]
+            );
+
+            // 3. Create Standard Templates (Proof of Speed)
+            const templates = [
+                { name: 'Boas Vindas', content: 'Olá {nome}, tudo bem? Vi que se cadastrou em nosso site. Como posso ajudar?' },
+                { name: 'Cobrança Amigável', content: 'Oi {nome}, lembrete gentil sobre sua fatura pendente. Podemos ajudar com algo?' },
+                { name: 'Confirmação', content: 'Confirmado, {nome}! Ficamos aguardando você.' }
+            ];
+
+            for (const t of templates) {
+                await pool.query(
+                    `INSERT INTO global_templates (company_id, name, type, content, is_active)
+                     VALUES ($1, $2, 'message', $3, true)`,
+                    [newCompany.id, t.name, t.content]
+                );
+            }
+
+            console.log(`[Company ${newCompany.id}] Seeded value-proof data (Lead, AI, Templates).`);
+
+        } catch (seedErr) {
+            console.error(`[Company ${newCompany.id}] Failed to seed data:`, seedErr);
+        }
+
         res.status(201).json(newCompany);
     } catch (error) {
         console.error('Error creating company:', error);
@@ -132,7 +194,8 @@ export const updateCompany = async (req: Request, res: Response) => {
         if (!pool) return res.status(500).json({ error: 'Configuração do banco de dados não encontrada.' });
 
         const { id } = req.params;
-        const { name, cnpj, city, state, phone, evolution_instance, evolution_apikey, operation_type, remove_logo } = req.body;
+        const { name, cnpj, city, state, phone, evolution_instance, evolution_apikey, operation_type, remove_logo,
+            primary_color, secondary_color, system_name, custom_domain } = req.body;
 
         console.log('DEBUG: updateCompany request', { id, body: req.body, hasFile: !!req.file });
 
@@ -175,7 +238,11 @@ export const updateCompany = async (req: Request, res: Response) => {
                 logo_url = $6,
                 evolution_instance = COALESCE($7, evolution_instance),
                 evolution_apikey = COALESCE($8, evolution_apikey),
-                operation_type = COALESCE($9, operation_type)
+                operation_type = COALESCE($9, operation_type),
+                primary_color = COALESCE($11, primary_color),
+                secondary_color = COALESCE($12, secondary_color),
+                system_name = COALESCE($13, system_name),
+                custom_domain = COALESCE($14, custom_domain)
             WHERE id = $10 
             RETURNING *
         `;
@@ -190,7 +257,11 @@ export const updateCompany = async (req: Request, res: Response) => {
             evolution_instance || null,
             evolution_apikey || null,
             operation_type || 'clientes',
-            parseInt(id)
+            parseInt(id),
+            primary_color || null,
+            secondary_color || null,
+            system_name || null,
+            custom_domain || null
         ];
 
         const result = await pool.query(query, values);
@@ -200,7 +271,23 @@ export const updateCompany = async (req: Request, res: Response) => {
             return res.status(404).json({ error: 'Empresa não encontrada.' });
         }
 
-        res.json(result.rows[0]);
+        const updatedCompany = result.rows[0];
+        const user = (req as any).user;
+
+        // Audit Log
+        if (user) {
+            await logAudit({
+                userId: user.id,
+                companyId: user.company_id,
+                action: 'update',
+                resourceType: 'company',
+                resourceId: updatedCompany.id,
+                newValues: updatedCompany,
+                details: `Atualizou dados da empresa: ${updatedCompany.name}`
+            });
+        }
+
+        res.json(updatedCompany);
     } catch (error) {
         console.error('CRITICAL ERROR in updateCompany:', error);
         res.status(500).json({
@@ -285,6 +372,21 @@ export const deleteCompany = async (req: Request, res: Response) => {
             console.log(`[Delete Company ${id}] Completed successfully.`);
 
             if (result.rowCount === 0) return res.status(404).json({ error: 'Company not found' });
+
+            const deletedCompany = result.rows[0];
+            const user = (req as any).user;
+
+            // Audit Log
+            await logAudit({
+                userId: user.id,
+                companyId: user.company_id,
+                action: 'delete',
+                resourceType: 'company',
+                resourceId: id,
+                oldValues: deletedCompany,
+                details: `Removeu empresa: ${deletedCompany.name}`
+            });
+
             res.json({ message: 'Company and associated data deleted' });
         } catch (e: any) {
             await client.query('ROLLBACK');

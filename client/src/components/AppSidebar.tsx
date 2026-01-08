@@ -25,7 +25,13 @@ import {
   CheckSquare,
   Terminal,
   Bell,
+  Activity,
   HelpCircle,
+  Bot,
+  Fingerprint,
+  GitBranch,
+  LayoutTemplate,
+  Map,
 } from "lucide-react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext";
@@ -45,6 +51,8 @@ const items = [
   { label: "Cidades", icon: MapPin, to: "/app/cidades" },
   { label: "QR Code", icon: QrCode, to: "/app/qr-code" },
   { label: "Ajuda / FAQ", icon: HelpCircle, to: "/app/faq" },
+  { label: "Templates", icon: LayoutTemplate, to: "/app/templates" },
+  { label: "Roadmap", icon: Map, to: "/app/roadmap" },
   { label: "Configurações", icon: Settings, to: "/app/configuracoes" },
 ];
 
@@ -102,6 +110,10 @@ export function AppSidebar() {
     navItems.splice(2, 0, { label: "Tarefas", icon: CheckSquare, to: "/app/tarefas" });
     navItems.splice(3, 0, { label: "Logs", icon: Terminal, to: "/app/logs" });
     navItems.splice(4, 0, { label: "Alertas", icon: Bell, to: "/app/alertas" });
+    navItems.splice(5, 0, { label: "Saúde", icon: Activity, to: "/app/saude" });
+    navItems.splice(6, 0, { label: "IA", icon: Bot, to: "/app/ia" });
+    navItems.splice(7, 0, { label: "Auditoria", icon: Fingerprint, to: "/app/auditoria" });
+    navItems.splice(8, 0, { label: "Workflows", icon: GitBranch, to: "/app/workflows" });
   }
 
   if (user?.role === 'SUPERADMIN' || user?.role === 'ADMIN') {
@@ -141,6 +153,8 @@ export function AppSidebar() {
       case "Usuários": requiredPerm = "configuracoes"; break;
       case "Cidades": requiredPerm = "configuracoes"; break;
       case "QR Code": requiredPerm = "configuracoes"; break;
+      case "Templates": requiredPerm = "configuracoes"; break;
+      case "Roadmap": requiredPerm = "configuracoes"; break;
       default: return true;
     }
 

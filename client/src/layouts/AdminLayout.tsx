@@ -6,6 +6,10 @@ import { useAuth } from "../contexts/AuthContext";
 import { Button } from "../components/ui/button";
 import { ShieldAlert, LogOut } from "lucide-react";
 import { useEffect } from "react";
+import { GlobalSearch } from "../components/GlobalSearch";
+import { SystemModeBanner } from "../components/SystemModeBanner";
+import { SubscriptionBanner } from "../components/SubscriptionBanner";
+
 
 const SECTION_TITLES: Record<string, string> = {
   "/app/dashboard": "Dashboard",
@@ -17,7 +21,10 @@ const SECTION_TITLES: Record<string, string> = {
   "/app/qr-code": "QR Code",
   "/app/configuracoes": "Configurações",
   "/app/relatorios": "Relatórios Gerenciais",
+  "/app/templates": "Central de Templates",
+  "/app/roadmap": "Roadmap do Produto",
   "/app/faq": "Ajuda / FAQ",
+  "/app/relatorios/conversao": "Relatório de Conversão",
 };
 
 function getSectionTitle(pathname: string) {
@@ -65,8 +72,10 @@ export const AdminLayout = () => {
 
   return (
     <SidebarProvider>
-      <div className={cn("w-full bg-background", isAtendimento ? "h-[100dvh] overflow-hidden" : "min-h-screen")}>
-        <div className={cn("flex w-full", isAtendimento ? "h-[100dvh] overflow-hidden" : "min-h-screen")}>
+      <div className={cn("w-full bg-background flex flex-col", isAtendimento ? "h-[100dvh] overflow-hidden" : "min-h-screen")}>
+        <SystemModeBanner />
+        <SubscriptionBanner />
+        <div className={cn("flex w-full flex-1", isAtendimento ? "h-full overflow-hidden" : "")}>
           <AppSidebar />
 
           <SidebarInset className={cn(isAtendimento && "h-[100dvh] overflow-hidden flex flex-col")}>
@@ -78,6 +87,11 @@ export const AdminLayout = () => {
                   <p className="text-xs text-muted-foreground">Sistema de Gestão Inteligente</p>
                 </div>
               </div>
+
+              <div className="flex-1 max-w-md mx-8 hidden lg:block">
+                <GlobalSearch />
+              </div>
+
               <div className="relative flex items-center gap-3 text-xs">
                 {user?.role === 'SUPERADMIN' && (
                   <Button

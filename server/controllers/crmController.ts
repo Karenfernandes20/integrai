@@ -211,19 +211,25 @@ export const updateLeadStage = async (req: Request, res: Response) => {
 
         const { id } = req.params;
         const { stageId } = req.body;
+        const user = (req as any).user;
+        const isSuperAdmin = user?.role === 'SUPERADMIN';
 
         if (!stageId) {
             return res.status(400).json({ error: 'stageId is required' });
+        }
+
+        // Access Check
+        const checkLead = await pool.query('SELECT company_id FROM crm_leads WHERE id = $1', [id]);
+        if (checkLead.rowCount === 0) return res.status(404).json({ error: 'Lead not found' });
+
+        if (!isSuperAdmin && checkLead.rows[0].company_id !== user.company_id) {
+            return res.status(403).json({ error: 'Access denied' });
         }
 
         const result = await pool.query(
             'UPDATE crm_leads SET stage_id = $1, updated_at = NOW() WHERE id = $2 RETURNING *',
             [stageId, id]
         );
-
-        if (result.rowCount === 0) {
-            return res.status(404).json({ error: 'Lead not found' });
-        }
 
         res.json(result.rows[0]);
     } catch (error) {
@@ -238,6 +244,16 @@ export const updateLead = async (req: Request, res: Response) => {
 
         const { id } = req.params;
         const { name, email, phone, stage_id, description, value, origin } = req.body;
+        const user = (req as any).user;
+        const isSuperAdmin = user?.role === 'SUPERADMIN';
+
+        // Access Check
+        const checkLead = await pool.query('SELECT company_id FROM crm_leads WHERE id = $1', [id]);
+        if (checkLead.rowCount === 0) return res.status(404).json({ error: 'Lead not found' });
+
+        if (!isSuperAdmin && checkLead.rows[0].company_id !== user.company_id) {
+            return res.status(403).json({ error: 'Access denied' });
+        }
 
         const result = await pool.query(
             `UPDATE crm_leads 
@@ -252,10 +268,6 @@ export const updateLead = async (req: Request, res: Response) => {
              WHERE id = $8 RETURNING *`,
             [name, email, phone, stage_id, description, value, origin, id]
         );
-
-        if (result.rowCount === 0) {
-            return res.status(404).json({ error: 'Lead not found' });
-        }
 
         res.json(result.rows[0]);
     } catch (error) {
@@ -305,6 +317,7 @@ export const deleteStage = async (req: Request, res: Response) => {
         const { id } = req.params;
         const user = (req as any).user;
         const companyId = user?.company_id;
+        const isSuperAdmin = user?.role === 'SUPERADMIN';
 
         // 1. Check if stage exists and get details
         const stageRes = await pool.query('SELECT * FROM crm_stages WHERE id = $1', [id]);
@@ -312,6 +325,11 @@ export const deleteStage = async (req: Request, res: Response) => {
             return res.status(404).json({ error: 'Stage not found' });
         }
         const stageToDelete = stageRes.rows[0];
+
+        // Access Check
+        if (!isSuperAdmin && stageToDelete.company_id !== companyId) {
+            return res.status(403).json({ error: 'Access denied' });
+        }
 
         // 2. Prevent deleting "LEADS" (system stage) - case insensitive
         if (stageToDelete.name.toUpperCase() === 'LEADS') {

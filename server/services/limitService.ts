@@ -1,0 +1,155 @@
+
+import { pool } from '../db';
+import { logEvent } from '../logger';
+
+export type ResourceType = 'users' | 'ai_agents' | 'automations' | 'messages' | 'queues' | 'campaigns' | 'schedules' | 'internal_chat' | 'external_api' | 'kanban';
+
+export const checkLimit = async (companyId: number, resource: ResourceType): Promise<boolean> => {
+    if (!pool) return false;
+    try {
+        // Superadmin bypass (optional, but implemented at controller usually. Here we strictly check limits for the given companyId)
+        // Retrieve Plan and Usage
+
+        // 1. Get Plan Limits
+        const companyPlan = await pool.query(`
+            SELECT p.* 
+            FROM companies c
+            JOIN plans p ON c.plan_id = p.id
+            WHERE c.id = $1
+        `, [companyId]);
+
+        if (companyPlan.rows.length === 0) {
+            console.warn(`[LimitService] No plan found for company ${companyId}. Defaulting to restricted.`);
+            return false; // No plan = no access
+        }
+
+        const plan = companyPlan.rows[0];
+
+        // 2. Check Boolean Features
+        if (resource === 'campaigns' && !plan.use_campaigns) return false;
+        if (resource === 'schedules' && !plan.use_schedules) return false;
+        if (resource === 'internal_chat' && !plan.use_internal_chat) return false;
+        if (resource === 'external_api' && !plan.use_external_api) return false;
+        if (resource === 'kanban' && !plan.use_kanban) return false;
+
+        // 3. Check Count-Based Limits
+
+        if (resource === 'users') {
+            const currentUsers = await pool.query('SELECT COUNT(*) FROM app_users WHERE company_id = $1 AND is_active = true', [companyId]);
+            const count = parseInt(currentUsers.rows[0].count);
+            return count < plan.max_users;
+        }
+
+        if (resource === 'ai_agents') {
+            const currentAgents = await pool.query('SELECT COUNT(*) FROM ai_agents WHERE company_id = $1 AND status = \'active\'', [companyId]);
+            const count = parseInt(currentAgents.rows[0].count);
+            // Default max_ai_agents if not present (migration timing issue safeguard)
+            const maxAgents = plan.max_ai_agents !== undefined ? plan.max_ai_agents : 1;
+            return count < maxAgents;
+        }
+
+        if (resource === 'automations') {
+            // Counting Active Workflows
+            const currentWorkflows = await pool.query('SELECT COUNT(*) FROM system_workflows WHERE company_id = $1 AND status = \'active\'', [companyId]);
+            const count = parseInt(currentWorkflows.rows[0].count);
+            const maxAutomations = plan.max_automations !== undefined ? plan.max_automations : 5;
+            return count < maxAutomations;
+        }
+
+        if (resource === 'queues') {
+            // Counting Stages as Queues/Pipes?
+            // Let's assume unlimited for now or check 'crm_stages'?
+            // Actually currently migration has max_queues.
+            return true; // Not strictly enforcing yet as Stages are shared/default mostly.
+        }
+
+        if (resource === 'messages') {
+            const now = new Date();
+            const monthYear = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+
+            const usageRes = await pool.query('SELECT messages_count FROM company_usage WHERE company_id = $1 AND month_year = $2', [companyId, monthYear]);
+            const used = usageRes.rows.length > 0 ? usageRes.rows[0].messages_count : 0;
+            const maxMessages = plan.max_messages_month || 1000;
+
+            return used < maxMessages;
+        }
+
+        return true;
+    } catch (error) {
+        console.error(`[LimitService] Error checking limit for ${resource}:`, error);
+        return false; // Fail safe
+    }
+};
+
+export const incrementUsage = async (companyId: number, resource: ResourceType, amount: number = 1): Promise<void> => {
+    if (!pool) return;
+    try {
+        if (resource === 'messages') {
+            const now = new Date();
+            const monthYear = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+
+            await pool.query(`
+                INSERT INTO company_usage (company_id, month_year, messages_count)
+                VALUES ($1, $2, $3)
+                ON CONFLICT (company_id, month_year)
+                DO UPDATE SET messages_count = company_usage.messages_count + $3, updated_at = NOW()
+            `, [companyId, monthYear, amount]);
+        }
+    } catch (error) {
+        console.error(`[LimitService] Error incrementing usage for ${resource}:`, error);
+    }
+};
+
+export const getPlanStatus = async (companyId: number) => {
+    if (!pool) throw new Error("Database not connected");
+
+    const planRes = await pool.query(`
+        SELECT p.*, c.name as company_name 
+        FROM companies c
+        LEFT JOIN plans p ON c.plan_id = p.id
+        WHERE c.id = $1
+    `, [companyId]);
+
+    if (planRes.rows.length === 0) throw new Error("Company/Plan not found");
+    const plan = planRes.rows[0];
+
+    // Current Usage
+    const usersRes = await pool.query('SELECT COUNT(*) FROM app_users WHERE company_id = $1 AND is_active = true', [companyId]);
+    const agentsRes = await pool.query('SELECT COUNT(*) FROM ai_agents WHERE company_id = $1 AND status = \'active\'', [companyId]);
+    const workflowsRes = await pool.query('SELECT COUNT(*) FROM system_workflows WHERE company_id = $1 AND status = \'active\'', [companyId]);
+
+    const now = new Date();
+    const monthYear = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+    const msgsRes = await pool.query('SELECT messages_count FROM company_usage WHERE company_id = $1 AND month_year = $2', [companyId, monthYear]);
+
+    return {
+        plan: {
+            name: plan.name || 'Desconhecido',
+            features: {
+                campaigns: plan.use_campaigns,
+                schedules: plan.use_schedules,
+                internal_chat: plan.use_internal_chat,
+                sub_accounts: true // Default true
+            }
+        },
+        usage: {
+            users: {
+                current: parseInt(usersRes.rows[0].count),
+                max: plan.max_users
+            },
+            ai_agents: {
+                current: parseInt(agentsRes.rows[0].count),
+                max: plan.max_ai_agents || 1
+            },
+            automations: {
+                current: parseInt(workflowsRes.rows[0].count),
+                max: plan.max_automations || 5
+            },
+            messages: {
+                current: msgsRes.rows.length > 0 ? msgsRes.rows[0].messages_count : 0,
+                max: plan.max_messages_month || 1000,
+                period: monthYear
+            }
+        }
+    };
+};

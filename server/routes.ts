@@ -17,7 +17,9 @@ import {
 } from './controllers/webhookController';
 import { getCities, createCity } from './controllers/cityController';
 import { login, register } from './controllers/authController';
-import { authenticateToken, authorizeRole } from './middleware/authMiddleware';
+import { authenticateToken, authorizeRole, authorizePermission } from './middleware/authMiddleware';
+import { rateLimit } from './middleware/rateLimitMiddleware';
+import { MODULES, ACTIONS } from './config/roles';
 import { getCompanies, createCompany, updateCompany, deleteCompany, getCompanyUsers, getCompany } from './controllers/companyController';
 import { startConversation, closeConversation, updateContactNameWithAudit, deleteConversation, returnToPending } from './controllers/conversationController';
 import { getFollowUps, createFollowUp, updateFollowUp, deleteFollowUp, getFollowUpStats } from './controllers/followUpController';
@@ -60,7 +62,7 @@ router.post('/evolution/contacts/sync', authenticateToken, syncEvolutionContacts
 router.put('/evolution/contacts/:id', authenticateToken, updateEvolutionContact);
 router.delete('/evolution/contacts/:id', authenticateToken, deleteEvolutionContact);
 router.delete('/evolution/disconnect', authenticateToken, deleteEvolutionInstance);
-router.post('/evolution/messages/send', authenticateToken, sendEvolutionMessage);
+router.post('/evolution/messages/send', authenticateToken, rateLimit({ windowMs: 60000, max: 20 }), sendEvolutionMessage);
 router.post('/evolution/messages/media', authenticateToken, sendEvolutionMedia);
 router.put('/evolution/messages/:conversationId/:messageId', authenticateToken, editEvolutionMessage);
 router.delete('/evolution/messages/:conversationId/:messageId', authenticateToken, deleteEvolutionMessage);
@@ -139,8 +141,8 @@ router.get('/crm/stages', authenticateToken, getStages);
 router.post('/crm/stages', authenticateToken, createStage);
 router.delete('/crm/stages/:id', authenticateToken, deleteStage);
 router.get('/crm/leads', authenticateToken, getLeads);
-router.put('/crm/leads/:id', authenticateToken, updateLead);
-router.put('/crm/leads/:id/move', authenticateToken, updateLeadStage);
+router.put('/crm/leads/:id', authenticateToken, authorizePermission(MODULES.CRM, ACTIONS.WRITE), updateLead);
+router.put('/crm/leads/:id/move', authenticateToken, authorizePermission(MODULES.CRM, ACTIONS.WRITE), updateLeadStage);
 
 // Follow-up Routes
 router.get('/crm/follow-ups', authenticateToken, getFollowUps);
@@ -150,10 +152,16 @@ router.put('/crm/follow-ups/:id', authenticateToken, updateFollowUp);
 router.delete('/crm/follow-ups/:id', authenticateToken, deleteFollowUp);
 
 // Reports routes
-import { getDRE, getBreakdown, getFinancialIndicators } from './controllers/reportsController';
+// Reports routes
+import { getDRE, getBreakdown, getFinancialIndicators, getOperationalReports } from './controllers/reportsController';
+import { getConversionStats } from './controllers/analyticsController';
+
 router.get('/reports/dre', authenticateToken, authorizeRole(['SUPERADMIN', 'ADMIN']), getDRE);
 router.get('/reports/breakdown', authenticateToken, authorizeRole(['SUPERADMIN', 'ADMIN']), getBreakdown);
 router.get('/reports/indicators', authenticateToken, authorizeRole(['SUPERADMIN', 'ADMIN']), getFinancialIndicators);
+router.get('/reports/operational', authenticateToken, authorizeRole(['SUPERADMIN', 'ADMIN']), getOperationalReports);
+router.get('/reports/conversion', authenticateToken, authorizeRole(['SUPERADMIN']), getConversionStats);
+
 
 import { getPayables, getReceivables, getReceivablesByCity, getCashFlow, getFinancialStats, createFinancialTransaction, updateFinancialTransaction, deleteFinancialTransaction, reactivateFinancialTransaction, markAsPaid, getCategories, createCategory, deleteCategory } from './controllers/financialController';
 // FAQ Routes
@@ -165,9 +173,9 @@ router.get('/financial/receivables', authenticateToken, getReceivables);
 router.get('/financial/receivables-by-city', authenticateToken, getReceivablesByCity);
 router.get('/financial/cashflow', authenticateToken, getCashFlow);
 router.get('/financial/stats', authenticateToken, getFinancialStats);
-router.post('/financial/transactions', authenticateToken, createFinancialTransaction);
-router.put('/financial/transactions/:id', authenticateToken, updateFinancialTransaction);
-router.delete('/financial/transactions/:id', authenticateToken, deleteFinancialTransaction);
+router.post('/financial/transactions', authenticateToken, authorizePermission(MODULES.FINANCIAL, ACTIONS.WRITE), createFinancialTransaction);
+router.put('/financial/transactions/:id', authenticateToken, authorizePermission(MODULES.FINANCIAL, ACTIONS.WRITE), updateFinancialTransaction);
+router.delete('/financial/transactions/:id', authenticateToken, authorizePermission(MODULES.FINANCIAL, ACTIONS.DELETE), deleteFinancialTransaction);
 router.put('/financial/transactions/:id/reactivate', authenticateToken, reactivateFinancialTransaction);
 router.post('/financial/transactions/:id/pay', authenticateToken, markAsPaid);
 
@@ -194,8 +202,7 @@ import {
   startCampaign,
   pauseCampaign,
   deleteCampaign,
-  updateCampaign,
-  getCampaignFailures
+  updateCampaign
 } from './controllers/campaignController';
 
 router.post('/campaigns', authenticateToken, createCampaign);
@@ -205,7 +212,6 @@ router.post('/campaigns/:id/start', authenticateToken, startCampaign);
 router.post('/campaigns/:id/pause', authenticateToken, pauseCampaign);
 router.put('/campaigns/:id', authenticateToken, updateCampaign);
 router.delete('/campaigns/:id', authenticateToken, deleteCampaign);
-router.get('/campaigns/:id/failures', authenticateToken, getCampaignFailures);
 
 // Admin Tasks
 import { getTasks, createTask, updateTask, deleteTask, getTaskHistory, getPendingTasksCount } from './controllers/taskController';
@@ -227,7 +233,46 @@ router.get('/admin/alerts', authenticateToken, authorizeRole(['SUPERADMIN']), ge
 router.get('/admin/alerts/count', authenticateToken, authorizeRole(['SUPERADMIN']), getUnreadAlertsCount);
 router.put('/admin/alerts/read-all', authenticateToken, authorizeRole(['SUPERADMIN']), markAllAlertsAsRead);
 router.put('/admin/alerts/:id/read', authenticateToken, authorizeRole(['SUPERADMIN']), markAlertAsRead);
-router.delete('/admin/alerts/:id', authenticateToken, authorizeRole(['SUPERADMIN']), deleteAlert);
+// System Health
+import { getSystemHealth, testService } from './controllers/healthController';
+router.get('/admin/health', authenticateToken, authorizeRole(['SUPERADMIN']), getSystemHealth);
+router.post('/admin/health/test', authenticateToken, authorizeRole(['SUPERADMIN']), testService);
+
+// Entity Links
+import { createLink, getLinksForEntity, deleteLink } from './controllers/linksController';
+router.post('/admin/links', authenticateToken, createLink);
+router.get('/admin/links/:type/:id', authenticateToken, getLinksForEntity);
+router.delete('/admin/links/:id', authenticateToken, deleteLink);
+
+// Workflows
+import { getWorkflows, createWorkflow, updateWorkflow, deleteWorkflow, getWorkflowHistory } from './controllers/workflowController';
+router.get('/admin/workflows', authenticateToken, authorizeRole(['SUPERADMIN']), getWorkflows);
+router.post('/admin/workflows', authenticateToken, authorizeRole(['SUPERADMIN']), createWorkflow);
+router.put('/admin/workflows/:id', authenticateToken, authorizeRole(['SUPERADMIN']), updateWorkflow);
+router.delete('/admin/workflows/:id', authenticateToken, authorizeRole(['SUPERADMIN']), deleteWorkflow);
+router.get('/admin/workflows/:id/history', authenticateToken, authorizeRole(['SUPERADMIN']), getWorkflowHistory);
+
+// System Audit
+import { getAuditLogs, getAuditStats } from './controllers/auditController';
+router.get('/admin/audit/logs', authenticateToken, authorizeRole(['SUPERADMIN']), getAuditLogs);
+router.get('/admin/audit/stats', authenticateToken, authorizeRole(['SUPERADMIN']), getAuditStats);
+
+// AI Management
+import { getAiAgents, updateAgentStatus, updateAgentPrompt, getAiHistory, testAiAgent } from './controllers/aiController';
+router.get('/admin/ai/agents', authenticateToken, authorizeRole(['SUPERADMIN']), getAiAgents);
+router.put('/admin/ai/agents/:id/status', authenticateToken, authorizeRole(['SUPERADMIN']), updateAgentStatus);
+router.put('/admin/ai/agents/:id/prompt', authenticateToken, authorizeRole(['SUPERADMIN']), updateAgentPrompt);
+router.get('/admin/ai/history', authenticateToken, authorizeRole(['SUPERADMIN']), getAiHistory);
+router.post('/admin/ai/test', authenticateToken, authorizeRole(['SUPERADMIN']), testAiAgent);
+
+// System Modes
+import { getSystemMode, setSystemMode } from './controllers/systemController';
+router.get('/admin/system/mode', authenticateToken, getSystemMode);
+router.post('/admin/system/mode', authenticateToken, authorizeRole(['SUPERADMIN']), setSystemMode);
+
+// Global Search
+import { globalSearch } from './controllers/searchController';
+router.get('/global/search', authenticateToken, rateLimit({ windowMs: 60000, max: 30 }), globalSearch);
 
 router.post('/campaigns/upload', authenticateToken, upload.single('file'), (req: Request, res: Response) => {
   if (!req.file) {
@@ -322,6 +367,44 @@ router.get('/update-evolution', async (req: Request, res: Response) => {
 });
 
 // Placeholder for other routes
+// Template Center
+import { getTemplates, createTemplate, updateTemplate, deleteTemplate, getTemplateHistory } from './controllers/templateController';
+router.get('/config/templates', authenticateToken, getTemplates); // Using /config/ to group under settings if desired, or /templates
+router.post('/config/templates', authenticateToken, authorizeRole(['ADMIN', 'SUPERADMIN', 'USUARIO']), createTemplate);
+router.put('/config/templates/:id', authenticateToken, authorizeRole(['ADMIN', 'SUPERADMIN']), updateTemplate);
+router.delete('/config/templates/:id', authenticateToken, authorizeRole(['ADMIN', 'SUPERADMIN']), deleteTemplate);
+router.get('/config/templates/:id/history', authenticateToken, getTemplateHistory);
+
+
+// Roadmap
+import { getRoadmapItems, createRoadmapItem, updateRoadmapItem, deleteRoadmapItem, getRoadmapComments, addRoadmapComment, linkTaskToRoadmap } from './controllers/roadmapController';
+router.get('/roadmap', authenticateToken, getRoadmapItems);
+router.post('/roadmap', authenticateToken, createRoadmapItem);
+router.put('/roadmap/:id', authenticateToken, updateRoadmapItem);
+router.delete('/roadmap/:id', authenticateToken, deleteRoadmapItem);
+router.get('/roadmap/:id/comments', authenticateToken, getRoadmapComments);
+router.post('/roadmap/:id/comments', authenticateToken, addRoadmapComment);
+router.post('/roadmap/:id/link-task', authenticateToken, linkTaskToRoadmap);
+
+
+// Onboarding
+import { getOnboardingStatus, updateOnboardingStep, completeOnboarding } from './controllers/onboardingController';
+router.get('/onboarding/status', authenticateToken, getOnboardingStatus);
+router.post('/onboarding/step', authenticateToken, updateOnboardingStep);
+router.post('/onboarding/complete', authenticateToken, completeOnboarding);
+
+// Plan & Subscription
+import { getPlanStatus } from './controllers/planController';
+import { getSubscription, createSubscription, cancelSubscription, getInvoices } from './controllers/subscriptionController';
+
+router.get('/subscription', authenticateToken, getPlanStatus); // Legacy/Limit check
+
+// Billing Routes
+router.get('/billing/subscription', authenticateToken, getSubscription);
+router.post('/billing/subscription', authenticateToken, authorizeRole(['ADMIN', 'SUPERADMIN']), createSubscription);
+router.post('/billing/cancel', authenticateToken, authorizeRole(['ADMIN', 'SUPERADMIN']), cancelSubscription);
+router.get('/billing/invoices', authenticateToken, getInvoices);
+
 router.get('/rides', (req, res) => res.json({ message: 'Rides endpoint' }));
 router.get('/whatsapp', (req, res) => res.json({ message: 'WhatsApp endpoint' }));
 

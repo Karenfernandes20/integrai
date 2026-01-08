@@ -104,6 +104,7 @@ import { saveAs } from "file-saver";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import { useAuth } from "../contexts/AuthContext";
+import RelationshipManager from "../components/RelationshipManager";
 
 interface Transaction {
   id: number;
@@ -1433,6 +1434,10 @@ const FinanceiroPage = () => {
                     "{selectedTransaction.description}" <br />
                     {selectedTransaction.notes && <span className="mt-2 block font-medium">Obs: {selectedTransaction.notes}</span>}
                   </div>
+                </div>
+
+                <div className="pt-4 border-t">
+                  <RelationshipManager entityType="contract" entityId={selectedTransaction.id} />
                 </div>
               </div>
 

@@ -37,7 +37,10 @@ import {
   Smile,
   Plus,
   ArrowLeft,
+  Bot,
+  Link2,
 } from "lucide-react";
+import RelationshipManager from "../components/RelationshipManager";
 import { Badge } from "../components/ui/badge";
 import { FollowUpModal } from "../components/follow-up/FollowUpModal";
 import { toast } from "sonner";
@@ -249,6 +252,7 @@ const AtendimentoPage = () => {
     const saved = localStorage.getItem('notification_muted');
     return saved === 'true';
   });
+  const [isRelationshipModalOpen, setIsRelationshipModalOpen] = useState(false);
 
   const volumeRef = useRef(notificationVolume);
   const mutedRef = useRef(isNotificationMuted);
@@ -2576,6 +2580,12 @@ const AtendimentoPage = () => {
                     >
                       <CalendarCheck className="h-4 w-4" /> Novo Follow-up
                     </DropdownMenuItem>
+                    <DropdownMenuItem
+                      onClick={() => setIsRelationshipModalOpen(true)}
+                      className="gap-3 py-3"
+                    >
+                      <Link2 className="h-4 w-4" /> Relacionamentos
+                    </DropdownMenuItem>
                     <DropdownMenuItem onClick={handleRenameContact} className="py-3">Editar contato</DropdownMenuItem>
                     {selectedConversation.status !== 'OPEN' ? (
                       <DropdownMenuItem onClick={() => handleStartAtendimento()} className="py-3 text-[#00a884]">Iniciar Chat</DropdownMenuItem>
@@ -3077,6 +3087,19 @@ const AtendimentoPage = () => {
       )}
 
 
+      {/* Relationship Dialog */}
+      <Dialog open={isRelationshipModalOpen} onOpenChange={setIsRelationshipModalOpen}>
+        <DialogContent className="sm:max-w-[500px]">
+          <DialogHeader>
+            <DialogTitle>Relacionamentos: {selectedConversation ? getDisplayName(selectedConversation) : ""}</DialogTitle>
+          </DialogHeader>
+          <div className="py-4">
+            {selectedConversation && (
+              <RelationshipManager entityType="conversation" entityId={selectedConversation.id} />
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };

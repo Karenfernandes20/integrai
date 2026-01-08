@@ -4,6 +4,7 @@ import jwt from 'jsonwebtoken';
 import { pool } from '../db';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'your_jwt_secret_key_change_in_production';
+import { ROLES, DEFAULT_PERMISSIONS } from '../config/roles';
 
 export const login = async (req: Request, res: Response) => {
     try {
@@ -102,7 +103,9 @@ export const login = async (req: Request, res: Response) => {
                 id: user.id,
                 email: user.email,
                 role: user.role,
-                company_id: user.company_id // Critical for company authorization checks
+
+                company_id: user.company_id, // Critical for company authorization checks
+                permissions: user.permissions || []
             },
             JWT_SECRET,
             { expiresIn: '24h' }
@@ -159,12 +162,20 @@ export const register = async (req: Request, res: Response) => {
         const hash = await bcrypt.hash(password, salt);
 
         // Default: Role USUARIO, Invalidated Email
+        const defaultRole = ROLES.ADMIN; // First user is Admin of their own account usually? Or wait, register is public? 
+        // If register is public, usually it creates a new Tenant. If so, they are ADMIN.
+        // But the code sets 'USUARIO' and adds to city_id 1. Code implies this is a public signup for a user? 
+        // Or for a tenant? "Cadastre sua empresa" in generic sense.
+        // Assuming public registration -> New Tenant Admin.
+
+        const permissions = DEFAULT_PERMISSIONS[defaultRole] || {};
+
         const result = await pool.query(
             `INSERT INTO app_users 
-             (full_name, email, password_hash, phone, role, email_validated, is_active, user_type, city_id, state, created_at)
-             VALUES ($1, $2, $3, $4, 'USUARIO', false, true, 'user', 1, 'SP', NOW())
+             (full_name, email, password_hash, phone, role, email_validated, is_active, user_type, city_id, state, created_at, permissions)
+             VALUES ($1, $2, $3, $4, $5, false, true, 'admin', 1, 'SP', NOW(), $6)
              RETURNING id, full_name, email, role`,
-            [full_name, email, hash, phone || '']
+            [full_name, email, hash, phone || '', defaultRole, JSON.stringify(permissions)]
         );
 
         res.status(201).json({

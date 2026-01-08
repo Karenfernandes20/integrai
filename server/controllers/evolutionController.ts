@@ -299,16 +299,28 @@ export const getEvolutionConnectionState = async (req: Request, res: Response) =
   }
 };
 
+import { checkLimit, incrementUsage } from '../services/limitService';
+
 export const sendEvolutionMessage = async (req: Request, res: Response) => {
   const { companyId } = req.body;
   const config = await getEvolutionConfig((req as any).user, 'sendMessage', companyId);
   const EVOLUTION_API_URL = config.url;
   const EVOLUTION_API_KEY = config.apikey;
   const EVOLUTION_INSTANCE = config.instance;
+  const resolvedCompanyId = config.company_id;
 
   try {
     if (!EVOLUTION_API_URL || !EVOLUTION_API_KEY) {
       return res.status(500).json({ error: "Evolution API not configured" });
+    }
+
+    // Limit Check
+    if (resolvedCompanyId) {
+      const allowed = await checkLimit(resolvedCompanyId, 'messages');
+      if (!allowed) {
+        console.warn(`[Evolution] Message limit reached for company ${resolvedCompanyId}`);
+        return res.status(403).json({ error: 'Limite de mensagens atingido para este mês.' });
+      }
     }
 
     const { phone, message, text, to, quoted } = req.body;
@@ -453,10 +465,19 @@ export const sendEvolutionMedia = async (req: Request, res: Response) => {
   const EVOLUTION_API_URL = config.url;
   const EVOLUTION_API_KEY = config.apikey;
   const EVOLUTION_INSTANCE = config.instance;
+  const resolvedCompanyId = config.company_id;
 
   try {
     if (!EVOLUTION_API_URL || !EVOLUTION_API_KEY) {
       return res.status(500).json({ error: "Evolution API not configured" });
+    }
+
+    // Limit Check
+    if (resolvedCompanyId) {
+      const allowed = await checkLimit(resolvedCompanyId, 'messages');
+      if (!allowed) {
+        return res.status(403).json({ error: 'Limite de mensagens atingido para este mês.' });
+      }
     }
 
     const { phone, media, mediaType, caption, fileName } = req.body;
@@ -507,7 +528,7 @@ export const sendEvolutionMedia = async (req: Request, res: Response) => {
     if (pool) {
       try {
         const user = (req as any).user;
-        const resolvedCompanyId = config.company_id;
+        // resolvedCompanyId already defined at top of function
         const safePhone = phone || "";
         const remoteJid = safePhone.includes('@') ? safePhone : `${safePhone}@s.whatsapp.net`;
         const content = caption || `[${mediaType}]`;
@@ -539,6 +560,11 @@ export const sendEvolutionMedia = async (req: Request, res: Response) => {
           'INSERT INTO whatsapp_messages (conversation_id, direction, content, sent_at, status, external_id, user_id, message_type, media_url, company_id) VALUES ($1, $2, $3, NOW(), $4, $5, $6, $7, $8, $9) ON CONFLICT DO NOTHING RETURNING *',
           [conversationId, 'outbound', content, 'sent', externalMessageId, user.id, mediaType, (media.startsWith('http') ? media : null), resolvedCompanyId]
         );
+
+        // Increment Usage
+        if (resolvedCompanyId) {
+          await incrementUsage(resolvedCompanyId, 'messages', 1);
+        }
 
         const resultPayload = {
           ...insertedMsg.rows[0],

@@ -10,7 +10,9 @@ import {
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { userService, User } from "../services/userService";
 import { useState } from "react";
-import { Loader2, Trash2, Power, PowerOff } from "lucide-react";
+import { Loader2, Trash2, Power, PowerOff, Link2 } from "lucide-react";
+import RelationshipManager from "../components/RelationshipManager";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../components/ui/dialog";
 
 const UsuariosPage = () => {
   const queryClient = useQueryClient();
@@ -79,6 +81,8 @@ const UsuariosPage = () => {
 
     createMutation.mutate(payload);
   };
+
+  const [selectedUserForLinks, setSelectedUserForLinks] = useState<User | null>(null);
 
   if (isLoading) {
     return (
@@ -304,6 +308,14 @@ const UsuariosPage = () => {
                         <Button
                           variant="ghost"
                           size="icon"
+                          className="h-8 w-8 text-primary hover:text-primary/70 hover:bg-blue-50"
+                          onClick={() => setSelectedUserForLinks(user)}
+                        >
+                          <Link2 className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
                           className={user.is_active ? "h-8 w-8 text-zinc-400 hover:text-red-500 hover:bg-red-50" : "h-8 w-8 text-green-500 hover:text-green-600 hover:bg-green-50"}
                           onClick={() => updateMutation.mutate({ id: user.id, data: { is_active: !user.is_active } })}
                           title={user.is_active ? "Desativar" : "Ativar"}
@@ -329,6 +341,19 @@ const UsuariosPage = () => {
           </Tabs>
         </div>
       </div>
+
+      <Dialog open={!!selectedUserForLinks} onOpenChange={() => setSelectedUserForLinks(null)}>
+        <DialogContent className="sm:max-w-[500px]">
+          <DialogHeader>
+            <DialogTitle>Vínculos do Usuário: {selectedUserForLinks?.full_name}</DialogTitle>
+          </DialogHeader>
+          <div className="py-4">
+            {selectedUserForLinks && (
+              <RelationshipManager entityType="user" entityId={selectedUserForLinks.id} />
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };

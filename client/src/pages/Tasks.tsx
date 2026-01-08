@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useSearchParams } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext";
 import { cn } from "../lib/utils";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "../components/ui/card";
@@ -28,6 +29,7 @@ import { toast } from "sonner";
 import { format, isPast, isToday, isThisWeek } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "../components/ui/dropdown-menu";
+import RelationshipManager from "../components/RelationshipManager";
 
 interface Task {
     id: number;
@@ -79,11 +81,36 @@ const TasksPage = () => {
     const [historyTaskTitle, setHistoryTaskTitle] = useState("");
 
     const [users, setUsers] = useState<any[]>([]);
+    const [searchParams] = useSearchParams();
+
+    const handleOpenTask = (task: Task) => {
+        setEditingTask(task);
+        setFormData({
+            title: task.title,
+            description: task.description || "",
+            priority: task.priority,
+            status: task.status,
+            due_date: task.due_date ? format(new Date(task.due_date), 'yyyy-MM-dd') : "",
+            due_time: task.due_date ? format(new Date(task.due_date), 'HH:mm') : "10:00",
+            responsible_id: task.responsible_id ? task.responsible_id.toString() : ""
+        });
+        setShowModal(true);
+    };
 
     useEffect(() => {
         fetchTasks();
         fetchUsers();
     }, [statusFilter, priorityFilter, filter]);
+
+    useEffect(() => {
+        const taskId = searchParams.get('id');
+        if (taskId && tasks.length > 0) {
+            const task = tasks.find(t => t.id.toString() === taskId);
+            if (task) {
+                handleOpenTask(task);
+            }
+        }
+    }, [searchParams, tasks]);
 
     const fetchTasks = async () => {
         setLoading(true);
@@ -541,6 +568,12 @@ const TasksPage = () => {
                                 />
                             </div>
                         </div>
+
+                        {editingTask && (
+                            <div className="pt-4 border-t">
+                                <RelationshipManager entityType="task" entityId={editingTask.id} />
+                            </div>
+                        )}
 
                         {editingTask && (
                             <div className="space-y-2">

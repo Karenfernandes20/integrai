@@ -4,6 +4,9 @@ import { logEvent } from '../logger';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { systemMode } from '../systemState';
+
+import { checkLimit, incrementUsage } from '../services/limitService';
 
 // Create Campaign
 export const createCampaign = async (req: Request, res: Response) => {
@@ -12,6 +15,14 @@ export const createCampaign = async (req: Request, res: Response) => {
 
         const user = (req as any).user;
         const companyId = user?.company_id;
+
+        // Limit Check (Feature)
+        if (companyId) {
+            const allowed = await checkLimit(companyId, 'campaigns');
+            if (!allowed) {
+                return res.status(403).json({ error: 'Seu plano não inclui Campanhas.' });
+            }
+        }
 
         const {
             name,
@@ -108,6 +119,8 @@ export const getCampaignById = async (req: Request, res: Response) => {
         if (!pool) return res.status(500).json({ error: 'Database not configured' });
 
         const { id } = req.params;
+        const user = (req as any).user;
+        const isSuperAdmin = user?.role === 'SUPERADMIN';
 
         const campaignResult = await pool.query(
             'SELECT * FROM whatsapp_campaigns WHERE id = $1',
@@ -118,13 +131,20 @@ export const getCampaignById = async (req: Request, res: Response) => {
             return res.status(404).json({ error: 'Campaign not found' });
         }
 
+        const campaign = campaignResult.rows[0];
+
+        // Access Check
+        if (!isSuperAdmin && campaign.company_id !== user.company_id) {
+            return res.status(403).json({ error: 'Access denied' });
+        }
+
         const contactsResult = await pool.query(
             'SELECT * FROM whatsapp_campaign_contacts WHERE campaign_id = $1 ORDER BY created_at ASC',
             [id]
         );
 
         res.json({
-            ...campaignResult.rows[0],
+            ...campaign,
             contacts: contactsResult.rows
         });
     } catch (error) {
@@ -139,6 +159,16 @@ export const startCampaign = async (req: Request, res: Response) => {
         if (!pool) return res.status(500).json({ error: 'Database not configured' });
 
         const { id } = req.params;
+        const user = (req as any).user;
+        const isSuperAdmin = user?.role === 'SUPERADMIN';
+
+        // Check ownership
+        const check = await pool.query('SELECT company_id FROM whatsapp_campaigns WHERE id = $1', [id]);
+        if (check.rows.length === 0) return res.status(404).json({ error: 'Campaign not found' });
+
+        if (!isSuperAdmin && check.rows[0].company_id !== user.company_id) {
+            return res.status(403).json({ error: 'Access denied' });
+        }
 
         await pool.query(
             `UPDATE whatsapp_campaigns SET status = 'running', updated_at = NOW() WHERE id = $1`,
@@ -162,6 +192,16 @@ export const pauseCampaign = async (req: Request, res: Response) => {
         if (!pool) return res.status(500).json({ error: 'Database not configured' });
 
         const { id } = req.params;
+        const user = (req as any).user;
+        const isSuperAdmin = user?.role === 'SUPERADMIN';
+
+        // Check ownership
+        const check = await pool.query('SELECT company_id FROM whatsapp_campaigns WHERE id = $1', [id]);
+        if (check.rows.length === 0) return res.status(404).json({ error: 'Campaign not found' });
+
+        if (!isSuperAdmin && check.rows[0].company_id !== user.company_id) {
+            return res.status(403).json({ error: 'Access denied' });
+        }
 
         await pool.query(
             `UPDATE whatsapp_campaigns SET status = 'paused', updated_at = NOW() WHERE id = $1`,
@@ -189,8 +229,18 @@ export const updateCampaign = async (req: Request, res: Response) => {
             end_time,
             delay_min,
             delay_max,
-            contacts // Optional: replace contacts
+            contacts
         } = req.body;
+        const user = (req as any).user;
+        const isSuperAdmin = user?.role === 'SUPERADMIN';
+
+        // Check ownership
+        const check = await pool.query('SELECT company_id FROM whatsapp_campaigns WHERE id = $1', [id]);
+        if (check.rows.length === 0) return res.status(404).json({ error: 'Campaign not found' });
+
+        if (!isSuperAdmin && check.rows[0].company_id !== user.company_id) {
+            return res.status(403).json({ error: 'Access denied' });
+        }
 
         const campaignResult = await pool.query(
             `UPDATE whatsapp_campaigns 
@@ -220,14 +270,9 @@ export const updateCampaign = async (req: Request, res: Response) => {
             ]
         );
 
-        if (campaignResult.rows.length === 0) {
-            return res.status(404).json({ error: 'Campaign not found' });
-        }
-
         const campaign = campaignResult.rows[0];
 
-        // If contacts are provided, replace them (only if campaign is not completed/running probably?)
-        // For now, let's allow replacing contacts if provided
+        // If contacts are provided, replace them 
         if (contacts && Array.isArray(contacts)) {
             // Delete old contacts
             await pool.query('DELETE FROM whatsapp_campaign_contacts WHERE campaign_id = $1', [id]);
@@ -259,13 +304,21 @@ export const updateCampaign = async (req: Request, res: Response) => {
 };
 
 // Delete Campaign
-
-// Delete Campaign
 export const deleteCampaign = async (req: Request, res: Response) => {
     try {
         if (!pool) return res.status(500).json({ error: 'Database not configured' });
 
         const { id } = req.params;
+        const user = (req as any).user;
+        const isSuperAdmin = user?.role === 'SUPERADMIN';
+
+        // Check ownership
+        const check = await pool.query('SELECT company_id FROM whatsapp_campaigns WHERE id = $1', [id]);
+        if (check.rows.length === 0) return res.status(404).json({ error: 'Campaign not found' });
+
+        if (!isSuperAdmin && check.rows[0].company_id !== user.company_id) {
+            return res.status(403).json({ error: 'Access denied' });
+        }
 
         await pool.query('DELETE FROM whatsapp_campaigns WHERE id = $1', [id]);
 
@@ -289,6 +342,11 @@ function getMinutes(timeStr: string): number {
 async function processCampaign(campaignId: number, io?: any) {
     if (activeProcesses.has(campaignId)) {
         console.log(`[Campaign ${campaignId}] Already being processed in this instance.`);
+        return;
+    }
+
+    if (systemMode === 'readonly' || systemMode === 'emergency') {
+        console.log(`[Campaign ${campaignId}] Not starting because system is in ${systemMode} mode.`);
         return;
     }
 
@@ -346,6 +404,12 @@ async function processCampaign(campaignId: number, io?: any) {
         // Processing loop
         for (const contact of contacts) {
             try {
+                // Re-check system mode
+                if (systemMode === 'readonly' || systemMode === 'emergency') {
+                    console.log(`[Campaign ${campaignId}] Stopping because system switched to ${systemMode} mode.`);
+                    return;
+                }
+
                 // Re-check status every iteration
                 const statusCheck = await pool.query(
                     'SELECT status FROM whatsapp_campaigns WHERE id = $1',
@@ -390,17 +454,40 @@ async function processCampaign(campaignId: number, io?: any) {
 
                 console.log(`[Campaign ${campaignId}] Sending to ${contact.phone}...`);
 
-                const result = await sendWhatsAppMessage(
-                    campaign.company_id,
-                    contact.phone,
-                    message,
-                    contact.name,
-                    campaign.user_id,
-                    io,
-                    campaign.media_url,
-                    campaign.media_type,
-                    campaign.id
-                );
+                let result: { success: boolean; error?: string } = { success: false, error: 'Not started' };
+                let attempts = 0;
+                const maxAttempts = 3;
+
+                while (attempts < maxAttempts) {
+                    attempts++;
+                    result = await sendWhatsAppMessage(
+                        campaign.company_id,
+                        contact.phone,
+                        message,
+                        contact.name,
+                        campaign.user_id,
+                        io,
+                        campaign.media_url,
+                        campaign.media_type,
+                        campaign.id
+                    );
+
+                    if (result.success) break;
+
+                    if (attempts < maxAttempts) {
+                        console.log(`[Campaign ${campaignId}] Retry ${attempts}/${maxAttempts} for ${contact.phone} after 2s delay...`);
+                        await new Promise(r => setTimeout(r, 2000));
+
+                        await logEvent({
+                            eventType: 'campaign_retry',
+                            origin: 'system',
+                            status: 'info',
+                            message: `Campanha ${campaignId}: Tentativa ${attempts} de envio para ${contact.phone}`,
+                            phone: contact.phone,
+                            details: { campaignId, contactId: contact.id, attempt: attempts }
+                        });
+                    }
+                }
 
                 if (result.success) {
                     await pool.query(
@@ -417,9 +504,9 @@ async function processCampaign(campaignId: number, io?: any) {
                         eventType: 'campaign_success',
                         origin: 'system',
                         status: 'success',
-                        message: `Campanha ${campaignId}: Mensagem enviada para ${contact.phone}`,
+                        message: `Campanha ${campaignId}: Mensagem enviada para ${contact.phone} (Tentativas: ${attempts})`,
                         phone: contact.phone,
-                        details: { campaignId, contactId: contact.id }
+                        details: { campaignId, contactId: contact.id, attempts }
                     });
                 } else {
                     let errorMsg = (result.error || 'Evolution API failed (Unknown Error)').substring(0, 255);
@@ -489,6 +576,10 @@ export const checkAndStartScheduledCampaigns = async (io?: any) => {
     try {
         if (!pool) return;
 
+        if (systemMode === 'readonly' || systemMode === 'emergency') {
+            return;
+        }
+
         // Find due campaigns OR running campaigns that are not being processed (interrupted)
         let result = null;
         try {
@@ -498,8 +589,6 @@ export const checkAndStartScheduledCampaigns = async (io?: any) => {
                     OR (status = 'running')`
             );
         } catch (queryErr) {
-            // If table doesn't exist or DB issue, just return quietly to avoid crashing server loop
-            // console.warn("Campaign scheduler: query failed (DB might be migrating or down).", queryErr);
             return;
         }
 
@@ -566,6 +655,15 @@ async function sendWhatsAppMessage(
         if (!evolution_apikey) {
             console.error(`[sendWhatsAppMessage] No API Key found for campaign.`);
             return { success: false, error: 'No API Key found' };
+        }
+
+        // Limit Check for Messages
+        if (companyId) {
+            const allowed = await checkLimit(companyId, 'messages');
+            if (!allowed) {
+                console.error(`[sendWhatsAppMessage] Message limit reached for company ${companyId}`);
+                return { success: false, error: 'Message limit reached' };
+            }
         }
 
         const EVOLUTION_API_BASE = (process.env.EVOLUTION_API_URL || 'https://freelasdekaren-evolution-api.nhvvzr.easypanel.host').replace(/\/$/, "");
@@ -755,6 +853,11 @@ async function sendWhatsAppMessage(
                     [conversationId, 'outbound', message, 'sent', externalMessageId, userId, mediaUrl || null, mediaType || 'text', campaignId || null]
                 );
 
+                // Increment Usage
+                if (companyId) {
+                    await incrementUsage(companyId, 'messages', 1);
+                }
+
                 // Socket Emit
                 if (io && companyId) {
                     const socketPayload = {
@@ -775,157 +878,14 @@ async function sendWhatsAppMessage(
                     };
                     io.to(`company_${companyId}`).emit('message:received', socketPayload);
                 }
-            } catch (dbErr: any) {
-                console.error('[sendWhatsAppMessage] DB Sync Error:', dbErr);
-                // We still returned a success because the msg was sent, even if DB sync failed (handled gracefully)
+            } catch (p) {
+                console.error("[sendWhatsAppMessage] Error syncing with Atendimento:", p);
             }
         }
 
         return { success: true };
     } catch (error: any) {
-        console.error('[sendWhatsAppMessage] Fatal Catch Error:', error);
-        console.error('[sendWhatsAppMessage] Stack:', error.stack);
-        return { success: false, error: 'Internal Exception: ' + error.message };
+        console.error('Error sending WhatsApp message:', error);
+        return { success: false, error: error.message };
     }
 }
-
-// Get Campaign Failures - ULTRA ROBUST VERSION
-// NUNCA retorna erro 500, sempre retorna formato consistente
-export const getCampaignFailures = async (req: Request, res: Response) => {
-    // Formato de resposta padrão - SEMPRE retornamos isso
-    const standardResponse = {
-        failures: [] as Array<{
-            phone: string | null;
-            error_message: string;
-            created_at: string;
-        }>,
-        hasError: false
-    };
-
-    try {
-        // Validação 1: Database
-        if (!pool) {
-            console.error('[getCampaignFailures] Database not configured');
-            standardResponse.hasError = true;
-            return res.status(200).json(standardResponse); // 200, não 500!
-        }
-
-        // Validação 2: ID da campanha
-        const { id } = req.params;
-        if (!id || isNaN(Number(id))) {
-            console.error('[getCampaignFailures] Invalid campaign ID:', id);
-            return res.status(200).json(standardResponse);
-        }
-
-        // Query com try/catch interno
-        let result;
-        try {
-            result = await pool.query(
-                `SELECT 
-                    phone, 
-                    name, 
-                    error_message, 
-                    updated_at as failed_at,
-                    created_at
-                FROM whatsapp_campaign_contacts 
-                WHERE campaign_id = $1 AND status = 'failed' 
-                ORDER BY updated_at DESC 
-                LIMIT 1000`,
-                [id]
-            );
-        } catch (dbError) {
-            console.error('[getCampaignFailures] Database query error:', dbError);
-            standardResponse.hasError = true;
-            return res.status(200).json(standardResponse);
-        }
-
-        // Validação 3: Resultado da query
-        if (!result || !result.rows) {
-            console.warn('[getCampaignFailures] No result from database');
-            return res.status(200).json(standardResponse);
-        }
-
-        // Processar cada falha com tratamento robusto
-        standardResponse.failures = result.rows.map((row: any) => {
-            // Função helper para normalizar error_message
-            const normalizeErrorMessage = (errorMsg: any): string => {
-                // Se for null/undefined
-                if (errorMsg === null || errorMsg === undefined) {
-                    return 'Erro não especificado';
-                }
-
-                // Se for string, usar diretamente
-                if (typeof errorMsg === 'string') {
-                    // Se for vazio
-                    if (!errorMsg.trim()) {
-                        return 'Erro não especificado';
-                    }
-
-                    // Tentar fazer parse se parecer JSON
-                    if (errorMsg.trim().startsWith('{')) {
-                        try {
-                            const parsed = JSON.parse(errorMsg);
-                            // Extrair mensagem do objeto
-                            return parsed.message ||
-                                parsed.error ||
-                                parsed.error_message ||
-                                JSON.stringify(parsed);
-                        } catch {
-                            // Não é JSON válido, retornar string original
-                            return errorMsg;
-                        }
-                    }
-
-                    return errorMsg;
-                }
-
-                // Se for objeto
-                if (typeof errorMsg === 'object') {
-                    try {
-                        return errorMsg.message ||
-                            errorMsg.error ||
-                            JSON.stringify(errorMsg);
-                    } catch {
-                        return 'Erro ao processar mensagem de erro';
-                    }
-                }
-
-                // Fallback final
-                return String(errorMsg);
-            };
-
-            // Normalizar data
-            const normalizeDate = (date: any): string => {
-                try {
-                    if (!date) return new Date().toISOString();
-                    const dateObj = new Date(date);
-                    if (isNaN(dateObj.getTime())) {
-                        return new Date().toISOString();
-                    }
-                    return dateObj.toISOString();
-                } catch {
-                    return new Date().toISOString();
-                }
-            };
-
-            // Retornar objeto normalizado
-            return {
-                phone: row.phone || null,
-                error_message: normalizeErrorMessage(row.error_message),
-                created_at: normalizeDate(row.failed_at || row.created_at)
-            };
-        });
-
-        // Log para debug (mas não quebra)
-        console.log(`[getCampaignFailures] Returning ${standardResponse.failures.length} failures for campaign ${id}`);
-
-        // SEMPRE retorna 200 com formato padrão
-        return res.status(200).json(standardResponse);
-
-    } catch (unexpectedError) {
-        // Última linha de defesa - NUNCA deixa quebrar
-        console.error('[getCampaignFailures] UNEXPECTED ERROR:', unexpectedError);
-        standardResponse.hasError = true;
-        return res.status(200).json(standardResponse);
-    }
-};

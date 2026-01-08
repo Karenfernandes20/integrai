@@ -26,12 +26,21 @@ import FaqPage from "./pages/Faq";
 import TasksPage from "./pages/Tasks";
 import LogsPage from "./pages/Logs";
 import AlertsPage from "./pages/Alerts";
+import HealthPage from "./pages/Health";
+import IAPage from "./pages/IA";
+import AuditoriaPage from "./pages/Auditoria";
+import WorkflowsPage from "./pages/Workflows";
+import TemplatesPage from "./pages/Templates";
+import RoadmapPage from "./pages/Roadmap";
+import ConversionReports from "./pages/ConversionReports";
+
 
 import { AuthProvider } from "./contexts/AuthContext";
 import AdminRoute from "./components/AdminRoute";
 import LoginPage from "./pages/Login";
 import SuperAdminLoginPage from "./pages/SuperAdminLogin";
 import SignupPage from "./pages/Signup";
+import OnboardingPage from "./pages/Onboarding";
 const queryClient = new QueryClient();
 
 const App = () => (
@@ -48,6 +57,7 @@ const App = () => (
             <Route path="/" element={<Index />} />
             <Route path="/forgot-password" element={<ForgotPasswordPage />} />
             <Route path="/reset-password" element={<ResetPasswordPage />} />
+            <Route path="/onboarding" element={<OnboardingPage />} />
 
             <Route element={<AdminRoute roles={['SUPERADMIN']} />}>
               <Route path="/superadmin" element={<SuperadminPage />} />
@@ -78,6 +88,14 @@ const App = () => (
                 <Route path="tarefas" element={<TasksPage />} />
                 <Route path="logs" element={<LogsPage />} />
                 <Route path="alertas" element={<AlertsPage />} />
+                <Route path="saude" element={<HealthPage />} />
+                <Route path="ia" element={<IAPage />} />
+                <Route path="auditoria" element={<AuditoriaPage />} />
+                <Route path="workflows" element={<WorkflowsPage />} />
+                <Route path="templates" element={<TemplatesPage />} />
+                <Route path="roadmap" element={<RoadmapPage />} />
+                <Route path="roadmap" element={<RoadmapPage />} />
+                <Route path="relatorios/conversao" element={<ConversionReports />} />
               </Route>
             </Route>
 

@@ -7,6 +7,11 @@ import cors from "cors";
 import { pool } from "./db";
 import routes from "./routes";
 import { checkAndStartScheduledCampaigns } from "./controllers/campaignController";
+import { checkSubscriptions } from "./controllers/subscriptionController";
+import { runEngagementChecks } from "./controllers/engagementController";
+import { setSystemModeInMem, systemMode } from "./systemState";
+
+import { systemModeMiddleware } from "./middleware/systemModeMiddleware";
 
 const app = express();
 const port = process.env.PORT || 3000;
@@ -43,6 +48,9 @@ process.on('unhandledRejection', (reason, promise) => {
 
 app.use(cors());
 app.use(express.json());
+
+// APPLY SYSTEM MODE MIDDLEWARE
+app.use(systemModeMiddleware);
 
 app.use("/api", routes);
 
@@ -153,6 +161,20 @@ const startServer = async () => {
       console.error("Migrations failed but continuing server startup:", e);
     }
     console.log("Migrations check passed (or skipped/failed gracefully).");
+
+    // INITIALIZE SYSTEM MODE
+    if (pool) {
+      try {
+        const { rows } = await pool.query("SELECT value FROM system_settings WHERE key = 'operational_mode'");
+        if (rows.length > 0) {
+          const mode = rows[0].value;
+          setSystemModeInMem(typeof mode === 'string' ? mode : JSON.stringify(mode).replace(/"/g, ''));
+          console.log(`System initialized in ${systemMode} mode`);
+        }
+      } catch (e) {
+        console.error("Failed to load system mode on startup:", e);
+      }
+    }
   } catch (err) {
     console.error("Migration/DB check failed, starting server anyway for diagnostics:", err);
   }
@@ -166,8 +188,21 @@ const startServer = async () => {
       checkAndStartScheduledCampaigns(io);
     }, 60000);
 
+    // Subscription Check (Every Hour)
+    setInterval(() => {
+      checkSubscriptions(io);
+    }, 3600000);
+
     // Run immediately on start
     checkAndStartScheduledCampaigns(io);
+    checkSubscriptions(io);
+    runEngagementChecks();
+
+    // Engagement Checks (Every Hour)
+    setInterval(() => {
+      runEngagementChecks();
+    }, 3600000);
+
   });
 };
 

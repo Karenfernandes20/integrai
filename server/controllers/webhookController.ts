@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import { pool } from '../db';
 import { logEvent } from '../logger';
+import { triggerWorkflow } from './workflowController';
 
 // Tipo simplificado da mensagem
 interface WebhookMessage {
@@ -127,10 +128,13 @@ export const handleWebhook = async (req: Request, res: Response) => {
             };
 
             const remoteJid = msg.key?.remoteJid || msg.remoteJid || msg.jid;
-            if (!remoteJid) {
-                console.warn('[Webhook] Missing remoteJid in message');
+
+            // STRICT JID VALIDATION: Prevent processing of internal IDs or malformed JIDs
+            if (!remoteJid || !remoteJid.includes('@') || remoteJid.includes('status@broadcast')) {
+                console.warn(`[Webhook] Invalid or skipped remoteJid: "${remoteJid}". Ignoring event to prevent ghost cards.`);
                 return;
             }
+
 
             // MODIFIED logic for robust isFromMe detection
             let isFromMe = false;
@@ -256,14 +260,32 @@ export const handleWebhook = async (req: Request, res: Response) => {
                     ).catch(() => { });
                 }
             } else {
+                // LAST RESORT VALIDATION BEFORE CREATION
+                // Prevent creating conversations for "technical" IDs (e.g. 'BAE5...', '3EB0...') that slipped through
+                // A valid individual contact phone should be numeric.
+                const isNumericPhone = /^\d+$/.test(phone);
+
+                if (!isGroup && (!isNumericPhone || phone.length < 8)) {
+                    console.warn(`[Webhook] Refusing to create conversation for invalid phone format: "${phone}" (JID: ${normalizedJid}). This looks like a technical ID.`);
+                    return;
+                }
+
                 currentStatus = direction === 'outbound' ? 'OPEN' : 'PENDING';
                 let finalName = isGroup ? (name || `Grupo ${phone.substring(0, 8)}`) : name;
-                const newConv = await pool.query(
-                    `INSERT INTO whatsapp_conversations (external_id, phone, contact_name, instance, status, company_id, is_group, group_name) 
-                     VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id`,
-                    [normalizedJid, phone, finalName, instance, currentStatus, companyId, isGroup, isGroup ? finalName : null]
-                );
-                conversationId = newConv.rows[0].id;
+
+                // Final Check for Duplication before Insert (Race Condition buffer)
+                const raceCheck = await pool.query('SELECT id FROM whatsapp_conversations WHERE external_id = $1 AND instance = $2 AND company_id = $3', [normalizedJid, instance, companyId]);
+                if (raceCheck.rows.length > 0) {
+                    conversationId = raceCheck.rows[0].id;
+                    console.log(`[Webhook] Recovered conversation ${conversationId} from race condition check.`);
+                } else {
+                    const newConv = await pool.query(
+                        `INSERT INTO whatsapp_conversations (external_id, phone, contact_name, instance, status, company_id, is_group, group_name) 
+                         VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id`,
+                        [normalizedJid, phone, finalName, instance, currentStatus, companyId, isGroup, isGroup ? finalName : null]
+                    );
+                    conversationId = newConv.rows[0].id;
+                }
             }
 
             // Extract Content Robustly from various WhatsApp message structures
@@ -441,9 +463,42 @@ export const handleWebhook = async (req: Request, res: Response) => {
             } else {
                 console.log(`[Webhook] Message inserted into DB: ID=${insertedMsg.rows[0].id} | direction=${direction} | content="${content.substring(0, 30)}..."`);
 
+                // Trigger Workflow Engine
+                triggerWorkflow('message_received', {
+                    message_id: insertedMsg.rows[0].id,
+                    content,
+                    direction,
+                    company_id: companyId,
+                    conversation_id: conversationId,
+                    phone: phone
+                }).catch(e => console.error('[Workflow Trigger Error]:', e));
+
                 // Emit Socket (Critical Path for UI Responsiveness)
                 const io = req.app.get('io');
                 if (io) {
+                    // Contention Rule: AI Fallback
+                    if (direction === 'outbound' && !insertedMsg.rows[0].user_id) {
+                        const invalidPatterns = ['error', 'falha', 'invalid', 'null', 'undefined', 'n/a'];
+                        const isInvalid = !content || content.length < 2 || invalidPatterns.some(p => content.toLowerCase().includes(p));
+
+                        if (isInvalid) {
+                            console.warn(`[Webhook] AI returned invalid response: "${content}". Applying fallback.`);
+                            await logEvent({
+                                eventType: 'ia_error',
+                                origin: 'ia',
+                                status: 'warning',
+                                message: `IA retornou resposta inválida: "${content}". Fallback aplicado.`,
+                                conversationId,
+                                details: { originalContent: content }
+                            });
+                            // Fallback Message
+                            content = "Desculpe, tive um problema técnico ao processar sua solicitação. Um atendente humano será notificado.";
+                            // Update the inserted message with fallback content
+                            await pool.query('UPDATE whatsapp_messages SET content = $1 WHERE id = $2', [content, insertedMsg.rows[0].id]);
+                            insertedMsg.rows[0].content = content;
+                        }
+                    }
+
                     const room = `company_${companyId}`;
                     const instanceRoom = `instance_${instance}`;
                     const payload = {
@@ -615,10 +670,26 @@ export const handleWebhook = async (req: Request, res: Response) => {
                         }
                     }
                 }
-            })().catch(e => console.error('[Webhook Post-processing Error]:', e));
+            })().catch(async e => {
+                console.error('[Webhook Post-processing Error]:', e);
+                await logEvent({
+                    eventType: 'webhook_error',
+                    origin: 'webhook',
+                    status: 'warning',
+                    message: `Falha no pós-processamento do Webhook (não-crítico): ${e.message}`,
+                    details: { error: e.stack, conversationId }
+                });
+            });
 
-        } catch (err) {
+        } catch (err: any) {
             console.error('[Webhook Main Error]:', err);
+            await logEvent({
+                eventType: 'webhook_error',
+                origin: 'webhook',
+                status: 'error',
+                message: `Falha crítica no processamento do Webhook: ${err.message}`,
+                details: { error: err.stack, body: req.body }
+            });
         }
     })();
 };

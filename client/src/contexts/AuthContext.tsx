@@ -24,7 +24,9 @@ interface AuthContextType {
     login: (token: string, user: User) => void;
     logout: () => void;
     isLoading: boolean;
+
     isAuthenticated: boolean;
+    refreshUser: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -60,6 +62,18 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         setUser(null);
     };
 
+    const refreshUser = async () => {
+        // Implement logic to re-fetch user profile if needed, or parse existing token?
+        // Since we store User in LocalStorage, 'refresh' implies fetching latest data from format.
+        // For now, we can just save current user back to update timestamps if changed locally, 
+        // OR better: Assume the caller might update 'user' state via login() again if they have new data.
+
+        // Actually, to truly refresh, we would need an endpoint /me.
+        // MOCK for now: just reread LS
+        const storedUser = localStorage.getItem("auth_user");
+        if (storedUser) setUser(JSON.parse(storedUser));
+    };
+
     return (
         <AuthContext.Provider
             value={{
@@ -69,6 +83,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
                 logout,
                 isLoading,
                 isAuthenticated: !!user,
+                refreshUser,
             }}
         >
             {children}

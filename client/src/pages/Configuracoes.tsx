@@ -1,66 +1,84 @@
-import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
+
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "../components/ui/card";
 import { Badge } from "../components/ui/badge";
+import { PlanUsage } from "../components/PlanUsage";
+import { CompanyProfile } from "../components/CompanyProfile";
+import UsuariosPage from "./Usuarios";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs";
+import { Building2, CreditCard, Users, Zap } from "lucide-react";
+import { EvolutionStatus } from "../components/EvolutionStatus";
 
 const ConfiguracoesPage = () => {
   return (
-    <div className="space-y-4">
-      <header className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h2 className="text-base font-semibold tracking-tight">Configurações gerais</h2>
-          <p className="text-xs text-muted-foreground">
-            Ajustes da plataforma, integrações, permissões de usuários e parâmetros operacionais.
-          </p>
-        </div>
+    <div className="space-y-6">
+      <header>
+        <h2 className="text-2xl font-bold tracking-tight">Portal da Empresa</h2>
+        <p className="text-sm text-muted-foreground">
+          Gerencie sua assinatura, equipe e dados corporativos.
+        </p>
       </header>
 
-      <section className="grid gap-3 md:grid-cols-3">
-        <Card className="border-dashed bg-background/70">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm">Plataforma</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-2 text-xs">
-            <p className="text-muted-foreground">
-              Nome da operação, contato oficial, horários de atendimento e padrões de notificação.
-            </p>
-            <Badge variant="outline" className="badge-pill text-[11px]">
-              Parâmetros globais
-            </Badge>
-          </CardContent>
-        </Card>
+      <Tabs defaultValue="account" className="w-full">
+        <TabsList className="w-full justify-start h-12 bg-muted/50 p-1">
+          <TabsTrigger value="account" className="gap-2">
+            <Building2 className="h-4 w-4" /> Perfil
+          </TabsTrigger>
+          <TabsTrigger value="billing" className="gap-2">
+            <CreditCard className="h-4 w-4" /> Plano e Faturas
+          </TabsTrigger>
+          <TabsTrigger value="team" className="gap-2">
+            <Users className="h-4 w-4" /> Equipe
+          </TabsTrigger>
+          <TabsTrigger value="integrations" className="gap-2">
+            <Zap className="h-4 w-4" /> Integrações
+          </TabsTrigger>
+        </TabsList>
 
-        <Card className="border-dashed bg-background/70">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm">Integrações</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-2 text-xs">
-            <p className="text-muted-foreground">
-              Configuração da Evolution API para WhatsApp e outros serviços que serão conectados ao painel.
-            </p>
-            <Badge variant="outline" className="badge-pill text-[11px]">
-              Evolution API
-            </Badge>
-          </CardContent>
-        </Card>
+        {/* ACCOUNT TAB */}
+        <TabsContent value="account" className="mt-6">
+          <CompanyProfile />
+        </TabsContent>
 
-        <Card className="border-dashed bg-background/70">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm">Permissões</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-2 text-xs">
-            <p className="text-muted-foreground">
-              Definição de perfis (administrador, superadministrador) e acesso por módulo/cidade.
-            </p>
-            <Badge variant="outline" className="badge-pill text-[11px]">
-              Controlo granular
-            </Badge>
-          </CardContent>
-        </Card>
-      </section>
+        {/* BILLING TAB */}
+        <TabsContent value="billing" className="mt-6">
+          <PlanUsage />
+        </TabsContent>
 
-      <p className="text-[11px] text-muted-foreground">
-        Esta tela define a estrutura de configurações que será ligada ao backend seguro, sem armazenamento de chaves
-        sensíveis no frontend.
-      </p>
+        {/* TEAM TAB */}
+        <TabsContent value="team" className="mt-6">
+          <div className="border rounded-lg overflow-hidden">
+            {/* Embed UsuariosPage but customized slightly or wrapped */}
+            <div className="bg-muted/10 p-0">
+              <UsuariosPage />
+            </div>
+          </div>
+        </TabsContent>
+
+        {/* INTEGRATIONS TAB */}
+        <TabsContent value="integrations" className="mt-6">
+          <div className="grid gap-6 md:grid-cols-2">
+            <Card>
+              <CardHeader>
+                <CardTitle>WhatsApp (Evolution API)</CardTitle>
+                <CardDescription>Conexão com seu número oficial.</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <EvolutionStatus />
+              </CardContent>
+            </Card>
+            <Card className="opacity-60">
+              <CardHeader>
+                <CardTitle>Pagamentos (Em breve)</CardTitle>
+                <CardDescription>Mercado Pago / Stripe</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <Badge variant="outline">Em desenvolvimento</Badge>
+              </CardContent>
+            </Card>
+          </div>
+        </TabsContent>
+
+      </Tabs>
     </div>
   );
 };
