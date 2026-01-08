@@ -116,7 +116,15 @@ export const handleWebhook = async (req: Request, res: Response) => {
                 console.log('[Webhook DEBUG] messages.update event structure:', JSON.stringify(msg, null, 2));
             }
 
-            // Normalize message structure (some versions put message at root, others inside messages array)
+            // Normalize phone and JID
+            const cleanJid = (jid: string) => {
+                if (!jid) return jid;
+                // Remove device suffixes like :1 or :2 from JID (e.g. 5511999999999:1@s.whatsapp.net -> 5511999999999@s.whatsapp.net)
+                return jid.includes(':') && jid.includes('@')
+                    ? jid.split(':')[0] + '@' + jid.split('@')[1]
+                    : jid;
+            };
+
             const remoteJid = msg.key?.remoteJid || msg.remoteJid || msg.jid;
             if (!remoteJid) {
                 console.warn('[Webhook] Missing remoteJid in message');
@@ -152,181 +160,107 @@ export const handleWebhook = async (req: Request, res: Response) => {
                     isFromMe = true;
                     fromMeSource = `prefix:${idPrefix}`;
                 } else if (msg.status === 'sent') {
-                    // We only trust 'sent' status. 'delivered' and 'read' can occur for inbound messages too.
                     isFromMe = true;
                     fromMeSource = "status:sent";
                 }
             }
 
-            // FINAL OVERRIDE: If any explicit field says it is NOT from me, we must honor that.
+            // FINAL OVERRIDE
             if (msg.key?.fromMe === false || msg.fromMe === false || msg.key?.fromMe === 'false' || msg.fromMe === 'false') {
                 isFromMe = false;
                 fromMeSource = "explicit:false_override";
             }
 
-            console.log(`[Webhook] Classified JID: ${remoteJid} | isFromMe: ${isFromMe} (${fromMeSource}) | Type: ${normalizedType}`);
-            if (isFromMe && !msg.user_id) {
-                console.log(`[Webhook] Potential AI message detected. Raw msg keys:`, Object.keys(msg));
-                // console.log(`[Webhook] Raw message object:`, JSON.stringify(msg)); // Too verbose, enable if needed
-            }
-
             if (remoteJid === 'status@broadcast') return;
-
-            if (!pool) {
-                console.error('[Webhook] CRITICAL: DB pool is null');
-                return;
-            }
+            if (!pool) return;
 
             // Resolve Company ID
             let companyId: number | null = instanceCache.get(instance) || null;
             if (!companyId) {
-                console.log(`[Webhook] Cache miss for instance "${instance}". Looking up in DB...`);
-
-                // 1. Exact match
-                const compLookup = await pool.query(
-                    'SELECT id FROM companies WHERE LOWER(evolution_instance) = LOWER($1)',
-                    [instance]
-                );
-
+                const compLookup = await pool.query('SELECT id FROM companies WHERE LOWER(evolution_instance) = LOWER($1)', [instance]);
                 if (compLookup.rows.length > 0) {
                     companyId = compLookup.rows[0].id;
-                    console.log(`[Webhook] Exact match! Instance "${instance}" mapped to companyId ${companyId}`);
                 } else {
-                    // 2. Fuzzy match (if instance name contains "viamove" or company name contains part of instance)
-                    console.log(`[Webhook] No exact match for "${instance}". Trying fuzzy mapping...`);
-
-                    const fuzzyLookup = await pool.query(
-                        `SELECT id FROM companies 
-                         WHERE (LOWER($1) LIKE LOWER(CONCAT('%', name, '%')) 
-                            OR LOWER(name) LIKE LOWER(CONCAT('%', $1, '%'))
-                            OR LOWER(evolution_instance) LIKE LOWER(CONCAT('%', $1, '%'))
-                            OR LOWER($1) LIKE LOWER(CONCAT('%', evolution_instance, '%')))
-                         LIMIT 1`,
-                        [instance]
-                    );
-
-                    if (fuzzyLookup.rows.length > 0) {
-                        companyId = fuzzyLookup.rows[0].id;
-                        console.log(`[Webhook] Fuzzy Match Success! Instance "${instance}" mapped to companyId ${companyId}`);
-                    } else if (instance.toLowerCase().includes('viamove') || instance.toLowerCase().includes('viams')) {
-                        // Special manual fallback for viamove variations
-                        const viaLookup = await pool.query("SELECT id FROM companies WHERE LOWER(name) LIKE '%via%move%' OR LOWER(name) LIKE '%viamove%' LIMIT 1");
-                        if (viaLookup.rows.length > 0) {
-                            companyId = viaLookup.rows[0].id;
-                            console.log(`[Webhook] Manual Fallback Success! Viamove variation "${instance}" mapped to companyId ${companyId}`);
-                        }
-                    }
-
-                    // 3. Last resort fallback if still not found and there's only one company
-                    if (!companyId) {
-                        const allCompanies = await pool.query('SELECT id FROM companies');
-                        if (allCompanies.rows.length === 1) {
-                            companyId = allCompanies.rows[0].id;
-                            console.log(`[Webhook] Single-Company Fallback: Mapping instance "${instance}" to companyId ${companyId}`);
-                        }
-                    }
+                    const fuzzyLookup = await pool.query(`SELECT id FROM companies WHERE (LOWER($1) LIKE LOWER(CONCAT('%', name, '%')) OR LOWER(name) LIKE LOWER(CONCAT('%', $1, '%')) OR LOWER(evolution_instance) LIKE LOWER(CONCAT('%', $1, '%'))) LIMIT 1`, [instance]);
+                    if (fuzzyLookup.rows.length > 0) companyId = fuzzyLookup.rows[0].id;
                 }
-
-                if (companyId) {
-                    instanceCache.set(instance, companyId);
-                }
+                if (companyId) instanceCache.set(instance, companyId);
             }
 
             if (!companyId) {
-                console.warn(`[Webhook] ABORTED: Could not map instance "${instance}" to any company.`);
-                pushPayload({ error: 'Mapping failed', instance, companies_checked: true });
-                return;
+                const allCompanies = await pool.query('SELECT id FROM companies');
+                if (allCompanies.rows.length === 1) companyId = allCompanies.rows[0].id;
+                else return;
             }
 
-
-            // Prepare Data
             const direction = isFromMe ? 'outbound' : 'inbound';
+            let messageSource = direction === 'outbound' ? ((normalizedType.includes('SEND')) ? 'whatsapp_mobile' : 'evolution_api') : null;
 
-            // Determine message source for outbound messages
-            let messageSource = null;
-            if (direction === 'outbound') {
-                // If it's a send.message event, it came from WhatsApp Mobile/Web
-                if (normalizedType === 'SEND.MESSAGE' || normalizedType === 'SEND_MESSAGE') {
-                    messageSource = 'whatsapp_mobile';
-                }
-                // Otherwise, it was sent via Evolution API programmatically
-                else {
-                    messageSource = 'evolution_api';
-                }
-            }
-
-            console.log(`[Webhook] Classified message: JID=${remoteJid} | direction=${direction} | source=${messageSource || 'inbound'} | fromMeSource=${fromMeSource}`);
-            // Normalize phone: remove JID suffix and any device suffix (e.g. 5511999999999:1@s.whatsapp.net -> 5511999999999)
-            const phone = remoteJid.split('@')[0].split(':')[0];
+            const normalizedJid = cleanJid(remoteJid);
+            const phone = normalizedJid.split('@')[0];
             const name = msg.pushName || msg.pushname || phone;
-            const isGroup = remoteJid.includes('@g.us');
-            const senderJid = msg.key?.participant || msg.participant || (isGroup ? null : remoteJid);
+            const isGroup = normalizedJid.includes('@g.us');
+            const senderJidRaw = msg.key?.participant || msg.participant || (isGroup ? null : remoteJid);
+            const senderJid = cleanJid(senderJidRaw || "");
             const senderName = msg.pushName || msg.pushname || (senderJid ? senderJid.split('@')[0] : null);
 
             let groupName = null;
             if (isGroup) {
-                groupName = `Grupo ${phone.substring(0, 8)}...`;
-                console.log(`[Webhook] Detected GROUP message for JID: ${remoteJid}`);
+                groupName = name || `Grupo ${phone.substring(0, 8)}...`;
+                console.log(`[Webhook] Detected GROUP message for JID: ${normalizedJid}`);
             }
 
-            // UPSERT Conversation
-            // Normalize remoteJid for lookup: remove device suffix for comparison (e.g. jid:1@s.whatsapp.net -> jid@s.whatsapp.net)
-            const cleanRemoteJid = remoteJid.includes(':') && remoteJid.includes('@') ? remoteJid.split(':')[0] + '@' + remoteJid.split('@')[1] : remoteJid;
-
+            // --- DECOMPRESSION & LINKING LOGIC ---
             let conversationId: number;
+            let currentStatus: string = 'PENDING';
+
             let checkConv = await pool.query(
-                `SELECT id, status, is_group, contact_name, group_name, profile_pic_url FROM whatsapp_conversations WHERE (external_id = $1 OR external_id = $2) AND instance = $3 AND company_id = $4`,
-                [remoteJid, cleanRemoteJid, instance, companyId]
+                `SELECT id, status, is_group, contact_name, group_name, profile_pic_url, external_id 
+                 FROM whatsapp_conversations 
+                 WHERE (external_id = $1 OR external_id = $2) AND instance = $3 AND company_id = $4`,
+                [normalizedJid, remoteJid, instance, companyId]
             );
 
-            // Fallback: If not found by JID, try by phone number variations
             if (checkConv.rows.length === 0 && !isGroup) {
+                const numericPhone = phone.replace(/\D/g, '');
+                const phoneVariations = [numericPhone, '55' + numericPhone];
                 const phoneCheck = await pool.query(
-                    `SELECT id, status, is_group, contact_name, group_name, profile_pic_url 
+                    `SELECT id, status, is_group, contact_name, group_name, profile_pic_url, external_id 
                      FROM whatsapp_conversations 
-                     WHERE (phone = $1 OR phone = $2 OR phone = $3) 
-                       AND instance = $4 AND company_id = $5`,
-                    [phone, phone.startsWith('55') ? phone.slice(2) : `55${phone}`, phone.length === 13 && phone.startsWith('55') ? phone.slice(0, 4) + phone.slice(5) : phone, instance, companyId]
+                     WHERE phone = ANY($1) AND instance = $2 AND company_id = $3`,
+                    [phoneVariations, instance, companyId]
                 );
+
                 if (phoneCheck.rows.length > 0) {
-                    console.log(`[Webhook] Conversation found by phone fallback: ${phone} (Matched ID: ${phoneCheck.rows[0].id})`);
                     checkConv = phoneCheck;
+                    if (phoneCheck.rows[0].external_id !== normalizedJid) {
+                        pool.query('UPDATE whatsapp_conversations SET external_id = $1 WHERE id = $2', [normalizedJid, phoneCheck.rows[0].id]).catch(() => { });
+                    }
                 }
             }
-
-            let currentStatus: string = 'PENDING';
 
             if (checkConv.rows.length > 0) {
                 const row = checkConv.rows[0];
                 conversationId = row.id;
                 currentStatus = row.status || 'PENDING';
-
                 let newStatus = currentStatus;
                 if (direction === 'inbound' && currentStatus === 'CLOSED') newStatus = 'PENDING';
+                else if (direction === 'outbound' && currentStatus === 'CLOSED') newStatus = 'OPEN';
                 else if (direction === 'outbound' && currentStatus !== 'OPEN' && currentStatus !== 'CLOSED') newStatus = 'OPEN';
-                // If it's outbound and CLOSED, we might want to keep it closed or reopen?
-                // Logic: messages from AI/Mobile should probably reopen the chat if they are sent to a contact.
-                if (direction === 'outbound' && currentStatus === 'CLOSED') newStatus = 'OPEN';
 
                 currentStatus = newStatus;
-
-                // Sync basic data if changed (Run in background)
                 if (newStatus !== row.status || (msg.pushName && !row.is_group && row.contact_name !== msg.pushName)) {
                     pool.query(`UPDATE whatsapp_conversations SET status = $1, contact_name = COALESCE($2, contact_name) WHERE id = $3`,
                         [newStatus, (msg.pushName && !row.is_group) ? msg.pushName : null, conversationId]
-                    ).catch(e => console.error('[Webhook BG Update Error]:', e));
+                    ).catch(() => { });
                 }
-
             } else {
                 currentStatus = direction === 'outbound' ? 'OPEN' : 'PENDING';
-
-                // For new groups, try to get a better name if possible
-                let finalName = isGroup ? `Grupo ${phone.substring(0, 8)}` : name;
-
+                let finalName = isGroup ? (name || `Grupo ${phone.substring(0, 8)}`) : name;
                 const newConv = await pool.query(
                     `INSERT INTO whatsapp_conversations (external_id, phone, contact_name, instance, status, company_id, is_group, group_name) 
                      VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id`,
-                    [remoteJid, phone, finalName, instance, currentStatus, companyId, isGroup, isGroup ? finalName : null]
+                    [normalizedJid, phone, finalName, instance, currentStatus, companyId, isGroup, isGroup ? finalName : null]
                 );
                 conversationId = newConv.rows[0].id;
             }
