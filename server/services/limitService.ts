@@ -104,7 +104,7 @@ export const getPlanStatus = async (companyId: number) => {
     if (!pool) throw new Error("Database not connected");
 
     const planRes = await pool.query(`
-        SELECT p.*, c.name as company_name 
+        SELECT p.*, c.name as company_name, c.due_date 
         FROM companies c
         LEFT JOIN plans p ON c.plan_id = p.id
         WHERE c.id = $1
@@ -122,6 +122,22 @@ export const getPlanStatus = async (companyId: number) => {
     const monthYear = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
     const msgsRes = await pool.query('SELECT messages_count FROM company_usage WHERE company_id = $1 AND month_year = $2', [companyId, monthYear]);
 
+    // Check overdue
+    let isOverdue = false;
+    if (plan.due_date) {
+        const dueDate = new Date(plan.due_date);
+        if (dueDate < new Date()) {
+            // Check if it's strictly BEFORE today (ignoring time if due_date is just DATE)
+            // If due_date is YYYY-MM-DD, comparison with new Date() (time included) works if we strip time or assume midnight.
+            // Let's assume due_date is inclusive of the day, so strict inequality might be wrong if same day.
+            // If due_date < now (and not today), it's overdue.
+            // Ideally: dueDate set to 23:59:59 of that day.
+            const today = new Date();
+            today.setHours(0, 0, 0, 0);
+            if (dueDate < today) isOverdue = true;
+        }
+    }
+
     return {
         plan: {
             name: plan.name || 'Desconhecido',
@@ -132,6 +148,8 @@ export const getPlanStatus = async (companyId: number) => {
                 sub_accounts: true // Default true
             }
         },
+        overdue: isOverdue,
+        due_date: plan.due_date,
         usage: {
             users: {
                 current: parseInt(usersRes.rows[0].count),

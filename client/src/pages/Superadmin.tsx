@@ -68,7 +68,10 @@ interface Company {
   logo_url: string | null;
   evolution_instance: string | null;
   evolution_apikey: string | null;
+  evolution_apikey: string | null;
   operation_type: "motoristas" | "clientes" | "pacientes" | null;
+  plan_id?: number;
+  due_date?: string;
 }
 
 interface AppUser {
@@ -97,8 +100,13 @@ const SuperadminPage = () => {
     phone: "",
     evolution_instance: "",
     evolution_apikey: "",
+    evolution_instance: "",
+    evolution_apikey: "",
     operation_type: "clientes", // Default
+    plan_id: "",
+    due_date: "",
   });
+  const [plans, setPlans] = useState<any[]>([]); // New state for plans
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [removeLogo, setRemoveLogo] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -199,6 +207,13 @@ const SuperadminPage = () => {
     if (token) {
       loadCompanies();
       loadMode();
+      loadCompanies();
+      loadMode();
+      // Load plans
+      fetch("/api/plans", { headers: { Authorization: `Bearer ${token}` } })
+        .then(res => res.json())
+        .then(data => setPlans(data))
+        .catch(err => console.error("Failed to load plans", err));
     }
   }, [token]);
 
@@ -228,7 +243,11 @@ const SuperadminPage = () => {
       phone: company.phone ?? "",
       evolution_instance: company.evolution_instance ?? "",
       evolution_apikey: company.evolution_apikey ?? "",
+      evolution_instance: company.evolution_instance ?? "",
+      evolution_apikey: company.evolution_apikey ?? "",
       operation_type: company.operation_type ?? "clientes",
+      plan_id: company.plan_id ? String(company.plan_id) : "",
+      due_date: company.due_date ? new Date(company.due_date).toISOString().split('T')[0] : "",
     });
     setSelectedFile(null);
     setRemoveLogo(false);
@@ -249,7 +268,10 @@ const SuperadminPage = () => {
       phone: "",
       evolution_instance: "",
       evolution_apikey: "",
+      evolution_apikey: "",
       operation_type: "clientes",
+      plan_id: "",
+      due_date: "",
     });
     setSelectedFile(null);
     setRemoveLogo(false);
@@ -290,6 +312,8 @@ const SuperadminPage = () => {
       if (parsed.data.state) formData.append("state", parsed.data.state);
       if (parsed.data.phone) formData.append("phone", parsed.data.phone);
       formData.append("operation_type", formValues.operation_type);
+      if (formValues.plan_id) formData.append("plan_id", formValues.plan_id);
+      if (formValues.due_date) formData.append("due_date", formValues.due_date);
 
       // Evolution fields
       if (formValues.evolution_instance) formData.append("evolution_instance", formValues.evolution_instance);
@@ -942,6 +966,39 @@ const SuperadminPage = () => {
                     onChange={handleChange}
                   />
                 </div>
+
+                <Separator className="my-2" />
+                <p className="text-sm font-semibold text-primary">Plano e Pagamento</p>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1.5">
+                    <Label htmlFor="plan_id">Plano</Label>
+                    <Select onValueChange={(val) => setFormValues(prev => ({ ...prev, plan_id: val }))} value={String(formValues.plan_id)}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Selecione o plano" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {plans.map(p => (
+                          <SelectItem key={p.id} value={String(p.id)}>
+                            {p.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="due_date">Vencimento</Label>
+                    <Input
+                      id="due_date"
+                      name="due_date"
+                      type="date"
+                      value={formValues.due_date}
+                      onChange={handleChange}
+                    />
+                  </div>
+                </div>
+
+                <Separator className="my-2" />
 
                 <div className="space-y-2">
                   <Label htmlFor="logo">Logo da empresa</Label>

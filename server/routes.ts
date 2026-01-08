@@ -394,10 +394,11 @@ router.post('/onboarding/step', authenticateToken, updateOnboardingStep);
 router.post('/onboarding/complete', authenticateToken, completeOnboarding);
 
 // Plan & Subscription
-import { getPlanStatus } from './controllers/planController';
+import { getPlanStatus, getPlans } from './controllers/planController';
 import { getSubscription, createSubscription, cancelSubscription, getInvoices } from './controllers/subscriptionController';
 
 router.get('/subscription', authenticateToken, getPlanStatus); // Legacy/Limit check
+router.get('/plans', authenticateToken, getPlans);
 
 // Billing Routes
 router.get('/billing/subscription', authenticateToken, getSubscription);

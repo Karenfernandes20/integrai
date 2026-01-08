@@ -63,7 +63,8 @@ export const getCompany = async (req: Request, res: Response) => {
             SELECT 
                 id, name, cnpj, city, state, phone, logo_url, evolution_instance, evolution_apikey, created_at,
                 COALESCE(operation_type, 'clientes') as operation_type,
-                primary_color, secondary_color, system_name, custom_domain
+                primary_color, secondary_color, system_name, custom_domain,
+                plan_id, due_date
             FROM companies WHERE id = $1
         `, [id]);
 
@@ -80,7 +81,7 @@ export const getCompany = async (req: Request, res: Response) => {
 export const createCompany = async (req: Request, res: Response) => {
     try {
         if (!pool) return res.status(500).json({ error: 'Database not configured' });
-        const { name, cnpj, city, state, phone, evolution_instance, evolution_apikey, operation_type } = req.body;
+        const { name, cnpj, city, state, phone, evolution_instance, evolution_apikey, operation_type, plan_id, due_date } = req.body;
 
         let logo_url = null;
         if (req.file) {
@@ -91,8 +92,8 @@ export const createCompany = async (req: Request, res: Response) => {
         }
 
         const result = await pool.query(
-            `INSERT INTO companies (name, cnpj, city, state, phone, logo_url, evolution_instance, evolution_apikey, operation_type) 
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) 
+            `INSERT INTO companies (name, cnpj, city, state, phone, logo_url, evolution_instance, evolution_apikey, operation_type, plan_id, due_date) 
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) 
              RETURNING *`,
             [
                 name,
@@ -103,7 +104,9 @@ export const createCompany = async (req: Request, res: Response) => {
                 logo_url,
                 evolution_instance || null,
                 evolution_apikey || null,
-                operation_type || 'clientes'
+                operation_type || 'clientes',
+                plan_id || null,
+                due_date || null
             ]
         );
 
@@ -195,7 +198,7 @@ export const updateCompany = async (req: Request, res: Response) => {
 
         const { id } = req.params;
         const { name, cnpj, city, state, phone, evolution_instance, evolution_apikey, operation_type, remove_logo,
-            primary_color, secondary_color, system_name, custom_domain } = req.body;
+            primary_color, secondary_color, system_name, custom_domain, plan_id, due_date } = req.body;
 
         console.log('DEBUG: updateCompany request', { id, body: req.body, hasFile: !!req.file });
 
@@ -242,7 +245,9 @@ export const updateCompany = async (req: Request, res: Response) => {
                 primary_color = COALESCE($11, primary_color),
                 secondary_color = COALESCE($12, secondary_color),
                 system_name = COALESCE($13, system_name),
-                custom_domain = COALESCE($14, custom_domain)
+                custom_domain = COALESCE($14, custom_domain),
+                plan_id = $15,
+                due_date = $16
             WHERE id = $10 
             RETURNING *
         `;
@@ -261,7 +266,9 @@ export const updateCompany = async (req: Request, res: Response) => {
             primary_color || null,
             secondary_color || null,
             system_name || null,
-            custom_domain || null
+            custom_domain || null,
+            plan_id || null, // $15
+            due_date || null // $16
         ];
 
         const result = await pool.query(query, values);

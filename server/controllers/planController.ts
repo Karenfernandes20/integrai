@@ -1,6 +1,7 @@
 
 import { Request, Response } from 'express';
 import { getPlanStatus as getStatus } from '../services/limitService';
+import { pool } from '../db';
 
 export const getPlanStatus = async (req: Request, res: Response) => {
     try {
@@ -22,5 +23,16 @@ export const getPlanStatus = async (req: Request, res: Response) => {
     } catch (error) {
         console.error('Error fetching plan status:', error);
         res.status(500).json({ error: 'Failed to fetch plan status' });
+    }
+};
+
+export const getPlans = async (req: Request, res: Response) => {
+    try {
+        if (!pool) return res.status(500).json({ error: 'Database not configured' });
+        const result = await pool.query('SELECT * FROM plans ORDER BY id ASC');
+        res.json(result.rows);
+    } catch (error) {
+        console.error('Error fetching plans:', error);
+        res.status(500).json({ error: 'Failed to fetch plans' });
     }
 };
