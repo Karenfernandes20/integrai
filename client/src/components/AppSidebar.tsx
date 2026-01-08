@@ -24,6 +24,7 @@ import {
   CalendarCheck,
   CheckSquare,
   Terminal,
+  Bell,
   HelpCircle,
 } from "lucide-react";
 import { useLocation, useNavigate } from "react-router-dom";
@@ -53,6 +54,7 @@ export function AppSidebar() {
   const { user, logout } = useAuth();
   const [isEditProfileOpen, setIsEditProfileOpen] = useState(false);
   const [taskCount, setTaskCount] = useState(0);
+  const [alertCount, setAlertCount] = useState(0);
   const currentPath = location.pathname;
 
   const { token } = useAuth();
@@ -67,6 +69,14 @@ export function AppSidebar() {
           if (res.ok) {
             const data = await res.json();
             setTaskCount(data.count);
+          }
+
+          const alertRes = await fetch('/api/admin/alerts/count', {
+            headers: { 'Authorization': `Bearer ${token}` }
+          });
+          if (alertRes.ok) {
+            const alertData = await alertRes.json();
+            setAlertCount(alertData.count);
           }
         } catch (e) { }
       };
@@ -91,6 +101,7 @@ export function AppSidebar() {
     navItems.splice(1, 0, { label: "Clientes", icon: Building2, to: "/app/empresas" });
     navItems.splice(2, 0, { label: "Tarefas", icon: CheckSquare, to: "/app/tarefas" });
     navItems.splice(3, 0, { label: "Logs", icon: Terminal, to: "/app/logs" });
+    navItems.splice(4, 0, { label: "Alertas", icon: Bell, to: "/app/alertas" });
   }
 
   if (user?.role === 'SUPERADMIN' || user?.role === 'ADMIN') {
@@ -201,7 +212,12 @@ export function AppSidebar() {
                         {taskCount}
                       </span>
                     )}
-                    {isActive && item.label !== "Tarefas" && (
+                    {item.label === "Alertas" && alertCount > 0 && (
+                      <span className="ml-auto bg-red-500 text-white text-[10px] px-1.5 py-0.5 rounded-full font-bold">
+                        {alertCount}
+                      </span>
+                    )}
+                    {isActive && item.label !== "Tarefas" && item.label !== "Alertas" && (
                       <span className="ml-auto h-1.5 w-1.5 rounded-full bg-accent" aria-hidden="true" />
                     )}
                   </NavLink>

@@ -37,11 +37,22 @@ export const logEvent = async (data: LogData) => {
 
         const { eventType, origin, status, message, conversationId, phone, details } = data;
 
-        await pool.query(
+        const result = await pool.query(
             `INSERT INTO system_logs (event_type, origin, status, message, conversation_id, phone, details)
-             VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+             VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id`,
             [eventType, origin, status, message, conversationId, phone, details || {}]
         );
+
+        const logId = result.rows[0]?.id;
+
+        // Auto-create alert if it's an error
+        if (status === 'error') {
+            await pool.query(
+                `INSERT INTO admin_alerts (type, description, log_id)
+                 VALUES ($1, $2, $3)`,
+                [eventType, message, logId]
+            );
+        }
 
         // Also output to console for server logs visibility
         const logPrefix = `[${status.toUpperCase()}] [${origin.toUpperCase()}] ${eventType}`;

@@ -1,4 +1,5 @@
 import "./env";
+import { logEvent } from "./logger";
 import path from "path";
 import fs from "fs";
 import express from "express";
@@ -16,6 +17,13 @@ const port = process.env.PORT || 3000;
 process.on('uncaughtException', (err) => {
   console.error('========================================');
   console.error('CRITICAL ERROR (Uncaught Exception):', err);
+  logEvent({
+    eventType: 'system_error',
+    origin: 'system',
+    status: 'error',
+    message: `Exceção crítica no processo: ${err.message}`,
+    details: { stack: err.stack }
+  });
   console.error('Server will NOT exit, but check state.');
   console.error('========================================');
 });
@@ -23,6 +31,13 @@ process.on('uncaughtException', (err) => {
 process.on('unhandledRejection', (reason, promise) => {
   console.error('========================================');
   console.error('CRITICAL ERROR (Unhandled Rejection):', reason);
+  logEvent({
+    eventType: 'system_error',
+    origin: 'system',
+    status: 'error',
+    message: `Rejeição não tratada no processo`,
+    details: { reason }
+  });
   console.error('========================================');
 });
 

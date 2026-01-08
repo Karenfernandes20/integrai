@@ -474,8 +474,23 @@ const runWhatsappMigrations = async () => {
         await pool.query('CREATE INDEX IF NOT EXISTS idx_system_logs_created_at ON system_logs(created_at)');
         await pool.query('CREATE INDEX IF NOT EXISTS idx_system_logs_phone ON system_logs(phone)');
 
+        // Admin Alerts Table
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS admin_alerts (
+                id SERIAL PRIMARY KEY,
+                type VARCHAR(50) NOT NULL,
+                description TEXT NOT NULL,
+                log_id INTEGER REFERENCES system_logs(id),
+                is_read BOOLEAN DEFAULT FALSE,
+                created_at TIMESTAMPTZ DEFAULT NOW()
+            );
+        `);
+        await pool.query('CREATE INDEX IF NOT EXISTS idx_admin_alerts_is_read ON admin_alerts(is_read)');
+        await pool.query('CREATE INDEX IF NOT EXISTS idx_admin_alerts_created_at ON admin_alerts(created_at)');
+
         console.log("Admin tasks migrations finished.");
         console.log("System logs migrations finished.");
+        console.log("Admin alerts migrations finished.");
         console.log("WhatsApp migrations finished.");
     } catch (error) {
         console.error("Error creating WhatsApp/Admin tables:", error);

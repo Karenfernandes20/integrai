@@ -25,6 +25,7 @@ import CampanhasPage from "./pages/Campanhas";
 import FaqPage from "./pages/Faq";
 import TasksPage from "./pages/Tasks";
 import LogsPage from "./pages/Logs";
+import AlertsPage from "./pages/Alerts";
 
 import { AuthProvider } from "./contexts/AuthContext";
 import AdminRoute from "./components/AdminRoute";
@@ -76,6 +77,7 @@ const App = () => (
                 <Route path="relatorios" element={<RelatoriosPage />} />
                 <Route path="tarefas" element={<TasksPage />} />
                 <Route path="logs" element={<LogsPage />} />
+                <Route path="alertas" element={<AlertsPage />} />
               </Route>
             </Route>
 

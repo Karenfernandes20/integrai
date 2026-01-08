@@ -221,6 +221,14 @@ import { getSystemLogs, getLogStats } from './controllers/logController';
 router.get('/admin/logs', authenticateToken, authorizeRole(['SUPERADMIN']), getSystemLogs);
 router.get('/admin/logs/stats', authenticateToken, authorizeRole(['SUPERADMIN']), getLogStats);
 
+// Admin Alerts
+import { getAlerts, markAlertAsRead, markAllAlertsAsRead, deleteAlert, getUnreadAlertsCount } from './controllers/alertController';
+router.get('/admin/alerts', authenticateToken, authorizeRole(['SUPERADMIN']), getAlerts);
+router.get('/admin/alerts/count', authenticateToken, authorizeRole(['SUPERADMIN']), getUnreadAlertsCount);
+router.put('/admin/alerts/read-all', authenticateToken, authorizeRole(['SUPERADMIN']), markAllAlertsAsRead);
+router.put('/admin/alerts/:id/read', authenticateToken, authorizeRole(['SUPERADMIN']), markAlertAsRead);
+router.delete('/admin/alerts/:id', authenticateToken, authorizeRole(['SUPERADMIN']), deleteAlert);
+
 router.post('/campaigns/upload', authenticateToken, upload.single('file'), (req: Request, res: Response) => {
   if (!req.file) {
     return res.status(400).json({ error: 'No file uploaded' });
