@@ -132,6 +132,10 @@ export function AppSidebar() {
 
   // Permission Logic
   const filteredNavItems = navItems.filter(item => {
+    // Force hide SuperAdmin items for non-SuperAdmins
+    const superAdminOnly = ["Clientes", "Tarefas", "Logs", "Alertas", "Saúde", "IA", "Auditoria", "Workflows", "Templates", "Roadmap"];
+    if (user?.role !== 'SUPERADMIN' && superAdminOnly.includes(item.label)) return false;
+
     if (user?.role === 'SUPERADMIN') return true;
 
     // Legacy support: if no permissions array, show all (or assume migrated to [])
