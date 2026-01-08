@@ -15,6 +15,10 @@ export function SubscriptionBanner() {
     // If no subscription or status is 'none', maybe show nothing or generic 'Free Tier'
     const subStatus = status?.status || 'none';
     const trialEnd = status?.trial_end;
+    const planName = status?.plan_name;
+
+    // USER REQUEST: Only show upgrade banner for "Teste" plan.
+    if (planName !== 'Teste' && planName !== 'teste') return null;
 
     // Logic for contextual messages
     let message = "";

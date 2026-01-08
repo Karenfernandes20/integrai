@@ -3,12 +3,15 @@ import { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 
 export interface PlanStatus {
-    plan: any;
+    plan: any; // Ideally refine this
     usage: any;
     overdue?: boolean;
     due_date?: string | null;
-    status?: string; // from getSubscription? No, limitService returns plan object.
-    // actually keys are plan, usage, overdue, due_date
+    status?: string;
+    plan_name?: string;
+    trial_end?: string;
+    current_period_end?: string;
+    current_period_start?: string;
 }
 
 export function useSubscriptionBanner() {
