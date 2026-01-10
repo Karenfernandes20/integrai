@@ -129,7 +129,7 @@ export function EditProfileModal({ isOpen, onClose }: EditProfileModalProps) {
 
     return (
         <Dialog open={isOpen} onOpenChange={onClose}>
-            <DialogContent className="sm:max-w-[400px] h-[90vh] sm:h-auto flex flex-col p-0 gap-0">
+            <DialogContent className="sm:max-w-[400px] h-[90vh] sm:h-auto sm:max-h-[85vh] flex flex-col p-0 gap-0">
                 <DialogHeader className="p-6 pb-2">
                     <DialogTitle className="flex items-center gap-2">
                         <User className="h-5 w-5 text-[#008069]" />
