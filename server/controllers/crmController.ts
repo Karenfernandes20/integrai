@@ -445,11 +445,12 @@ export const getCrmDashboardStats = async (req: Request, res: Response) => {
         });
 
         // 2. Overview Stats
-        const activeConvsRes = await pool.query(`SELECT COUNT(*) FROM whatsapp_conversations WHERE ${filterClause}`, filterParams);
+        const activeConvsRes = await pool.query(`SELECT COUNT(*) FROM whatsapp_conversations WHERE ${filterClause} AND is_group = false`, filterParams);
         const msgsTodayRes = await pool.query(`
             SELECT COUNT(*) FROM whatsapp_messages m
             JOIN whatsapp_conversations c ON m.conversation_id = c.id
             WHERE c.${filterClause}
+            AND c.is_group = false
             AND m.direction = 'inbound' 
             AND m.sent_at::date = CURRENT_DATE
         `, filterParams);
@@ -457,12 +458,14 @@ export const getCrmDashboardStats = async (req: Request, res: Response) => {
             SELECT COUNT(*) FROM crm_leads 
             WHERE ${filterClause}
             AND created_at::date = CURRENT_DATE
+            AND phone NOT LIKE '%@g.us'
         `, filterParams);
         const attendedClientsRes = await pool.query(`
              SELECT COUNT(DISTINCT m.conversation_id) 
              FROM whatsapp_messages m
              JOIN whatsapp_conversations c ON m.conversation_id = c.id
              WHERE c.${filterClause}
+             AND c.is_group = false
              AND m.direction = 'outbound' AND m.sent_at::date = CURRENT_DATE
         `, filterParams);
 
@@ -492,6 +495,7 @@ export const getCrmDashboardStats = async (req: Request, res: Response) => {
              FROM whatsapp_messages m
              JOIN whatsapp_conversations c ON m.conversation_id = c.id
              WHERE c.${filterClause}
+             AND c.is_group = false
              ORDER BY m.sent_at DESC
              LIMIT 5
         `, filterParams);

@@ -95,11 +95,12 @@ const pastelOptions = [
 ];
 
 // Componente Sortable Item (Card)
-function SortableLeadCard({ lead, onEdit, onChat, onFollowUp, onRemove }: {
+function SortableLeadCard({ lead, onEdit, onChat, onFollowUp, onCall, onRemove }: {
   lead: Lead;
   onEdit: (l: Lead) => void;
   onChat: (l: Lead) => void;
   onFollowUp: (l: Lead) => void;
+  onCall: (l: Lead) => void;
   onRemove: (l: Lead) => void;
 }) {
   const {
@@ -171,6 +172,19 @@ function SortableLeadCard({ lead, onEdit, onChat, onFollowUp, onRemove }: {
             }}
           >
             <MessageSquare className="h-3.5 w-3.5" />
+          </Button>
+          <Button
+            size="icon"
+            variant="ghost"
+            className="h-6 w-6 hover:bg-primary/10 hover:text-primary"
+            onPointerDown={(e) => e.stopPropagation()}
+            onClick={(e) => {
+              e.stopPropagation();
+              onCall(lead);
+            }}
+            title="Ligar"
+          >
+            <PhoneIcon className="h-3.5 w-3.5" />
           </Button>
           <Button
             size="icon"
@@ -337,6 +351,11 @@ const CrmPage = () => {
 
   const handleChatLead = (lead: Lead) => {
     navigate(`/app/atendimento?phone=${lead.phone}&name=${lead.name || lead.phone}`);
+  };
+
+  const handleCallLead = (lead: Lead) => {
+    const cleanPhone = lead.phone.replace(/\D/g, "");
+    window.location.href = `tel:${cleanPhone}`;
   };
 
   const handleFollowUpLead = (lead: Lead) => {
@@ -763,7 +782,7 @@ const CrmPage = () => {
                       <SortableContext id={column.id.toString()} items={leadsByStage(column.id).map((l) => l.id)} strategy={verticalListSortingStrategy}>
                         <div className="flex flex-col gap-2 min-h-[150px]">
                           {leadsByStage(column.id).map((lead) => (
-                            <SortableLeadCard key={lead.id} lead={lead} onEdit={handleEditLead} onChat={handleChatLead} onFollowUp={handleFollowUpLead} onRemove={handleRemoveLead} />
+                            <SortableLeadCard key={lead.id} lead={lead} onEdit={handleEditLead} onChat={handleChatLead} onFollowUp={handleFollowUpLead} onCall={handleCallLead} onRemove={handleRemoveLead} />
                           ))}
                         </div>
                       </SortableContext>
