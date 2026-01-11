@@ -129,7 +129,7 @@ export function EditProfileModal({ isOpen, onClose }: EditProfileModalProps) {
 
     return (
         <Dialog open={isOpen} onOpenChange={onClose}>
-            <DialogContent className="sm:max-w-[400px] h-[90vh] sm:h-auto flex flex-col p-0 gap-0">
+            <DialogContent className="sm:max-w-[400px] h-[90vh] sm:h-[85vh] flex flex-col p-0 gap-0">
                 <DialogHeader className="p-6 pb-2">
                     <DialogTitle className="flex items-center gap-2">
                         <User className="h-5 w-5 text-[#008069]" />
@@ -137,7 +137,7 @@ export function EditProfileModal({ isOpen, onClose }: EditProfileModalProps) {
                     </DialogTitle>
                 </DialogHeader>
 
-                <ScrollArea className="flex-1 sm:flex-none sm:max-h-[60vh] px-6">
+                <ScrollArea className="flex-1 px-6">
                     <div className="space-y-4 py-4">
                         <div className="space-y-2">
                             <Label htmlFor="full_name">Nome Completo</Label>
