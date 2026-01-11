@@ -124,6 +124,10 @@ router.get('/evolution/profile-pic/:phone', authenticateToken, getEvolutionProfi
 router.post('/evolution/profile-pic/sync', authenticateToken, syncAllProfilePics);
 
 // CRM Routes
+// Call Routes (Integration with Evolution)
+import { getCalls } from './controllers/callController';
+router.get('/crm/calls', authenticateToken, getCalls);
+
 // CRM Routes
 router.get('/crm/dashboard', authenticateToken, getCrmDashboardStats);
 router.post('/crm/conversations/:id/start', authenticateToken, startConversation);

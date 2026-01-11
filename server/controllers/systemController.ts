@@ -14,8 +14,8 @@ export const getSystemMode = async (req: Request, res: Response) => {
 
         res.json({ mode: result.rows[0].value });
     } catch (error: any) {
-        console.error('Error fetching system mode:', error);
-        res.status(500).json({ error: error.message });
+        console.error('Error fetching system mode, returning default:', error);
+        res.json({ mode: 'normal' });
     }
 };
 

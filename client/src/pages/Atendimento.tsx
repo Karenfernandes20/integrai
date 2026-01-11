@@ -141,8 +141,74 @@ const HighlightedText = ({ text, highlight }: { text: string; highlight: string 
 
 
 
+
+// Call Interfaces
+interface Call {
+  id: number;
+  direction: 'inbound' | 'outbound';
+  status: 'ringing' | 'accepted' | 'rejected' | 'missed' | 'failed' | 'completed';
+  contact_name: string;
+  remote_jid: string;
+  start_time: string;
+  duration?: string;
+}
+
 const AtendimentoPage = () => {
   const { token, user, logout } = useAuth();
+  // ... existing state ... 
+
+  // Call State
+  const [incomingCall, setIncomingCall] = useState<Call | null>(null);
+  const [activeCall, setActiveCall] = useState<Call | null>(null);
+  const activeCallRef = useRef<Call | null>(null);
+
+  // Sync ref for socket listeners
+  useEffect(() => {
+    activeCallRef.current = activeCall;
+  }, [activeCall]);
+
+  const [callHistory, setCallHistory] = useState<Call[]>([]);
+  const [isCallHistoryOpen, setIsCallHistoryOpen] = useState(false);
+  const callSoundRef = useRef<HTMLAudioElement | null>(null);
+
+  // play Ringer
+  const playRinger = () => {
+    if (!callSoundRef.current) {
+      callSoundRef.current = new Audio('/sounds/ringer.mp3'); // Mock path, or use synthesis
+      callSoundRef.current.loop = true;
+    }
+    callSoundRef.current.play().catch(e => console.log('Audio play failed', e));
+  };
+
+  const stopRinger = () => {
+    if (callSoundRef.current) {
+      callSoundRef.current.pause();
+      callSoundRef.current.currentTime = 0;
+    }
+  };
+
+  // Call Handlers
+  const handleAcceptCall = async (call: Call) => {
+    stopRinger();
+    setIncomingCall(null);
+    setActiveCall({ ...call, status: 'accepted', start_time: new Date().toISOString() });
+    toast.info("Chamada aceita (Simulação - Áudio via WhatsApp Web)");
+    // Only close incoming modal, show active call banner
+  };
+
+  const handleRejectCall = async (call: Call) => {
+    stopRinger();
+    setIncomingCall(null);
+    // Determine if we can reject via API? Evolution allows rejectCall?
+    // For now, just clear UI.
+    toast.info("Chamada recusada");
+    try {
+      // Optional: call API to reject
+    } catch (e) { }
+  };
+
+  // ... rest of component ...
+
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
 
@@ -471,7 +537,9 @@ const AtendimentoPage = () => {
   useEffect(() => {
     const filterByStatusAndSearch = (status: 'PENDING' | 'OPEN' | 'CLOSED') => {
       return conversations.filter(c => {
-        const isGroup = Boolean(c.is_group || c.group_name || c.phone.includes('@g.us') || c.phone.includes('-'));
+        // Safe access to phone
+        const phone = c.phone || '';
+        const isGroup = Boolean(c.is_group || c.group_name || phone.includes('@g.us') || phone.includes('-'));
 
         // Exclude groups from individual conversations tabs
         if (isGroup) return false;
@@ -480,7 +548,7 @@ const AtendimentoPage = () => {
         if (s !== status) return false;
 
         // Safety Filter: Reject invalid phone numbers (Ghost Cards)
-        const numericPhone = c.phone.replace(/\D/g, '');
+        const numericPhone = phone.replace(/\D/g, '');
         if (!isGroup && (numericPhone.length < 10 || numericPhone.length > 14)) {
           // console.warn('Hiding invalid conversation card:', c.phone);
           return false;
@@ -489,8 +557,8 @@ const AtendimentoPage = () => {
         if (conversationSearchTerm) {
           const search = conversationSearchTerm.toLowerCase();
           const name = getDisplayName(c).toLowerCase();
-          const phone = (c.phone || "").toLowerCase();
-          return name.includes(search) || phone.includes(search);
+          const p = phone.toLowerCase();
+          return name.includes(search) || p.includes(search);
         }
         return true;
       }).sort((a, b) => new Date(b.last_message_at || 0).getTime() - new Date(a.last_message_at || 0).getTime());
@@ -706,6 +774,34 @@ const AtendimentoPage = () => {
     socket.on("connect_error", (err) => {
       console.error("Socket connection error:", err);
       setSocketStatus("disconnected");
+    });
+
+    socket.on("call:update", (callEvent: any) => {
+      console.log("Call Event received:", callEvent);
+      if (!callEvent || !callEvent.remoteJid) return;
+
+      if (callEvent.status === 'offer' || callEvent.status === 'ringing') {
+        const newCall: Call = {
+          id: Date.now(), // temp id
+          direction: 'inbound',
+          status: 'ringing',
+          contact_name: callEvent.contactName || 'Desconhecido',
+          remote_jid: callEvent.remoteJid,
+          start_time: new Date().toISOString()
+        };
+        // Avoid overwriting if already ringing
+        setIncomingCall(prev => prev ? prev : newCall);
+        playRinger();
+      } else if (['timeout', 'reject', 'terminate', 'hangup'].includes(callEvent.status)) {
+        stopRinger();
+        setIncomingCall(null);
+
+        // Use Ref to check active call to avoid stale closure
+        if (activeCallRef.current && activeCallRef.current.remote_jid === callEvent.remoteJid) {
+          setActiveCall(null);
+          toast.info("Chamada encerrada");
+        }
+      }
     });
 
     socket.on("message:received", (newMessage: any) => {
@@ -2556,6 +2652,29 @@ const AtendimentoPage = () => {
               </div>
 
               <div className="flex items-center gap-4 text-[#aebac1]">
+                {/* Call Button */}
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-10 w-10 text-[#aebac1] hover:bg-white/10 rounded-full"
+                  onClick={() => {
+                    const newCall: Call = {
+                      id: Date.now(),
+                      direction: 'outbound',
+                      status: 'ringing',
+                      contact_name: getDisplayName(selectedConversation),
+                      remote_jid: selectedConversation.phone,
+                      start_time: new Date().toISOString()
+                    };
+                    setActiveCall(newCall);
+                    toast.info("Iniciando chamada (Simulada para demonstração)");
+                    // In future: socket.emit('call:start', { ... })
+                  }}
+                  title="Ligar para contato"
+                >
+                  <Phone className="h-5 w-5" />
+                </Button>
+
                 <Button
                   variant="ghost"
                   size="icon"
@@ -3049,6 +3168,51 @@ const AtendimentoPage = () => {
           </>
         )}
       </div>
+      {/* Call UI Components */}
+      {incomingCall && (
+        <Dialog open={true} onOpenChange={() => { }}>
+          <DialogContent className="sm:max-w-[400px] text-center">
+            <DialogHeader>
+              <DialogTitle>Chamada Recebida</DialogTitle>
+            </DialogHeader>
+            <div className="py-6 flex flex-col items-center gap-4">
+              <div className="h-24 w-24 rounded-full bg-slate-100 flex items-center justify-center animate-pulse">
+                <Phone className="h-10 w-10 text-slate-500" />
+              </div>
+              <div>
+                <h3 className="text-xl font-bold">{incomingCall.contact_name}</h3>
+                <p className="text-sm text-muted-foreground">{incomingCall.remote_jid.split('@')[0]}</p>
+                <p className="text-sm font-medium text-green-600 animate-pulse mt-2">Chamando...</p>
+              </div>
+            </div>
+            <div className="flex gap-4 justify-center">
+              <Button variant="destructive" size="lg" className="rounded-full h-12 w-12 p-0" onClick={() => handleRejectCall(incomingCall)}>
+                <Phone className="h-5 w-5 rotate-[135deg]" />
+              </Button>
+              <Button variant="default" size="lg" className="rounded-full h-12 w-12 p-0 bg-green-500 hover:bg-green-600" onClick={() => handleAcceptCall(incomingCall)}>
+                <Phone className="h-5 w-5" />
+              </Button>
+            </div>
+          </DialogContent>
+        </Dialog>
+      )}
+
+      {activeCall && (
+        <div className="fixed top-4 right-4 z-50 bg-white dark:bg-slate-800 shadow-xl rounded-lg p-4 border border-green-500/20 flex items-center gap-4 animate-in slide-in-from-right w-80">
+          <div className="h-10 w-10 rounded-full bg-green-100 flex items-center justify-center">
+            <Phone className="h-5 w-5 text-green-600" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <h4 className="font-semibold truncate">{activeCall.contact_name}</h4>
+            <p className="text-xs text-muted-foreground">Em chamada...</p>
+          </div>
+          <Button variant="destructive" size="icon" className="h-8 w-8 rounded-full" onClick={() => { setActiveCall(null); toast.info("Chamada encerrada"); }}>
+            <Phone className="h-4 w-4 rotate-[135deg]" />
+          </Button>
+        </div>
+      )}
+
+      {/* Existing Dialogs */}
       <FollowUpModal
         isOpen={isFollowUpModalOpen}
         onClose={() => setIsFollowUpModalOpen(false)}

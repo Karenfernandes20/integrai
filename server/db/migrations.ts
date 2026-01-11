@@ -839,6 +839,34 @@ const runWhatsappMigrations = async () => {
             console.error("Error creating CRM Tags tables:", e);
         }
 
+        // WhatsApp Calls Migration
+        console.log("Applying WhatsApp Calls Migration...");
+        try {
+            await pool.query(`
+                CREATE TABLE IF NOT EXISTS whatsapp_calls (
+                    id SERIAL PRIMARY KEY,
+                    company_id INTEGER REFERENCES companies(id) ON DELETE CASCADE,
+                    conversation_id INTEGER REFERENCES whatsapp_conversations(id) ON DELETE SET NULL,
+                    remote_jid VARCHAR(100),
+                    contact_name VARCHAR(255),
+                    direction VARCHAR(20) NOT NULL CHECK (direction IN ('inbound', 'outbound')),
+                    status VARCHAR(20) DEFAULT 'ringing', -- ringing, accepted, rejected, missed, failed, completed
+                    start_time TIMESTAMP DEFAULT NOW(),
+                    end_time TIMESTAMP,
+                    user_id INTEGER REFERENCES app_users(id),
+                    external_id VARCHAR(100),
+                    details JSONB DEFAULT '{}',
+                    created_at TIMESTAMP DEFAULT NOW()
+                );
+            `);
+            await pool.query('CREATE INDEX IF NOT EXISTS idx_whatsapp_calls_company ON whatsapp_calls(company_id)');
+            await pool.query('CREATE INDEX IF NOT EXISTS idx_whatsapp_calls_conversation ON whatsapp_calls(conversation_id)');
+            console.log("WhatsApp Calls migrations finished.");
+        } catch (e) {
+            console.error("Error creating WhatsApp Calls tables:", e);
+        }
+
+
     } catch (error) {
         console.error("Error creating WhatsApp/Admin tables:", error);
     }

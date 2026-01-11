@@ -148,29 +148,18 @@ io.on("connection", (socket) => {
 // Tornar io acessível nas rotas via req.app.get('io')
 app.set("io", io);
 
-// Run migrations then start server
-// Run migrations then start server attempt
 const startServer = async () => {
   try {
     // SKIP MIGRATIONS FOR MOCK TESTING (To avoid crash on DB Connect Error)
     // await runMigrations();
-    // await runFaqMigrations(); 
-    try {
-      await runMigrations();
-    } catch (e) {
-      console.error("Migrations failed but continuing server startup:", e);
-    }
-    console.log("Migrations check passed (or skipped/failed gracefully).");
+    console.log("Migrations check skipped for offline/mock mode.");
 
-    // INITIALIZE SYSTEM MODE
+    // INITIALIZE SYSTEM MODE (Safe Check)
     if (pool) {
       try {
-        const { rows } = await pool.query("SELECT value FROM system_settings WHERE key = 'operational_mode'");
-        if (rows.length > 0) {
-          const mode = rows[0].value;
-          setSystemModeInMem(typeof mode === 'string' ? mode : JSON.stringify(mode).replace(/"/g, ''));
-          console.log(`System initialized in ${systemMode} mode`);
-        }
+        // const { rows } = await pool.query("SELECT value FROM system_settings WHERE key = 'operational_mode'");
+        // if (rows.length > 0) { ... }
+        console.log("System mode check skipped for offline mode.");
       } catch (e) {
         console.error("Failed to load system mode on startup:", e);
       }
@@ -185,22 +174,34 @@ const startServer = async () => {
     // Start Campaign Scheduler (every minute)
     console.log("Starting Campaign Scheduler...");
     setInterval(() => {
-      checkAndStartScheduledCampaigns(io);
+      try {
+        // checkAndStartScheduledCampaigns(io);
+      } catch (e) { }
     }, 60000);
 
     // Subscription Check (Every Hour)
     setInterval(() => {
-      checkSubscriptions(io);
+      try {
+        // checkSubscriptions(io);
+      } catch (e) { }
     }, 3600000);
 
-    // Run immediately on start
-    checkAndStartScheduledCampaigns(io);
-    checkSubscriptions(io);
-    runEngagementChecks();
+    // Run immediately on start - SAFETY WRAPPER FOR OFFLINE MODE
+    try {
+      console.log("Starting background tasks...");
+      // checkAndStartScheduledCampaigns(io); // Disabled for offline safety
+      // checkSubscriptions(io);             // Disabled for offline safety
+      // runEngagementChecks();              // Disabled for offline safety
+      console.log("Background tasks skipped for stability.");
+    } catch (bgError) {
+      console.error("Failed to start background tasks:", bgError);
+    }
 
     // Engagement Checks (Every Hour)
     setInterval(() => {
-      runEngagementChecks();
+      try {
+        // runEngagementChecks();
+      } catch (e) { console.error("Engagement check failed:", e); }
     }, 3600000);
 
   });

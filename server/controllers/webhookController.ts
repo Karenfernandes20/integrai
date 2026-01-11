@@ -33,6 +33,10 @@ export const debugWebhookPayloads = (req: Request, res: Response) => {
 };
 
 
+import { handleCallWebhook } from './callController';
+
+// ... existing imports ...
+
 export const handleWebhook = async (req: Request, res: Response) => {
     // 1. Respond immediately to avoid Evolution API blocking or timeouts
     res.status(200).json({ status: 'received' });
@@ -41,15 +45,11 @@ export const handleWebhook = async (req: Request, res: Response) => {
     (async () => {
         try {
             const body = req.body;
-            if (!body) {
-                console.warn('[Webhook] Received empty body');
-                return;
-            }
+            if (!body) return;
 
-            // Verbose logging for debugging - LOG THE WHOLE BODY INITIALLY TO TRACE STRUCTURE
-            console.log('[Webhook] New payload received from Evolution API');
+            // ... logging logic ...
 
-            // Extract raw metadata for logging
+            // Extract raw metadata for logging (Re-extraction for scope safety)
             let type = body.type || body.event;
             let data = body.data;
             let instance = body.instance || body.data?.instance || body.instanceName || 'integrai';
@@ -62,17 +62,18 @@ export const handleWebhook = async (req: Request, res: Response) => {
                 instance = body[0].instance || body[0].data?.instance || body[0].instanceName || instance;
             }
 
-            console.log(`[Webhook] Event: ${type} | Instance: ${instance}`);
-            pushPayload({ type, instance, keys: Object.keys(body), body: body });
-
-
-
-            if (!type) {
-                console.warn('[Webhook] Missing type/event in payload root. Body keys:', Object.keys(body));
+            // CALL EVENT HANDLING
+            if (type === 'CALL' || type === 'call') {
+                const callInstance = instance || 'integrai';
+                await handleCallWebhook(body, callInstance, req.app.get('io'));
                 return;
             }
 
+            console.log(`[Webhook] Event: ${type} | Instance: ${instance}`);
+            pushPayload({ type, instance, keys: Object.keys(body), body: body });
+
             const normalizedType = type.toString().toUpperCase();
+            // ... rest of the function ...
 
             // Accept various message event patterns (be exhaustive)
             const isMessageEvent = [
@@ -759,6 +760,7 @@ export const getConversations = async (req: Request, res: Response) => {
                 {
                     id: 9991,
                     external_id: '5511999999999@s.whatsapp.net',
+                    phone: '5511999999999',
                     contact_name: 'Karen Fernandes (Mock)', // Saved Name
                     contact_push_name: 'Karen Whatsapp',
                     last_message: 'Teste de Mock Data',
@@ -774,6 +776,7 @@ export const getConversations = async (req: Request, res: Response) => {
                 {
                     id: 9992,
                     external_id: '12036302392@g.us',
+                    phone: '12036302392@g.us', // Group JID often stored in phone col for groups
                     contact_name: 'Grupo Teste',
                     last_message: 'Mensagem no grupo',
                     last_message_at: new Date(Date.now() - 3600000).toISOString(),
