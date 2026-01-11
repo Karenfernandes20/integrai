@@ -32,6 +32,7 @@ import {
   GitBranch,
   LayoutTemplate,
   Map,
+  Tags as TagsIcon,
 } from "lucide-react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext";
@@ -46,6 +47,7 @@ const items = [
   { label: "Follow-up", icon: CalendarCheck, to: "/app/follow-up" },
   { label: "Contatos", icon: Users, to: "/app/contatos" },
   { label: "CRM", icon: KanbanSquare, to: "/app/crm" },
+  { label: "Tags", icon: TagsIcon, to: "/app/tags" },
   { label: "Financeiro", icon: Wallet2, to: "/app/financeiro" },
   { label: "Usuários", icon: Users, to: "/app/usuarios" },
   { label: "Cidades", icon: MapPin, to: "/app/cidades" },
@@ -151,6 +153,7 @@ export function AppSidebar() {
       case "Follow-up": requiredPerm = "atendimentos"; break;
       case "Contatos": requiredPerm = "atendimentos"; break;
       case "CRM": requiredPerm = "crm"; break;
+      case "Tags": requiredPerm = "crm"; break;
       case "Financeiro": requiredPerm = "financeiro"; break;
       case "Relatórios": requiredPerm = "relatorios"; break; // Explicit permission
       case "Configurações": requiredPerm = "configuracoes"; break;

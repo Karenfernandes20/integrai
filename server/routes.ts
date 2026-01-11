@@ -136,6 +136,13 @@ router.delete('/crm/conversations/:id', authenticateToken, deleteConversation);
 router.get('/cities', getCities);
 router.post('/cities', createCity);
 
+// CRM Tag Routes
+import { getTags, createTag, updateTag, deleteTag } from './controllers/tagController';
+router.get('/crm/tags', authenticateToken, getTags);
+router.post('/crm/tags', authenticateToken, createTag);
+router.put('/crm/tags/:id', authenticateToken, updateTag);
+router.delete('/crm/tags/:id', authenticateToken, deleteTag);
+
 // CRM routes
 router.get('/crm/stages', authenticateToken, getStages);
 router.post('/crm/stages', authenticateToken, createStage);

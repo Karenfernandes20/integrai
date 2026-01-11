@@ -1,7 +1,7 @@
 import { pool } from './db';
 
 export type AuditAction = 'create' | 'update' | 'delete' | 'login' | 'logout' | 'version_update';
-export type ResourceType = 'user' | 'task' | 'document' | 'setting' | 'company' | 'campaign' | 'ai_agent' | 'template' | 'system';
+export type ResourceType = 'user' | 'task' | 'document' | 'setting' | 'company' | 'campaign' | 'ai_agent' | 'template' | 'system' | 'tag';
 
 interface AuditData {
     userId: number;

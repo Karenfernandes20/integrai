@@ -812,6 +812,33 @@ const runWhatsappMigrations = async () => {
             console.error("Error creating Billing tables:", e);
         }
 
+        // CRM Tags Migration
+        console.log("Applying CRM Tags Migration...");
+        try {
+            await pool.query(`
+                CREATE TABLE IF NOT EXISTS crm_tags (
+                    id SERIAL PRIMARY KEY,
+                    name VARCHAR(50) NOT NULL,
+                    color VARCHAR(20) DEFAULT '#cbd5e1',
+                    company_id INTEGER REFERENCES companies(id),
+                    created_at TIMESTAMP DEFAULT NOW(),
+                    updated_at TIMESTAMP DEFAULT NOW()
+                );
+            `);
+            await pool.query('CREATE INDEX IF NOT EXISTS idx_crm_tags_company ON crm_tags(company_id)');
+
+            await pool.query(`
+                CREATE TABLE IF NOT EXISTS crm_lead_tags (
+                    lead_id INTEGER REFERENCES crm_leads(id) ON DELETE CASCADE,
+                    tag_id INTEGER REFERENCES crm_tags(id) ON DELETE CASCADE,
+                    PRIMARY KEY (lead_id, tag_id)
+                );
+            `);
+            console.log("CRM Tags migrations finished.");
+        } catch (e) {
+            console.error("Error creating CRM Tags tables:", e);
+        }
+
     } catch (error) {
         console.error("Error creating WhatsApp/Admin tables:", error);
     }

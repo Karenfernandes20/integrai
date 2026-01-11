@@ -23,6 +23,7 @@ import FollowUpPage from "./pages/FollowUp";
 import GruposPage from "./pages/Grupos";
 import CampanhasPage from "./pages/Campanhas";
 import FaqPage from "./pages/Faq";
+import TagsPage from "./pages/Tags";
 import TasksPage from "./pages/Tasks";
 import LogsPage from "./pages/Logs";
 import AlertsPage from "./pages/Alerts";
@@ -80,6 +81,7 @@ const App = () => (
               <Route path="contatos" element={<ContatosPage />} />
               <Route path="follow-up" element={<FollowUpPage />} />
               <Route path="faq" element={<FaqPage />} />
+              <Route path="tags" element={<TagsPage />} />
 
               {/* SuperAdmin Routes */}
               <Route element={<AdminRoute roles={['SUPERADMIN', 'ADMIN']} />}>
