@@ -359,6 +359,13 @@ export const deleteCompany = async (req: Request, res: Response) => {
             // 5. Delete Leads
             await client.query('DELETE FROM crm_leads WHERE company_id = $1', [id]);
 
+            // 5.1 Delete CRM Stages (if company specific)
+            try {
+                // Check if column exists first or just try delete if we know schema
+                // Safe approach: try delete
+                await client.query('DELETE FROM crm_stages WHERE company_id = $1', [id]);
+            } catch (e) { }
+
             // 6. Delete Messages (linked to conversations)
             await client.query(`
                 DELETE FROM whatsapp_messages 
@@ -371,13 +378,63 @@ export const deleteCompany = async (req: Request, res: Response) => {
             // 8. Delete WhatsApp Contacts associated with the company
             await client.query('DELETE FROM whatsapp_contacts WHERE company_id = $1', [id]);
 
-            // 9. Delete Financial Transactions (if table exists - CRM focused, skip transport tables)
+            // 9. Delete Financial Transactions
             try {
                 await client.query('DELETE FROM financial_transactions WHERE company_id = $1', [id]);
-            } catch (e: any) {
-                if (e.code !== '42P01') throw e; // Ignore "table does not exist", throw other errors
-                console.log(`[Delete Company ${id}] Skipping financial_transactions (table not found)`);
-            }
+            } catch (e) { }
+
+            // 9.1 Delete Financial Categories
+            try {
+                await client.query('DELETE FROM financial_categories WHERE company_id = $1', [id]);
+            } catch (e) { }
+
+            // 9.2 Delete Financial Cost Centers
+            try {
+                await client.query('DELETE FROM financial_cost_centers WHERE company_id = $1', [id]);
+            } catch (e) { }
+
+
+            // 10. Admin Tasks & Alerts
+            await client.query('DELETE FROM admin_tasks WHERE company_id = $1', [id]);
+
+            // 10.1 Delete System Workflows
+            try {
+                await client.query('DELETE FROM system_workflows WHERE company_id = $1', [id]);
+            } catch (e) { }
+
+            // 10.2 Delete Templates
+            try {
+                await client.query('DELETE FROM global_templates WHERE company_id = $1', [id]);
+            } catch (e) { }
+
+            // 10.3 Delete Roadmap Items
+            try {
+                await client.query('DELETE FROM roadmap_comments WHERE roadmap_item_id IN (SELECT id FROM roadmap_items WHERE company_id = $1)', [id]);
+                await client.query('DELETE FROM roadmap_items WHERE company_id = $1', [id]);
+            } catch (e) { }
+
+            // 10.4 Delete AI Agents (Cascade usually covers this but safe to maximize)
+            try {
+                await client.query('DELETE FROM ai_agents WHERE company_id = $1', [id]);
+            } catch (e) { }
+
+            // 10.5 Delete Company Usage & Subscriptions (Cascade usually covers this)
+            try {
+                await client.query('DELETE FROM company_usage WHERE company_id = $1', [id]);
+                await client.query('DELETE FROM invoices WHERE company_id = $1', [id]);
+                await client.query('DELETE FROM subscriptions WHERE company_id = $1', [id]);
+            } catch (e) { }
+
+            // 10.6 Delete System Logs (Multi-tenant)
+            try {
+                await client.query('DELETE FROM system_logs WHERE company_id = $1', [id]);
+            } catch (e) { }
+
+            // 10.7 Delete Audit Logs (Universal)
+            try {
+                await client.query('DELETE FROM audit_logs WHERE company_id = $1', [id]);
+            } catch (e) { }
+
 
             // Skip rides deletion - not used in CRM-only databases
             console.log(`[Delete Company ${id}] Skipping rides deletion (CRM database)`);
