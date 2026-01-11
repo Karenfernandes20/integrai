@@ -48,7 +48,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card"
 import { Button } from "../components/ui/button";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "../components/ui/dialog";
 import { Input } from "../components/ui/input";
-import { cn } from "../lib/utils";
+import { cn, getCityStateFromPhone } from "../lib/utils";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription, SheetFooter } from "../components/ui/sheet";
 import { useNavigate } from "react-router-dom";
 import { Textarea } from "../components/ui/textarea";
@@ -146,7 +146,10 @@ function SortableLeadCard({ lead, onEdit, onChat, onFollowUp, onRemove }: {
           <div className="mt-1 flex items-center gap-1.5 overflow-hidden">
             <MapPin className="h-3 w-3 text-muted-foreground flex-shrink-0" />
             <p className="text-[11px] text-muted-foreground truncate">
-              {lead.city && lead.state ? `${lead.city}/${lead.state}` : lead.phone}
+              {lead.city && lead.state
+                ? `${lead.city}/${lead.state}`
+                : (getCityStateFromPhone(lead.phone) || lead.phone)
+              }
             </p>
           </div>
           {lead.value && (
