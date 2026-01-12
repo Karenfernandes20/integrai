@@ -348,6 +348,22 @@ export const updateCompany = async (req: Request, res: Response) => {
                     candidate++;
                 }
                 console.log(`[Update Company ${id}] Added ${diff} new instances (filling gaps).`);
+            } else if (newMax < currentCount) {
+                const diff = currentCount - newMax;
+                // Delete the most recent instances (highest IDs)
+                // We trust the database ensures company_id match.
+                // Subquery finds the IDs to keep or delete. 
+                // Simple approach: Delete top N by ID desc
+                await pool.query(`
+                    DELETE FROM company_instances 
+                    WHERE id IN (
+                        SELECT id FROM company_instances 
+                        WHERE company_id = $1 
+                        ORDER BY id DESC 
+                        LIMIT $2
+                    )
+                `, [id, diff]);
+                console.log(`[Update Company ${id}] Removed ${diff} excess instances.`);
             }
         } catch (instErr) {
             console.error(`[Update Company ${id}] Failed to sync instances:`, instErr);
