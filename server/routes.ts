@@ -52,7 +52,7 @@ router.post('/users/:id/reset-password', authenticateToken, authorizeRole(['SUPE
 
 
 // Evolution routes
-import { getEvolutionQrCode, setEvolutionWebhook, getEvolutionWebhook, deleteEvolutionInstance, sendEvolutionMessage, getEvolutionConnectionState, getEvolutionContacts, createEvolutionContact, updateEvolutionContact, deleteEvolutionContact, editEvolutionMessage, syncEvolutionContacts, handleEvolutionWebhook, getEvolutionContactsLive, deleteEvolutionMessage, getEvolutionConfig, getEvolutionMedia, getEvolutionProfilePic, syncAllProfilePics, sendEvolutionMedia, refreshConversationMetadata, deleteMessage, searchEverything } from './controllers/evolutionController';
+import { getEvolutionQrCode, setEvolutionWebhook, getEvolutionWebhook, deleteEvolutionInstance, sendEvolutionMessage, getEvolutionConnectionState, getEvolutionContacts, createEvolutionContact, updateEvolutionContact, deleteEvolutionContact, editEvolutionMessage, syncEvolutionContacts, handleEvolutionWebhook, getEvolutionContactsLive, deleteEvolutionMessage, getEvolutionConfig, getEvolutionMedia, getEvolutionProfilePic, syncAllProfilePics, sendEvolutionMedia, refreshConversationMetadata, deleteMessage, searchEverything, sendEvolutionReaction } from './controllers/evolutionController';
 router.get('/evolution/search', authenticateToken, searchEverything);
 router.get('/evolution/status', authenticateToken, getEvolutionConnectionState);
 router.get('/evolution/contacts', authenticateToken, getEvolutionContacts);
@@ -64,6 +64,7 @@ router.delete('/evolution/contacts/:id', authenticateToken, deleteEvolutionConta
 router.delete('/evolution/disconnect', authenticateToken, deleteEvolutionInstance);
 router.post('/evolution/messages/send', authenticateToken, rateLimit({ windowMs: 60000, max: 20 }), sendEvolutionMessage);
 router.post('/evolution/messages/media', authenticateToken, sendEvolutionMedia);
+router.post('/evolution/messages/react', authenticateToken, sendEvolutionReaction);
 router.put('/evolution/messages/:conversationId/:messageId', authenticateToken, editEvolutionMessage);
 router.delete('/evolution/messages/:conversationId/:messageId', authenticateToken, deleteEvolutionMessage);
 router.post('/evolution/messages/delete-global', authenticateToken, deleteMessage);

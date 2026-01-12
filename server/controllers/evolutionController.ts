@@ -603,6 +603,120 @@ export const sendEvolutionMedia = async (req: Request, res: Response) => {
   }
 };
 
+
+export const sendEvolutionReaction = async (req: Request, res: Response) => {
+  const { companyId, messageId, emoji } = req.body;
+  const config = await getEvolutionConfig((req as any).user, 'sendReaction', companyId);
+  const EVOLUTION_API_URL = config.url;
+  const EVOLUTION_API_KEY = config.apikey;
+  const EVOLUTION_INSTANCE = config.instance;
+  const resolvedCompanyId = config.company_id;
+
+  try {
+    if (!EVOLUTION_API_URL || !EVOLUTION_API_KEY) {
+      return res.status(500).json({ error: "Evolution API not configured" });
+    }
+
+    if (!messageId) {
+      return res.status(400).json({ error: "Message ID is required" });
+    }
+
+    if (!pool) return res.status(500).json({ error: "Database not configured" });
+
+    // Fetch Message Details
+    const msgRes = await pool.query(`
+      SELECT m.id, m.external_id, m.direction, m.reactions, m.conversation_id, c.external_id as remote_jid 
+      FROM whatsapp_messages m
+      JOIN whatsapp_conversations c ON m.conversation_id = c.id
+      WHERE m.id = $1 AND (m.company_id = $2 OR c.company_id = $2)
+    `, [messageId, resolvedCompanyId]);
+
+    if (msgRes.rows.length === 0) {
+      return res.status(404).json({ error: "Message not found or permission denied" });
+    }
+
+    const msg = msgRes.rows[0];
+    const fromMe = msg.direction === 'outbound';
+
+    // Evolution v2 endpoint for reactions
+    const url = `${EVOLUTION_API_URL.replace(/\/$/, "")}/message/sendReaction/${EVOLUTION_INSTANCE}`;
+
+    const response = await fetch(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        apikey: EVOLUTION_API_KEY,
+      },
+      body: JSON.stringify({
+        reactionMessage: {
+          key: {
+            remoteJid: msg.remote_jid,
+            fromMe: fromMe,
+            id: msg.external_id
+          },
+          reaction: emoji || ""
+        }
+      }),
+    });
+
+    if (!response.ok) {
+      // If Evolution fails, check if it's 404/etc but generally we want to know.
+      const text = await response.text();
+      console.error(`[Evolution Reaction] Failed: ${response.status} - ${text}`);
+      return res.status(response.status).json({
+        error: "Failed to send reaction",
+        status: response.status,
+        body: text,
+      });
+    }
+
+    const data = await response.json();
+
+    // Optimistic DB Update
+    let currentReactions = msg.reactions || [];
+    if (!Array.isArray(currentReactions)) currentReactions = [];
+
+    const reactorId = 'me';
+
+    if (emoji) {
+      currentReactions = currentReactions.filter((r: any) => r.senderId !== reactorId);
+      currentReactions.push({
+        emoji,
+        senderId: reactorId,
+        fromMe: true,
+        timestamp: Date.now()
+      });
+    } else {
+      currentReactions = currentReactions.filter((r: any) => r.senderId !== reactorId);
+    }
+
+    await pool.query('UPDATE whatsapp_messages SET reactions = $1 WHERE id = $2', [JSON.stringify(currentReactions), messageId]);
+
+    // Emit Socket Update
+    const io = req.app.get('io');
+    if (io && resolvedCompanyId) {
+      const room = `company_${resolvedCompanyId}`;
+      const instanceRoom = `instance_${EVOLUTION_INSTANCE}`;
+
+      const payload = {
+        messageId: msg.id,
+        externalId: msg.external_id,
+        reactions: currentReactions,
+        conversationId: msg.conversation_id
+      };
+
+      io.to(room).emit('message:reaction', payload);
+      io.to(instanceRoom).emit('message:reaction', payload);
+    }
+
+    return res.json({ success: true, reactions: currentReactions });
+
+  } catch (error: any) {
+    console.error("Error sending reaction:", error);
+    return res.status(500).json({ error: "Internal Error", details: error.message });
+  }
+};
+
 export const getEvolutionContacts = async (req: Request, res: Response) => {
   const targetCompanyId = req.query.companyId as string;
   const config = await getEvolutionConfig((req as any).user, 'getContacts', targetCompanyId);

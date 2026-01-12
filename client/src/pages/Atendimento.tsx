@@ -104,6 +104,7 @@ interface Message {
   message_origin?: string;
   user_name?: string;
   saved_name?: string;
+  reactions?: { emoji: string; senderId: string; fromMe: boolean; timestamp: number }[];
 }
 
 interface Contact {
@@ -805,6 +806,21 @@ const AtendimentoPage = () => {
           setActiveCall(null);
           toast.info("Chamada encerrada");
         }
+      }
+    });
+
+    socket.on("message:reaction", (data: any) => {
+      // data: { messageId, externalId, reactions, conversationId }
+      console.log(`[Socket] Reaction update for msg ${data.messageId}`);
+      if (selectedConvRef.current && (
+        String(selectedConvRef.current.id) === String(data.conversationId) ||
+        selectedConvRef.current.id === data.conversationId
+      )) {
+        setMessages(prev => prev.map(m =>
+          (String(m.id) === String(data.messageId) || (m.external_id && m.external_id === data.externalId))
+            ? { ...m, reactions: data.reactions }
+            : m
+        ));
       }
     });
 
@@ -2019,6 +2035,48 @@ const AtendimentoPage = () => {
     }
   };
 
+  const handleSendReaction = async (msg: Message, emoji: string) => {
+    // Optimistic Update
+    const currentUserReaction = { emoji, senderId: 'me', fromMe: true, timestamp: Date.now() };
+
+    setMessages(prev => prev.map(m => {
+      if (m.id === msg.id) {
+        const currentReactions = m.reactions || [];
+        // Remove my previous reaction if any
+        const filtered = currentReactions.filter(r => r.senderId !== 'me');
+        // Add new one (if emoji is empty, it's just a removal)
+        if (emoji) {
+          filtered.push(currentUserReaction);
+        }
+        return { ...m, reactions: filtered };
+      }
+      return m;
+    }));
+
+    try {
+      const res = await fetch(`/api/evolution/messages/react`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          companyId: user?.company_id,
+          messageId: msg.id,
+          emoji: emoji
+        })
+      });
+
+      if (!res.ok) {
+        console.error("Failed to send reaction");
+        // Revert by fetching
+        if (selectedConversation && selectedConversation.id) fetchMessages(selectedConversation.id);
+      }
+    } catch (e) {
+      console.error("Error sending reaction", e);
+    }
+  };
+
   const handleCloseAtendimento = async (conversation?: Conversation) => {
     const conv = conversation || selectedConversation;
     if (!conv) return;
@@ -3004,6 +3062,13 @@ const AtendimentoPage = () => {
                                   );
                                 })()}
 
+                                {msg.reactions && msg.reactions.length > 0 && (
+                                  <div className="absolute -bottom-2.5 right-2 z-10 flex cursor-pointer gap-0.5 rounded-full border border-zinc-100 bg-white px-1 py-0.5 text-[10px] shadow-sm dark:border-zinc-700 dark:bg-zinc-800" title="Reações">
+                                    {Array.from(new Set(msg.reactions.map((r: any) => r.emoji))).slice(0, 3).map((e: any) => <span key={e}>{e}</span>)}
+                                    {msg.reactions.length > 1 && <span className="ml-0.5 text-zinc-500">{msg.reactions.length}</span>}
+                                  </div>
+                                )}
+
                                 {/* Timestamp & Status */}
                                 <span className="absolute right-2 bottom-[4px] text-[10px] flex items-center gap-1 text-[#8696A0] dark:text-[#8696A0]">
                                   {formatTime(msg.sent_at)}
@@ -3022,6 +3087,21 @@ const AtendimentoPage = () => {
                                       </Button>
                                     </DropdownMenuTrigger>
                                     <DropdownMenuContent align="end" className="bg-white dark:bg-[#233138] border-none text-[#111B21] dark:text-[#E9EDEF]">
+                                      <div className="flex gap-2 p-2 justify-center border-b border-zinc-100 dark:border-zinc-700/50 mb-1">
+                                        {["👍", "❤️", "😂", "😮", "😢", "😡"].map(emoji => (
+                                          <button
+                                            key={emoji}
+                                            className="hover:scale-125 transition-transform text-lg leading-none"
+                                            onClick={() => handleSendReaction(msg, emoji)}
+                                            title={`Reagir com ${emoji}`}
+                                          >
+                                            {emoji}
+                                          </button>
+                                        ))}
+                                        <button className="hover:scale-125 transition-transform text-xs opacity-50 hover:opacity-100" onClick={() => handleSendReaction(msg, "")} title="Remover reação">
+                                          🚫
+                                        </button>
+                                      </div>
                                       <DropdownMenuItem onClick={() => handleReplyMessage(msg)} className="gap-2"><Plus className="h-4 w-4" /> Responder</DropdownMenuItem>
                                       {msg.direction === 'outbound' && (
                                         <DropdownMenuItem onClick={() => handleEditMessage(msg)} className="gap-2"><Pencil className="h-4 w-4" /> Editar</DropdownMenuItem>

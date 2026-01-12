@@ -311,6 +311,7 @@ const runWhatsappMigrations = async () => {
         await addColumn('whatsapp_campaigns', 'completed_at', 'TIMESTAMP');
         await addColumn('whatsapp_messages', 'campaign_id', 'INTEGER');
         await addColumn('whatsapp_messages', 'follow_up_id', 'INTEGER');
+        await addColumn('whatsapp_messages', 'reactions', "JSONB DEFAULT '[]'");
 
         // Ensure message uniqueness by external_id (WhatsApp message ID)
         try {

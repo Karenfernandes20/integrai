@@ -33,9 +33,95 @@ export const debugWebhookPayloads = (req: Request, res: Response) => {
 };
 
 
+// ... imports
 import { handleCallWebhook } from './callController';
 
-// ... existing imports ...
+// REACTION HANDLER
+const handleReactionWebhook = async (payload: any, instance: string, io: any) => {
+    try {
+        if (!pool) return;
+
+        // Evolution V2 Reaction Payload Structure Strategy
+        // Payload sometimes comes as { data: { key:..., reaction:... } } or just { key:..., reaction:... }
+        const data = payload.data || payload;
+        const reaction = data.reaction;
+        const key = data.key; // This is usually the key of the REACTION MESSAGE itself, NOT the target?
+        // Actually, in Evolution/Baileys:
+        // reaction: { text: "❤️", key: { remoteJid, fromMe, id } } -> The 'key' inside 'reaction' is the TARGET message.
+        // The top-level 'key' is the sender info.
+
+        if (!reaction || !reaction.key) {
+            console.warn('[Webhook] Reaction event missing reaction.key data');
+            return;
+        }
+
+        const targetKey = reaction.key;
+        const targetId = targetKey.id;
+        const emoji = reaction.text; // If null/empty, it is a removal
+
+        // Sender Info
+        const senderKey = key || {};
+        const senderJid = senderKey.remoteJid || targetKey.remoteJid;
+        const fromMe = senderKey.fromMe ?? targetKey.fromMe ?? false;
+
+        // Find the target message in DB
+        // We use external_id = targetId
+        const msgRes = await pool.query('SELECT id, conversation_id, reactions, company_id FROM whatsapp_messages WHERE external_id = $1', [targetId]);
+
+        if (msgRes.rows.length === 0) {
+            console.warn(`[Webhook] Reaction target message not found: ${targetId}`);
+            return;
+        }
+
+        const msg = msgRes.rows[0];
+        let currentReactions = msg.reactions || [];
+        if (!Array.isArray(currentReactions)) currentReactions = [];
+
+        // Determine who reacted
+        const reactorId = fromMe ? 'me' : senderJid;
+
+        if (emoji) {
+            // Add/Update reaction
+            // Remove existing reaction from this user if any
+            currentReactions = currentReactions.filter((r: any) => r.senderId !== reactorId);
+            currentReactions.push({
+                emoji,
+                senderId: reactorId,
+                fromMe,
+                timestamp: Date.now()
+            });
+        } else {
+            // Remove reaction (empty text)
+            currentReactions = currentReactions.filter((r: any) => r.senderId !== reactorId);
+        }
+
+        // Update DB
+        await pool.query('UPDATE whatsapp_messages SET reactions = $1 WHERE id = $2', [JSON.stringify(currentReactions), msg.id]);
+
+        console.log(`[Webhook] Reaction processed for msg ${msg.id}: ${emoji || 'REMOVED'} by ${reactorId}`);
+
+        // Emit Socket Update
+        if (io) {
+            const room = `company_${msg.company_id}`; // Using company from message
+            const instanceRoom = `instance_${instance}`;
+            io.to(room).emit('message:reaction', {
+                messageId: msg.id,
+                externalId: targetId,
+                reactions: currentReactions,
+                conversationId: msg.conversation_id
+            });
+            io.to(instanceRoom).emit('message:reaction', {
+                messageId: msg.id,
+                externalId: targetId,
+                reactions: currentReactions,
+                conversationId: msg.conversation_id
+            });
+        }
+
+    } catch (e) {
+        console.error('[Webhook] Error handling reaction:', e);
+    }
+};
 
 export const handleWebhook = async (req: Request, res: Response) => {
     // 1. Respond immediately to avoid Evolution API blocking or timeouts
@@ -62,6 +148,14 @@ export const handleWebhook = async (req: Request, res: Response) => {
                 instance = body[0].instance || body[0].data?.instance || body[0].instanceName || instance;
             }
 
+            const normalizedType = type ? type.toString().toUpperCase() : '';
+
+            // REACTION EVENT HANDLING
+            if (['MESSAGES_REACTION', 'MESSAGE_REACTION', 'REACTION'].includes(normalizedType)) {
+                await handleReactionWebhook(body, instance, req.app.get('io'));
+                return;
+            }
+
             // CALL EVENT HANDLING
             if (type === 'CALL' || type === 'call') {
                 const callInstance = instance || 'integrai';
@@ -72,7 +166,6 @@ export const handleWebhook = async (req: Request, res: Response) => {
             console.log(`[Webhook] Event: ${type} | Instance: ${instance}`);
             pushPayload({ type, instance, keys: Object.keys(body), body: body });
 
-            const normalizedType = type.toString().toUpperCase();
             // ... rest of the function ...
 
             // Accept various message event patterns (be exhaustive)
