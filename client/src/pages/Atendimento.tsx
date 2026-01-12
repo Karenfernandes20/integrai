@@ -3063,7 +3063,7 @@ const AtendimentoPage = () => {
                                 })()}
 
                                 {msg.reactions && msg.reactions.length > 0 && (
-                                  <div className="absolute -bottom-2.5 right-2 z-10 flex cursor-pointer gap-0.5 rounded-full border border-zinc-100 bg-white px-1 py-0.5 text-[10px] shadow-sm dark:border-zinc-700 dark:bg-zinc-800" title="Reações">
+                                  <div className="absolute -bottom-2.5 right-2 z-10 flex cursor-pointer gap-0.5 rounded-full border border-zinc-100 bg-white px-1 py-0.5 text-[10px] shadow-sm dark:border-[#222E35] dark:bg-[#111B21]" title="Reações">
                                     {Array.from(new Set(msg.reactions.map((r: any) => r.emoji))).slice(0, 3).map((e: any) => <span key={e}>{e}</span>)}
                                     {msg.reactions.length > 1 && <span className="ml-0.5 text-zinc-500">{msg.reactions.length}</span>}
                                   </div>
