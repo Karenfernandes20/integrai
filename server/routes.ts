@@ -20,7 +20,7 @@ import { login, register } from './controllers/authController';
 import { authenticateToken, authorizeRole, authorizePermission } from './middleware/authMiddleware';
 import { rateLimit } from './middleware/rateLimitMiddleware';
 import { MODULES, ACTIONS } from './config/roles';
-import { getCompanies, createCompany, updateCompany, deleteCompany, getCompanyUsers, getCompany } from './controllers/companyController';
+import { getCompanies, createCompany, updateCompany, deleteCompany, getCompanyUsers, getCompany, getCompanyInstances, updateCompanyInstance } from './controllers/companyController';
 import { startConversation, closeConversation, updateContactNameWithAudit, deleteConversation, returnToPending } from './controllers/conversationController';
 import { getFollowUps, createFollowUp, updateFollowUp, deleteFollowUp, getFollowUpStats } from './controllers/followUpController';
 
@@ -38,6 +38,8 @@ router.put('/auth/profile', authenticateToken, upload.single('logo'), updateProf
 router.get('/companies', authenticateToken, authorizeRole(['SUPERADMIN']), getCompanies);
 router.get('/companies/:id', authenticateToken, getCompany);
 router.get('/companies/:id/users', authenticateToken, authorizeRole(['SUPERADMIN']), getCompanyUsers);
+router.get('/companies/:id/instances', authenticateToken, getCompanyInstances); // New
+router.put('/companies/:id/instances/:instanceId', authenticateToken, updateCompanyInstance); // New
 router.post('/companies', authenticateToken, authorizeRole(['SUPERADMIN']), upload.single('logo'), createCompany);
 router.put('/companies/:id', authenticateToken, authorizeRole(['SUPERADMIN']), upload.single('logo'), updateCompany);
 router.delete('/companies/:id', authenticateToken, authorizeRole(['SUPERADMIN']), deleteCompany);

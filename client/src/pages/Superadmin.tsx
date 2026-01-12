@@ -71,6 +71,7 @@ interface Company {
   operation_type: "motoristas" | "clientes" | "pacientes" | null;
   plan_id?: number;
   due_date?: string;
+  max_instances?: number;
 }
 
 interface AppUser {
@@ -102,6 +103,7 @@ const SuperadminPage = () => {
     operation_type: "clientes", // Default
     plan_id: "",
     due_date: "",
+    max_instances: "1",
   });
   const [plans, setPlans] = useState<any[]>([]); // New state for plans
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
@@ -243,6 +245,7 @@ const SuperadminPage = () => {
       operation_type: company.operation_type ?? "clientes",
       plan_id: company.plan_id ? String(company.plan_id) : "",
       due_date: company.due_date ? new Date(company.due_date).toISOString().split('T')[0] : "",
+      max_instances: company.max_instances ? String(company.max_instances) : "1",
     });
     setSelectedFile(null);
     setRemoveLogo(false);
@@ -266,6 +269,7 @@ const SuperadminPage = () => {
       operation_type: "clientes",
       plan_id: "",
       due_date: "",
+      max_instances: "1",
     });
     setSelectedFile(null);
     setRemoveLogo(false);
@@ -308,6 +312,7 @@ const SuperadminPage = () => {
       formData.append("operation_type", formValues.operation_type);
       if (formValues.plan_id) formData.append("plan_id", formValues.plan_id);
       if (formValues.due_date) formData.append("due_date", formValues.due_date);
+      if (formValues.max_instances) formData.append("max_instances", formValues.max_instances);
 
       // Evolution fields
       if (formValues.evolution_instance) formData.append("evolution_instance", formValues.evolution_instance);
@@ -961,6 +966,19 @@ const SuperadminPage = () => {
                     type="password"
                     placeholder="sk_..."
                     value={formValues.evolution_apikey}
+                    onChange={handleChange}
+                  />
+                </div>
+
+                <div className="space-y-1.5">
+                  <Label htmlFor="max_instances">Número de Instâncias (Multi-Atendimento)</Label>
+                  <Input
+                    id="max_instances"
+                    name="max_instances"
+                    type="number"
+                    min="1"
+                    placeholder="1"
+                    value={formValues.max_instances}
                     onChange={handleChange}
                   />
                 </div>

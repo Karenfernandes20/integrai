@@ -90,7 +90,7 @@ export const getCompany = async (req: Request, res: Response) => {
 export const createCompany = async (req: Request, res: Response) => {
     try {
         if (!pool) return res.status(500).json({ error: 'Database not configured' });
-        const { name, cnpj, city, state, phone, evolution_instance, evolution_apikey, operation_type, plan_id, due_date } = req.body;
+        const { name, cnpj, city, state, phone, evolution_instance, evolution_apikey, operation_type, plan_id, due_date, max_instances } = req.body;
 
         let logo_url = null;
         if (req.file) {
@@ -100,9 +100,11 @@ export const createCompany = async (req: Request, res: Response) => {
             logo_url = `${protocol}://${host}/uploads/${req.file.filename}`;
         }
 
+        const limitInstances = max_instances ? parseInt(max_instances) : 1;
+
         const result = await pool.query(
-            `INSERT INTO companies (name, cnpj, city, state, phone, logo_url, evolution_instance, evolution_apikey, operation_type, plan_id, due_date) 
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) 
+            `INSERT INTO companies (name, cnpj, city, state, phone, logo_url, evolution_instance, evolution_apikey, operation_type, plan_id, due_date, max_instances) 
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12) 
              RETURNING *`,
             [
                 name,
@@ -115,7 +117,8 @@ export const createCompany = async (req: Request, res: Response) => {
                 evolution_apikey || null,
                 operation_type || 'clientes',
                 plan_id || null,
-                due_date || null
+                due_date || null,
+                limitInstances
             ]
         );
 
@@ -133,6 +136,26 @@ export const createCompany = async (req: Request, res: Response) => {
                 newValues: newCompany,
                 details: `Cadastrou nova empresa: ${newCompany.name}`
             });
+        }
+
+        // --- SEED INSTANCES ---
+        try {
+            for (let i = 1; i <= limitInstances; i++) {
+                // If i=1 and we have legacy params, use them
+                const isFirst = i === 1;
+                const seedName = `Instância ${i}`;
+                const seedKey = (isFirst && evolution_instance) ? evolution_instance : `integrai_${newCompany.id}_${i}`;
+                const seedApiKey = (isFirst && evolution_apikey) ? evolution_apikey : null;
+
+                await pool.query(`
+                    INSERT INTO company_instances (company_id, name, instance_key, api_key, status)
+                    VALUES ($1, $2, $3, $4, 'disconnected')
+                    ON CONFLICT DO NOTHING
+                `, [newCompany.id, seedName, seedKey, seedApiKey]);
+            }
+            console.log(`[Company ${newCompany.id}] Seeded ${limitInstances} instances.`);
+        } catch (instErr) {
+            console.error(`[Company ${newCompany.id}] Failed to seed instances:`, instErr);
         }
 
         // Auto-create default CRM stage "LEADS" for this company
@@ -207,7 +230,7 @@ export const updateCompany = async (req: Request, res: Response) => {
 
         const { id } = req.params;
         const { name, cnpj, city, state, phone, evolution_instance, evolution_apikey, operation_type, remove_logo,
-            primary_color, secondary_color, system_name, custom_domain, plan_id, due_date } = req.body;
+            primary_color, secondary_color, system_name, custom_domain, plan_id, due_date, max_instances } = req.body;
 
         console.log('DEBUG: updateCompany request', { id, body: req.body, hasFile: !!req.file });
 
@@ -256,10 +279,13 @@ export const updateCompany = async (req: Request, res: Response) => {
                 system_name = COALESCE($13, system_name),
                 custom_domain = COALESCE($14, custom_domain),
                 plan_id = $15,
-                due_date = $16
+                due_date = $16,
+                max_instances = $17
             WHERE id = $10 
             RETURNING *
         `;
+
+        const newMax = max_instances ? parseInt(max_instances) : 1;
 
         const values = [
             name,
@@ -277,8 +303,33 @@ export const updateCompany = async (req: Request, res: Response) => {
             system_name || null,
             custom_domain || null,
             plan_id || null, // $15
-            due_date || null // $16
+            due_date || null, // $16
+            newMax // $17
         ];
+
+        // --- INSTANCE SYNC ---
+        // Create new instances if limit increased
+        try {
+            const countRes = await pool.query('SELECT COUNT(*) FROM company_instances WHERE company_id = $1', [id]);
+            const currentCount = parseInt(countRes.rows[0].count);
+
+            if (newMax > currentCount) {
+                const diff = newMax - currentCount;
+                for (let k = 1; k <= diff; k++) {
+                    const nextNum = currentCount + k;
+                    const seedName = `Instância ${nextNum}`;
+                    const seedKey = `integrai_${id}_${nextNum}`;
+                    await pool.query(`
+                        INSERT INTO company_instances (company_id, name, instance_key, status)
+                        VALUES ($1, $2, $3, 'disconnected')
+                        ON CONFLICT DO NOTHING
+                    `, [id, seedName, seedKey]);
+                }
+                console.log(`[Update Company ${id}] Added ${diff} new instances.`);
+            }
+        } catch (instErr) {
+            console.error(`[Update Company ${id}] Failed to sync instances:`, instErr);
+        }
 
         const result = await pool.query(query, values);
 
@@ -515,5 +566,52 @@ export const getCompanyUsers = async (req: Request, res: Response) => {
             { id: 101, full_name: "Usuário Mock 1", email: "mock1@test.com", role: "ADMIN", is_active: true },
             { id: 102, full_name: "Usuário Mock 2", email: "mock2@test.com", role: "USUARIO", is_active: true }
         ]);
+    }
+};
+
+export const getCompanyInstances = async (req: Request, res: Response) => {
+    try {
+        if (!pool) return res.status(500).json({ error: 'Database not configured' });
+        const { id } = req.params;
+        const user = (req as any).user;
+
+        // Auth check
+        if (user.role !== 'SUPERADMIN' && Number(user.company_id) !== Number(id)) {
+            return res.status(403).json({ error: 'Unauthorized' });
+        }
+
+        const result = await pool.query('SELECT * FROM company_instances WHERE company_id = $1 ORDER BY id ASC', [id]);
+        res.json(result.rows);
+    } catch (error) {
+        console.error('Error fetching instances:', error);
+        res.status(500).json({ error: 'Failed' });
+    }
+};
+
+export const updateCompanyInstance = async (req: Request, res: Response) => {
+    try {
+        if (!pool) return res.status(500).json({ error: 'Database not configured' });
+        const { id, instanceId } = req.params;
+        const user = (req as any).user;
+
+        // Auth check
+        if (user.role !== 'SUPERADMIN' && Number(user.company_id) !== Number(id)) {
+            return res.status(403).json({ error: 'Unauthorized' });
+        }
+
+        const { name, api_key, instance_key } = req.body;
+
+        const result = await pool.query(
+            `UPDATE company_instances 
+             SET name = COALESCE($1, name), 
+                 api_key = COALESCE($2, api_key),
+                 instance_key = COALESCE($3, instance_key)
+             WHERE id = $4 AND company_id = $5 RETURNING *`,
+            [name || null, api_key || null, instance_key || null, instanceId, id]
+        );
+        res.json(result.rows[0]);
+    } catch (error) {
+        console.error('Error updating instance:', error);
+        res.status(500).json({ error: 'Failed' });
     }
 };

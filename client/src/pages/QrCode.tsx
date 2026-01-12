@@ -14,16 +14,28 @@ const QrCodePage = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [activePlatform, setActivePlatform] = useState<string>("whatsapp");
+
+  // Multi-Company (Superadmin)
   const [availableCompanies, setAvailableCompanies] = useState<any[]>([]);
   const [selectedCompanyId, setSelectedCompanyId] = useState<string | null>(null);
+
+  // Multi-Instance
+  const [instances, setInstances] = useState<any[]>([]);
+  const [selectedInstance, setSelectedInstance] = useState<any>(null);
+
+  const getApiUrl = (endpoint: string) => {
+    const params = new URLSearchParams();
+    if (selectedCompanyId) params.append("companyId", selectedCompanyId);
+    if (selectedInstance) params.append("instanceKey", selectedInstance.instance_key);
+
+    const queryString = params.toString();
+    return `${endpoint}${queryString ? `?${queryString}` : ""}`;
+  };
 
   // Poll status only
   const fetchStatus = async () => {
     try {
-      let url = "/api/evolution/status";
-      if (selectedCompanyId) {
-        url += `?companyId=${selectedCompanyId}`;
-      }
+      const url = getApiUrl("/api/evolution/status");
       const response = await fetch(url, {
         headers: { Authorization: `Bearer ${token}` }
       });
@@ -54,11 +66,7 @@ const QrCodePage = () => {
       setError(null);
       setQrCode(null);
 
-      let url = "/api/evolution/qrcode";
-      if (selectedCompanyId) {
-        url += `?companyId=${selectedCompanyId}`;
-      }
-
+      const url = getApiUrl("/api/evolution/qrcode");
       const response = await fetch(url, {
         headers: { Authorization: `Bearer ${token}` }
       });
@@ -95,11 +103,7 @@ const QrCodePage = () => {
       setIsLoading(true);
       setError(null);
 
-      let url = "/api/evolution/disconnect";
-      if (selectedCompanyId) {
-        url += `?companyId=${selectedCompanyId}`;
-      }
-
+      const url = getApiUrl("/api/evolution/disconnect");
       const response = await fetch(url, {
         method: "DELETE",
         headers: { Authorization: `Bearer ${token}` }
@@ -122,10 +126,7 @@ const QrCodePage = () => {
     try {
       setIsLoading(true);
       setError(null);
-      let url = "/api/evolution/webhook/set";
-      if (selectedCompanyId) {
-        url += `?companyId=${selectedCompanyId}`;
-      }
+      const url = getApiUrl("/api/evolution/webhook/set");
       const response = await fetch(url, {
         method: "POST",
         headers: { Authorization: `Bearer ${token}` }
@@ -158,21 +159,52 @@ const QrCodePage = () => {
     }
   }, [token, user?.role]);
 
+  // Load instances when company context changes
+  useEffect(() => {
+    if (!token) return;
+    const targetId = selectedCompanyId || user?.company_id;
+    if (!targetId) return;
+
+    setIsLoading(true);
+    fetch(`/api/companies/${targetId}/instances`, {
+      headers: { Authorization: `Bearer ${token}` }
+    })
+      .then(r => r.json())
+      .then(data => {
+        if (Array.isArray(data)) {
+          setInstances(data);
+          if (data.length > 0) {
+            // If previously selected instance exists in new list, keep it (by ID), else pick first
+            setSelectedInstance(data[0]);
+          } else {
+            setInstances([]);
+            setSelectedInstance(null);
+          }
+        }
+      })
+      .catch(e => {
+        console.error("Failed to load instances", e);
+        setInstances([]);
+      })
+      .finally(() => setIsLoading(false));
+
+  }, [token, selectedCompanyId, user?.company_id]);
+
   useEffect(() => {
     if (token) {
       fetchStatus();
       const interval = setInterval(fetchStatus, 10000); // 10s is enough for status
       return () => clearInterval(interval);
     }
-  }, [token, selectedCompanyId]);
+  }, [token, selectedCompanyId, selectedInstance]);
 
-  // Redefine data when company changes
+  // Redefine data when instance changes
   useEffect(() => {
     setQrCode(null);
     setConnectionState("unknown");
     setInstanceName("Carregando...");
     setError(null);
-  }, [selectedCompanyId]);
+  }, [selectedInstance]);
 
   const isConnected = connectionState === 'open';
 
@@ -217,9 +249,39 @@ const QrCodePage = () => {
         </TabsList>
 
         <TabsContent value="whatsapp" className="space-y-4">
-          <div className="flex flex-wrap items-center justify-between gap-3">
+
+          {/* Instance Selector */}
+          {instances.length > 0 && (
+            <div className="space-y-2">
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Selecione a Instância:</p>
+              <div className="flex flex-wrap gap-2">
+                {instances.map(inst => (
+                  <Button
+                    key={inst.id}
+                    variant={selectedInstance?.id === inst.id ? 'default' : 'outline'}
+                    size="sm"
+                    onClick={() => setSelectedInstance(inst)}
+                    className={cn(
+                      "h-9 px-4 text-xs shadow-sm transition-all",
+                      selectedInstance?.id === inst.id ? "ring-2 ring-primary ring-offset-2" : "hover:bg-accent hover:text-accent-foreground"
+                    )}
+                  >
+                    {inst.name}
+                    <span className={cn(
+                      "ml-2 w-2 h-2 rounded-full",
+                      inst.status === 'connected' ? 'bg-green-500' : 'bg-red-500'
+                      // Note: 'status' in company_instances might not be real-time like 'connectionState'. 
+                      // We rely on connectionState for standard display.
+                    )} />
+                  </Button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <div className="flex flex-wrap items-center justify-between gap-3 pt-2">
             <div>
-              <h2 className="text-base font-semibold tracking-tight">Conexão WhatsApp: {instanceName}</h2>
+              <h2 className="text-base font-semibold tracking-tight">Conexão WhatsApp: {selectedInstance ? selectedInstance.name : instanceName}</h2>
               <p className="text-xs text-muted-foreground">
                 Status atual: <span className={cn("font-bold px-2 py-0.5 rounded-full text-[10px]", isConnected ? "bg-black text-white" : "bg-zinc-100 text-zinc-900")}>
                   {isConnected ? "CONECTADO" : connectionState.toUpperCase()}
@@ -257,7 +319,7 @@ const QrCodePage = () => {
                       </div>
                       <div className="space-y-1">
                         <p className="font-bold text-lg text-black">WhatsApp Conectado!</p>
-                        <p className="text-[11px] text-muted-foreground">Sua instância está pronta para enviar e receber mensagens.</p>
+                        <p className="text-[11px] text-muted-foreground">Sua instância {instanceName} está pronta para enviar e receber mensagens.</p>
                       </div>
                       <div className="flex flex-wrap gap-2 justify-center">
                         <Button
@@ -334,15 +396,15 @@ const QrCodePage = () => {
                   <div className="space-y-3">
                     <div className="flex items-start gap-2">
                       <div className="w-5 h-5 rounded-full bg-primary/10 text-primary flex items-center justify-center text-[10px] font-bold shrink-0 mt-0.5">1</div>
-                      <p className="text-muted-foreground leading-normal">Mantenha seu celular carregado e com conexão ativa.</p>
+                      <p className="text-muted-foreground leading-normal">Selecione a instância desejada acima (se houver mais de uma).</p>
                     </div>
                     <div className="flex items-start gap-2">
                       <div className="w-5 h-5 rounded-full bg-primary/10 text-primary flex items-center justify-center text-[10px] font-bold shrink-0 mt-0.5">2</div>
-                      <p className="text-muted-foreground leading-normal">O tempo de expiração do QR Code é de 60 segundos.</p>
+                      <p className="text-muted-foreground leading-normal">Mantenha seu celular carregado e com conexão ativa.</p>
                     </div>
                     <div className="flex items-start gap-2">
                       <div className="w-5 h-5 rounded-full bg-primary/10 text-primary flex items-center justify-center text-[10px] font-bold shrink-0 mt-0.5">3</div>
-                      <p className="text-muted-foreground leading-normal">Você pode conectar múltiplas instâncias (opcional).</p>
+                      <p className="text-muted-foreground leading-normal">O tempo de expiração do QR Code é de 60 segundos.</p>
                     </div>
                   </div>
 

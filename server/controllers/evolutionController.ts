@@ -15,7 +15,7 @@ import { logEvent } from "../logger";
 // Helper to get Evolution Config based on User Context
 const DEFAULT_URL = "https://freelasdekaren-evolution-api.nhvvzr.easypanel.host";
 
-export const getEvolutionConfig = async (user: any, source: string = 'unknown', targetCompanyId?: number | string) => {
+export const getEvolutionConfig = async (user: any, source: string = 'unknown', targetCompanyId?: number | string, targetInstanceKey?: string) => {
   // Base configuration from env (fallback)
   let config = {
     url: (process.env.EVOLUTION_API_URL || DEFAULT_URL).replace(/['"]/g, "").replace(/\/$/, ""),
@@ -38,12 +38,33 @@ export const getEvolutionConfig = async (user: any, source: string = 'unknown', 
     }
 
     if (resolvedCompanyId) {
+      // 1. If strict instance requested, try to find it
+      if (targetInstanceKey) {
+        const instRes = await pool.query('SELECT instance_key, api_key FROM company_instances WHERE instance_key = $1 AND company_id = $2', [targetInstanceKey, resolvedCompanyId]);
+        if (instRes.rows.length > 0) {
+          const row = instRes.rows[0];
+          config.instance = row.instance_key;
+          config.apikey = row.api_key || config.apikey;
+          config.company_id = resolvedCompanyId;
+          console.log(`[Evolution Config] RESOLVED SPECIFIC INSTANCE: ${config.instance} for Company ${resolvedCompanyId}`);
+          return config;
+        }
+      }
+
+      // 2. Fallback to main company config
       const compRes = await pool.query('SELECT name, evolution_instance, evolution_apikey FROM companies WHERE id = $1', [resolvedCompanyId]);
       if (compRes.rows.length > 0) {
         const { name, evolution_instance, evolution_apikey } = compRes.rows[0];
-        if (evolution_instance && evolution_apikey) {
+
+        // If targetInstanceKey was requested but failed the instance check above, check if it matches the MAIN instance
+        if (targetInstanceKey && evolution_instance !== targetInstanceKey) {
+          console.warn(`[Evolution Config] Requested instance ${targetInstanceKey} not found for company ${resolvedCompanyId}. Falling back to main: ${evolution_instance}`);
+          // Proceed to use main, or should we error? Proceeding as fallback.
+        }
+
+        if (evolution_instance) {
           config.instance = evolution_instance;
-          config.apikey = evolution_apikey;
+          config.apikey = evolution_apikey || config.apikey;
           config.company_id = resolvedCompanyId;
           console.log(`[Evolution Config] RESOLVED PER-COMPANY: ${name} (${resolvedCompanyId}) -> Instance: ${config.instance}`);
         } else {
@@ -90,7 +111,8 @@ const WEBHOOK_EVENTS = [
 
 export const getEvolutionQrCode = async (req: Request, res: Response) => {
   const targetCompanyId = req.query.companyId as string;
-  const config = await getEvolutionConfig((req as any).user, 'qrcode_connect', targetCompanyId);
+  const targetInstanceKey = req.query.instanceKey as string;
+  const config = await getEvolutionConfig((req as any).user, 'qrcode_connect', targetCompanyId, targetInstanceKey);
 
   const EVOLUTION_API_URL = config.url;
   const EVOLUTION_API_KEY = config.apikey;
@@ -205,7 +227,8 @@ export const getEvolutionQrCode = async (req: Request, res: Response) => {
 
 export const deleteEvolutionInstance = async (req: Request, res: Response) => {
   const targetCompanyId = req.query.companyId as string;
-  const config = await getEvolutionConfig((req as any).user, 'disconnect', targetCompanyId);
+  const targetInstanceKey = req.query.instanceKey as string;
+  const config = await getEvolutionConfig((req as any).user, 'disconnect', targetCompanyId, targetInstanceKey);
   const EVOLUTION_API_URL = config.url;
   const EVOLUTION_API_KEY = config.apikey;
   const EVOLUTION_INSTANCE = config.instance;
@@ -259,7 +282,8 @@ import { Readable } from 'stream';
 
 export const getEvolutionConnectionState = async (req: Request, res: Response) => {
   const targetCompanyId = req.query.companyId as string;
-  const config = await getEvolutionConfig((req as any).user, 'status_poll', targetCompanyId);
+  const targetInstanceKey = req.query.instanceKey as string;
+  const config = await getEvolutionConfig((req as any).user, 'status_poll', targetCompanyId, targetInstanceKey);
   const EVOLUTION_API_URL = config.url;
   const EVOLUTION_API_KEY = config.apikey;
   const EVOLUTION_INSTANCE = config.instance;
@@ -302,8 +326,8 @@ export const getEvolutionConnectionState = async (req: Request, res: Response) =
 import { checkLimit, incrementUsage } from '../services/limitService';
 
 export const sendEvolutionMessage = async (req: Request, res: Response) => {
-  const { companyId } = req.body;
-  const config = await getEvolutionConfig((req as any).user, 'sendMessage', companyId);
+  const { companyId, instanceKey } = req.body;
+  const config = await getEvolutionConfig((req as any).user, 'sendMessage', companyId, instanceKey);
   const EVOLUTION_API_URL = config.url;
   const EVOLUTION_API_KEY = config.apikey;
   const EVOLUTION_INSTANCE = config.instance;
@@ -467,8 +491,8 @@ export const sendEvolutionMessage = async (req: Request, res: Response) => {
 };
 
 export const sendEvolutionMedia = async (req: Request, res: Response) => {
-  const { companyId } = req.body;
-  const config = await getEvolutionConfig((req as any).user, 'sendMedia', companyId);
+  const { companyId, instanceKey } = req.body;
+  const config = await getEvolutionConfig((req as any).user, 'sendMedia', companyId, instanceKey);
   const EVOLUTION_API_URL = config.url;
   const EVOLUTION_API_KEY = config.apikey;
   const EVOLUTION_INSTANCE = config.instance;
@@ -1039,6 +1063,18 @@ export const handleEvolutionWebhook = async (req: Request, res: Response) => {
 
     const { type, data, instance } = body;
 
+    // Resolve Company ID from Instance
+    let resolvedCompanyId: number | null = null;
+    if (instance && pool) {
+      const ciRes = await pool.query('SELECT company_id FROM company_instances WHERE instance_key = $1', [instance]);
+      if (ciRes.rows.length > 0) {
+        resolvedCompanyId = ciRes.rows[0].company_id;
+      } else {
+        const cRes = await pool.query('SELECT id FROM companies WHERE evolution_instance = $1', [instance]);
+        if (cRes.rows.length > 0) resolvedCompanyId = cRes.rows[0].id;
+      }
+    }
+
     // V2 structure compatibility: sometimes data is inside 'data' or top level depending on event
     // Typical V2 TEXT_MESSAGE: type: "MESSAGES_UPSERT", data: { messages: [...] } OR directly messages: [...]
 
@@ -1118,10 +1154,10 @@ export const handleEvolutionWebhook = async (req: Request, res: Response) => {
             // Create new
             const newConv = await pool.query(
               `INSERT INTO whatsapp_conversations 
-                                (external_id, phone, contact_name, instance, last_message, last_message_at, unread_count)
-                             VALUES ($1, $2, $3, $4, $5, NOW(), $6)
+                                (external_id, phone, contact_name, instance, last_message, last_message_at, unread_count, company_id)
+                             VALUES ($1, $2, $3, $4, $5, NOW(), $6, $7)
                              RETURNING id`,
-              [remoteJid, phone, finalContactName, instance, content, fromMe ? 0 : 1]
+              [remoteJid, phone, finalContactName, instance, content, fromMe ? 0 : 1, resolvedCompanyId]
             );
             conversationId = newConv.rows[0].id;
 

@@ -157,11 +157,28 @@ const startServer = async () => {
     // INITIALIZE SYSTEM MODE (Safe Check)
     if (pool) {
       try {
+        console.log("Running on-the-fly migration for Multi-Instance...");
+        await pool.query(`ALTER TABLE companies ADD COLUMN IF NOT EXISTS max_instances INTEGER DEFAULT 1;`);
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS company_instances (
+                id SERIAL PRIMARY KEY,
+                company_id INTEGER REFERENCES companies(id) ON DELETE CASCADE,
+                name TEXT NOT NULL, 
+                instance_key TEXT NOT NULL, 
+                api_key TEXT,
+                status TEXT DEFAULT 'disconnected',
+                created_at TIMESTAMPTZ DEFAULT NOW(),
+                UNIQUE(company_id, name),
+                UNIQUE(instance_key)
+            );
+        `);
+        console.log("Multi-Instance migration completed.");
+
         // const { rows } = await pool.query("SELECT value FROM system_settings WHERE key = 'operational_mode'");
         // if (rows.length > 0) { ... }
         console.log("System mode check skipped for offline mode.");
       } catch (e) {
-        console.error("Failed to load system mode on startup:", e);
+        console.error("Failed to load system mode or run migration on startup:", e);
       }
     }
   } catch (err) {

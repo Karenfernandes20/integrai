@@ -1708,6 +1708,7 @@ const AtendimentoPage = () => {
           phone: selectedConversation.phone,
           text: messageContent,
           companyId: (selectedConversation as any).company_id || selectedCompanyFilter,
+          instanceKey: (selectedConversation as any).instance,
           quoted: replyingTo ? {
             key: {
               id: replyingTo.external_id || replyingTo.id, // Prefer external ID if available
@@ -1942,7 +1943,8 @@ const AtendimentoPage = () => {
             mediaType,
             fileName: file.name,
             caption: file.name,
-            companyId: (selectedConversation as any).company_id || selectedCompanyFilter
+            companyId: (selectedConversation as any).company_id || selectedCompanyFilter,
+            instanceKey: (selectedConversation as any).instance
           })
         });
 
