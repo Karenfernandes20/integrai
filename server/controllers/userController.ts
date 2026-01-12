@@ -101,9 +101,13 @@ export const createUser = async (req: Request, res: Response) => {
     });
 
     res.status(201).json(newUser);
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error creating user:', error);
-    res.status(500).json({ error: 'Failed to create user' });
+    // Return specific constraint errors (like unique email)
+    if (error.code === '23505') {
+      return res.status(409).json({ error: 'Este email já está cadastrado no sistema.' });
+    }
+    res.status(500).json({ error: 'Failed to create user', details: error.message });
   }
 };
 

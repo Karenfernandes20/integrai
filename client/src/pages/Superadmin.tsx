@@ -468,7 +468,7 @@ const SuperadminPage = () => {
 
       if (!res.ok) {
         const data = await res.json();
-        throw new Error(data.error || "Erro ao criar usuário");
+        throw new Error(data.error + (data.details ? `: ${data.details}` : "") || "Erro ao criar usuário");
       }
 
       const createdUser = await res.json();

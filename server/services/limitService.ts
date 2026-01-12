@@ -37,6 +37,8 @@ export const checkLimit = async (companyId: number, resource: ResourceType): Pro
         if (resource === 'users') {
             const currentUsers = await pool.query('SELECT COUNT(*) FROM app_users WHERE company_id = $1 AND is_active = true', [companyId]);
             const count = parseInt(currentUsers.rows[0].count);
+            // Treat null as unlimited
+            if (plan.max_users === null) return true;
             return count < plan.max_users;
         }
 
@@ -44,6 +46,7 @@ export const checkLimit = async (companyId: number, resource: ResourceType): Pro
             const currentAgents = await pool.query('SELECT COUNT(*) FROM ai_agents WHERE company_id = $1 AND status = \'active\'', [companyId]);
             const count = parseInt(currentAgents.rows[0].count);
             // Default max_ai_agents if not present (migration timing issue safeguard)
+            if (plan.max_ai_agents === null) return true;
             const maxAgents = plan.max_ai_agents !== undefined ? plan.max_ai_agents : 1;
             return count < maxAgents;
         }
@@ -52,6 +55,7 @@ export const checkLimit = async (companyId: number, resource: ResourceType): Pro
             // Counting Active Workflows
             const currentWorkflows = await pool.query('SELECT COUNT(*) FROM system_workflows WHERE company_id = $1 AND status = \'active\'', [companyId]);
             const count = parseInt(currentWorkflows.rows[0].count);
+            if (plan.max_automations === null) return true;
             const maxAutomations = plan.max_automations !== undefined ? plan.max_automations : 5;
             return count < maxAutomations;
         }
