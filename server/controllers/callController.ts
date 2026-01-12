@@ -1,6 +1,7 @@
 
 import { Request, Response } from 'express';
 import { pool } from '../db';
+import { makeTwilioCall } from '../services/voiceService';
 
 export const handleCallWebhook = async (body: any, instance: string, io: any) => {
     try {
@@ -82,5 +83,67 @@ export const getCalls = async (req: Request, res: Response) => {
     } catch (error) {
         console.error('Error fetching calls:', error);
         res.status(500).json({ error: 'Failed to fetch calls' });
+    }
+};
+
+export const startOutboundCall = async (req: Request, res: Response) => {
+    try {
+        if (!pool) return res.status(500).json({ error: 'Database not configured' });
+
+        const { phone, contactName, conversationId } = req.body;
+        const user = (req as any).user;
+        const companyId = user.company_id;
+
+        if (!phone) {
+            return res.status(400).json({ error: 'Telefone é obrigatório' });
+        }
+
+        console.log(`[Outbound Call] Starting call to ${phone} from User ${user.id}`);
+
+        // Initiate Call via Provider
+        let callData;
+        try {
+            // Clean phone for provider if needed, assuming E.164
+            const cleanPhone = phone.replace(/\D/g, '');
+            // NOTE: Ideally should ensure it has country code. Assuming Brazil +55 for now if length matches?
+            const formattedPhone = cleanPhone.length <= 11 ? `+55${cleanPhone}` : `+${cleanPhone}`;
+
+            callData = await makeTwilioCall(formattedPhone);
+        } catch (err: any) {
+            console.error("Twilio Call Failed:", err.message);
+            // Fallback: If provider fails (e.g. not configured), we return specific error
+            if (err.message.includes("Twilio credentials not configured")) {
+                return res.status(400).json({
+                    error: "Provedor de Voz não configurado. Adicione as chaves API (Twilio) nas configurações.",
+                    code: "PROVIDER_NOT_CONFIGURED"
+                });
+            }
+            return res.status(500).json({ error: "Falha ao iniciar chamada: " + err.message });
+        }
+
+        // Record in DB
+        const externalId = callData.sid;
+        const status = callData.status || 'queued';
+
+        await pool.query(`
+            INSERT INTO whatsapp_calls (
+                company_id, conversation_id, remote_jid, contact_name, direction, status, start_time, external_id, user_id, details
+            ) VALUES ($1, $2, $3, $4, 'outbound', $5, NOW(), $6, $7, $8)
+        `, [
+            companyId,
+            conversationId || null,
+            phone,
+            contactName || phone,
+            status,
+            externalId,
+            user.id,
+            JSON.stringify(callData)
+        ]);
+
+        res.json({ success: true, callId: externalId, status });
+
+    } catch (error: any) {
+        console.error('Error starting outbound call:', error);
+        res.status(500).json({ error: 'Internal Server Error' });
     }
 };

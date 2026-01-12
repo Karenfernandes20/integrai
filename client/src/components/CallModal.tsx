@@ -4,6 +4,8 @@ import { Dialog, DialogContent } from "./ui/dialog";
 import { Avatar, AvatarFallback, AvatarImage } from "./ui/avatar";
 import { Phone, PhoneOff, Mic, MicOff, Volume2, Grid3x3 } from "lucide-react";
 import { Button } from "./ui/button";
+import { useAuth } from "../contexts/AuthContext";
+import { toast } from "sonner";
 
 interface CallModalProps {
     isOpen: boolean;
@@ -19,31 +21,76 @@ export const CallModal = ({ isOpen, onClose, contactName, contactPhone, profileP
     const [isMuted, setIsMuted] = useState(false);
     const timerRef = useRef<NodeJS.Timeout>();
 
+    const { token } = useAuth();
+
     useEffect(() => {
-        if (isOpen) {
+        if (isOpen && token) {
             setStatus('ringing');
             setDuration(0);
 
-            // Trigger Real Call on Device
-            window.location.href = `tel:${contactPhone.replace(/\D/g, '')}`;
+            const initiateCall = async () => {
+                try {
+                    const res = await fetch('/api/crm/calls/start', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Authorization': `Bearer ${token}`
+                        },
+                        body: JSON.stringify({
+                            phone: contactPhone,
+                            contactName: contactName
+                        })
+                    });
 
-            // Simulate "Connected" state after a delay for UI feedback (since we can't detect real pickup from tel: link)
-            const timeout = setTimeout(() => {
-                setStatus('connected');
-                // Start Timer
-                timerRef.current = setInterval(() => {
-                    setDuration(d => d + 1);
-                }, 1000);
-            }, 5000);
+                    const data = await res.json();
+
+                    if (!res.ok) {
+                        // Fallback handling
+                        if (data.code === 'PROVIDER_NOT_CONFIGURED') {
+                            toast.warning("Provedor de Voz não configurado. Usando discador do dispositivo.");
+                            window.location.href = `tel:${contactPhone.replace(/\D/g, '')}`;
+
+                            // Start local timer simulation since we handed off
+                            startLocalTimer();
+                        } else {
+                            toast.error(data.error || "Erro ao iniciar chamada.");
+                            handleEndCall();
+                        }
+                        return;
+                    }
+
+                    // Success - Connected to Provider
+                    toast.success("Chamada iniciada via Sistema.");
+                    // In a real socket setups, we'd wait for 'call:established' event.
+                    // For now, assume connected shortly.
+                    startLocalTimer(2000);
+
+                } catch (e) {
+                    console.error("Call failed", e);
+                    toast.error("Falha ao comunicar com o servidor.");
+                    handleEndCall();
+                }
+            };
+
+            initiateCall();
 
             return () => {
-                clearTimeout(timeout);
                 clearInterval(timerRef.current);
             };
         } else {
             clearInterval(timerRef.current);
         }
-    }, [isOpen, contactPhone]);
+    }, [isOpen, contactPhone, token]);
+
+    const startLocalTimer = (delay = 5000) => {
+        const timeout = setTimeout(() => {
+            setStatus('connected');
+            timerRef.current = setInterval(() => {
+                setDuration(d => d + 1);
+            }, 1000);
+        }, delay);
+        return () => clearTimeout(timeout);
+    };
 
     const formatTime = (sec: number) => {
         const min = Math.floor(sec / 60);
