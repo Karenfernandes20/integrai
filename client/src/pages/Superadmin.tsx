@@ -82,6 +82,15 @@ interface AppUser {
   is_active: boolean;
 }
 
+interface CompanyInstance {
+  id: number;
+  company_id: number;
+  name: string;
+  instance_key: string;
+  api_key: string;
+  status: string;
+}
+
 const SuperadminPage = () => {
   const { toast } = useToast();
   const navigate = useNavigate();
@@ -110,6 +119,14 @@ const SuperadminPage = () => {
   const [removeLogo, setRemoveLogo] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // Instance Management State
+  const [instancesConfigOpen, setInstancesConfigOpen] = useState(false);
+  const [currentInstances, setCurrentInstances] = useState<CompanyInstance[]>([]);
+  const [loadingInstances, setLoadingInstances] = useState(false);
+
+  const [availablePlans, setAvailablePlans] = useState<any[]>([]);
+
+  // Fetch Companies
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
   // User Management State
@@ -250,6 +267,52 @@ const SuperadminPage = () => {
     setSelectedFile(null);
     setRemoveLogo(false);
     if (fileInputRef.current) fileInputRef.current.value = "";
+
+    // Reset instances state
+    setCurrentInstances([]);
+  };
+
+  const loadInstancesForCompany = async (companyId: string | number) => {
+    setLoadingInstances(true);
+    try {
+      const res = await fetch(`/api/companies/${companyId}/instances`, {
+        headers: { "Authorization": `Bearer ${token}` }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setCurrentInstances(data);
+        setInstancesConfigOpen(true);
+      } else {
+        toast({ title: "Erro", description: "Falha ao carregar instâncias", variant: "destructive" });
+      }
+    } catch (error) {
+      toast({ title: "Erro", description: "Erro de conexão", variant: "destructive" });
+    } finally {
+      setLoadingInstances(false);
+    }
+  };
+
+  const handleUpdateInstanceConfig = async (instanceId: number, field: string, value: string) => {
+    // Optimistic update
+    setCurrentInstances(prev => prev.map(inst =>
+      inst.id === instanceId ? { ...inst, [field]: value } : inst
+    ));
+
+    try {
+      const res = await fetch(`/api/companies/${editingCompany?.id}/instances/${instanceId}`, {
+        method: 'PUT',
+        headers: {
+          "Authorization": `Bearer ${token}`,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({ [field]: value })
+      });
+
+      if (!res.ok) throw new Error("Failed");
+
+    } catch (error) {
+      toast({ title: "Erro", description: "Falha ao salvar configuração da instância", variant: "destructive" });
+    }
   };
 
   const handleOpenDashboard = (company: Company) => {
@@ -274,6 +337,8 @@ const SuperadminPage = () => {
     setSelectedFile(null);
     setRemoveLogo(false);
     if (fileInputRef.current) fileInputRef.current.value = "";
+    setCurrentInstances([]);
+    setInstancesConfigOpen(false);
   };
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
@@ -983,6 +1048,19 @@ const SuperadminPage = () => {
                   />
                 </div>
 
+                {editingCompany && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => loadInstancesForCompany(editingCompany.id)}
+                    className="w-full"
+                  >
+                    <KeyRound className="w-4 h-4 mr-2" />
+                    Configurar Instâncias ({formValues.max_instances})
+                  </Button>
+                )}
+
                 <Separator className="my-2" />
                 <p className="text-sm font-semibold text-primary">Plano e Pagamento</p>
 
@@ -1109,6 +1187,67 @@ const SuperadminPage = () => {
           </Card>
         </section>
       </main>
+
+      <Dialog open={instancesConfigOpen} onOpenChange={setInstancesConfigOpen}>
+        <DialogContent className="max-w-3xl max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Gerenciar Instâncias</DialogTitle>
+            <DialogDescription>
+              Configure os dados de conexão de cada instância para {editingCompany?.name}.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-4">
+            {loadingInstances ? (
+              <div className="text-center py-8 text-muted-foreground">Carregando instâncias...</div>
+            ) : (
+              <div className="grid gap-4">
+                {currentInstances.map((inst) => (
+                  <Card key={inst.id} className="p-4 border shadow-sm">
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                      <div className="space-y-2">
+                        <Label className="text-xs">Nome da Instância</Label>
+                        <Input
+                          value={inst.name || ""}
+                          onChange={(e) => handleUpdateInstanceConfig(inst.id, 'name', e.target.value)}
+                          placeholder="Ex: Comercial"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label className="text-xs">Instance Key (Evolution)</Label>
+                        <Input
+                          value={inst.instance_key || ""}
+                          onChange={(e) => handleUpdateInstanceConfig(inst.id, 'instance_key', e.target.value)}
+                          placeholder="Ex: integrai_1_2"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label className="text-xs">API Key (Opcional)</Label>
+                        <Input
+                          type="password"
+                          value={inst.api_key || ""}
+                          onChange={(e) => handleUpdateInstanceConfig(inst.id, 'api_key', e.target.value)}
+                          placeholder="Se vazio, usa a global"
+                        />
+                      </div>
+                    </div>
+                    <div className="mt-2 text-xs text-muted-foreground flex justify-between">
+                      <span>Status: {inst.status || 'disconnected'}</span>
+                      <span>ID: {inst.id}</span>
+                    </div>
+                  </Card>
+                ))}
+                {currentInstances.length === 0 && (
+                  <p className="text-center text-muted-foreground">Nenhuma instância encontrada. Salve a empresa com "Número de Instâncias" maior que 0.</p>
+                )}
+              </div>
+            )}
+          </div>
+          <DialogFooter>
+            <Button onClick={() => setInstancesConfigOpen(false)}>Fechar</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div >
   );
 };
