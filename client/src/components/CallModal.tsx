@@ -24,14 +24,17 @@ export const CallModal = ({ isOpen, onClose, contactName, contactPhone, profileP
             setStatus('ringing');
             setDuration(0);
 
-            // Simulate answer after 3 seconds
+            // Trigger Real Call on Device
+            window.location.href = `tel:${contactPhone.replace(/\D/g, '')}`;
+
+            // Simulate "Connected" state after a delay for UI feedback (since we can't detect real pickup from tel: link)
             const timeout = setTimeout(() => {
                 setStatus('connected');
                 // Start Timer
                 timerRef.current = setInterval(() => {
                     setDuration(d => d + 1);
                 }, 1000);
-            }, 3000);
+            }, 5000);
 
             return () => {
                 clearTimeout(timeout);
@@ -40,7 +43,7 @@ export const CallModal = ({ isOpen, onClose, contactName, contactPhone, profileP
         } else {
             clearInterval(timerRef.current);
         }
-    }, [isOpen]);
+    }, [isOpen, contactPhone]);
 
     const formatTime = (sec: number) => {
         const min = Math.floor(sec / 60);
@@ -55,7 +58,7 @@ export const CallModal = ({ isOpen, onClose, contactName, contactPhone, profileP
     };
 
     const StatusText = () => {
-        if (status === 'ringing') return 'Chamando...';
+        if (status === 'ringing') return 'Iniciando chamada...';
         if (status === 'connected') return formatTime(duration);
         return 'Chamada Encerrada';
     };
