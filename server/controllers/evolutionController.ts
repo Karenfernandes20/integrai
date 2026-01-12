@@ -899,13 +899,14 @@ export const syncEvolutionContacts = async (req: Request, res: Response) => {
     return res.json(finalContacts?.rows || []);
 
   } catch (error: any) {
-    console.error("Error syncing contacts:", error);
-    return res.status(500).json({
-      error: "Sync failed during processing",
-      details: error.message,
-      code: error.code,
-      constraint: error.constraint
-    });
+    console.error("CRITICAL SYNC ERROR:", error);
+    if (!res.headersSent) {
+      return res.status(500).json({
+        error: "Sync failed during processing",
+        details: error?.message || String(error),
+        stack: error?.stack
+      });
+    }
   }
 };
 

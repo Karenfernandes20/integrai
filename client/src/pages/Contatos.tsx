@@ -399,28 +399,24 @@ const ContatosPage = () => {
                 const status = res.status;
                 let errorTitle = "Erro ao sincronizar";
                 let errorDetails = "";
+                let rawText = "";
 
                 try {
-                    // Try to parse JSON error from backend
-                    const err = await res.json();
+                    rawText = await res.text();
+                    const err = JSON.parse(rawText);
                     errorTitle = err.error || errorTitle;
                     errorDetails = err.details || "";
 
-                    // If we got a JSON response, it's likely a logic error (500/400) from our backend, 
-                    // NOT a gateway crash. Show it.
                     alert(`${errorTitle}\n${errorDetails ? `Detalhes: ${errorDetails}` : ""}`);
-
                 } catch (e) {
-                    // Could not parse JSON. This likely means it's an HTML error page or raw text
-                    const rawText = await res.text().catch(() => "No body");
                     console.error("Non-JSON error response:", rawText);
 
                     if (status === 502 || status === 504) {
                         alert("O backend está indisponível ou demorando muito para responder (Gateway Timeout/Error). Tente novamente em alguns instantes.");
                     } else if (status === 500) {
-                        alert(`Erro interno do servidor (500). Resposta bruta: ${rawText.substring(0, 100)}...`);
+                        alert(`Erro interno do servidor (500). Resposta: ${rawText.substring(0, 200)}...`);
                     } else {
-                        alert(`Erro desconhecido (${status}). Resposta: ${rawText.substring(0, 100)}`);
+                        alert(`Erro desconhecido (${status}). Resposta: ${rawText.substring(0, 200)}`);
                     }
                 }
             }
