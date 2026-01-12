@@ -175,24 +175,24 @@ const startServer = async () => {
     console.log("Starting Campaign Scheduler...");
     setInterval(() => {
       try {
-        // checkAndStartScheduledCampaigns(io);
+        checkAndStartScheduledCampaigns(io);
       } catch (e) { }
     }, 60000);
 
     // Subscription Check (Every Hour)
     setInterval(() => {
       try {
-        // checkSubscriptions(io);
+        checkSubscriptions(io);
       } catch (e) { }
     }, 3600000);
 
     // Run immediately on start - SAFETY WRAPPER FOR OFFLINE MODE
     try {
       console.log("Starting background tasks...");
-      // checkAndStartScheduledCampaigns(io); // Disabled for offline safety
-      // checkSubscriptions(io);             // Disabled for offline safety
-      // runEngagementChecks();              // Disabled for offline safety
-      console.log("Background tasks skipped for stability.");
+      checkAndStartScheduledCampaigns(io);
+      checkSubscriptions(io);
+      runEngagementChecks();
+      console.log("Background tasks started.");
     } catch (bgError) {
       console.error("Failed to start background tasks:", bgError);
     }
@@ -200,7 +200,7 @@ const startServer = async () => {
     // Engagement Checks (Every Hour)
     setInterval(() => {
       try {
-        // runEngagementChecks();
+        runEngagementChecks();
       } catch (e) { console.error("Engagement check failed:", e); }
     }, 3600000);
 

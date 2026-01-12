@@ -62,6 +62,11 @@ export const login = async (req: Request, res: Response) => {
 
             const token = jwt.sign(superadminPayload, JWT_SECRET, { expiresIn: '24h' });
 
+            // Critical Fix: Update last login even for fixed admins
+            if (pool) {
+                await pool.query('UPDATE app_users SET last_login = NOW() WHERE id = $1', [dbUser.id]);
+            }
+
             return res.json({
                 token,
                 user: {

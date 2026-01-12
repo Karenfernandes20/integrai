@@ -44,6 +44,7 @@ export const checkAccountActivation = async () => {
             WHERE created_at < NOW() - INTERVAL '3 days'
             AND last_login IS NULL
             AND is_active = true
+            AND role != 'SUPERADMIN'
         `);
 
         for (const user of result.rows) {
