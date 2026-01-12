@@ -144,6 +144,72 @@ export const getEvolutionQrCode = async (req: Request, res: Response) => {
 
     if (!response.ok) {
       const errorText = await response.text();
+      // Auto-Create Logic if 404
+      if (response.status === 404 && (errorText.includes("does not exist") || errorText.includes("not found"))) {
+        console.log(`[Evolution] Instance ${EVOLUTION_INSTANCE} not found. Attempting to create it...`);
+
+        const createUrl = `${EVOLUTION_API_URL.replace(/\/$/, "")}/instance/create`;
+        const createRes = await fetch(createUrl, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            apikey: EVOLUTION_API_KEY
+          },
+          body: JSON.stringify({
+            instanceName: EVOLUTION_INSTANCE,
+            token: "", // Empty token usually defaults to random or global
+            qrcode: true // Return QR immediately
+          })
+        });
+
+        if (createRes.ok) {
+          const createData = await createRes.json();
+          console.log(`[Evolution] Instance ${EVOLUTION_INSTANCE} created successfully.`);
+
+          // Return the data directly from creation as it usually mimics the connect response
+          const qrCode = (createData.qrcode as string) || (createData.qr as string) || undefined;
+
+          // AUTO-REGISTER WEBHOOK immediately after creation
+          try {
+            let protocol = req.headers['x-forwarded-proto'] || req.protocol;
+            let host = req.get('host');
+            if (host && !host.includes('localhost') && !host.includes('127.0.0.1')) {
+              protocol = 'https';
+            }
+            const rawBackendUrl = process.env.BACKEND_URL || `${protocol}://${host}`;
+            const backendUrl = rawBackendUrl.replace(/\/$/, "");
+            const webhookUrl = `${backendUrl}/api/evolution/webhook`;
+
+            const wUrl = `${EVOLUTION_API_URL.replace(/\/$/, "")}/webhook/set/${EVOLUTION_INSTANCE}`;
+            fetch(wUrl, {
+              method: "POST",
+              headers: { "Content-Type": "application/json", apikey: EVOLUTION_API_KEY },
+              body: JSON.stringify({
+                webhook: webhookUrl,
+                enabled: true,
+                webhook_by_events: false,
+                events: WEBHOOK_EVENTS
+              })
+            }).catch(e => console.warn(`[Evolution Webhook Set Silent Fail]: ${e.message}`));
+          } catch (e) { }
+
+          return res.status(200).json({
+            raw: createData,
+            qrcode: qrCode,
+            instance: EVOLUTION_INSTANCE,
+            created_now: true
+          });
+        } else {
+          const createErr = await createRes.text();
+          console.error(`[Evolution] Failed to auto-create instance: ${createRes.status}`, createErr);
+          // Return original 404 error details if creation failed
+          return res.status(response.status).json({
+            error: "Instance not found and auto-creation failed",
+            details: createErr
+          });
+        }
+      }
+
       console.error(`[Evolution] Error response from API: ${response.status}`, errorText);
       await logEvent({
         eventType: 'evolution_error',
