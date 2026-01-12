@@ -917,66 +917,48 @@ export const syncEvolutionContacts = async (req: Request, res: Response) => {
 
         // Endpoints to try
         const endpoints = [
-          `${EVOLUTION_API_URL}/chat/findContacts/${EVOLUTION_INSTANCE}`,
-          `${EVOLUTION_API_URL}/chat/fetchContacts/${EVOLUTION_INSTANCE}`,
-          `${EVOLUTION_API_URL}/contact/find/${EVOLUTION_INSTANCE}`,
-          `${EVOLUTION_API_URL}/contact/fetchContacts/${EVOLUTION_INSTANCE}`
+          { url: `${EVOLUTION_API_URL}/chat/fetchContacts/${EVOLUTION_INSTANCE}`, method: 'GET' },
+          { url: `${EVOLUTION_API_URL}/chat/fetchContacts/${EVOLUTION_INSTANCE}`, method: 'POST', body: { where: {} } },
+          { url: `${EVOLUTION_API_URL}/contact/fetchContacts/${EVOLUTION_INSTANCE}`, method: 'GET' },
+          { url: `${EVOLUTION_API_URL}/contact/find/${EVOLUTION_INSTANCE}`, method: 'POST', body: { where: {} } },
+          { url: `${EVOLUTION_API_URL}/chat/findContacts/${EVOLUTION_INSTANCE}`, method: 'POST', body: { where: {} } }
         ];
 
         let contactsList: any[] = [];
         let success = false;
         let lastError = "";
 
-        for (const url of endpoints) {
+        for (const ep of endpoints) {
           try {
-            console.log(`[Sync] Trying endpoint: ${url}`);
-            const response = await fetch(url, {
-              method: "POST",
+            console.log(`[Sync] Trying ${ep.method} to ${ep.url}`);
+            const fetchOptions: any = {
+              method: ep.method,
               headers: {
                 "Content-Type": "application/json",
-                "apikey": EVOLUTION_API_KEY,
-                "Authorization": `Bearer ${EVOLUTION_API_KEY}`
-              },
-              body: JSON.stringify({ where: {} }) // Added where: {} for better compatibility with find/search endpoints
-            });
-
-            // Handle non-JSON responses (HTML 500/502/404 from proxy)
-            const contentType = response.headers.get("content-type");
-            if (!contentType || !contentType.includes("application/json")) {
-              const text = await response.text();
-              throw new Error(`Invalid response content-type: ${contentType}. Body: ${text.substring(0, 100)}`);
+                "apikey": EVOLUTION_API_KEY
+              }
+            };
+            if (ep.method === 'POST') {
+              fetchOptions.body = JSON.stringify(ep.body || {});
             }
 
-            if (response.ok) {
+            const response = await fetch(ep.url, fetchOptions);
+
+            const contentType = response.headers.get("content-type");
+            if (response.ok && contentType && contentType.includes("application/json")) {
               const rawData = await response.json();
               contactsList = Array.isArray(rawData) ? rawData : (rawData.data || rawData.contacts || rawData.results || []);
               success = true;
-              console.log(`[Sync] Success via ${url}. Items: ${contactsList.length}`);
+              console.log(`[Sync] Success via ${ep.url} (${ep.method}). Items: ${contactsList.length}`);
               break;
             } else {
-              const errJson = await response.json().catch(() => ({}));
-              lastError = JSON.stringify(errJson);
-              console.warn(`[Sync] Endpoint failed ${response.status}: ${lastError.substring(0, 100)}`);
-
-              // Fallback: Try with empty body {} if first attempt failed
-              if (!success) {
-                const retryRes = await fetch(url, {
-                  method: "POST",
-                  headers: { "Content-Type": "application/json", "apikey": EVOLUTION_API_KEY },
-                  body: JSON.stringify({})
-                });
-                if (retryRes.ok) {
-                  const rawData = await retryRes.json();
-                  contactsList = Array.isArray(rawData) ? rawData : (rawData.data || []);
-                  success = true;
-                  console.log(`[Sync] Success via ${url} (Retry {}). Items: ${contactsList.length}`);
-                  break;
-                }
-              }
+              const bodyText = await response.text().catch(() => "N/A");
+              lastError = `Status ${response.status} | Body: ${bodyText.substring(0, 50)}`;
+              console.warn(`[Sync] Endpoint failed ${ep.url} (${ep.method}): ${lastError}`);
             }
           } catch (err: any) {
             lastError = err.message;
-            console.warn(`[Sync] Error calling ${url}: ${err.message}`);
+            console.warn(`[Sync] Error calling ${ep.url}: ${err.message}`);
           }
         }
 
@@ -993,7 +975,6 @@ export const syncEvolutionContacts = async (req: Request, res: Response) => {
             const processedJids = new Set<string>();
 
             for (const contact of contactsList) {
-              // SKIP GROUPS and missing IDs
               const rawId = contact.id || contact.remoteJid || contact.jid;
               if (!rawId || contact.isGroup || rawId.endsWith('@g.us')) {
                 continue;
