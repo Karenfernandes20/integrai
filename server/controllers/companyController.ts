@@ -375,6 +375,11 @@ export const deleteCompany = async (req: Request, res: Response) => {
                 await client.query('DELETE FROM crm_stages WHERE company_id = $1', [id]);
             } catch (e) { }
 
+            // 5.2 Delete CRM Tags
+            try {
+                await client.query('DELETE FROM crm_tags WHERE company_id = $1', [id]);
+            } catch (e) { }
+
             // 6. Delete Messages (linked to conversations)
             await client.query(`
                 DELETE FROM whatsapp_messages 
@@ -392,13 +397,9 @@ export const deleteCompany = async (req: Request, res: Response) => {
                 await client.query('DELETE FROM financial_transactions WHERE company_id = $1', [id]);
             } catch (e) { }
 
-            // 9.1 Delete Financial Categories
+            // 9.1 Delete Financial Categories & Cost Centers
             try {
                 await client.query('DELETE FROM financial_categories WHERE company_id = $1', [id]);
-            } catch (e) { }
-
-            // 9.2 Delete Financial Cost Centers
-            try {
                 await client.query('DELETE FROM financial_cost_centers WHERE company_id = $1', [id]);
             } catch (e) { }
 
@@ -444,6 +445,12 @@ export const deleteCompany = async (req: Request, res: Response) => {
                 await client.query('DELETE FROM audit_logs WHERE company_id = $1', [id]);
             } catch (e) { }
 
+            // Clean Entity Links related to this company's users or entities (Best Effort)
+            try {
+                // Delete links created by company users
+                await client.query('DELETE FROM entity_links WHERE created_by IN (SELECT id FROM app_users WHERE company_id = $1)', [id]);
+            } catch (e) { }
+
 
             // Skip rides deletion - not used in CRM-only databases
             console.log(`[Delete Company ${id}] Skipping rides deletion (CRM database)`);
@@ -478,11 +485,13 @@ export const deleteCompany = async (req: Request, res: Response) => {
         } catch (e: any) {
             await client.query('ROLLBACK');
             console.error(`[Delete Company ${id}] Failed:`, e);
+
+            // Return detailed error for debugging
             res.status(500).json({
-                error: 'Failed to delete company',
-                details: e.message,
-                code: e.code,
-                constraint: e.constraint
+                error: 'Failed to delete company. Check dependencies.',
+                details: e.message || e.toString(),
+                constraint: e.constraint, // PostgreSQL constraint name
+                table: e.table // PostgreSQL table name if available
             });
         } finally {
             client.release();
