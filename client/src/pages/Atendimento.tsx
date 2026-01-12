@@ -395,7 +395,7 @@ const AtendimentoPage = () => {
   // Notification Sound Function (iPhone 16 "Rebound" style synthesis)
   const playNotificationSound = async (isGroup?: boolean) => {
     console.log("[Notificação] Reproduzindo som iPhone 16... Mudo:", mutedRef.current, "Volume:", volumeRef.current, "Grupo:", isGroup);
-    if (mutedRef.current || isGroup) return;
+    if (mutedRef.current) return;
 
     try {
       const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();

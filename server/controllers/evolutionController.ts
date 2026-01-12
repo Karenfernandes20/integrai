@@ -763,12 +763,14 @@ export const syncEvolutionContacts = async (req: Request, res: Response) => {
   try {
     const config = await getEvolutionConfig((req as any).user, 'syncContacts', targetCompanyId);
     const EVOLUTION_API_URL = config.url.replace(/\/$/, "");
-    const EVOLUTION_API_KEY = config.apikey;
+    const EVOLUTION_API_KEY = config.apikey?.trim();
     const EVOLUTION_INSTANCE = config.instance;
 
     if (!EVOLUTION_API_URL || !EVOLUTION_API_KEY) {
       return res.status(500).json({ error: "Evolution API not configured" });
     }
+
+    console.log(`[Sync] Config: URL=${EVOLUTION_API_URL}, Instance=${EVOLUTION_INSTANCE}, KeyLength=${EVOLUTION_API_KEY.length}, KeyStart=${EVOLUTION_API_KEY.substring(0, 4)}***`);
 
     // 1. Fetch from Evolution with multiple fallbacks
     const endpoints = [
@@ -787,7 +789,11 @@ export const syncEvolutionContacts = async (req: Request, res: Response) => {
         console.log(`[Sync] Trying endpoint: ${url}`);
         const response = await fetch(url, {
           method: "POST",
-          headers: { "Content-Type": "application/json", apikey: EVOLUTION_API_KEY },
+          headers: {
+            "Content-Type": "application/json",
+            "apikey": EVOLUTION_API_KEY,
+            "Authorization": `Bearer ${EVOLUTION_API_KEY}` // Try Bearer as well just in case
+          },
           body: JSON.stringify({})
         });
 
