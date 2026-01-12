@@ -411,7 +411,7 @@ export const getCrmDashboardStats = async (req: Request, res: Response) => {
             funnelRes = await pool.query(`
                 SELECT s.name as label, COUNT(l.id) as count, s.position
                 FROM crm_stages s
-                LEFT JOIN crm_leads l ON s.id = l.stage_id AND l.company_id = $1
+                LEFT JOIN crm_leads l ON s.id = l.stage_id AND l.company_id = $1 AND l.origin != 'Simulação'
                 WHERE s.company_id = $1
                 GROUP BY s.id, s.name, s.position
                 ORDER BY s.position ASC
@@ -459,6 +459,7 @@ export const getCrmDashboardStats = async (req: Request, res: Response) => {
             WHERE ${filterClause}
             AND created_at::date = CURRENT_DATE
             AND phone NOT LIKE '%@g.us'
+            AND origin != 'Simulação'
         `, filterParams);
         const attendedClientsRes = await pool.query(`
              SELECT COUNT(DISTINCT m.conversation_id) 
