@@ -2661,7 +2661,7 @@ const AtendimentoPage = () => {
                   variant="ghost"
                   size="icon"
                   className="h-10 w-10 text-[#aebac1] hover:bg-white/10 rounded-full"
-                  onClick={() => setIsCallModalOpen(true)}
+                  onClick={() => toast.info("Funcionalidade em implantação", { description: "Em breve você poderá realizar ligações diretamente pelo sistema. Fique atento às próximas atualizações." })}
                   title="Ligar para contato"
                 >
                   <Phone className="h-5 w-5" />
