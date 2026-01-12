@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { toast } from "sonner";
 import {
   DndContext,
   DragOverlay,
@@ -354,7 +355,16 @@ const CrmPage = () => {
   };
 
   const handleCallLead = (lead: Lead) => {
+    if (!lead.phone) {
+      toast.error("Este lead não possui telefone cadastrado.");
+      return;
+    }
     const cleanPhone = lead.phone.replace(/\D/g, "");
+    if (!cleanPhone) {
+      toast.error("Número de telefone inválido.");
+      return;
+    }
+    toast.success(`Iniciando ligação para ${lead.name || lead.phone}...`);
     window.location.href = `tel:${cleanPhone}`;
   };
 
