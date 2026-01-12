@@ -2940,7 +2940,8 @@ const AtendimentoPage = () => {
                               <div
                                 key={msg.id}
                                 className={cn(
-                                  "relative max-w-[65%] min-w-[80px] shadow-[0_1px_0.5px_rgba(0,0,0,0.13)] text-[14.2px] leading-[19px] break-words mb-[2px] group",
+                                  "relative max-w-[65%] min-w-[80px] shadow-[0_1px_0.5px_rgba(0,0,0,0.13)] text-[14.2px] leading-[19px] break-words group",
+                                  msg.reactions && msg.reactions.length > 0 ? "mb-5" : "mb-[2px]",
                                   msg.direction === "outbound"
                                     ? "bg-[#dcf8c6] dark:bg-[#005C4B] text-[#111B21] dark:text-[#E9EDEF] self-end ml-auto"
                                     : "bg-white dark:bg-[#202C33] text-[#111B21] dark:text-[#E9EDEF] self-start mr-auto",
@@ -3081,9 +3082,9 @@ const AtendimentoPage = () => {
                                 })()}
 
                                 {msg.reactions && msg.reactions.length > 0 && (
-                                  <div className="absolute -bottom-2.5 right-2 z-10 flex cursor-pointer gap-0.5 rounded-full border border-zinc-100 bg-white px-1 py-0.5 text-[10px] shadow-sm dark:border-[#222E35] dark:bg-[#111B21]" title="Reações">
-                                    {Array.from(new Set(msg.reactions.map((r: any) => r.emoji))).slice(0, 3).map((e: any) => <span key={e}>{e}</span>)}
-                                    {msg.reactions.length > 1 && <span className="ml-0.5 text-zinc-500">{msg.reactions.length}</span>}
+                                  <div className="absolute -bottom-3 right-2 z-20 flex cursor-pointer gap-1 rounded-full border border-zinc-100 bg-white px-1.5 py-0.5 text-[11px] shadow-sm dark:border-zinc-700 dark:bg-[#233138]" title="Reações">
+                                    {Array.from(new Set(msg.reactions.map((r: any) => r.emoji))).filter(Boolean).slice(0, 3).map((e: any) => <span key={e} className="leading-none">{e}</span>)}
+                                    {msg.reactions.length > 1 && <span className="ml-0.5 font-medium text-zinc-500 dark:text-zinc-400">{msg.reactions.length}</span>}
                                   </div>
                                 )}
 
