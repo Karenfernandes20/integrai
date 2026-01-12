@@ -293,7 +293,16 @@ export const handleWebhook = async (req: Request, res: Response) => {
             }
 
             const direction = isFromMe ? 'outbound' : 'inbound';
-            let messageSource = direction === 'outbound' ? ((normalizedType.includes('SEND')) ? 'whatsapp_mobile' : 'evolution_api') : null;
+            let messageSource: string | null = null;
+            if (direction === 'outbound') {
+                const rawSource = msg.source || (normalizedType.includes('SEND') ? 'api' : 'unknown');
+                // Map common physical device sources to 'whatsapp_mobile'
+                if (['ios', 'android', 'web', 'whatsapp_mobile'].includes(rawSource)) {
+                    messageSource = 'whatsapp_mobile';
+                } else {
+                    messageSource = 'evolution_api';
+                }
+            }
 
             const normalizedJid = cleanJid(remoteJid);
             const phone = normalizedJid.split('@')[0];
@@ -541,8 +550,8 @@ export const handleWebhook = async (req: Request, res: Response) => {
                             status: currentStatus,
                             sender_jid: existingMsg.sender_jid,
                             sender_name: existingMsg.sender_name,
-                            agent_name: (existingMsg.direction === 'outbound' && !existingMsg.user_id) ? 'Agente de IA' : existingMsg.agent_name,
-                            message_origin: (existingMsg.direction === 'outbound' && !existingMsg.user_id) ? 'ai_agent' : 'whatsapp_mobile' // Simple fallback, usually it's null user_id so ai_agent or legacy mobile
+                            agent_name: existingMsg.agent_name || ((existingMsg.direction === 'outbound' && !existingMsg.user_id) ? (existingMsg.message_source === 'whatsapp_mobile' ? 'Celular' : 'Sistema') : null),
+                            message_origin: (existingMsg.direction === 'outbound' && !existingMsg.user_id) ? (existingMsg.message_source === 'whatsapp_mobile' ? 'whatsapp_mobile' : 'evolution_api') : 'system'
                         };
                         console.log(`[Webhook] Emitting duplicate message to rooms ${room}, ${instanceRoom} | Direction: ${existingMsg.direction}`);
                         io.to(room).emit('message:received', payload);
@@ -611,9 +620,9 @@ export const handleWebhook = async (req: Request, res: Response) => {
                         status: currentStatus,
                         sender_jid: insertedMsg.rows[0].sender_jid,
                         sender_name: insertedMsg.rows[0].sender_name,
-                        message_source: messageSource, // whatsapp_mobile or evolution_api
-                        agent_name: (direction === 'outbound' && !insertedMsg.rows[0].user_id) ? (msg.agent_name || 'Agente de IA') : null,
-                        message_origin: (direction === 'outbound' && !insertedMsg.rows[0].user_id) ? 'ai_agent' : 'whatsapp_mobile'
+                        message_source: messageSource,
+                        agent_name: (direction === 'outbound' && !insertedMsg.rows[0].user_id) ? (messageSource === 'whatsapp_mobile' ? 'WhatsApp' : (msg.agent_name || 'Sistema')) : null,
+                        message_origin: (direction === 'outbound' && !insertedMsg.rows[0].user_id) ? (messageSource === 'whatsapp_mobile' ? 'whatsapp_mobile' : 'evolution_api') : 'system'
                     };
                     console.log(`[Webhook] Emitting message to rooms ${room}, ${instanceRoom} | Conversation: ${conversationId} | Direction: ${direction}`);
                     io.to(room).emit('message:received', payload);

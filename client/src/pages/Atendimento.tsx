@@ -859,20 +859,34 @@ const AtendimentoPage = () => {
         if (isMatch) {
           console.log(`[Socket] Message matches currently open chat.`);
           setMessages((prev) => {
-            // Prevent duplication: If we sent this message (outbound) and we have a pending message with same content, ignore socket.
-            if (newMessage.direction === 'outbound' && String(newMessage.user_id) == String(user?.id)) {
-              // Check if we have a pending message with similar content
-              const hasPending = prev.some(m => (m.status === 'sending' || typeof m.id === 'string' && m.id.startsWith('temp')) && m.content === newMessage.content);
-              if (hasPending) {
-                console.log("[Socket] Ignoring socket message because we have a pending optimistic one (will be promoted by POST response)");
-                return prev;
+            // Improved Deduplication & Merging for Outbound Messages
+            if (newMessage.direction === 'outbound') {
+              const matchingTempIndex = prev.findIndex(m =>
+                (String(m.id).startsWith('temp') || m.status === 'sending') &&
+                m.content?.trim() === newMessage.content?.trim()
+              );
+
+              if (matchingTempIndex !== -1) {
+                console.log("[Socket] Merging outbound socket msg with existing temp msg to prevent duplication and fix label.");
+                const tempMsg = prev[matchingTempIndex];
+                const mergedMsg = {
+                  ...newMessage,
+                  // Preserve user_id from temp msg if socket msg lacks it (fixes "Celular" label issue)
+                  user_id: newMessage.user_id || tempMsg.user_id,
+                  agent_name: newMessage.agent_name || tempMsg.agent_name || tempMsg.user_name
+                };
+
+                const newMessages = [...prev];
+                newMessages[matchingTempIndex] = mergedMsg;
+                return newMessages;
               }
             }
 
             // Enhanced deduplication with loose equality and external_id check
             const isDuplicate = prev.some(m =>
               String(m.id) == String(newMessage.id) ||
-              (m.external_id && newMessage.external_id && m.external_id === newMessage.external_id)
+              (m.external_id && newMessage.external_id && m.external_id === newMessage.external_id) ||
+              (newMessage.direction === 'outbound' && m.content === newMessage.content && Math.abs(new Date(m.sent_at).getTime() - new Date(newMessage.sent_at).getTime()) < 10000)
             );
 
             if (isDuplicate) {
@@ -1742,9 +1756,13 @@ const AtendimentoPage = () => {
         // Update the temp message with real IDs
         // Update the temp message with real IDs, avoiding duplicates
         setMessages(prev => {
-          const alreadyHasReal = prev.find(m => String(m.id) == String(dbId));
+          const alreadyHasReal = prev.find(m =>
+            String(m.id) == String(dbId) ||
+            (m.external_id && externalId && m.external_id === externalId) ||
+            (m.direction === 'outbound' && m.content === messageContent && Math.abs(new Date(m.sent_at).getTime() - new Date().getTime()) < 15000)
+          );
           if (alreadyHasReal) {
-            console.log("[POST Response] Real message already in list (from socket), removing temp.");
+            console.log("[POST Response] Real message or similar already in list, removing temp.");
             return prev.filter(m => String(m.id) !== String(tempMessageId));
           }
           console.log("[POST Response] Promoting temp message to real.");
@@ -2896,16 +2914,16 @@ const AtendimentoPage = () => {
                               ) : (
                                 <>
                                   {/* WhatsApp Mobile/Web */}
-                                  {(firstMsg as any).message_source === 'whatsapp_mobile' ? (
+                                  {(firstMsg as any).message_source === 'whatsapp_mobile' || (firstMsg as any).message_origin === 'whatsapp_mobile' ? (
                                     <>
                                       <span className="w-1.5 h-1.5 bg-cyan-500 rounded-full" />
                                       Celular
                                     </>
                                   ) : (
-                                    /* Evolution API / AI Agent */
+                                    /* Evolution API / AI Agent / System */
                                     <>
                                       <span className="w-1.5 h-1.5 bg-purple-500 rounded-full animate-pulse" />
-                                      {firstMsg.agent_name || "Agente de IA"}
+                                      {firstMsg.agent_name || "Sistema"}
                                     </>
                                   )}
                                 </>

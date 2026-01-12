@@ -413,21 +413,28 @@ export const sendEvolutionMessage = async (req: Request, res: Response) => {
 
         const externalMessageId = data?.key?.id;
 
-        // Insert message WITH USER_ID and company_id
+        // Insert message WITH USER_ID and company_id, handling race condition with webhook
+        // If webhook inserted first (user_id=null), this will update it.
         const insertedMsg = await pool.query(
-          'INSERT INTO whatsapp_messages (conversation_id, direction, content, sent_at, status, external_id, user_id, company_id) VALUES ($1, $2, $3, NOW(), $4, $5, $6, $7) RETURNING *',
+          `INSERT INTO whatsapp_messages (conversation_id, direction, content, sent_at, status, external_id, user_id, company_id) 
+           VALUES ($1, $2, $3, NOW(), $4, $5, $6, $7) 
+           ON CONFLICT (external_id) DO UPDATE 
+           SET user_id = EXCLUDED.user_id, company_id = EXCLUDED.company_id 
+           RETURNING *`,
           [conversationId, 'outbound', messageContent, 'sent', externalMessageId, user.id, resolvedCompanyId]
         );
-        console.log(`[Evolution] Saved message to DB successfully with ID: ${insertedMsg.rows[0].id}.`);
+
+        const row = insertedMsg.rows[0];
+        console.log(`[Evolution] Saved/Updated message in DB with ID: ${row.id}.`);
 
         // Include the DB ID and external ID in the response so frontend can use them
         const resultPayload = {
-          ...insertedMsg.rows[0],
-          databaseId: insertedMsg.rows[0].id,
+          ...row,
+          databaseId: row.id,
           conversationId: conversationId,
           content: messageContent,
           direction: 'outbound',
-          sent_at: new Date().toISOString(),
+          sent_at: row.sent_at || new Date().toISOString(),
           user_id: user.id,
           agent_name: user.full_name,
           phone: safePhone,
