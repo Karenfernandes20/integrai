@@ -62,6 +62,7 @@ import type { FormEvent } from "react";
 import { cn } from "../lib/utils";
 import { Avatar, AvatarFallback, AvatarImage } from "../components/ui/avatar";
 import { useAuth } from "../contexts/AuthContext";
+import { CallModal } from "../components/CallModal";
 
 
 
@@ -246,6 +247,9 @@ const AtendimentoPage = () => {
   const chatSearchInputRef = useRef<HTMLInputElement>(null);
   const lastProcessedPhoneRef = useRef<string | null>(null);
   const socketRef = useRef<any>(null);
+
+  // Call Modal State
+  const [isCallModalOpen, setIsCallModalOpen] = useState(false);
 
   // New states for contact import
   const [importedContacts, setImportedContacts] = useState<Contact[]>([]);
@@ -2657,19 +2661,7 @@ const AtendimentoPage = () => {
                   variant="ghost"
                   size="icon"
                   className="h-10 w-10 text-[#aebac1] hover:bg-white/10 rounded-full"
-                  onClick={() => {
-                    const newCall: Call = {
-                      id: Date.now(),
-                      direction: 'outbound',
-                      status: 'ringing',
-                      contact_name: getDisplayName(selectedConversation),
-                      remote_jid: selectedConversation.phone,
-                      start_time: new Date().toISOString()
-                    };
-                    setActiveCall(newCall);
-                    toast.info("Iniciando chamada (Simulada para demonstração)");
-                    // In future: socket.emit('call:start', { ... })
-                  }}
+                  onClick={() => setIsCallModalOpen(true)}
                   title="Ligar para contato"
                 >
                   <Phone className="h-5 w-5" />
@@ -3271,6 +3263,16 @@ const AtendimentoPage = () => {
           </div>
         </DialogContent>
       </Dialog>
+
+      {selectedConversation && (
+        <CallModal
+          isOpen={isCallModalOpen}
+          onClose={() => setIsCallModalOpen(false)}
+          contactName={getDisplayName(selectedConversation)}
+          contactPhone={selectedConversation.phone}
+          profilePicUrl={selectedConversation.profile_pic_url}
+        />
+      )}
     </div>
   );
 };
