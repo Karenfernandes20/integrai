@@ -315,17 +315,39 @@ export const updateCompany = async (req: Request, res: Response) => {
 
             if (newMax > currentCount) {
                 const diff = newMax - currentCount;
-                for (let k = 1; k <= diff; k++) {
-                    const nextNum = currentCount + k;
-                    const seedName = `Instância ${nextNum}`;
-                    const seedKey = `integrai_${id}_${nextNum}`;
+
+                // Fetch existing to avoid name/key collision (e.g. if user renamed "Instância 2" to "Instância 3")
+                const existingRes = await pool.query('SELECT name, instance_key FROM company_instances WHERE company_id = $1', [id]);
+                const existingNames = new Set(existingRes.rows.map(r => r.name));
+                const existingKeys = new Set(existingRes.rows.map(r => r.instance_key));
+
+                let added = 0;
+                let candidate = 1;
+
+                // Loop until we have added the required number of new instances
+                while (added < diff) {
+                    const seedName = `Instância ${candidate}`;
+                    const seedKey = `integrai_${id}_${candidate}`;
+
+                    // If this name or key is already taken, skip to next candidate
+                    if (existingNames.has(seedName) || existingKeys.has(seedKey)) {
+                        candidate++;
+                        continue;
+                    }
+
+                    // Found a free slot, insert it
                     await pool.query(`
                         INSERT INTO company_instances (company_id, name, instance_key, status)
                         VALUES ($1, $2, $3, 'disconnected')
-                        ON CONFLICT DO NOTHING
                     `, [id, seedName, seedKey]);
+
+                    existingNames.add(seedName);
+                    existingKeys.add(seedKey);
+
+                    added++;
+                    candidate++;
                 }
-                console.log(`[Update Company ${id}] Added ${diff} new instances.`);
+                console.log(`[Update Company ${id}] Added ${diff} new instances (filling gaps).`);
             }
         } catch (instErr) {
             console.error(`[Update Company ${id}] Failed to sync instances:`, instErr);
