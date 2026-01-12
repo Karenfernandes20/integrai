@@ -25,6 +25,13 @@ import {
     DropdownMenuSeparator,
     DropdownMenuTrigger,
 } from "../components/ui/dropdown-menu";
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from "../components/ui/select";
 import { cn } from "../lib/utils";
 import { useAuth } from "../contexts/AuthContext";
 import { useNavigate } from "react-router-dom";
@@ -36,6 +43,13 @@ interface Contact {
     phone: string;
     profile_pic_url?: string;
     push_name?: string;
+    instance?: string;
+}
+
+interface Instance {
+    id: number;
+    name: string;
+    instance_key: string;
 }
 
 // --- Componentes ---
@@ -43,37 +57,54 @@ interface Contact {
 const BotaoSincronizarContatos = ({
     onClick,
     isLoading,
-    whatsappStatus
+    whatsappStatus,
+    instances,
+    selectedInstance,
+    onInstanceChange
 }: {
     onClick: () => void;
     isLoading: boolean;
     whatsappStatus: string;
+    instances: Instance[];
+    selectedInstance: string;
+    onInstanceChange: (val: string) => void;
 }) => {
-    // Permissive check: allow open, connecting, or any status for now to avoid blocking if API report is laggy.
-    // Ideally we trust 'open'. If unknown, it might mean polling failed but API works.
-    const isConnected = whatsappStatus === 'open' || whatsappStatus === 'connecting' || whatsappStatus === 'unknown';
-
-    // Debug for user confidence
-    console.log(`[Contatos] Status do WhatsApp: ${whatsappStatus}`);
+    // Permissive check
+    const isConnected = whatsappStatus === 'open' || whatsappStatus === 'connecting' || whatsappStatus === 'unknown' || whatsappStatus.includes('Online');
 
     return (
-        <div className="flex flex-col gap-2">
+        <div className="flex items-center gap-2">
+            <Select value={selectedInstance} onValueChange={onInstanceChange}>
+                <SelectTrigger className="w-[200px] h-9">
+                    <SelectValue placeholder="Escolha a instância" />
+                </SelectTrigger>
+                <SelectContent>
+                    <SelectItem value="all">Todas as Instâncias</SelectItem>
+                    {instances.map((inst) => (
+                        <SelectItem key={inst.id} value={inst.instance_key}>
+                            {inst.name}
+                        </SelectItem>
+                    ))}
+                </SelectContent>
+            </Select>
+
             <Button
-                className={cn(
-                    "w-full sm:w-auto bg-[#008069] hover:bg-[#006d59] text-white font-semibold shadow-md",
-                    (!isConnected || isLoading) && "opacity-70 cursor-not-allowed"
-                )}
+                variant="outline"
+                size="sm"
                 onClick={onClick}
-                disabled={!isConnected || isLoading}
+                disabled={isLoading}
+                className={cn(
+                    "gap-2 border-primary/20 hover:bg-primary/5 transition-all duration-300",
+                    isLoading && "opacity-70 cursor-not-allowed"
+                )}
             >
-                <RefreshCcw className={cn("mr-2 h-4 w-4", isLoading && "animate-spin")} />
-                {isLoading ? "Sincronizando..." : "Sincronizar"}
+                {isLoading ? (
+                    <RefreshCcw className="h-4 w-4 animate-spin text-primary" />
+                ) : (
+                    <RefreshCcw className="h-4 w-4 text-primary" />
+                )}
+                <span>{isLoading ? "Sincronizando..." : "Sincronizar"}</span>
             </Button>
-            {!isConnected && (
-                <span className="text-xs text-red-500 font-medium">
-                    WhatsApp desconectado ({whatsappStatus}). Conecte via QR Code.
-                </span>
-            )}
         </div>
     );
 };
@@ -209,6 +240,8 @@ const ContatosPage = () => {
     const [isLoading, setIsLoading] = useState(false);
     const [searchTerm, setSearchTerm] = useState("");
     const [whatsappStatus, setWhatsappStatus] = useState<string>("unknown");
+    const [instances, setInstances] = useState<Instance[]>([]);
+    const [selectedInstance, setSelectedInstance] = useState<string>("all");
     const [newContactOpen, setNewContactOpen] = useState(false);
     const [newContactName, setNewContactName] = useState("");
     const [newContactPhone, setNewContactPhone] = useState("");
@@ -365,11 +398,18 @@ const ContatosPage = () => {
     const handleSync = async () => {
         try {
             setIsLoading(true);
+            const body: any = {};
+            if (selectedInstance !== "all") {
+                body.instanceKey = selectedInstance;
+            }
+
             const res = await fetch("/api/evolution/contacts/sync", {
                 method: "POST",
                 headers: {
+                    "Content-Type": "application/json",
                     "Authorization": `Bearer ${token}`
-                }
+                },
+                body: JSON.stringify(body)
             });
             if (res.ok) {
                 const data = await res.json();
@@ -436,6 +476,26 @@ const ContatosPage = () => {
     useEffect(() => {
         fetchLocalContacts();
 
+        const fetchInstances = async () => {
+            try {
+                // Fetch current user company instances
+                const profileRes = await fetch("/api/auth/profile", { headers: { "Authorization": `Bearer ${token}` } });
+                const profile = await profileRes.json();
+                if (profile?.company_id) {
+                    const instRes = await fetch(`/api/companies/${profile.company_id}/instances`, {
+                        headers: { "Authorization": `Bearer ${token}` }
+                    });
+                    if (instRes.ok) {
+                        const data = await instRes.json();
+                        setInstances(data);
+                    }
+                }
+            } catch (e) {
+                console.error("Failed to fetch instances", e);
+            }
+        };
+        fetchInstances();
+
         const pollStatus = async () => {
             try {
                 const res = await fetch("/api/evolution/status", {
@@ -479,78 +539,96 @@ const ContatosPage = () => {
 
     return (
         <div className="flex flex-col h-full bg-background p-4 md:p-6 space-y-6 overflow-hidden">
-            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+            <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
                 <div>
                     <h1 className="text-2xl font-bold tracking-tight">Contatos</h1>
                     <p className="text-sm text-muted-foreground">Gerencie e sincronize seus contatos do WhatsApp.</p>
                 </div>
-                <BotaoSincronizarContatos
-                    onClick={handleSync}
-                    isLoading={isLoading}
-                    whatsappStatus={whatsappStatus}
-                />
-            </div>
 
-            <div className="flex flex-col gap-4 flex-1 min-h-0">
-                <div className="flex flex-col md:flex-row gap-4 items-center justify-between">
-                    <div className="w-full md:w-1/2">
-                        <BarraPesquisaContatos value={searchTerm} onChange={setSearchTerm} />
-                    </div>
+                <div className="flex flex-wrap items-center gap-3 bg-card/50 p-2 rounded-lg border border-border/50 shadow-sm">
+                    <BotaoSincronizarContatos
+                        onClick={handleSync}
+                        isLoading={isLoading}
+                        whatsappStatus={whatsappStatus}
+                        instances={instances}
+                        selectedInstance={selectedInstance}
+                        onInstanceChange={setSelectedInstance}
+                    />
 
-                    <div className="flex items-center gap-2 w-full md:w-auto">
-                        <Dialog open={newContactOpen} onOpenChange={setNewContactOpen}>
-                            <DialogTrigger asChild>
-                                <Button className="w-full md:w-auto bg-[#00a884] hover:bg-[#008f6f] text-white">
-                                    <UserPlus className="h-4 w-4 mr-2" />
-                                    Novo Contato
-                                </Button>
-                            </DialogTrigger>
-                            <DialogContent>
-                                <DialogHeader>
-                                    <DialogTitle>Adicionar Novo Contato</DialogTitle>
-                                </DialogHeader>
-                                <form onSubmit={handleCreateContact} className="space-y-4 py-2">
-                                    <div className="space-y-2">
-                                        <Label htmlFor="name">Nome</Label>
-                                        <Input
-                                            id="name"
-                                            placeholder="Ex: João da Silva"
-                                            value={newContactName}
-                                            onChange={(e) => setNewContactName(e.target.value)}
-                                            required
-                                        />
-                                    </div>
-                                    <div className="space-y-2">
-                                        <Label htmlFor="phone">Telefone (DDD + Número)</Label>
+                    <div className="h-6 w-[1px] bg-border hidden md:block" />
+
+                    <Dialog open={newContactOpen} onOpenChange={setNewContactOpen}>
+                        <DialogTrigger asChild>
+                            <Button className="bg-[#00a884] hover:bg-[#008f6f] text-white shadow-sm transition-all hover:scale-[1.02]">
+                                <UserPlus className="h-4 w-4 mr-2" />
+                                Novo Contato
+                            </Button>
+                        </DialogTrigger>
+                        <DialogContent className="sm:max-w-[425px]">
+                            <DialogHeader>
+                                <DialogTitle className="flex items-center gap-2">
+                                    <UserPlus className="h-5 w-5 text-[#00a884]" />
+                                    Adicionar Novo Contato
+                                </DialogTitle>
+                            </DialogHeader>
+                            <form onSubmit={handleCreateContact} className="space-y-4 py-4">
+                                <div className="space-y-2">
+                                    <Label htmlFor="name" className="text-sm font-medium">Nome</Label>
+                                    <Input
+                                        id="name"
+                                        placeholder="Ex: João da Silva"
+                                        value={newContactName}
+                                        onChange={(e) => setNewContactName(e.target.value)}
+                                        required
+                                        className="h-10"
+                                    />
+                                </div>
+                                <div className="space-y-2">
+                                    <Label htmlFor="phone" className="text-sm font-medium">Telefone (DDD + Número)</Label>
+                                    <div className="relative">
+                                        <Phone className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
                                         <Input
                                             id="phone"
                                             placeholder="Ex: 5511999999999"
                                             value={newContactPhone}
                                             onChange={(e) => setNewContactPhone(e.target.value.replace(/\D/g, ''))}
                                             required
+                                            className="h-10 pl-9"
                                         />
-                                        <p className="text-xs text-muted-foreground">Insira apenas números com DDD (Ex: 5511988887777)</p>
                                     </div>
-                                    <DialogFooter>
-                                        <Button type="button" variant="outline" onClick={() => setNewContactOpen(false)}>Cancelar</Button>
-                                        <Button type="submit" disabled={isCreating}>
-                                            {isCreating ? "Salvando..." : "Salvar Contato"}
-                                        </Button>
-                                    </DialogFooter>
-                                </form>
-                            </DialogContent>
-                        </Dialog>
+                                    <p className="text-[11px] text-muted-foreground bg-muted/30 p-2 rounded">
+                                        Insira apenas números com DDD. Exemplo: 55 + DDD + Número.
+                                    </p>
+                                </div>
+                                <DialogFooter className="pt-4">
+                                    <Button type="button" variant="ghost" onClick={() => setNewContactOpen(false)}>Cancelar</Button>
+                                    <Button type="submit" disabled={isCreating} className="bg-[#00a884] hover:bg-[#008f6f]">
+                                        {isCreating ? (
+                                            <RefreshCcw className="h-4 w-4 animate-spin mr-2" />
+                                        ) : null}
+                                        {isCreating ? "Salvando..." : "Salvar Contato"}
+                                    </Button>
+                                </DialogFooter>
+                            </form>
+                        </DialogContent>
+                    </Dialog>
+                </div>
+            </div>
+
+            <div className="flex flex-col gap-4 flex-1 min-h-0 pt-2">
+                <div className="flex flex-col md:flex-row gap-4 items-center justify-between bg-card/30 p-3 rounded-xl border">
+                    <div className="w-full md:w-2/3">
+                        <BarraPesquisaContatos value={searchTerm} onChange={setSearchTerm} />
                     </div>
                 </div>
 
-                <div className="flex-1 overflow-y-auto min-h-0 pb-10">
-                    <ListaContatos
-                        contacts={filteredContacts}
-                        onSelectContact={handleSelectContact}
-                        onEditContact={handleEditContact}
-                        onDeleteContact={handleDeleteContact}
-                    />
-                </div>
+                {/* Rest of the filters/table... */}
+                <ListaContatos
+                    contacts={filteredContacts}
+                    onSelectContact={handleSelectContact}
+                    onEditContact={handleEditContact}
+                    onDeleteContact={handleDeleteContact}
+                />
             </div>
 
             {/* Edit Dialog */}

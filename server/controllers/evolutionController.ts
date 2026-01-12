@@ -824,14 +824,14 @@ export const getEvolutionContacts = async (req: Request, res: Response) => {
   // Retrieve local contacts first
   try {
     const resolvedCompanyId = config.company_id;
-    console.log(`[Evolution] Fetching local contacts for instance: ${EVOLUTION_INSTANCE} (Company: ${resolvedCompanyId})`);
+    console.log(`[Evolution] Fetching local contacts for Company: ${resolvedCompanyId}`);
 
-    let query = `SELECT *, split_part(jid, '@', 1) as phone FROM whatsapp_contacts WHERE (instance = $1 OR company_id = $2)`;
-    const params: any[] = [EVOLUTION_INSTANCE, resolvedCompanyId];
-
-    if (user.role !== 'SUPERADMIN' || resolvedCompanyId) {
-      query += ` AND company_id = $2`;
+    if (!resolvedCompanyId) {
+      return res.json([]);
     }
+
+    let query = `SELECT *, split_part(jid, '@', 1) as phone FROM whatsapp_contacts WHERE company_id = $1`;
+    const params: any[] = [resolvedCompanyId];
 
     query += ` ORDER BY name ASC`;
 
