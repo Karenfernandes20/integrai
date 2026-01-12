@@ -822,21 +822,17 @@ export const syncEvolutionContacts = async (req: Request, res: Response) => {
 
       // Use a transaction for better performance
       const client = await pool.connect();
+      const processedJids = new Set<string>();
+
       try {
         await client.query('BEGIN');
 
-        // Cleanup invalid or potentially old formats that don't match our normalization
-        // (We are more permissive now with what stays in DB, but we keep the instance cleanup)
-        // await client.query(`DELETE FROM whatsapp_contacts WHERE instance = $1 AND jid !~ '^[0-9]+@s\\.whatsapp\\.net$'`, [EVOLUTION_INSTANCE]);
-
         for (const contact of contactsList) {
           let candidate = null;
-          // Use id/remoteJid first as they are more reliable in Evolution API
           const potentialFields = [contact.id, contact.remoteJid, contact.number, contact.phone];
 
           for (const field of potentialFields) {
             if (typeof field === 'string' && field) {
-              // Extract CLEAN phone: remove JID suffix AND any device suffixes like :1
               const clean = field.split('@')[0].split(':')[0];
               if (/^\d+$/.test(clean) && clean.length >= 7 && clean.length <= 16) {
                 candidate = clean;
@@ -848,6 +844,11 @@ export const syncEvolutionContacts = async (req: Request, res: Response) => {
           if (!candidate) continue;
 
           const jid = `${candidate}@s.whatsapp.net`;
+
+          // Deduplicate within this batch
+          if (processedJids.has(jid)) continue;
+          processedJids.add(jid);
+
           const name = contact.name || contact.pushName || contact.notify || contact.verifiedName || candidate;
           const pushName = contact.pushName || contact.notify;
           const profilePic = contact.profilePictureUrl || contact.profilePicture;
@@ -862,14 +863,15 @@ export const syncEvolutionContacts = async (req: Request, res: Response) => {
               profile_pic_url = COALESCE(EXCLUDED.profile_pic_url, whatsapp_contacts.profile_pic_url),
               updated_at = NOW(),
               company_id = COALESCE(whatsapp_contacts.company_id, EXCLUDED.company_id)
-          `, [jid, name, pushName || null, profilePic || null, EVOLUTION_INSTANCE, companyId]);
+          `, [jid, name, pushName || null, profilePic || null, EVOLUTION_INSTANCE, companyId || null]);
         }
 
         await client.query('COMMIT');
-        console.log(`[Sync] Finished database update for ${contactsList.length} contacts.`);
-      } catch (dbErr) {
+        console.log(`[Sync] Finished database update for ${contactsList.length} contacts (${processedJids.size} unique).`);
+      } catch (dbErr: any) {
         await client.query('ROLLBACK');
-        throw dbErr;
+        console.error("DB Error in Sync:", dbErr);
+        throw dbErr; // Re-throw to be caught by outer handler
       } finally {
         client.release();
       }
@@ -879,7 +881,7 @@ export const syncEvolutionContacts = async (req: Request, res: Response) => {
     const user = (req as any).user;
     const companyId = config.company_id || user?.company_id;
     let localQuery = `SELECT * FROM whatsapp_contacts WHERE instance = $1`;
-    const localParams = [EVOLUTION_INSTANCE];
+    const localParams: any[] = [EVOLUTION_INSTANCE];
 
     if (user.role !== 'SUPERADMIN' || companyId) {
       localQuery += ` AND (company_id = $2 OR company_id IS NULL)`;
@@ -892,7 +894,12 @@ export const syncEvolutionContacts = async (req: Request, res: Response) => {
 
   } catch (error: any) {
     console.error("Error syncing contacts:", error);
-    return res.status(500).json({ error: "Sync failed during processing", details: error.message });
+    return res.status(500).json({
+      error: "Sync failed during processing",
+      details: error.message,
+      code: error.code,
+      constraint: error.constraint
+    });
   }
 };
 
