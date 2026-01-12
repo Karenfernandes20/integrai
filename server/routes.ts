@@ -125,9 +125,11 @@ router.post('/evolution/profile-pic/sync', authenticateToken, syncAllProfilePics
 
 // CRM Routes
 // Call Routes (Integration with Evolution)
-import { getCalls, startOutboundCall } from './controllers/callController';
+import { getCalls, startOutboundCall, getVoiceToken, getVoiceTwiML } from './controllers/callController';
 router.get('/crm/calls', authenticateToken, getCalls);
 router.post('/crm/calls/start', authenticateToken, startOutboundCall);
+router.post('/crm/calls/token', authenticateToken, getVoiceToken);
+router.post('/crm/calls/twiml', getVoiceTwiML); // Twilio calls this directly
 
 // CRM Routes
 router.get('/crm/dashboard', authenticateToken, getCrmDashboardStats);

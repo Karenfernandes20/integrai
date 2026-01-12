@@ -1,7 +1,7 @@
 
 import { Request, Response } from 'express';
 import { pool } from '../db';
-import { makeTwilioCall } from '../services/voiceService';
+import { makeTwilioCall, generateVoiceToken, generateOutboundTwiML } from '../services/voiceService';
 
 export const handleCallWebhook = async (body: any, instance: string, io: any) => {
     try {
@@ -145,5 +145,40 @@ export const startOutboundCall = async (req: Request, res: Response) => {
     } catch (error: any) {
         console.error('Error starting outbound call:', error);
         res.status(500).json({ error: 'Internal Server Error' });
+    }
+};
+
+export const getVoiceToken = async (req: Request, res: Response) => {
+    try {
+        const user = (req as any).user;
+        // Unique identity for the client
+        const identity = `user_${user.id}`;
+        const token = generateVoiceToken(identity);
+        res.json({ token, identity });
+    } catch (e: any) {
+        // Handle config missing
+        if (e.message.includes("Twilio credentials not configured") || e.message.includes("Missing Twilio")) {
+            return res.status(400).json({
+                error: "Provedor de Voz não configurado.",
+                code: "PROVIDER_NOT_CONFIGURED"
+            });
+        }
+        res.status(500).json({ error: e.message });
+    }
+};
+
+export const getVoiceTwiML = async (req: Request, res: Response) => {
+    try {
+        const { To } = req.body; // Twilio POSTs parameters
+        if (!To) {
+            res.type('text/xml').send('<Response><Say>Invalid Number</Say></Response>');
+            return;
+        }
+        const twiml = generateOutboundTwiML(To);
+        res.type('text/xml');
+        res.send(twiml);
+    } catch (e) {
+        console.error("TwiML Error", e);
+        res.status(500).send("Error");
     }
 };

@@ -6,6 +6,7 @@ import { Phone, PhoneOff, Mic, MicOff, Volume2, Grid3x3 } from "lucide-react";
 import { Button } from "./ui/button";
 import { useAuth } from "../contexts/AuthContext";
 import { toast } from "sonner";
+import { Device, Call } from '@twilio/voice-sdk';
 
 interface CallModalProps {
     isOpen: boolean;
@@ -16,80 +17,132 @@ interface CallModalProps {
 }
 
 export const CallModal = ({ isOpen, onClose, contactName, contactPhone, profilePicUrl }: CallModalProps) => {
-    const [status, setStatus] = useState<'ringing' | 'connected' | 'ended'>('ringing');
+    const [status, setStatus] = useState<'initializing' | 'ringing' | 'connected' | 'ended' | 'error'>('initializing');
     const [duration, setDuration] = useState(0);
     const [isMuted, setIsMuted] = useState(false);
     const timerRef = useRef<NodeJS.Timeout>();
 
+    // WebRTC Refs
+    const deviceRef = useRef<Device | null>(null);
+    const callRef = useRef<Call | null>(null);
+
     const { token } = useAuth();
 
     useEffect(() => {
-        if (isOpen && token) {
-            setStatus('ringing');
-            setDuration(0);
+        let mounted = true;
 
-            const initiateCall = async () => {
-                try {
-                    const res = await fetch('/api/crm/calls/start', {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                            'Authorization': `Bearer ${token}`
-                        },
-                        body: JSON.stringify({
-                            phone: contactPhone,
-                            contactName: contactName
-                        })
-                    });
+        const initializeCall = async () => {
+            if (!isOpen || !token) return;
 
-                    const data = await res.json();
+            try {
+                setStatus('initializing');
 
-                    if (!res.ok) {
-                        // Fallback handling
-                        if (data.code === 'PROVIDER_NOT_CONFIGURED') {
-                            toast.warning("Provedor de Voz não configurado. Usando discador do dispositivo.");
-                            window.location.href = `tel:${contactPhone.replace(/\D/g, '')}`;
+                // 1. Get Access Token
+                const res = await fetch('/api/crm/calls/token', {
+                    method: 'POST',
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
 
-                            // Start local timer simulation since we handed off
-                            startLocalTimer();
-                        } else {
-                            toast.error(data.error || "Erro ao iniciar chamada.");
-                            handleEndCall();
-                        }
-                        return;
+                if (!res.ok) {
+                    const err = await res.json();
+                    if (err.code === 'PROVIDER_NOT_CONFIGURED') {
+                        throw new Error("Sistema de Voz não configurado. Contate o administrador.");
                     }
-
-                    // Success - Connected to Provider
-                    toast.success("Chamada iniciada via Sistema.");
-                    // In a real socket setups, we'd wait for 'call:established' event.
-                    // For now, assume connected shortly.
-                    startLocalTimer(2000);
-
-                } catch (e) {
-                    console.error("Call failed", e);
-                    toast.error("Falha ao comunicar com o servidor.");
-                    handleEndCall();
+                    throw new Error(err.error || "Falha na autenticação de voz.");
                 }
-            };
 
-            initiateCall();
+                const { token: voiceToken } = await res.json();
 
-            return () => {
-                clearInterval(timerRef.current);
-            };
-        } else {
-            clearInterval(timerRef.current);
+                // 2. Initialize Device
+                const device = new Device(voiceToken, {
+                    logLevel: 1,
+                    codecPreferences: [Call.Codec.Opus, Call.Codec.PCMU]
+                });
+
+                deviceRef.current = device;
+
+                await device.register();
+
+                // 3. Start Call
+                // Clean phone number: remove non-numeric chars, ensure format
+                const cleanPhone = contactPhone.replace(/\D/g, '');
+                // Basic assumption: If Brazilian, ensure +55. Twilio needs E.164
+                const formattedPhone = cleanPhone.length <= 11 ? `+55${cleanPhone}` : `+${cleanPhone}`;
+
+                if (mounted) setStatus('ringing');
+
+                const call = await device.connect({
+                    params: {
+                        To: formattedPhone
+                    }
+                });
+
+                callRef.current = call;
+
+                // 4. Bind Events
+                call.on('accept', () => {
+                    if (!mounted) return;
+                    setStatus('connected');
+                    // Start Timer
+                    timerRef.current = setInterval(() => {
+                        setDuration(d => d + 1);
+                    }, 1000);
+                    toast.success("Chamada conectada");
+                });
+
+                call.on('disconnect', () => {
+                    if (!mounted) return;
+                    setStatus('ended');
+                    clearInterval(timerRef.current);
+                    toast.info("Chamada finalizada");
+                    setTimeout(onClose, 1000);
+                });
+
+                call.on('error', (error: any) => {
+                    console.error("Call Error:", error);
+                    toast.error(`Erro na chamada: ${error.message}`);
+                    setStatus('error');
+                });
+
+            } catch (error: any) {
+                console.error("Voice Error:", error);
+                if (mounted) {
+                    setStatus('error');
+                    toast.error(error.message || "Erro ao iniciar sistema de voz.");
+                }
+            }
+        };
+
+        if (isOpen) {
+            initializeCall();
         }
-    }, [isOpen, contactPhone, token]);
 
-    const startLocalTimer = (delay = 5000) => {
-        const timeout = setTimeout(() => {
-            setStatus('connected');
-            timerRef.current = setInterval(() => {
-                setDuration(d => d + 1);
-            }, 1000);
-        }, delay);
-        return () => clearTimeout(timeout);
+        return () => {
+            mounted = false;
+            clearInterval(timerRef.current);
+            if (callRef.current) {
+                callRef.current.disconnect();
+            }
+            if (deviceRef.current) {
+                deviceRef.current.destroy();
+            }
+        };
+    }, [isOpen, token, contactPhone]);
+
+    const handleEndCall = () => {
+        if (callRef.current) {
+            callRef.current.disconnect();
+        } else {
+            onClose();
+        }
+    };
+
+    const toggleMute = () => {
+        if (callRef.current) {
+            const newMute = !isMuted;
+            callRef.current.mute(newMute);
+            setIsMuted(newMute);
+        }
     };
 
     const formatTime = (sec: number) => {
@@ -98,15 +151,11 @@ export const CallModal = ({ isOpen, onClose, contactName, contactPhone, profileP
         return `${min}:${s.toString().padStart(2, '0')}`;
     };
 
-    const handleEndCall = () => {
-        setStatus('ended');
-        clearInterval(timerRef.current);
-        setTimeout(onClose, 1000);
-    };
-
     const StatusText = () => {
-        if (status === 'ringing') return 'Iniciando chamada...';
+        if (status === 'initializing') return 'Conectando ao servidor...';
+        if (status === 'ringing') return 'Chamando...';
         if (status === 'connected') return formatTime(duration);
+        if (status === 'error') return 'Erro na conexão';
         return 'Chamada Encerrada';
     };
 
@@ -131,7 +180,7 @@ export const CallModal = ({ isOpen, onClose, contactName, contactPhone, profileP
                         </div>
                     </div>
 
-                    <div className="text-zinc-300 font-mono text-lg tracking-widest mt-2">
+                    <div className="text-zinc-300 font-mono text-lg tracking-widest mt-2 h-8">
                         <StatusText />
                     </div>
                 </div>
@@ -142,8 +191,9 @@ export const CallModal = ({ isOpen, onClose, contactName, contactPhone, profileP
                         <Button
                             variant="ghost"
                             size="icon"
+                            disabled={status !== 'connected'}
                             className={`h-12 w-12 rounded-full ${isMuted ? 'bg-white text-black' : 'bg-white/10 text-white hover:bg-white/20'}`}
-                            onClick={() => setIsMuted(prev => !prev)}
+                            onClick={toggleMute}
                         >
                             {isMuted ? <MicOff className="h-5 w-5" /> : <Mic className="h-5 w-5" />}
                         </Button>

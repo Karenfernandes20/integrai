@@ -1,12 +1,51 @@
 
-import { pool } from '../db';
-import querystring from 'querystring';
+import twilio from 'twilio';
 
-/*
- * Simple Twilio Voice Service using native fetch
- * Requires TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_PHONE_NUMBER
+const AccessToken = twilio.jwt.AccessToken;
+const VoiceGrant = AccessToken.VoiceGrant;
+
+/**
+ * Generate Access Token for Browser-based (WebRTC) calling
  */
+export const generateVoiceToken = (identity: string) => {
+    const accountSid = process.env.TWILIO_ACCOUNT_SID;
+    const apiKey = process.env.TWILIO_API_KEY_SID; // API Key is preferred for Tokens
+    const apiSecret = process.env.TWILIO_API_KEY_SECRET;
+    const twimlAppSid = process.env.TWILIO_TWIML_APP_SID; // Required for Browser Calls
 
+    if (!accountSid || !apiKey || !apiSecret || !twimlAppSid) {
+        throw new Error("Missing Twilio credentials for Voice Token (SID, API KEY, SECRET, APP SID)");
+    }
+
+    const voiceGrant = new VoiceGrant({
+        outgoingApplicationSid: twimlAppSid,
+        incomingAllow: true, // Allow incoming calls to this client?
+    });
+
+    const token = new AccessToken(accountSid, apiKey, apiSecret, { identity: identity });
+    token.addGrant(voiceGrant);
+
+    return token.toJwt();
+};
+
+/**
+ * Generate TwiML to bridge Browser Call to Real Phone Number
+ */
+export const generateOutboundTwiML = (to: string, callerId?: string) => {
+    const response = new twilio.twiml.VoiceResponse();
+    const dial = response.dial({
+        callerId: callerId || process.env.TWILIO_PHONE_NUMBER,
+        answerOnBridge: true
+    });
+    // Ensure clean number format
+    dial.number(to);
+    return response.toString();
+};
+
+/**
+ * Server-Side Call Initiation (Legacy / Click-To-Device)
+ * Uses official SDK now.
+ */
 export const makeTwilioCall = async (to: string, fromOverride?: string) => {
     const accountSid = process.env.TWILIO_ACCOUNT_SID;
     const authToken = process.env.TWILIO_AUTH_TOKEN;
@@ -16,42 +55,13 @@ export const makeTwilioCall = async (to: string, fromOverride?: string) => {
         throw new Error("Twilio credentials not configured (TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_PHONE_NUMBER)");
     }
 
-    const auth = Buffer.from(accountSid + ":" + authToken).toString("base64");
-    const url = `https://api.twilio.com/2010-04-01/Accounts/${accountSid}/Calls.json`;
+    const client = twilio(accountSid, authToken);
 
-    // TwiML Bin or simple response that bridges the call or just says something
-    // For a real softphone, we need a Client setup. For a simple PSTN-to-PSTN call:
-    // We can't bridge to browser audio without a specific Client setup.
-    // BUT user asked for "Real Call".
-    // If we call the User's Phone (Agent) first, and then bridge to Client?
-    // Or if we assume this is just for status tracking.
-
-    // Let's assume sending a call to the 'to' number.
-    // We need a URL to execute when answered.
-    // Defaulting to a demo TwiML or empty.
-    const twimlUrl = "http://demo.twilio.com/docs/voice.xml";
-
-    const body = querystring.stringify({
-        To: to,
-        From: fromNumber,
-        Url: twimlUrl
+    const call = await client.calls.create({
+        url: 'http://demo.twilio.com/docs/voice.xml', // Replace with your TwiML Bin URL
+        to: to,
+        from: fromNumber
     });
 
-    const response = await fetch(url, {
-        method: "POST",
-        headers: {
-            "Authorization": "Basic " + auth,
-            "Content-Type": "application/x-www-form-urlencoded"
-        },
-        body: body
-    });
-
-    if (!response.ok) {
-        const err = await response.text();
-        console.error("Twilio Error:", err);
-        throw new Error("Failed to initiate call via Twilio: " + response.statusText);
-    }
-
-    const data = await response.json();
-    return data;
+    return call;
 };
