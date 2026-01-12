@@ -276,13 +276,26 @@ export const handleWebhook = async (req: Request, res: Response) => {
             // Resolve Company ID
             let companyId: number | null = instanceCache.get(instance) || null;
             if (!companyId) {
-                const compLookup = await pool.query('SELECT id FROM companies WHERE LOWER(evolution_instance) = LOWER($1)', [instance]);
-                if (compLookup.rows.length > 0) {
-                    companyId = compLookup.rows[0].id;
-                } else {
+                // 1. Check Multi-Instance Table (Preferred)
+                const instanceLookup = await pool.query('SELECT company_id FROM company_instances WHERE instance_key = $1', [instance]);
+                if (instanceLookup.rows.length > 0) {
+                    companyId = instanceLookup.rows[0].company_id;
+                }
+
+                // 2. Fallback to Legacy Single Instance Column
+                if (!companyId) {
+                    const compLookup = await pool.query('SELECT id FROM companies WHERE LOWER(evolution_instance) = LOWER($1)', [instance]);
+                    if (compLookup.rows.length > 0) {
+                        companyId = compLookup.rows[0].id;
+                    }
+                }
+
+                // 3. Last Resort: Fuzzy Search
+                if (!companyId) {
                     const fuzzyLookup = await pool.query(`SELECT id FROM companies WHERE (LOWER($1) LIKE LOWER(CONCAT('%', name, '%')) OR LOWER(name) LIKE LOWER(CONCAT('%', $1, '%')) OR LOWER(evolution_instance) LIKE LOWER(CONCAT('%', $1, '%'))) LIMIT 1`, [instance]);
                     if (fuzzyLookup.rows.length > 0) companyId = fuzzyLookup.rows[0].id;
                 }
+
                 if (companyId) instanceCache.set(instance, companyId);
             }
 
