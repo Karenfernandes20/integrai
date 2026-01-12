@@ -891,6 +891,28 @@ export const syncEvolutionContacts = async (req: Request, res: Response) => {
           continue;
         }
 
+        // --- Connection Check ---
+        try {
+          const checkUrl = `${EVOLUTION_API_URL}/instance/connectionState/${EVOLUTION_INSTANCE}`;
+          const checkRes = await fetch(checkUrl, {
+            method: 'GET',
+            headers: { "apikey": EVOLUTION_API_KEY }
+          });
+          if (checkRes.ok) {
+            const checkData = await checkRes.json();
+            const state = (checkData?.instance?.state || checkData?.state || 'unknown');
+            if (state !== 'open') {
+              console.warn(`[Sync] Skipping instance ${EVOLUTION_INSTANCE} because it is not OPEN (State: ${state})`);
+              errorDetails.push(`Instance ${EVOLUTION_INSTANCE} is ${state}`);
+              continue;
+            }
+          }
+        } catch (connErr) {
+          console.warn(`[Sync] Failed to check connection for ${EVOLUTION_INSTANCE}:`, connErr);
+          // We proceed anyway in case the check failed but API works, but log it
+        }
+        // ------------------------
+
         console.log(`[Sync] Instance: ${EVOLUTION_INSTANCE} (Key: ***${EVOLUTION_API_KEY.slice(-4)})`);
 
         // Endpoints to try
@@ -918,6 +940,13 @@ export const syncEvolutionContacts = async (req: Request, res: Response) => {
               body: JSON.stringify({ where: {} }) // Added where: {} for better compatibility with find/search endpoints
             });
 
+            // Handle non-JSON responses (HTML 500/502/404 from proxy)
+            const contentType = response.headers.get("content-type");
+            if (!contentType || !contentType.includes("application/json")) {
+              const text = await response.text();
+              throw new Error(`Invalid response content-type: ${contentType}. Body: ${text.substring(0, 100)}`);
+            }
+
             if (response.ok) {
               const rawData = await response.json();
               contactsList = Array.isArray(rawData) ? rawData : (rawData.data || rawData.contacts || rawData.results || []);
@@ -925,7 +954,8 @@ export const syncEvolutionContacts = async (req: Request, res: Response) => {
               console.log(`[Sync] Success via ${url}. Items: ${contactsList.length}`);
               break;
             } else {
-              lastError = await response.text();
+              const errJson = await response.json().catch(() => ({}));
+              lastError = JSON.stringify(errJson);
               console.warn(`[Sync] Endpoint failed ${response.status}: ${lastError.substring(0, 100)}`);
 
               // Fallback: Try with empty body {} if first attempt failed
@@ -946,6 +976,7 @@ export const syncEvolutionContacts = async (req: Request, res: Response) => {
             }
           } catch (err: any) {
             lastError = err.message;
+            console.warn(`[Sync] Error calling ${url}: ${err.message}`);
           }
         }
 
@@ -962,6 +993,12 @@ export const syncEvolutionContacts = async (req: Request, res: Response) => {
             const processedJids = new Set<string>();
 
             for (const contact of contactsList) {
+              // SKIP GROUPS and missing IDs
+              const rawId = contact.id || contact.remoteJid || contact.jid;
+              if (!rawId || contact.isGroup || rawId.endsWith('@g.us')) {
+                continue;
+              }
+
               let candidate = null;
               const potentialFields = [contact.id, contact.remoteJid, contact.number, contact.phone];
 
@@ -1017,8 +1054,10 @@ export const syncEvolutionContacts = async (req: Request, res: Response) => {
     }
 
     if (processedCount === 0 && errorDetails.length > 0) {
+      // JSON response for error
       return res.status(502).json({
-        error: "Falha ao sincronizar contatos.",
+        success: false,
+        message: "Falha ao sincronizar contatos.",
         details: errorDetails.join(' | ')
       });
     }
@@ -1045,12 +1084,19 @@ export const syncEvolutionContacts = async (req: Request, res: Response) => {
     console.error("CRITICAL SYNC ERROR:", error);
     if (!res.headersSent) {
       return res.status(500).json({
+        success: false,
         error: "Erro interno no servidor de sincronização",
         details: error?.message
       });
     }
   }
 };
+
+
+
+
+
+
 
 export const getEvolutionContactsLive = async (req: Request, res: Response) => {
   const targetCompanyId = req.query.companyId as string;
