@@ -73,6 +73,7 @@ type Lead = {
   columnId?: string; // Mapeado de stage_id para lógica de frontend
   follow_up_status?: 'pending' | 'overdue' | 'completed';
   follow_up_date?: string;
+  instance_friendly_name?: string;
 };
 
 type Stage = {
@@ -144,7 +145,14 @@ function SortableLeadCard({ lead, onEdit, onChat, onFollowUp, onCall, onRemove }
     >
       <div className="flex items-start justify-between gap-2">
         <div className="flex-1 min-w-0">
-          <p className="text-[13px] font-semibold text-foreground truncate">{lead.name || lead.phone}</p>
+          <div className="flex items-center gap-1.5 min-w-0">
+            <p className="text-[13px] font-semibold text-foreground truncate">{lead.name || lead.phone}</p>
+            {lead.instance_friendly_name && (
+              <Badge variant="outline" className="h-[18px] px-1.5 text-[9px] font-bold uppercase tracking-wider text-muted-foreground border-muted-foreground/30 shrink-0">
+                {lead.instance_friendly_name}
+              </Badge>
+            )}
+          </div>
           <div className="mt-1 flex items-center gap-1.5 overflow-hidden">
             <MapPin className="h-3 w-3 text-muted-foreground flex-shrink-0" />
             <p className="text-[11px] text-muted-foreground truncate">

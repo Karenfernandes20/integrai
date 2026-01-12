@@ -85,6 +85,7 @@ interface Conversation {
   contact_push_name?: string;
   last_sender_name?: string;
   last_message_source?: string;
+  instance_friendly_name?: string;
 }
 
 interface Message {
@@ -2196,11 +2197,18 @@ const AtendimentoPage = () => {
 
           <div className="flex-1 min-w-0 flex flex-col justify-center">
             <div className="flex justify-between items-center mb-1">
-              <span className="text-[16px] font-medium leading-5 text-[#E9EDEF] truncate">
-                {getDisplayName(conv)}
-              </span>
+              <div className="flex items-center min-w-0 gap-2 flex-1 mr-2">
+                <span className="text-[16px] font-medium leading-5 text-[#E9EDEF] truncate">
+                  {getDisplayName(conv)}
+                </span>
+                {conv.instance_friendly_name && (
+                  <span className="px-1.5 py-0.5 rounded-[4px] text-[10px] font-bold bg-[#202C33] text-[#8696A0] uppercase tracking-wide border border-[#222E35] shrink-0">
+                    {conv.instance_friendly_name}
+                  </span>
+                )}
+              </div>
               <span className={cn(
-                "text-[12px] whitespace-nowrap ml-2",
+                "text-[12px] whitespace-nowrap",
                 conv.unread_count && conv.unread_count > 0 ? "text-[#25D366] font-medium" : "text-[#8696A0]"
               )}>
                 {conv.last_message_at ? formatListDate(conv.last_message_at) : ""}

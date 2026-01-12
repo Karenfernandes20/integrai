@@ -820,10 +820,12 @@ export const getConversations = async (req: Request, res: Response) => {
             (SELECT sender_name FROM whatsapp_messages WHERE conversation_id = c.id AND sender_name IS NOT NULL LIMIT 1) as last_sender_name,
             COALESCE(co.profile_pic_url, c.profile_pic_url) as profile_pic_url,
             co.push_name as contact_push_name,
-            comp.name as company_name
+            comp.name as company_name,
+            ci.name as instance_friendly_name
             FROM whatsapp_conversations c
             LEFT JOIN whatsapp_contacts co ON (c.external_id = co.jid AND c.instance = co.instance)
             LEFT JOIN companies comp ON c.company_id = comp.id
+            LEFT JOIN company_instances ci ON c.instance = ci.instance_key
             WHERE 1=1
         `;
         const params: any[] = [];

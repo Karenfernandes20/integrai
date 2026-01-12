@@ -183,7 +183,14 @@ export const getLeads = async (req: Request, res: Response) => {
                 SELECT scheduled_at FROM crm_follow_ups 
                 WHERE lead_id = l.id AND status IN ('pending', 'overdue')
                 ORDER BY scheduled_at ASC LIMIT 1
-            ) as follow_up_date
+            ) as follow_up_date,
+            (
+                SELECT ci.name 
+                FROM whatsapp_conversations wc
+                JOIN company_instances ci ON wc.instance = ci.instance_key
+                WHERE wc.phone = l.phone AND wc.company_id = l.company_id 
+                ORDER BY wc.last_message_at DESC LIMIT 1
+            ) as instance_friendly_name
             FROM crm_leads l
             LEFT JOIN crm_stages s ON l.stage_id = s.id
             WHERE 1=1
