@@ -1204,22 +1204,20 @@ const SuperadminPage = () => {
               <div className="grid gap-4">
                 {currentInstances.map((inst) => (
                   <Card key={inst.id} className="p-4 border shadow-sm">
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      {/* Using 'name' display logic but editing 'instance_key' to keep it robust as requested */}
                       <div className="space-y-2">
                         <Label className="text-xs">Nome da Instância</Label>
                         <Input
-                          value={inst.name || ""}
-                          onChange={(e) => handleUpdateInstanceConfig(inst.id, 'name', e.target.value)}
-                          placeholder="Ex: Comercial"
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <Label className="text-xs">Instance Key (Evolution)</Label>
-                        <Input
                           value={inst.instance_key || ""}
-                          onChange={(e) => handleUpdateInstanceConfig(inst.id, 'instance_key', e.target.value)}
-                          placeholder="Ex: integrai_1_2"
+                          onChange={(e) => {
+                            handleUpdateInstanceConfig(inst.id, 'instance_key', e.target.value);
+                            // Force syncing the visual name so buttons in QR page update
+                            handleUpdateInstanceConfig(inst.id, 'name', e.target.value);
+                          }}
+                          placeholder="Ex: integrai_vendas"
                         />
+                        <p className="text-[10px] text-muted-foreground">Nome técnico usado na conexão (Instance Key)</p>
                       </div>
                       <div className="space-y-2">
                         <Label className="text-xs">API Key (Opcional)</Label>
