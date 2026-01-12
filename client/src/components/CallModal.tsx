@@ -1,9 +1,9 @@
 
 import { useState, useEffect, useRef } from 'react';
-import { Dialog, DialogContent } from "../ui/dialog";
-import { Avatar, AvatarFallback, AvatarImage } from "../ui/avatar";
+import { Dialog, DialogContent } from "./ui/dialog";
+import { Avatar, AvatarFallback, AvatarImage } from "./ui/avatar";
 import { Phone, PhoneOff, Mic, MicOff, Volume2, Grid3x3 } from "lucide-react";
-import { Button } from "../ui/button";
+import { Button } from "./ui/button";
 
 interface CallModalProps {
     isOpen: boolean;

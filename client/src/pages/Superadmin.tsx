@@ -68,7 +68,6 @@ interface Company {
   logo_url: string | null;
   evolution_instance: string | null;
   evolution_apikey: string | null;
-  evolution_apikey: string | null;
   operation_type: "motoristas" | "clientes" | "pacientes" | null;
   plan_id?: number;
   due_date?: string;
@@ -98,8 +97,6 @@ const SuperadminPage = () => {
     city: "",
     state: "",
     phone: "",
-    evolution_instance: "",
-    evolution_apikey: "",
     evolution_instance: "",
     evolution_apikey: "",
     operation_type: "clientes", // Default
@@ -243,8 +240,6 @@ const SuperadminPage = () => {
       phone: company.phone ?? "",
       evolution_instance: company.evolution_instance ?? "",
       evolution_apikey: company.evolution_apikey ?? "",
-      evolution_instance: company.evolution_instance ?? "",
-      evolution_apikey: company.evolution_apikey ?? "",
       operation_type: company.operation_type ?? "clientes",
       plan_id: company.plan_id ? String(company.plan_id) : "",
       due_date: company.due_date ? new Date(company.due_date).toISOString().split('T')[0] : "",
@@ -267,7 +262,6 @@ const SuperadminPage = () => {
       state: "",
       phone: "",
       evolution_instance: "",
-      evolution_apikey: "",
       evolution_apikey: "",
       operation_type: "clientes",
       plan_id: "",
