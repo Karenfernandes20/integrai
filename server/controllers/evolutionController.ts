@@ -850,139 +850,192 @@ export const getEvolutionContacts = async (req: Request, res: Response) => {
 
 export const syncEvolutionContacts = async (req: Request, res: Response) => {
   const targetCompanyId = (req.query.companyId || req.body.companyId) as string;
+  const specificInstanceKey = (req.query.instanceKey || req.body.instanceKey) as string;
+  const user = (req as any).user;
+
   try {
-    const config = await getEvolutionConfig((req as any).user, 'syncContacts', targetCompanyId);
-    const EVOLUTION_API_URL = config.url.replace(/\/$/, "");
-    const EVOLUTION_API_KEY = config.apikey?.trim();
-    const EVOLUTION_INSTANCE = config.instance;
+    const resolvedCompanyId = user.role === 'SUPERADMIN' && targetCompanyId ? Number(targetCompanyId) : user.company_id;
+    let instancesToProcess: string[] = [];
 
-    if (!EVOLUTION_API_URL || !EVOLUTION_API_KEY) {
-      return res.status(500).json({ error: "Evolution API not configured" });
-    }
-
-    console.log(`[Sync] Config: URL=${EVOLUTION_API_URL}, Instance=${EVOLUTION_INSTANCE}, KeyLength=${EVOLUTION_API_KEY.length}, KeyStart=${EVOLUTION_API_KEY.substring(0, 4)}***`);
-
-    // 1. Fetch from Evolution with multiple fallbacks
-    const endpoints = [
-      `${EVOLUTION_API_URL}/chat/findContacts/${EVOLUTION_INSTANCE}`,
-      `${EVOLUTION_API_URL}/chat/fetchContacts/${EVOLUTION_INSTANCE}`,
-      `${EVOLUTION_API_URL}/contact/find/${EVOLUTION_INSTANCE}`,
-      `${EVOLUTION_API_URL}/contact/fetchContacts/${EVOLUTION_INSTANCE}`
-    ];
-
-    let contactsList: any[] = [];
-    let success = false;
-    let lastError = "";
-
-    for (const url of endpoints) {
-      try {
-        console.log(`[Sync] Trying endpoint: ${url}`);
-        const response = await fetch(url, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "apikey": EVOLUTION_API_KEY,
-            "Authorization": `Bearer ${EVOLUTION_API_KEY}` // Try Bearer as well just in case
-          },
-          body: JSON.stringify({})
-        });
-
-        if (response.ok) {
-          const rawData = await response.json();
-          contactsList = Array.isArray(rawData) ? rawData : (rawData.data || rawData.contacts || rawData.results || []);
-          console.log(`[Sync] Success with ${url}. Found ${contactsList.length} contacts.`);
-          success = true;
-          break;
-        } else {
-          lastError = await response.text();
-          console.warn(`[Sync] Endpoint ${url} failed with status ${response.status}: ${lastError.substring(0, 100)}`);
+    // 1. Determine which instances to process
+    if (specificInstanceKey) {
+      instancesToProcess = [specificInstanceKey];
+    } else {
+      if (pool && resolvedCompanyId) {
+        const resInst = await pool.query('SELECT instance_key FROM company_instances WHERE company_id = $1', [resolvedCompanyId]);
+        if (resInst.rows.length > 0) {
+          instancesToProcess = resInst.rows.map(r => r.instance_key);
         }
-      } catch (err: any) {
-        lastError = err.message;
-        console.warn(`[Sync] Error calling ${url}: ${err.message}`);
+      }
+      // Fallback: If no multi-instances found, try one pass with explicit undefined to trigger getEvolutionConfig default logic
+      if (instancesToProcess.length === 0) {
+        instancesToProcess = [undefined as any];
       }
     }
 
-    if (!success) {
+    console.log(`[Sync] Processing sync for company ${resolvedCompanyId}. Instances: ${instancesToProcess.join(', ') || 'Default'}`);
+
+    let processedCount = 0;
+    let errorDetails: string[] = [];
+
+    // 2. Iterate and Sync
+    for (const instKey of instancesToProcess) {
+      try {
+        const config = await getEvolutionConfig(user, 'syncContacts', targetCompanyId, instKey);
+        const EVOLUTION_API_URL = config.url?.replace(/\/$/, "");
+        const EVOLUTION_API_KEY = config.apikey?.trim();
+        const EVOLUTION_INSTANCE = config.instance;
+
+        if (!EVOLUTION_API_URL || !EVOLUTION_API_KEY || !EVOLUTION_INSTANCE) {
+          console.warn(`[Sync] Skipping instance ${instKey || 'Default'}: Config missing.`);
+          continue;
+        }
+
+        console.log(`[Sync] Instance: ${EVOLUTION_INSTANCE} (Key: ***${EVOLUTION_API_KEY.slice(-4)})`);
+
+        // Endpoints to try
+        const endpoints = [
+          `${EVOLUTION_API_URL}/chat/findContacts/${EVOLUTION_INSTANCE}`,
+          `${EVOLUTION_API_URL}/chat/fetchContacts/${EVOLUTION_INSTANCE}`,
+          `${EVOLUTION_API_URL}/contact/find/${EVOLUTION_INSTANCE}`,
+          `${EVOLUTION_API_URL}/contact/fetchContacts/${EVOLUTION_INSTANCE}`
+        ];
+
+        let contactsList: any[] = [];
+        let success = false;
+        let lastError = "";
+
+        for (const url of endpoints) {
+          try {
+            console.log(`[Sync] Trying endpoint: ${url}`);
+            const response = await fetch(url, {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                "apikey": EVOLUTION_API_KEY,
+                "Authorization": `Bearer ${EVOLUTION_API_KEY}`
+              },
+              body: JSON.stringify({ where: {} }) // Added where: {} for better compatibility with find/search endpoints
+            });
+
+            if (response.ok) {
+              const rawData = await response.json();
+              contactsList = Array.isArray(rawData) ? rawData : (rawData.data || rawData.contacts || rawData.results || []);
+              success = true;
+              console.log(`[Sync] Success via ${url}. Items: ${contactsList.length}`);
+              break;
+            } else {
+              lastError = await response.text();
+              console.warn(`[Sync] Endpoint failed ${response.status}: ${lastError.substring(0, 100)}`);
+
+              // Fallback: Try with empty body {} if first attempt failed
+              if (!success) {
+                const retryRes = await fetch(url, {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json", "apikey": EVOLUTION_API_KEY },
+                  body: JSON.stringify({})
+                });
+                if (retryRes.ok) {
+                  const rawData = await retryRes.json();
+                  contactsList = Array.isArray(rawData) ? rawData : (rawData.data || []);
+                  success = true;
+                  console.log(`[Sync] Success via ${url} (Retry {}). Items: ${contactsList.length}`);
+                  break;
+                }
+              }
+            }
+          } catch (err: any) {
+            lastError = err.message;
+          }
+        }
+
+        if (!success) {
+          errorDetails.push(`Instance ${EVOLUTION_INSTANCE}: ${lastError}`);
+          continue; // Try next instance
+        }
+
+        // Upsert Contacts Logic
+        if (pool && contactsList.length > 0) {
+          const client = await pool.connect();
+          try {
+            await client.query('BEGIN');
+            const processedJids = new Set<string>();
+
+            for (const contact of contactsList) {
+              let candidate = null;
+              const potentialFields = [contact.id, contact.remoteJid, contact.number, contact.phone];
+
+              for (const field of potentialFields) {
+                if (typeof field === 'string' && field) {
+                  const clean = field.split('@')[0].split(':')[0];
+                  if (/^\d+$/.test(clean) && clean.length >= 7 && clean.length <= 16) {
+                    candidate = clean;
+                    break;
+                  }
+                }
+              }
+
+              if (!candidate) continue;
+              const jid = `${candidate}@s.whatsapp.net`;
+
+              if (processedJids.has(jid)) continue;
+              processedJids.add(jid);
+
+              const name = contact.name || contact.pushName || contact.notify || contact.verifiedName || candidate;
+              const pushName = contact.pushName || contact.notify;
+              const profilePic = contact.profilePictureUrl || contact.profilePicture;
+
+              await client.query(`
+                INSERT INTO whatsapp_contacts (jid, name, push_name, profile_pic_url, instance, updated_at, company_id)
+                VALUES ($1, $2, $3, $4, $5, NOW(), $6)
+                ON CONFLICT (jid, instance) 
+                DO UPDATE SET 
+                  name = EXCLUDED.name,
+                  push_name = EXCLUDED.push_name,
+                  profile_pic_url = COALESCE(EXCLUDED.profile_pic_url, whatsapp_contacts.profile_pic_url),
+                  updated_at = NOW(),
+                  company_id = COALESCE(whatsapp_contacts.company_id, EXCLUDED.company_id)
+              `, [jid, name, pushName || null, profilePic || null, EVOLUTION_INSTANCE, resolvedCompanyId || null]);
+            }
+            await client.query('COMMIT');
+            processedCount++;
+          } catch (dbErr) {
+            await client.query('ROLLBACK');
+            console.error(`[Sync] DB Error for ${EVOLUTION_INSTANCE}:`, dbErr);
+            errorDetails.push(`DB Error ${EVOLUTION_INSTANCE}: ${(dbErr as any).message}`);
+          } finally {
+            client.release();
+          }
+        } else {
+          processedCount++; // API success but 0 contacts is still "processed"
+        }
+
+      } catch (instError: any) {
+        console.error(`[Sync] Error loop ${instKey}:`, instError);
+        errorDetails.push(instError.message);
+      }
+    }
+
+    if (processedCount === 0 && errorDetails.length > 0) {
       return res.status(502).json({
-        error: "Failed to fetch contacts from any known Evolution API endpoint",
-        details: lastError
+        error: "Falha ao sincronizar contatos.",
+        details: errorDetails.join(' | ')
       });
     }
 
-    if (pool && contactsList.length > 0) {
-      const user = (req as any).user;
-      const companyId = config.company_id || user?.company_id;
+    // Return Consolidated Contacts
+    let localQuery = `SELECT * FROM whatsapp_contacts`;
+    const localParams: any[] = [];
 
-      console.log(`[Sync] Processing ${contactsList.length} contacts for company ${companyId}...`);
-
-      // Use a transaction for better performance
-      const client = await pool.connect();
-      const processedJids = new Set<string>();
-
-      try {
-        await client.query('BEGIN');
-
-        for (const contact of contactsList) {
-          let candidate = null;
-          const potentialFields = [contact.id, contact.remoteJid, contact.number, contact.phone];
-
-          for (const field of potentialFields) {
-            if (typeof field === 'string' && field) {
-              const clean = field.split('@')[0].split(':')[0];
-              if (/^\d+$/.test(clean) && clean.length >= 7 && clean.length <= 16) {
-                candidate = clean;
-                break;
-              }
-            }
-          }
-
-          if (!candidate) continue;
-
-          const jid = `${candidate}@s.whatsapp.net`;
-
-          // Deduplicate within this batch
-          if (processedJids.has(jid)) continue;
-          processedJids.add(jid);
-
-          const name = contact.name || contact.pushName || contact.notify || contact.verifiedName || candidate;
-          const pushName = contact.pushName || contact.notify;
-          const profilePic = contact.profilePictureUrl || contact.profilePicture;
-
-          await client.query(`
-            INSERT INTO whatsapp_contacts (jid, name, push_name, profile_pic_url, instance, updated_at, company_id)
-            VALUES ($1, $2, $3, $4, $5, NOW(), $6)
-            ON CONFLICT (jid, instance) 
-            DO UPDATE SET 
-              name = EXCLUDED.name,
-              push_name = EXCLUDED.push_name,
-              profile_pic_url = COALESCE(EXCLUDED.profile_pic_url, whatsapp_contacts.profile_pic_url),
-              updated_at = NOW(),
-              company_id = COALESCE(whatsapp_contacts.company_id, EXCLUDED.company_id)
-          `, [jid, name, pushName || null, profilePic || null, EVOLUTION_INSTANCE, companyId || null]);
-        }
-
-        await client.query('COMMIT');
-        console.log(`[Sync] Finished database update for ${contactsList.length} contacts (${processedJids.size} unique).`);
-      } catch (dbErr: any) {
-        await client.query('ROLLBACK');
-        console.error("DB Error in Sync:", dbErr);
-        throw dbErr; // Re-throw to be caught by outer handler
-      } finally {
-        client.release();
-      }
+    // Filter by Company
+    if (resolvedCompanyId) {
+      localQuery += ` WHERE (company_id = $1 OR company_id IS NULL)`;
+      localParams.push(resolvedCompanyId);
+    } else {
+      // Superadmin without company?
+      localQuery += ` WHERE 1=1 `;
     }
 
-    // Return the updated list to frontend
-    const user = (req as any).user;
-    const companyId = config.company_id || user?.company_id;
-    let localQuery = `SELECT * FROM whatsapp_contacts WHERE instance = $1`;
-    const localParams: any[] = [EVOLUTION_INSTANCE];
-
-    if (user.role !== 'SUPERADMIN' || companyId) {
-      localQuery += ` AND (company_id = $2 OR company_id IS NULL)`;
-      localParams.push(companyId);
-    }
     localQuery += ` ORDER BY name ASC`;
     const finalContacts = await pool?.query(localQuery, localParams);
 
@@ -992,9 +1045,8 @@ export const syncEvolutionContacts = async (req: Request, res: Response) => {
     console.error("CRITICAL SYNC ERROR:", error);
     if (!res.headersSent) {
       return res.status(500).json({
-        error: "Sync failed during processing",
-        details: error?.message || String(error),
-        stack: error?.stack
+        error: "Erro interno no servidor de sincronização",
+        details: error?.message
       });
     }
   }
