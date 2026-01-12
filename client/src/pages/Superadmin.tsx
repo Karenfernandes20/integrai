@@ -270,6 +270,9 @@ const SuperadminPage = () => {
 
     // Reset instances state
     setCurrentInstances([]);
+
+    // Auto load instances if editing
+    loadInstancesForCompany(company.id);
   };
 
   const loadInstancesForCompany = async (companyId: string | number) => {
@@ -281,7 +284,7 @@ const SuperadminPage = () => {
       if (res.ok) {
         const data = await res.json();
         setCurrentInstances(data);
-        setInstancesConfigOpen(true);
+        // setInstancesConfigOpen(true); // Removido para mostrar inline
       } else {
         toast({ title: "Erro", description: "Falha ao carregar instâncias", variant: "destructive" });
       }
@@ -1011,29 +1014,32 @@ const SuperadminPage = () => {
 
 
                 <Separator className="my-2" />
-                <p className="text-sm font-semibold text-primary">Integração Evolution API</p>
-
-                <div className="space-y-1.5">
-                  <Label htmlFor="evolution_instance">Nome da Instância</Label>
-                  <Input
-                    id="evolution_instance"
-                    name="evolution_instance"
-                    placeholder="minha-instancia"
-                    value={formValues.evolution_instance}
-                    onChange={handleChange}
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <Label htmlFor="evolution_apikey">API Key</Label>
-                  <Input
-                    id="evolution_apikey"
-                    name="evolution_apikey"
-                    type="password"
-                    placeholder="sk_..."
-                    value={formValues.evolution_apikey}
-                    onChange={handleChange}
-                  />
-                </div>
+                {(!editingCompany || currentInstances.length <= 1) && (
+                  <>
+                    <p className="text-sm font-semibold text-primary">Integração Evolution API (Principal)</p>
+                    <div className="space-y-1.5">
+                      <Label htmlFor="evolution_instance">Nome da Instância</Label>
+                      <Input
+                        id="evolution_instance"
+                        name="evolution_instance"
+                        placeholder="minha-instancia"
+                        value={formValues.evolution_instance}
+                        onChange={handleChange}
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label htmlFor="evolution_apikey">API Key</Label>
+                      <Input
+                        id="evolution_apikey"
+                        name="evolution_apikey"
+                        type="password"
+                        placeholder="sk_..."
+                        value={formValues.evolution_apikey}
+                        onChange={handleChange}
+                      />
+                    </div>
+                  </>
+                )}
 
                 <div className="space-y-1.5">
                   <Label htmlFor="max_instances">Número de Instâncias (Multi-Atendimento)</Label>
@@ -1048,17 +1054,54 @@ const SuperadminPage = () => {
                   />
                 </div>
 
-                {editingCompany && (
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={() => loadInstancesForCompany(editingCompany.id)}
-                    className="w-full"
-                  >
-                    <KeyRound className="w-4 h-4 mr-2" />
-                    Configurar Instâncias ({formValues.max_instances})
-                  </Button>
+                {editingCompany && currentInstances.length > 0 && (
+                  <div className="space-y-3 mt-4 border rounded-md p-3 bg-muted/20">
+                    <div className="flex justify-between items-center">
+                      <Label className="text-primary font-semibold">Configuração Multi-Instância</Label>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => loadInstancesForCompany(editingCompany.id)}
+                        disabled={loadingInstances}
+                      >
+                        <RotateCcw className={cn("w-3 h-3 mr-1", loadingInstances && "animate-spin")} />
+                        Atualizar Lista
+                      </Button>
+                    </div>
+
+                    <div className="grid gap-3">
+                      {currentInstances.map((inst, idx) => (
+                        <div key={inst.id} className="grid grid-cols-1 md:grid-cols-2 gap-2 p-2 border rounded bg-background">
+                          <div className="space-y-1">
+                            <Label className="text-[10px] uppercase font-bold text-muted-foreground">Instância #{idx + 1} (Chave)</Label>
+                            <Input
+                              className="h-8 text-xs"
+                              value={inst.instance_key || ""}
+                              onChange={(e) => {
+                                handleUpdateInstanceConfig(inst.id, 'instance_key', e.target.value);
+                                handleUpdateInstanceConfig(inst.id, 'name', e.target.value);
+                              }}
+                              placeholder={`integrai_${inst.id}`}
+                            />
+                          </div>
+                          <div className="space-y-1">
+                            <Label className="text-[10px] uppercase font-bold text-muted-foreground">API Key</Label>
+                            <Input
+                              className="h-8 text-xs"
+                              type="password"
+                              value={inst.api_key || ""}
+                              onChange={(e) => handleUpdateInstanceConfig(inst.id, 'api_key', e.target.value)}
+                              placeholder="API Key Individual"
+                            />
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                    <p className="text-[10px] text-muted-foreground italic">
+                      * Alterações nessas instâncias são salvas automaticamente ao digitar.
+                    </p>
+                  </div>
                 )}
 
                 <Separator className="my-2" />
@@ -1188,64 +1231,7 @@ const SuperadminPage = () => {
         </section>
       </main>
 
-      <Dialog open={instancesConfigOpen} onOpenChange={setInstancesConfigOpen}>
-        <DialogContent className="max-w-3xl max-h-[80vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>Gerenciar Instâncias</DialogTitle>
-            <DialogDescription>
-              Configure os dados de conexão de cada instância para {editingCompany?.name}.
-            </DialogDescription>
-          </DialogHeader>
 
-          <div className="space-y-4 py-4">
-            {loadingInstances ? (
-              <div className="text-center py-8 text-muted-foreground">Carregando instâncias...</div>
-            ) : (
-              <div className="grid gap-4">
-                {currentInstances.map((inst) => (
-                  <Card key={inst.id} className="p-4 border shadow-sm">
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      {/* Using 'name' display logic but editing 'instance_key' to keep it robust as requested */}
-                      <div className="space-y-2">
-                        <Label className="text-xs">Nome da Instância</Label>
-                        <Input
-                          value={inst.instance_key || ""}
-                          onChange={(e) => {
-                            handleUpdateInstanceConfig(inst.id, 'instance_key', e.target.value);
-                            // Force syncing the visual name so buttons in QR page update
-                            handleUpdateInstanceConfig(inst.id, 'name', e.target.value);
-                          }}
-                          placeholder="Ex: integrai_vendas"
-                        />
-                        <p className="text-[10px] text-muted-foreground">Nome técnico usado na conexão (Instance Key)</p>
-                      </div>
-                      <div className="space-y-2">
-                        <Label className="text-xs">API Key (Opcional)</Label>
-                        <Input
-                          type="password"
-                          value={inst.api_key || ""}
-                          onChange={(e) => handleUpdateInstanceConfig(inst.id, 'api_key', e.target.value)}
-                          placeholder="Se vazio, usa a global"
-                        />
-                      </div>
-                    </div>
-                    <div className="mt-2 text-xs text-muted-foreground flex justify-between">
-                      <span>Status: {inst.status || 'disconnected'}</span>
-                      <span>ID: {inst.id}</span>
-                    </div>
-                  </Card>
-                ))}
-                {currentInstances.length === 0 && (
-                  <p className="text-center text-muted-foreground">Nenhuma instância encontrada. Salve a empresa com "Número de Instâncias" maior que 0.</p>
-                )}
-              </div>
-            )}
-          </div>
-          <DialogFooter>
-            <Button onClick={() => setInstancesConfigOpen(false)}>Fechar</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </div >
   );
 };
