@@ -18,6 +18,7 @@ interface WebhookMessage {
 
 // Caching for performance
 const instanceCache = new Map<string, number>();
+const instanceNameCache = new Map<string, string>();
 const stagesCache: { map: any, lastFetch: number } = { map: null, lastFetch: 0 };
 const STAGE_CACHE_TTL = 300000; // 5 minutes
 
@@ -277,9 +278,12 @@ export const handleWebhook = async (req: Request, res: Response) => {
             let companyId: number | null = instanceCache.get(instance) || null;
             if (!companyId) {
                 // 1. Check Multi-Instance Table (Preferred)
-                const instanceLookup = await pool.query('SELECT company_id FROM company_instances WHERE instance_key = $1', [instance]);
+                const instanceLookup = await pool.query('SELECT company_id, name FROM company_instances WHERE instance_key = $1', [instance]);
                 if (instanceLookup.rows.length > 0) {
                     companyId = instanceLookup.rows[0].company_id;
+                    if (instanceLookup.rows[0].name) {
+                        instanceNameCache.set(instance, instanceLookup.rows[0].name);
+                    }
                 }
 
                 // 2. Fallback to Legacy Single Instance Column
@@ -559,6 +563,7 @@ export const handleWebhook = async (req: Request, res: Response) => {
                             profile_pic_url: checkConv.rows.length > 0 ? checkConv.rows[0].profile_pic_url : null,
                             remoteJid,
                             instance,
+                            instance_friendly_name: instanceNameCache.get(instance) || instance,
                             company_id: companyId,
                             status: currentStatus,
                             sender_jid: existingMsg.sender_jid,
@@ -629,6 +634,7 @@ export const handleWebhook = async (req: Request, res: Response) => {
                         profile_pic_url: checkConv.rows.length > 0 ? checkConv.rows[0].profile_pic_url : null,
                         remoteJid,
                         instance,
+                        instance_friendly_name: instanceNameCache.get(instance) || instance,
                         company_id: companyId,
                         status: currentStatus,
                         sender_jid: insertedMsg.rows[0].sender_jid,
@@ -834,7 +840,7 @@ export const getConversations = async (req: Request, res: Response) => {
             COALESCE(co.profile_pic_url, c.profile_pic_url) as profile_pic_url,
             co.push_name as contact_push_name,
             comp.name as company_name,
-            ci.name as instance_friendly_name
+            COALESCE(ci.name, c.instance) as instance_friendly_name
             FROM whatsapp_conversations c
             LEFT JOIN whatsapp_contacts co ON (c.external_id = co.jid AND c.instance = co.instance)
             LEFT JOIN companies comp ON c.company_id = comp.id

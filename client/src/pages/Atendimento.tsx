@@ -85,6 +85,7 @@ interface Conversation {
   contact_push_name?: string;
   last_sender_name?: string;
   last_message_source?: string;
+  instance?: string;
   instance_friendly_name?: string;
 }
 
@@ -105,6 +106,7 @@ interface Message {
   message_origin?: string;
   user_name?: string;
   saved_name?: string;
+  instance_friendly_name?: string;
   reactions?: { emoji: string; senderId: string; fromMe: boolean; timestamp: number }[];
 }
 
@@ -940,7 +942,9 @@ const AtendimentoPage = () => {
             status: newMessage.status || 'PENDING',
             is_group: newMessage.is_group,
             group_name: newMessage.group_name,
-            profile_pic_url: newMessage.profile_pic_url
+            profile_pic_url: newMessage.profile_pic_url,
+            instance: newMessage.instance,
+            instance_friendly_name: newMessage.instance_friendly_name
           };
         }
 
@@ -2201,9 +2205,9 @@ const AtendimentoPage = () => {
                 <span className="text-[16px] font-medium leading-5 text-[#E9EDEF] truncate">
                   {getDisplayName(conv)}
                 </span>
-                {conv.instance_friendly_name && (
+                {(conv.instance_friendly_name || conv.instance) && (
                   <span className="px-1.5 py-0.5 rounded-[4px] text-[10px] font-bold bg-[#202C33] text-[#8696A0] uppercase tracking-wide border border-[#222E35] shrink-0">
-                    {conv.instance_friendly_name}
+                    {conv.instance_friendly_name || conv.instance}
                   </span>
                 )}
               </div>
@@ -2497,7 +2501,14 @@ const AtendimentoPage = () => {
                                       <span className="font-semibold text-sm text-zinc-900 dark:text-zinc-100 truncate flex-1 pr-2">
                                         {msg.contact_name || msg.group_name || msg.chat_phone}
                                       </span>
-                                      <span className="text-[10px] text-[#008069] font-bold shrink-0">{formatListDate(msg.sent_at)}</span>
+                                      <div className="flex items-center gap-1.5">
+                                        <span className="text-[10px] text-[#008069] font-bold shrink-0">{formatListDate(msg.sent_at)}</span>
+                                        {msg.instance_friendly_name && (
+                                          <span className="px-1 py-0.5 rounded-[3px] text-[8px] font-bold bg-[#202C33] text-[#8696A0] uppercase tracking-tighter border border-[#222E35] shrink-0">
+                                            {msg.instance_friendly_name}
+                                          </span>
+                                        )}
+                                      </div>
                                     </div>
                                     <p className="text-xs text-muted-foreground line-clamp-2 leading-relaxed">
                                       <HighlightedText text={msg.content} highlight={conversationSearchTerm} />
@@ -2733,6 +2744,11 @@ const AtendimentoPage = () => {
                     {getDisplayName(selectedConversation)}
                     {selectedConversation.is_group && (
                       <span className="text-[10px] bg-[#202C33] text-[#8696A0] border border-[#222E35] px-1 rounded uppercase">Grupo</span>
+                    )}
+                    {(selectedConversation.instance_friendly_name || selectedConversation.instance) && (
+                      <span className="text-[10px] bg-[#202C33] text-[#8696A0] border border-[#222E35] px-1.5 py-0.5 rounded uppercase font-bold tracking-wider">
+                        {selectedConversation.instance_friendly_name || selectedConversation.instance}
+                      </span>
                     )}
                   </span>
                   <span className="text-[13px] text-[#8696A0] truncate leading-tight">

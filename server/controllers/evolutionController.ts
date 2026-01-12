@@ -2071,9 +2071,11 @@ export const searchEverything = async (req: Request, res: Response) => {
       SELECT c.*, 
       (SELECT content FROM whatsapp_messages WHERE conversation_id = c.id ORDER BY sent_at DESC LIMIT 1) as last_message,
       (SELECT sender_name FROM whatsapp_messages WHERE conversation_id = c.id AND sender_name IS NOT NULL LIMIT 1) as last_sender_name,
-      comp.name as company_name
+      comp.name as company_name,
+      COALESCE(ci.name, c.instance) as instance_friendly_name
       FROM whatsapp_conversations c
       LEFT JOIN companies comp ON c.company_id = comp.id
+      LEFT JOIN company_instances ci ON c.instance = ci.instance_key
       WHERE (c.contact_name ILIKE $1 OR c.phone ILIKE $1 OR c.group_name ILIKE $1)
     `;
     const convParams: any[] = [searchTerm];
@@ -2092,10 +2094,12 @@ export const searchEverything = async (req: Request, res: Response) => {
              c.phone as chat_phone, 
              c.is_group, 
              c.group_name,
-             u.full_name as user_name
+             u.full_name as user_name,
+             COALESCE(ci.name, c.instance) as instance_friendly_name
       FROM whatsapp_messages m
       JOIN whatsapp_conversations c ON m.conversation_id = c.id
       LEFT JOIN app_users u ON m.user_id = u.id
+      LEFT JOIN company_instances ci ON c.instance = ci.instance_key
       WHERE m.content ILIKE $1
     `;
     const msgParams: any[] = [searchTerm];
