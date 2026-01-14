@@ -1004,16 +1004,17 @@ export const syncEvolutionContacts = async (req: Request, res: Response) => {
               const profilePic = contact.profilePictureUrl || contact.profilePicture;
 
               await client.query(`
-                INSERT INTO whatsapp_contacts (jid, name, push_name, profile_pic_url, instance, updated_at, company_id)
-                VALUES ($1, $2, $3, $4, $5, NOW(), $6)
-                ON CONFLICT (jid, instance) 
+                INSERT INTO whatsapp_contacts (jid, phone, name, push_name, profile_pic_url, instance, updated_at, company_id)
+                VALUES ($1, $2, $3, $4, $5, $6, NOW(), $7)
+                ON CONFLICT (jid, company_id) 
                 DO UPDATE SET 
                   name = EXCLUDED.name,
                   push_name = EXCLUDED.push_name,
                   profile_pic_url = COALESCE(EXCLUDED.profile_pic_url, whatsapp_contacts.profile_pic_url),
-                  updated_at = NOW(),
-                  company_id = COALESCE(whatsapp_contacts.company_id, EXCLUDED.company_id)
-              `, [jid, name, pushName || null, profilePic || null, EVOLUTION_INSTANCE, resolvedCompanyId || null]);
+                  phone = EXCLUDED.phone,
+                  instance = EXCLUDED.instance,
+                  updated_at = NOW()
+              `, [jid, candidate, name, pushName || null, profilePic || null, EVOLUTION_INSTANCE, resolvedCompanyId]);
             }
             await client.query('COMMIT');
             processedCount++;
@@ -1176,11 +1177,11 @@ export const createEvolutionContact = async (req: Request, res: Response) => {
 
       // Insert into DB
       await pool.query(`
-          INSERT INTO whatsapp_contacts (jid, name, instance, updated_at, company_id)
-          VALUES ($1, $2, $3, NOW(), $4)
-          ON CONFLICT (jid, instance) 
-          DO UPDATE SET name = EXCLUDED.name, updated_at = NOW(), company_id = COALESCE(whatsapp_contacts.company_id, EXCLUDED.company_id)
-      `, [jid, name, EVOLUTION_INSTANCE, companyId]);
+          INSERT INTO whatsapp_contacts (jid, phone, name, instance, updated_at, company_id)
+          VALUES ($1, $2, $3, $4, NOW(), $5)
+          ON CONFLICT (jid, company_id) 
+          DO UPDATE SET name = EXCLUDED.name, updated_at = NOW(), phone = EXCLUDED.phone, instance = EXCLUDED.instance
+      `, [jid, cleanPhone, name, EVOLUTION_INSTANCE, companyId]);
 
       return res.status(201).json({
         id: jid,

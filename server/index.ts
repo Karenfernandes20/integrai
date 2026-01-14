@@ -177,6 +177,84 @@ const startServer = async () => {
         await pool.query(`ALTER TABLE whatsapp_campaigns ADD COLUMN IF NOT EXISTS instance_name TEXT;`);
         await pool.query(`ALTER TABLE company_instances ADD COLUMN IF NOT EXISTS phone TEXT;`);
 
+        // Unification Migrations
+        console.log("Running Unification migrations...");
+        await pool.query(`ALTER TABLE whatsapp_messages ADD COLUMN IF NOT EXISTS instance_id INTEGER REFERENCES company_instances(id) ON DELETE SET NULL;`);
+        await pool.query(`ALTER TABLE whatsapp_messages ADD COLUMN IF NOT EXISTS instance_key TEXT;`);
+        await pool.query(`ALTER TABLE whatsapp_messages ADD COLUMN IF NOT EXISTS instance_name TEXT;`);
+        await pool.query(`ALTER TABLE whatsapp_conversations ADD COLUMN IF NOT EXISTS last_instance_key TEXT;`);
+        await pool.query(`ALTER TABLE whatsapp_contacts ADD COLUMN IF NOT EXISTS phone TEXT;`);
+
+        // Handle duplicates and update constraints
+        try {
+          // 0. Populate phone in whatsapp_contacts if null
+          await pool.query(`UPDATE whatsapp_contacts SET phone = split_part(jid, '@', 1) WHERE phone IS NULL OR phone = '';`);
+          // 1. Merge whatsapp_contacts
+          await pool.query(`
+                DELETE FROM whatsapp_contacts a USING whatsapp_contacts b 
+                WHERE a.id < b.id AND a.jid = b.jid AND a.company_id = b.company_id;
+            `);
+          await pool.query(`DROP INDEX IF EXISTS idx_whatsapp_contacts_jid_instance;`);
+          await pool.query(`CREATE UNIQUE INDEX IF NOT EXISTS idx_whatsapp_contacts_jid_company ON whatsapp_contacts (jid, company_id);`);
+
+          // 2. Merge whatsapp_conversations
+          // Create merge map for duplicates
+          await pool.query(`
+                CREATE TEMP TABLE IF NOT EXISTS conv_merging AS
+                SELECT external_id, company_id, MIN(id) as main_id
+                FROM whatsapp_conversations
+                GROUP BY external_id, company_id
+                HAVING COUNT(*) > 1;
+            `);
+
+          // Re-link messages
+          await pool.query(`
+                UPDATE whatsapp_messages m
+                SET conversation_id = d.main_id
+                FROM conv_merging d
+                JOIN whatsapp_conversations c ON c.id = m.conversation_id
+                WHERE c.external_id = d.external_id AND c.company_id = d.company_id AND c.id != d.main_id;
+            `);
+
+          // Delete defunct conversations
+          await pool.query(`
+                DELETE FROM whatsapp_conversations c
+                USING conv_merging d
+                WHERE c.external_id = d.external_id AND c.company_id = d.company_id AND c.id != d.main_id;
+            `);
+
+          await pool.query(`DROP TABLE IF EXISTS conv_merging;`);
+
+          // Remove instance-based unique constraint if exists
+          // This is safer via PL/pgSQL as constraint names vary
+          await pool.query(`
+                DO $$ 
+                DECLARE 
+                    cons_name TEXT;
+                BEGIN 
+                    SELECT conname INTO cons_name 
+                    FROM pg_constraint 
+                    WHERE conrelid = 'whatsapp_conversations'::regclass AND contype = 'u' AND array_length(conkey, 1) = 2;
+                    
+                    IF cons_name IS NOT NULL THEN
+                        EXECUTE 'ALTER TABLE whatsapp_conversations DROP CONSTRAINT ' || cons_name;
+                    END IF;
+                EXCEPTION WHEN OTHERS THEN 
+                    NULL;
+                END $$;
+            `);
+
+          // Add new unique constraint
+          await pool.query(`
+                ALTER TABLE whatsapp_conversations DROP CONSTRAINT IF EXISTS whatsapp_conversations_external_id_company_id_key;
+                ALTER TABLE whatsapp_conversations ADD CONSTRAINT whatsapp_conversations_external_id_company_id_key UNIQUE (external_id, company_id);
+            `);
+
+          console.log("Unification migrations completed successfully.");
+        } catch (mergeErr) {
+          console.error("Error during unification merge:", mergeErr);
+        }
+
         console.log("Multi-Instance migration completed.");
 
         // const { rows } = await pool.query("SELECT value FROM system_settings WHERE key = 'operational_mode'");

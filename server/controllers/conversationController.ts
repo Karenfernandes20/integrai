@@ -137,7 +137,7 @@ export const updateContactNameWithAudit = async (req: AuthenticatedRequest, res:
         const jid = external_id || `${phone}@s.whatsapp.net`;
         await pool.query(`
             INSERT INTO whatsapp_contacts (jid, name, instance, company_id) VALUES ($1, $2, $3, $4)
-            ON CONFLICT (jid, instance) DO UPDATE SET name = $2, company_id = COALESCE(whatsapp_contacts.company_id, EXCLUDED.company_id)
+            ON CONFLICT (jid, company_id) DO UPDATE SET name = $2, instance = EXCLUDED.instance
         `, [jid, name, instance, companyId]);
 
         // ALSO UPDATE CRM LEADS if they exist for this phone

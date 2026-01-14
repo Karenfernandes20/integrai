@@ -17,8 +17,7 @@ interface WebhookMessage {
 }
 
 // Caching for performance
-const instanceCache = new Map<string, number>();
-const instanceNameCache = new Map<string, string>();
+const instanceMetaCache = new Map<string, { companyId: number, instanceId: number, instanceName: string }>();
 const stagesCache: { map: any, lastFetch: number } = { map: null, lastFetch: 0 };
 const STAGE_CACHE_TTL = 300000; // 5 minutes
 
@@ -274,40 +273,54 @@ export const handleWebhook = async (req: Request, res: Response) => {
             if (remoteJid === 'status@broadcast') return;
             if (!pool) return;
 
-            // Resolve Company ID
-            let companyId: number | null = instanceCache.get(instance) || null;
-            if (!companyId) {
+            // Resolve Company and Instance ID
+            let meta = instanceMetaCache.get(instance);
+            if (!meta) {
                 // 1. Check Multi-Instance Table (Preferred)
-                const instanceLookup = await pool.query('SELECT company_id, name FROM company_instances WHERE instance_key = $1', [instance]);
+                const instanceLookup = await pool.query('SELECT id, company_id, name FROM company_instances WHERE instance_key = $1', [instance]);
                 if (instanceLookup.rows.length > 0) {
-                    companyId = instanceLookup.rows[0].company_id;
-                    if (instanceLookup.rows[0].name) {
-                        instanceNameCache.set(instance, instanceLookup.rows[0].name);
-                    }
+                    const row = instanceLookup.rows[0];
+                    meta = {
+                        companyId: row.company_id,
+                        instanceId: row.id,
+                        instanceName: row.name || instance
+                    };
                 }
 
                 // 2. Fallback to Legacy Single Instance Column
-                if (!companyId) {
-                    const compLookup = await pool.query('SELECT id FROM companies WHERE LOWER(evolution_instance) = LOWER($1)', [instance]);
+                if (!meta) {
+                    const compLookup = await pool.query('SELECT id, name FROM companies WHERE LOWER(evolution_instance) = LOWER($1)', [instance]);
                     if (compLookup.rows.length > 0) {
-                        companyId = compLookup.rows[0].id;
+                        meta = {
+                            companyId: compLookup.rows[0].id,
+                            instanceId: 0, // No specific instance_id record
+                            instanceName: instance
+                        };
                     }
                 }
 
-                // 3. Last Resort: Fuzzy Search
-                if (!companyId) {
-                    const fuzzyLookup = await pool.query(`SELECT id FROM companies WHERE (LOWER($1) LIKE LOWER(CONCAT('%', name, '%')) OR LOWER(name) LIKE LOWER(CONCAT('%', $1, '%')) OR LOWER(evolution_instance) LIKE LOWER(CONCAT('%', $1, '%'))) LIMIT 1`, [instance]);
-                    if (fuzzyLookup.rows.length > 0) companyId = fuzzyLookup.rows[0].id;
+                if (meta) {
+                    instanceMetaCache.set(instance, meta);
                 }
-
-                if (companyId) instanceCache.set(instance, companyId);
             }
 
-            if (!companyId) {
+            if (!meta) {
                 const allCompanies = await pool.query('SELECT id FROM companies');
-                if (allCompanies.rows.length === 1) companyId = allCompanies.rows[0].id;
-                else return;
+                if (allCompanies.rows.length === 1) {
+                    meta = {
+                        companyId: allCompanies.rows[0].id,
+                        instanceId: 0,
+                        instanceName: instance
+                    };
+                    instanceMetaCache.set(instance, meta);
+                } else {
+                    return;
+                }
             }
+
+            const companyId = meta.companyId;
+            const instanceId = meta.instanceId > 0 ? meta.instanceId : null;
+            const instanceDisplayName = meta.instanceName;
 
             const direction = isFromMe ? 'outbound' : 'inbound';
             let messageSource: string | null = null;
@@ -335,34 +348,21 @@ export const handleWebhook = async (req: Request, res: Response) => {
                 console.log(`[Webhook] Detected GROUP message for JID: ${normalizedJid}`);
             }
 
-            // --- DECOMPRESSION & LINKING LOGIC ---
+            // --- UNIFIED CONVERSATION LINKING LOGIC ---
             let conversationId: number;
             let currentStatus: string = 'PENDING';
+
+            // Normalize phone for data consistency
+            const normalizedPhone = phone.replace(/\D/g, '');
 
             let checkConv = await pool.query(
                 `SELECT id, status, is_group, contact_name, group_name, profile_pic_url, external_id 
                  FROM whatsapp_conversations 
-                 WHERE (external_id = $1 OR external_id = $2) AND instance = $3 AND company_id = $4`,
-                [normalizedJid, remoteJid, instance, companyId]
+                 WHERE (external_id = $1 OR external_id = $2 OR phone = $3) AND company_id = $4`,
+                [normalizedJid, remoteJid, normalizedPhone, companyId]
             );
 
-            if (checkConv.rows.length === 0 && !isGroup) {
-                const numericPhone = phone.replace(/\D/g, '');
-                const phoneVariations = [numericPhone, '55' + numericPhone];
-                const phoneCheck = await pool.query(
-                    `SELECT id, status, is_group, contact_name, group_name, profile_pic_url, external_id 
-                     FROM whatsapp_conversations 
-                     WHERE phone = ANY($1) AND instance = $2 AND company_id = $3`,
-                    [phoneVariations, instance, companyId]
-                );
-
-                if (phoneCheck.rows.length > 0) {
-                    checkConv = phoneCheck;
-                    if (phoneCheck.rows[0].external_id !== normalizedJid) {
-                        pool.query('UPDATE whatsapp_conversations SET external_id = $1 WHERE id = $2', [normalizedJid, phoneCheck.rows[0].id]).catch(() => { });
-                    }
-                }
-            }
+            // Phone check is now integrated in the primary query above
 
             if (checkConv.rows.length > 0) {
                 const row = checkConv.rows[0];
@@ -397,15 +397,15 @@ export const handleWebhook = async (req: Request, res: Response) => {
                 let finalName = isGroup ? (name || `Grupo ${phone.substring(0, 8)}`) : name;
 
                 // Final Check for Duplication before Insert (Race Condition buffer)
-                const raceCheck = await pool.query('SELECT id FROM whatsapp_conversations WHERE external_id = $1 AND instance = $2 AND company_id = $3', [normalizedJid, instance, companyId]);
+                const raceCheck = await pool.query('SELECT id FROM whatsapp_conversations WHERE external_id = $1 AND company_id = $2', [normalizedJid, companyId]);
                 if (raceCheck.rows.length > 0) {
                     conversationId = raceCheck.rows[0].id;
                     console.log(`[Webhook] Recovered conversation ${conversationId} from race condition check.`);
                 } else {
                     const newConv = await pool.query(
-                        `INSERT INTO whatsapp_conversations (external_id, phone, contact_name, instance, status, company_id, is_group, group_name) 
-                         VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id`,
-                        [normalizedJid, phone, finalName, instance, currentStatus, companyId, isGroup, isGroup ? finalName : null]
+                        `INSERT INTO whatsapp_conversations (external_id, phone, contact_name, instance, status, company_id, is_group, group_name, last_instance_key) 
+                         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $4) RETURNING id`,
+                        [normalizedJid, normalizedPhone, finalName, instance, currentStatus, companyId, isGroup, isGroup ? finalName : null]
                     );
                     conversationId = newConv.rows[0].id;
                 }
@@ -513,12 +513,12 @@ export const handleWebhook = async (req: Request, res: Response) => {
 
             console.log(`[Webhook] Preparing to save message: direction=${direction}, externalId=${externalId}, convId=${conversationId}, content="${content.substring(0, 30)}..."`);
 
-            // Insert Message into database
+            // Insert Message into database with instance tracking
             const insertedMsg = await pool.query(
-                `INSERT INTO whatsapp_messages (conversation_id, direction, content, sent_at, status, external_id, message_type, media_url, user_id, sender_jid, sender_name, company_id) 
-                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12) 
+                `INSERT INTO whatsapp_messages (conversation_id, direction, content, sent_at, status, external_id, message_type, media_url, user_id, sender_jid, sender_name, company_id, instance_id, instance_key, instance_name) 
+                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15) 
                  ON CONFLICT (external_id) DO NOTHING RETURNING *`,
-                [conversationId, direction, content, sent_at, 'received', externalId, messageType, mediaUrl, null, senderJid, senderName, companyId]
+                [conversationId, direction, content, sent_at, 'received', externalId, messageType, mediaUrl, null, senderJid, senderName, companyId, instanceId, instance, instanceDisplayName]
             );
 
             if (insertedMsg.rows.length > 0) {
@@ -563,7 +563,9 @@ export const handleWebhook = async (req: Request, res: Response) => {
                             profile_pic_url: checkConv.rows.length > 0 ? checkConv.rows[0].profile_pic_url : null,
                             remoteJid,
                             instance,
-                            instance_friendly_name: instanceNameCache.get(instance) || instance,
+                            instance_id: instanceId,
+                            instance_name: instanceDisplayName,
+                            instance_friendly_name: instanceDisplayName,
                             company_id: companyId,
                             status: currentStatus,
                             sender_jid: existingMsg.sender_jid,
@@ -634,7 +636,9 @@ export const handleWebhook = async (req: Request, res: Response) => {
                         profile_pic_url: checkConv.rows.length > 0 ? checkConv.rows[0].profile_pic_url : null,
                         remoteJid,
                         instance,
-                        instance_friendly_name: instanceNameCache.get(instance) || instance,
+                        instance_id: instanceId,
+                        instance_name: instanceDisplayName,
+                        instance_friendly_name: instanceDisplayName,
                         company_id: companyId,
                         status: currentStatus,
                         sender_jid: insertedMsg.rows[0].sender_jid,
@@ -656,9 +660,10 @@ export const handleWebhook = async (req: Request, res: Response) => {
                 await pool!.query(
                     `UPDATE whatsapp_conversations 
                      SET last_message_at = $1, last_message = $2, 
-                         unread_count = CASE WHEN $3 = 'inbound' THEN unread_count + 1 ELSE unread_count END 
-                     WHERE id = $4`,
-                    [sent_at, content, direction, conversationId]
+                         unread_count = CASE WHEN $3 = 'inbound' THEN unread_count + 1 ELSE unread_count END,
+                         last_instance_key = $4
+                     WHERE id = $5`,
+                    [sent_at, content, direction, instance, conversationId]
                 );
                 // ... (rest of the block logic continues as is, no change needed in text replacement if I target carefully)
 
@@ -722,7 +727,7 @@ export const handleWebhook = async (req: Request, res: Response) => {
                                         if (picUrl) {
                                             await pool!.query('UPDATE whatsapp_conversations SET profile_pic_url = $1 WHERE id = $2', [picUrl, conversationId]);
                                             if (!isGroup) {
-                                                await pool!.query('UPDATE whatsapp_contacts SET profile_pic_url = $1 WHERE jid = $2 AND instance = $3', [picUrl, remoteJid, instance]);
+                                                await pool!.query('UPDATE whatsapp_contacts SET profile_pic_url = $1 WHERE jid = $2 AND company_id = $3', [picUrl, remoteJid, companyId]);
                                             }
                                             console.log(`[Webhook] Updated profile picture for ${remoteJid}.`);
                                         }
@@ -758,7 +763,7 @@ export const handleWebhook = async (req: Request, res: Response) => {
                         // Search for lead with variations (with and without 55, or just matching the last 10-11 digits)
                         const [contactCheck, checkLead] = await Promise.all([
                             // Check if contact is saved with a real name (not just the phone)
-                            pool!.query(`SELECT id FROM whatsapp_contacts WHERE jid = $1 AND instance = $2 AND name IS NOT NULL AND name != '' AND name != $3 LIMIT 1`, [remoteJid, instance, phone]),
+                            pool!.query(`SELECT id FROM whatsapp_contacts WHERE jid = $1 AND company_id = $2 AND name IS NOT NULL AND name != '' AND name != $3 LIMIT 1`, [remoteJid, companyId, phone]),
                             pool!.query(`
                                 SELECT id, name, stage_id FROM crm_leads 
                                 WHERE (phone = $1 OR phone = $2 OR phone LIKE '%' || $2) 
@@ -772,8 +777,8 @@ export const handleWebhook = async (req: Request, res: Response) => {
 
                             // Try to get the name from whatsapp_contacts even if it was just the phone (maybe it's updated now)
                             const savedContact = await pool!.query(
-                                "SELECT name FROM whatsapp_contacts WHERE jid = $1 AND instance = $2 LIMIT 1",
-                                [remoteJid, instance]
+                                "SELECT name FROM whatsapp_contacts WHERE jid = $1 AND company_id = $2 LIMIT 1",
+                                [remoteJid, companyId]
                             );
                             const bestName = (savedContact.rows[0]?.name && savedContact.rows[0].name !== phone)
                                 ? savedContact.rows[0].name
@@ -840,11 +845,11 @@ export const getConversations = async (req: Request, res: Response) => {
             COALESCE(co.profile_pic_url, c.profile_pic_url) as profile_pic_url,
             co.push_name as contact_push_name,
             comp.name as company_name,
-            COALESCE(ci.name, c.instance) as instance_friendly_name
+            COALESCE(ci.name, c.last_instance_key, c.instance) as instance_friendly_name
             FROM whatsapp_conversations c
-            LEFT JOIN whatsapp_contacts co ON (c.external_id = co.jid AND c.instance = co.instance)
+            LEFT JOIN whatsapp_contacts co ON (c.external_id = co.jid AND c.company_id = co.company_id)
             LEFT JOIN companies comp ON c.company_id = comp.id
-            LEFT JOIN company_instances ci ON c.instance = ci.instance_key
+            LEFT JOIN company_instances ci ON c.last_instance_key = ci.instance_key
             WHERE 1=1
         `;
         const params: any[] = [];
@@ -970,17 +975,19 @@ export const getMessages = async (req: Request, res: Response) => {
                             WHEN m.user_id IS NOT NULL THEN u.full_name 
                             WHEN m.direction = 'outbound' AND m.user_id IS NULL THEN 'Agente de IA'
                             ELSE NULL 
-                        END as agent_name 
+                        END as agent_name,
+                        COALESCE(ci.name, m.instance_name, m.instance_key) as instance_friendly_name
                 FROM whatsapp_messages m 
                 LEFT JOIN app_users u ON m.user_id = u.id 
                 LEFT JOIN whatsapp_contacts wc ON (
-                    (m.sender_jid IS NOT NULL AND wc.jid = m.sender_jid AND wc.instance = $2)
+                    (m.sender_jid IS NOT NULL AND wc.jid = m.sender_jid AND wc.company_id = $2)
                     OR 
-                    (m.sender_jid IS NULL AND m.direction = 'inbound' AND wc.jid = (SELECT external_id FROM whatsapp_conversations WHERE id = m.conversation_id LIMIT 1) AND wc.instance = $2)
+                    (m.sender_jid IS NULL AND m.direction = 'inbound' AND wc.jid = (SELECT external_id FROM whatsapp_conversations WHERE id = m.conversation_id LIMIT 1) AND wc.company_id = $2)
                 )
+                LEFT JOIN company_instances ci ON m.instance_id = ci.id
                 WHERE m.conversation_id = $1 
                 ORDER BY m.sent_at ASC`,
-                [conversationId, instance]
+                [conversationId, companyId]
             );
 
             console.log(`[getMessages] Success. Found ${result.rows.length} messages. Resetting unread count.`);

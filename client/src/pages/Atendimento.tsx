@@ -3116,6 +3116,11 @@ const AtendimentoPage = () => {
 
                                 {/* Timestamp & Status */}
                                 <span className="absolute right-2 bottom-[4px] text-[10px] flex items-center gap-1 text-[#8696A0] dark:text-[#8696A0]">
+                                  {msg.instance_friendly_name && (
+                                    <span className="opacity-60 italic mr-0.5">
+                                      {msg.direction === 'inbound' ? 'recebida' : 'enviada'} via {msg.instance_friendly_name} •
+                                    </span>
+                                  )}
                                   {formatTime(msg.sent_at)}
                                   {msg.direction === "outbound" && (
                                     msg.status === 'sending' ? <Loader2 className="h-3 w-3 animate-spin" /> :
