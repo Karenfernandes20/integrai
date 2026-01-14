@@ -139,23 +139,23 @@ function SortableLeadCard({ lead, onEdit, onChat, onFollowUp, onCall, onRemove }
     <div
       ref={setNodeRef}
       style={style}
-      className="group relative cursor-grab rounded-md bg-background px-2.5 py-1.5 text-left shadow-sm transition-all hover:shadow-md border border-border/60 hover:border-primary/30"
+      className="group relative cursor-grab rounded-md bg-background px-3 py-2.5 text-left shadow-sm transition-all hover:shadow-md border border-border/60 hover:border-primary/30"
       {...attributes}
       {...listeners}
     >
       <div className="flex items-start justify-between gap-2">
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-1 min-w-0">
-            <p className="text-[12px] font-bold text-foreground truncate leading-tight">{lead.name || lead.phone}</p>
+            <p className="text-[13px] font-bold text-foreground truncate leading-tight">{lead.name || lead.phone}</p>
             {lead.instance_friendly_name && (
               <Badge variant="outline" className="h-[14px] px-1 text-[8px] font-bold uppercase tracking-tighter text-muted-foreground border-muted-foreground/20 shrink-0">
                 {lead.instance_friendly_name}
               </Badge>
             )}
           </div>
-          <div className="mt-0.5 flex items-center gap-1 overflow-hidden opacity-70">
+          <div className="mt-1 flex items-center gap-1 overflow-hidden opacity-70">
             <MapPin className="h-2.5 w-2.5 text-muted-foreground flex-shrink-0" />
-            <p className="text-[10px] text-muted-foreground truncate">
+            <p className="text-[12px] text-muted-foreground truncate leading-tight">
               {lead.city && lead.state
                 ? `${lead.city}/${lead.state}`
                 : (getCityStateFromPhone(lead.phone) || lead.phone)
@@ -163,7 +163,7 @@ function SortableLeadCard({ lead, onEdit, onChat, onFollowUp, onCall, onRemove }
             </p>
           </div>
           {lead.value && (
-            <p className="mt-0.5 text-[10px] font-bold text-emerald-600">
+            <p className="mt-1 text-[12px] font-bold text-emerald-600 leading-tight">
               R$ {Number(lead.value).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
             </p>
           )}
@@ -236,24 +236,31 @@ function SortableLeadCard({ lead, onEdit, onChat, onFollowUp, onCall, onRemove }
         </div>
       </div>
 
-      {lead.follow_up_status && (
-        <div className={cn(
-          "mt-1.5 pt-1.5 border-t border-dashed flex gap-1 items-center",
-          lead.follow_up_status === 'overdue' ? "text-red-600" : "text-blue-600"
-        )}>
-          {lead.follow_up_status === 'overdue' ? <AlertCircle className="h-2.5 w-2.5" /> : <CalendarClock className="h-2.5 w-2.5" />}
-          <span className="text-[9px] font-bold uppercase tracking-tight">
-            Agenda: {lead.follow_up_date ? new Date(lead.follow_up_date).toLocaleDateString('pt-BR') : 'Pendente'}
-          </span>
-        </div>
-      )}
+      {(lead.follow_up_status || lead.description) && (
+        <div className="mt-1 space-y-1">
+          {lead.follow_up_status && (
+            <div className={cn(
+              "pt-1 border-t border-dashed flex gap-1 items-center",
+              lead.follow_up_status === 'overdue' ? "text-red-600" : "text-blue-600"
+            )}>
+              {lead.follow_up_status === 'overdue' ? <AlertCircle className="h-2.5 w-2.5" /> : <CalendarClock className="h-2.5 w-2.5" />}
+              <span className="text-[11px] font-bold uppercase tracking-tight leading-tight px-0.5">
+                Agenda: {lead.follow_up_date ? new Date(lead.follow_up_date).toLocaleDateString('pt-BR') : 'Pendente'}
+              </span>
+            </div>
+          )}
 
-      {lead.description && (
-        <div className="mt-1.5 pt-1.5 border-t border-dashed flex gap-1 items-start opacity-80">
-          <ClipboardList className="h-2.5 w-2.5 text-amber-500 mt-0.5 flex-shrink-0" />
-          <p className="text-[9px] text-muted-foreground line-clamp-1 italic">
-            {lead.description}
-          </p>
+          {lead.description && (
+            <div className={cn(
+              "flex gap-1 items-start opacity-80",
+              !lead.follow_up_status && "pt-1 border-t border-dashed"
+            )}>
+              <ClipboardList className="h-2.5 w-2.5 text-amber-500 mt-0.5 flex-shrink-0" />
+              <p className="text-[12px] text-muted-foreground line-clamp-1 italic leading-tight">
+                {lead.description}
+              </p>
+            </div>
+          )}
         </div>
       )}
     </div>
