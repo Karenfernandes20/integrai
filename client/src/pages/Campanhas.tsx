@@ -5,9 +5,10 @@ import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Textarea } from "../components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../components/ui/dialog";
-import { Plus, Play, Pause, Trash2, Eye, Upload, Pencil, Phone } from "lucide-react";
+import { Plus, Play, Pause, Trash2, Eye, Upload, Pencil, Phone, RefreshCcw } from "lucide-react";
 import { toast } from "sonner";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../components/ui/select";
+import { cn } from "../lib/utils";
 
 interface Campaign {
     id: number;
@@ -416,7 +417,20 @@ const CampanhasPage = () => {
                         </div>
 
                         <div>
-                            <label className="block text-sm font-medium mb-1">Enviar campanha usando qual número?</label>
+                            <div className="flex items-center justify-between mb-1">
+                                <label className="block text-sm font-medium">Enviar campanha usando qual número?</label>
+                                <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    className="h-6 px-2 text-[10px] gap-1 text-muted-foreground hover:text-primary"
+                                    onClick={() => {
+                                        fetchInstances();
+                                        toast.info("Atualizando status das instâncias...");
+                                    }}
+                                >
+                                    <RefreshCcw className="h-3 w-3" /> Atualizar Status
+                                </Button>
+                            </div>
                             <Select value={selectedInstanceId} onValueChange={setSelectedInstanceId}>
                                 <SelectTrigger>
                                     <SelectValue placeholder="Selecione uma instância conectada" />
@@ -425,11 +439,30 @@ const CampanhasPage = () => {
                                     {instances.length === 0 ? (
                                         <SelectItem value="none" disabled>Nenhuma instância conectada disponível</SelectItem>
                                     ) : (
-                                        instances.map((inst) => (
-                                            <SelectItem key={inst.id} value={inst.id.toString()}>
-                                                {inst.name} {inst.phone ? `- (${inst.phone})` : ""} [{inst.status}]
-                                            </SelectItem>
-                                        ))
+                                        instances.map((inst) => {
+                                            const s = (inst.status || '').toLowerCase();
+                                            let statusLabel = 'Desconectado';
+                                            let statusColor = 'text-red-500';
+
+                                            if (s === 'connected' || s === 'open' || s === 'online') {
+                                                statusLabel = 'Conectado';
+                                                statusColor = 'text-green-500';
+                                            } else if (s === 'connecting') {
+                                                statusLabel = 'Conectando';
+                                                statusColor = 'text-amber-500';
+                                            }
+
+                                            return (
+                                                <SelectItem key={inst.id} value={inst.id.toString()}>
+                                                    <div className="flex items-center justify-between w-full gap-2">
+                                                        <span>{inst.name} {inst.phone ? `- (${inst.phone})` : ""}</span>
+                                                        <span className={cn("text-[10px] font-bold uppercase", statusColor)}>
+                                                            {statusLabel}
+                                                        </span>
+                                                    </div>
+                                                </SelectItem>
+                                            );
+                                        })
                                     )}
                                 </SelectContent>
                             </Select>
@@ -546,7 +579,7 @@ const CampanhasPage = () => {
                         </div>
                     </CardContent>
                 </Card>
-            </div>
+            </div >
         );
     }
 

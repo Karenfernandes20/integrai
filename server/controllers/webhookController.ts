@@ -163,6 +163,22 @@ export const handleWebhook = async (req: Request, res: Response) => {
                 return;
             }
 
+            // CONNECTION UPDATE HANDLING
+            if (normalizedType === 'CONNECTION_UPDATE') {
+                const state = data?.state || body.state;
+                const rawNumber = data?.number || body.number;
+                const cleanNumber = rawNumber ? rawNumber.split(':')[0] : null;
+
+                if (instance && pool) {
+                    await pool.query(
+                        'UPDATE company_instances SET status = $1, phone = COALESCE($2, phone) WHERE instance_key = $3 OR name = $3',
+                        [state === 'open' ? 'connected' : (state || 'disconnected'), cleanNumber, instance]
+                    );
+                    console.log(`[Webhook] Instance ${instance} connection status updated to ${state} (${cleanNumber})`);
+                }
+                return;
+            }
+
             console.log(`[Webhook] Event: ${type} | Instance: ${instance}`);
             pushPayload({ type, instance, keys: Object.keys(body), body: body });
 
@@ -188,6 +204,14 @@ export const handleWebhook = async (req: Request, res: Response) => {
                     console.log(`[Webhook] Ignoring non-message event: ${normalizedType}`);
                 }
                 return;
+            }
+
+            // OPTIMISTIC STATUS UPDATE: If we are receiving or sending messages, the instance is CONNECTED.
+            if (instance && pool) {
+                pool.query(
+                    'UPDATE company_instances SET status = $1 WHERE (instance_key = $2 OR name = $2) AND status != $1',
+                    ['connected', instance]
+                ).catch(e => console.error('[Webhook] Error auto-updating instance status:', e));
             }
 
             // Extract message object robustly
