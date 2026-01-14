@@ -246,7 +246,7 @@ const ContatosPage = () => {
     const [newContactName, setNewContactName] = useState("");
     const [newContactPhone, setNewContactPhone] = useState("");
     const [isCreating, setIsCreating] = useState(false);
-    const { token } = useAuth();
+    const { token, user } = useAuth();
     const navigate = useNavigate();
     const [editingContact, setEditingContact] = useState<Contact | null>(null);
     const [editDialogOpen, setEditDialogOpen] = useState(false);
@@ -479,10 +479,9 @@ const ContatosPage = () => {
         const fetchInstances = async () => {
             try {
                 // Fetch current user company instances
-                const profileRes = await fetch("/api/auth/profile", { headers: { "Authorization": `Bearer ${token}` } });
-                const profile = await profileRes.json();
-                if (profile?.company_id) {
-                    const instRes = await fetch(`/api/companies/${profile.company_id}/instances`, {
+                const companyId = user?.company_id;
+                if (companyId) {
+                    const instRes = await fetch(`/api/companies/${companyId}/instances`, {
                         headers: { "Authorization": `Bearer ${token}` }
                     });
                     if (instRes.ok) {
@@ -521,7 +520,7 @@ const ContatosPage = () => {
         pollStatus();
         const interval = setInterval(pollStatus, 10000);
         return () => clearInterval(interval);
-    }, [token]);
+    }, [token, user?.company_id]);
 
     // Filter Logic
     useEffect(() => {

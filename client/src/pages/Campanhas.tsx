@@ -39,7 +39,7 @@ interface Instance {
 }
 
 const CampanhasPage = () => {
-    const { token } = useAuth();
+    const { token, user } = useAuth();
     const [campaigns, setCampaigns] = useState<Campaign[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [showCreateForm, setShowCreateForm] = useState(false);
@@ -146,21 +146,18 @@ const CampanhasPage = () => {
 
     const fetchInstances = async () => {
         try {
-            // Get user from token/auth context if needed, but endpoint uses user context
-            const userRes = await fetch("/api/auth/profile", {
-                headers: { "Authorization": `Bearer ${token}` }
-            });
-            if (userRes.ok) {
-                const userData = await userRes.json();
-                const companyId = userData.company_id;
-                if (companyId) {
-                    const res = await fetch(`/api/companies/${companyId}/instances`, {
-                        headers: { "Authorization": `Bearer ${token}` }
-                    });
-                    if (res.ok) {
-                        const data = await res.json();
-                        setInstances(data.filter((i: Instance) => i.status === 'connected' || i.status === 'open'));
-                    }
+            const companyId = user?.company_id;
+            if (companyId) {
+                const res = await fetch(`/api/companies/${companyId}/instances`, {
+                    headers: { "Authorization": `Bearer ${token}` }
+                });
+                if (res.ok) {
+                    const data = await res.json();
+                    // Also include status 'connected' or 'open' (case insensitive just in case)
+                    setInstances(data.filter((i: Instance) =>
+                        i.status?.toLowerCase() === 'connected' ||
+                        i.status?.toLowerCase() === 'open'
+                    ));
                 }
             }
         } catch (error) {
@@ -173,7 +170,7 @@ const CampanhasPage = () => {
         fetchInstances();
         const interval = setInterval(fetchCampaigns, 5000); // Refresh every 5s
         return () => clearInterval(interval);
-    }, [token]);
+    }, [token, user?.company_id]);
 
     const handleSaveCampaign = async () => {
         try {
