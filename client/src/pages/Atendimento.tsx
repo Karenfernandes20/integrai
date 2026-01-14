@@ -3300,6 +3300,9 @@ const AtendimentoPage = () => {
                                         navigator.clipboard.writeText(msg.content);
                                         toast.success("Copiado!");
                                       }} className="gap-2"><FileText className="h-4 w-4" /> Copiar texto</DropdownMenuItem>
+                                      <DropdownMenuItem onClick={() => handleDeleteClick(msg)} className="gap-2 text-red-500 focus:text-red-500">
+                                        <Trash2 className="h-4 w-4" /> Apagar
+                                      </DropdownMenuItem>
                                     </DropdownMenuContent>
                                   </DropdownMenu>
                                 </div>
@@ -3567,6 +3570,42 @@ const AtendimentoPage = () => {
           profilePicUrl={selectedConversation.profile_pic_url}
         />
       )}
+      {/* Delete Message Dialog */}
+      <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+        <DialogContent className="sm:max-w-[400px] border-none bg-[#233138] text-[#E9EDEF] shadow-2xl">
+          <DialogHeader>
+            <DialogTitle>Apagar mensagem?</DialogTitle>
+          </DialogHeader>
+          <div className="py-4 space-y-4">
+            <p className="text-sm text-[#8696A0]">Você deseja apagar esta mensagem?</p>
+            <div className="flex flex-col gap-2">
+              <Button
+                variant="destructive"
+                className="w-full bg-[#EA0038] hover:bg-[#EA0038]/90 text-white rounded-full font-bold h-11"
+                onClick={handleDeleteForMe}
+              >
+                Apagar para mim
+              </Button>
+              {messageToDelete?.direction === 'outbound' && (
+                <Button
+                  variant="destructive"
+                  className="w-full bg-[#EA0038] hover:bg-[#EA0038]/90 text-white rounded-full font-bold h-11"
+                  onClick={handleDeleteForEveryone}
+                >
+                  Apagar para todos
+                </Button>
+              )}
+              <Button
+                variant="ghost"
+                className="w-full text-[#00a884] hover:bg-white/5 rounded-full font-bold h-11"
+                onClick={() => setDeleteDialogOpen(false)}
+              >
+                Cancelar
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };
