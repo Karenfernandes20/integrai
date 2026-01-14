@@ -426,21 +426,9 @@ async function processCampaign(campaignId: number, io?: any) {
             return;
         }
 
-        if (campaign.instance_status !== 'connected' && campaign.instance_status !== 'open') {
-            console.warn(`[Campaign ${campaignId}] Instance "${campaign.instance_name}" not connected. Pausing campaign.`);
-
-            await logEvent({
-                eventType: 'campaign_fail',
-                origin: 'system',
-                status: 'error',
-                message: `Campanha ${campaignId}: A instância selecionada "${campaign.instance_name || 'desconhecida'}" não está conectada no momento. A campanha será pausada.`,
-                companyId: campaign.company_id,
-                details: { campaignId, instance_id: campaign.instance_id, instance_status: campaign.instance_status }
-            });
-
-            await pool.query("UPDATE whatsapp_campaigns SET status = 'paused' WHERE id = $1", [campaignId]);
-            activeProcesses.delete(campaignId);
-            return;
+        const instStatus = (campaign.instance_status || '').toLowerCase();
+        if (instStatus !== 'connected' && instStatus !== 'open' && instStatus !== 'online') {
+            console.warn(`[Campaign ${campaignId}] Instance "${campaign.instance_name}" status is "${instStatus}". Proceeding with attempt...`);
         }
 
         // Get pending contacts

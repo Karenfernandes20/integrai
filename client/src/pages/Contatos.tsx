@@ -479,7 +479,7 @@ const ContatosPage = () => {
         const fetchInstances = async () => {
             try {
                 // Fetch current user company instances
-                const companyId = user?.company_id;
+                const companyId = user?.company_id || user?.company?.id;
                 if (companyId) {
                     const instRes = await fetch(`/api/companies/${companyId}/instances`, {
                         headers: { "Authorization": `Bearer ${token}` }

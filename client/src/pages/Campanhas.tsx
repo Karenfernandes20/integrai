@@ -146,18 +146,14 @@ const CampanhasPage = () => {
 
     const fetchInstances = async () => {
         try {
-            const companyId = user?.company_id;
+            const companyId = user?.company_id || user?.company?.id;
             if (companyId) {
                 const res = await fetch(`/api/companies/${companyId}/instances`, {
                     headers: { "Authorization": `Bearer ${token}` }
                 });
                 if (res.ok) {
                     const data = await res.json();
-                    // Also include status 'connected' or 'open' (case insensitive just in case)
-                    setInstances(data.filter((i: Instance) =>
-                        i.status?.toLowerCase() === 'connected' ||
-                        i.status?.toLowerCase() === 'open'
-                    ));
+                    setInstances(data);
                 }
             }
         } catch (error) {
@@ -170,7 +166,7 @@ const CampanhasPage = () => {
         fetchInstances();
         const interval = setInterval(fetchCampaigns, 5000); // Refresh every 5s
         return () => clearInterval(interval);
-    }, [token, user?.company_id]);
+    }, [token, user?.company_id, user?.company?.id]);
 
     const handleSaveCampaign = async () => {
         try {
@@ -431,7 +427,7 @@ const CampanhasPage = () => {
                                     ) : (
                                         instances.map((inst) => (
                                             <SelectItem key={inst.id} value={inst.id.toString()}>
-                                                {inst.name} {inst.phone ? `- (${inst.phone})` : ""}
+                                                {inst.name} {inst.phone ? `- (${inst.phone})` : ""} [{inst.status}]
                                             </SelectItem>
                                         ))
                                     )}
