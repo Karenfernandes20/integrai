@@ -5,8 +5,9 @@ import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Textarea } from "../components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../components/ui/dialog";
-import { Plus, Play, Pause, Trash2, Eye, Upload, Pencil } from "lucide-react";
+import { Plus, Play, Pause, Trash2, Eye, Upload, Pencil, Phone } from "lucide-react";
 import { toast } from "sonner";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../components/ui/select";
 
 interface Campaign {
     id: number;
@@ -22,6 +23,19 @@ interface Campaign {
     delay_min: number;
     delay_max: number;
     created_at: string;
+    instance_id?: number;
+    instance_name?: string;
+    instance_display_name?: string;
+    instance_phone?: string;
+    instance_status?: string;
+}
+
+interface Instance {
+    id: number;
+    name: string;
+    instance_key: string;
+    phone?: string;
+    status: string;
 }
 
 const CampanhasPage = () => {
@@ -111,6 +125,8 @@ const CampanhasPage = () => {
     const [mediaUrl, setMediaUrl] = useState<string | null>(null);
     const [mediaType, setMediaType] = useState<string | null>(null);
     const [isUploading, setIsUploading] = useState(false);
+    const [instances, setInstances] = useState<Instance[]>([]);
+    const [selectedInstanceId, setSelectedInstanceId] = useState<string>("");
 
     const fetchCampaigns = async () => {
         try {
@@ -128,8 +144,33 @@ const CampanhasPage = () => {
         }
     };
 
+    const fetchInstances = async () => {
+        try {
+            // Get user from token/auth context if needed, but endpoint uses user context
+            const userRes = await fetch("/api/auth/profile", {
+                headers: { "Authorization": `Bearer ${token}` }
+            });
+            if (userRes.ok) {
+                const userData = await userRes.json();
+                const companyId = userData.company_id;
+                if (companyId) {
+                    const res = await fetch(`/api/companies/${companyId}/instances`, {
+                        headers: { "Authorization": `Bearer ${token}` }
+                    });
+                    if (res.ok) {
+                        const data = await res.json();
+                        setInstances(data.filter((i: Instance) => i.status === 'connected' || i.status === 'open'));
+                    }
+                }
+            }
+        } catch (error) {
+            console.error("Error fetching instances:", error);
+        }
+    };
+
     useEffect(() => {
         fetchCampaigns();
+        fetchInstances();
         const interval = setInterval(fetchCampaigns, 5000); // Refresh every 5s
         return () => clearInterval(interval);
     }, [token]);
@@ -170,7 +211,9 @@ const CampanhasPage = () => {
                 delay_min: delayMin,
                 delay_max: delayMax,
                 media_url: mediaUrl,
-                media_type: mediaType
+                media_type: mediaType,
+                instance_id: selectedInstanceId ? parseInt(selectedInstanceId) : null,
+                instance_name: instances.find(i => i.id.toString() === selectedInstanceId)?.name || null
             };
 
             if (contacts.length > 0) {
@@ -212,6 +255,7 @@ const CampanhasPage = () => {
         setScheduledAt(campaign.scheduled_at ? new Date(campaign.scheduled_at).toISOString().slice(0, 16) : "");
         setMediaUrl((campaign as any).media_url || null);
         setMediaType((campaign as any).media_type || null);
+        setSelectedInstanceId(campaign.instance_id ? campaign.instance_id.toString() : "");
 
         // Fetch contacts for this campaign
         try {
@@ -244,6 +288,7 @@ const CampanhasPage = () => {
         setContactsText("");
         setMediaUrl(null);
         setMediaType(null);
+        setSelectedInstanceId("");
     };
 
     const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -375,6 +420,29 @@ const CampanhasPage = () => {
                                 onChange={(e) => setName(e.target.value)}
                                 placeholder="Ex: Promoção Black Friday"
                             />
+                        </div>
+
+                        <div>
+                            <label className="block text-sm font-medium mb-1">Enviar campanha usando qual número?</label>
+                            <Select value={selectedInstanceId} onValueChange={setSelectedInstanceId}>
+                                <SelectTrigger>
+                                    <SelectValue placeholder="Selecione uma instância conectada" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    {instances.length === 0 ? (
+                                        <SelectItem value="none" disabled>Nenhuma instância conectada disponível</SelectItem>
+                                    ) : (
+                                        instances.map((inst) => (
+                                            <SelectItem key={inst.id} value={inst.id.toString()}>
+                                                {inst.name} {inst.phone ? `- (${inst.phone})` : ""}
+                                            </SelectItem>
+                                        ))
+                                    )}
+                                </SelectContent>
+                            </Select>
+                            <p className="text-xs text-muted-foreground mt-1">
+                                Apenas instâncias conectadas e ativas são exibidas.
+                            </p>
                         </div>
 
                         <div>
@@ -583,6 +651,12 @@ const CampanhasPage = () => {
                                                     Falhas: {campaign.failed_count}
                                                 </span>
                                                 <span>⏰ {campaign.start_time} - {campaign.end_time}</span>
+                                                {campaign.instance_name && (
+                                                    <span className="flex items-center gap-1 text-blue-600 font-medium">
+                                                        <Phone className="h-3 w-3" /> {campaign.instance_display_name || campaign.instance_name}
+                                                        {campaign.instance_phone && ` (${campaign.instance_phone})`}
+                                                    </span>
+                                                )}
                                             </div>
                                         </div>
                                         <div className="flex gap-2">

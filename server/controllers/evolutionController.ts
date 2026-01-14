@@ -1227,6 +1227,21 @@ export const handleEvolutionWebhook = async (req: Request, res: Response) => {
     // Check event type
     const eventType = type || body.event;
 
+    if (eventType === "CONNECTION_UPDATE") {
+      const state = data?.state || body.state;
+      // Evolution v2 number is usually in data.number or body.number, format "5511999999999:1"
+      const rawNumber = data?.number || body.number;
+      const cleanNumber = rawNumber ? rawNumber.split(':')[0] : null;
+
+      if (instance && pool) {
+        await pool.query(
+          'UPDATE company_instances SET status = $1, phone = COALESCE($2, phone) WHERE instance_key = $3',
+          [state === 'open' ? 'connected' : (state || 'disconnected'), cleanNumber, instance]
+        );
+        console.log(`[Webhook] Instance ${instance} connection status updated to ${state} (${cleanNumber})`);
+      }
+    }
+
     if (eventType === "MESSAGES_UPSERT") {
       const messages = data?.messages || body.messages || []; // V2 usually sends array
 

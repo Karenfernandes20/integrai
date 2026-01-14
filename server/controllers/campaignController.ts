@@ -32,7 +32,9 @@ export const createCampaign = async (req: Request, res: Response) => {
             end_time,
             delay_min,
             delay_max,
-            contacts // [{phone, name, variables}]
+            contacts, // [{phone, name, variables}]
+            instance_id,
+            instance_name
         } = req.body;
 
         // Validation
@@ -40,11 +42,15 @@ export const createCampaign = async (req: Request, res: Response) => {
             return res.status(400).json({ error: 'Name and message template are required' });
         }
 
+        if (!instance_id) {
+            return res.status(400).json({ error: 'Você deve selecionar uma instância para enviar a campanha.' });
+        }
+
         // Create campaign
         const campaignResult = await pool.query(
             `INSERT INTO whatsapp_campaigns 
-            (name, message_template, company_id, user_id, scheduled_at, start_time, end_time, delay_min, delay_max, total_contacts, status, media_url, media_type)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+            (name, message_template, company_id, user_id, scheduled_at, start_time, end_time, delay_min, delay_max, total_contacts, status, media_url, media_type, instance_id, instance_name)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
             RETURNING *`,
             [
                 name,
@@ -59,7 +65,9 @@ export const createCampaign = async (req: Request, res: Response) => {
                 contacts?.length || 0,
                 scheduled_at ? 'scheduled' : 'draft',
                 req.body.media_url || null,
-                req.body.media_type || null
+                req.body.media_type || null,
+                instance_id,
+                instance_name
             ]
         );
 
@@ -92,18 +100,23 @@ export const getCampaigns = async (req: Request, res: Response) => {
         const user = (req as any).user;
         const companyId = user?.company_id;
 
-        let query = 'SELECT * FROM whatsapp_campaigns WHERE 1=1';
+        let query = `
+            SELECT wc.*, ci.name as instance_display_name, ci.phone as instance_phone, ci.status as instance_status 
+            FROM whatsapp_campaigns wc
+            LEFT JOIN company_instances ci ON wc.instance_id = ci.id
+            WHERE 1=1
+        `;
         const params: any[] = [];
 
         if (user.role !== 'SUPERADMIN') {
-            query += ' AND company_id = $1';
+            query += ' AND wc.company_id = $1';
             params.push(companyId);
         } else if (companyId) {
-            query += ' AND company_id = $1';
+            query += ' AND wc.company_id = $1';
             params.push(companyId);
         }
 
-        query += ' ORDER BY created_at DESC';
+        query += ' ORDER BY wc.created_at DESC';
 
         const result = await pool.query(query, params);
         res.json(result.rows);
@@ -162,12 +175,30 @@ export const startCampaign = async (req: Request, res: Response) => {
         const user = (req as any).user;
         const isSuperAdmin = user?.role === 'SUPERADMIN';
 
-        // Check ownership
-        const check = await pool.query('SELECT company_id FROM whatsapp_campaigns WHERE id = $1', [id]);
+        // Check ownership and instance status
+        const check = await pool.query(`
+            SELECT wc.company_id, wc.instance_id, ci.status as instance_status, ci.name as instance_name 
+            FROM whatsapp_campaigns wc
+            LEFT JOIN company_instances ci ON wc.instance_id = ci.id
+            WHERE wc.id = $1
+        `, [id]);
+
         if (check.rows.length === 0) return res.status(404).json({ error: 'Campaign not found' });
 
-        if (!isSuperAdmin && check.rows[0].company_id !== user.company_id) {
+        const campaign = check.rows[0];
+        if (!isSuperAdmin && campaign.company_id !== user.company_id) {
             return res.status(403).json({ error: 'Access denied' });
+        }
+
+        // Validate Instance status
+        if (!campaign.instance_id) {
+            return res.status(400).json({ error: 'Nenhuma instância selecionada para esta campanha.' });
+        }
+
+        if (campaign.instance_status !== 'connected' && campaign.instance_status !== 'open') {
+            return res.status(400).json({
+                error: `A instância "${campaign.instance_name || 'selecionada'}" não está conectada no momento.`
+            });
         }
 
         await pool.query(
@@ -229,7 +260,9 @@ export const updateCampaign = async (req: Request, res: Response) => {
             end_time,
             delay_min,
             delay_max,
-            contacts
+            contacts,
+            instance_id,
+            instance_name
         } = req.body;
         const user = (req as any).user;
         const isSuperAdmin = user?.role === 'SUPERADMIN';
@@ -253,8 +286,10 @@ export const updateCampaign = async (req: Request, res: Response) => {
                  delay_max = COALESCE($7, delay_max),
                  media_url = $8,
                  media_type = $9,
+                 instance_id = COALESCE($10, instance_id),
+                 instance_name = COALESCE($11, instance_name),
                  updated_at = NOW()
-             WHERE id = $10
+             WHERE id = $12
              RETURNING *`,
             [
                 name,
@@ -266,6 +301,8 @@ export const updateCampaign = async (req: Request, res: Response) => {
                 delay_max,
                 req.body.media_url || null,
                 req.body.media_type || null,
+                instance_id,
+                instance_name,
                 id
             ]
         );
@@ -359,13 +396,16 @@ async function processCampaign(campaignId: number, io?: any) {
             return;
         }
 
-        const campaignResult = await pool.query(
-            'SELECT * FROM whatsapp_campaigns WHERE id = $1',
-            [campaignId]
-        );
+        const campaignResult = await pool.query(`
+            SELECT wc.*, ci.status as instance_status, ci.name as instance_name 
+            FROM whatsapp_campaigns wc
+            LEFT JOIN company_instances ci ON wc.instance_id = ci.id
+            WHERE wc.id = $1
+        `, [campaignId]);
 
         if (campaignResult.rows.length === 0) {
             console.warn(`[Campaign ${campaignId}] Not found in DB.`);
+            activeProcesses.delete(campaignId);
             return;
         }
 
@@ -374,6 +414,32 @@ async function processCampaign(campaignId: number, io?: any) {
         // Ensure status is running
         if (campaign.status === 'paused' || campaign.status === 'completed' || campaign.status === 'cancelled') {
             console.log(`[Campaign ${campaignId}] Status is ${campaign.status}, skipping.`);
+            activeProcesses.delete(campaignId);
+            return;
+        }
+
+        // Validate Instance status
+        if (!campaign.instance_id) {
+            console.warn(`[Campaign ${campaignId}] No instance selected. Pausing campaign.`);
+            await pool.query("UPDATE whatsapp_campaigns SET status = 'paused' WHERE id = $1", [campaignId]);
+            activeProcesses.delete(campaignId);
+            return;
+        }
+
+        if (campaign.instance_status !== 'connected' && campaign.instance_status !== 'open') {
+            console.warn(`[Campaign ${campaignId}] Instance "${campaign.instance_name}" not connected. Pausing campaign.`);
+
+            await logEvent({
+                eventType: 'campaign_fail',
+                origin: 'system',
+                status: 'error',
+                message: `Campanha ${campaignId}: A instância selecionada "${campaign.instance_name || 'desconhecida'}" não está conectada no momento. A campanha será pausada.`,
+                companyId: campaign.company_id,
+                details: { campaignId, instance_id: campaign.instance_id, instance_status: campaign.instance_status }
+            });
+
+            await pool.query("UPDATE whatsapp_campaigns SET status = 'paused' WHERE id = $1", [campaignId]);
+            activeProcesses.delete(campaignId);
             return;
         }
 
@@ -484,7 +550,7 @@ async function processCampaign(campaignId: number, io?: any) {
                             status: 'info',
                             message: `Campanha ${campaignId}: Tentativa ${attempts} de envio para ${contact.phone}`,
                             phone: contact.phone,
-                            details: { campaignId, contactId: contact.id, attempt: attempts }
+                            details: { campaignId, contactId: contact.id, attempt: attempts, instance_id: campaign.instance_id, instance_name: campaign.instance_name }
                         });
                     }
                 }
@@ -506,7 +572,7 @@ async function processCampaign(campaignId: number, io?: any) {
                         status: 'success',
                         message: `Campanha ${campaignId}: Mensagem enviada para ${contact.phone} (Tentativas: ${attempts})`,
                         phone: contact.phone,
-                        details: { campaignId, contactId: contact.id, attempts }
+                        details: { campaignId, contactId: contact.id, attempts, instance_id: campaign.instance_id, instance_name: campaign.instance_name }
                     });
                 } else {
                     let errorMsg = (result.error || 'Evolution API failed (Unknown Error)').substring(0, 255);
@@ -532,7 +598,7 @@ async function processCampaign(campaignId: number, io?: any) {
                         status: 'error',
                         message: `Campanha ${campaignId}: Falha para ${contact.phone}: ${errorMsg}`,
                         phone: contact.phone,
-                        details: { campaignId, contactId: contact.id, error: errorMsg }
+                        details: { campaignId, contactId: contact.id, error: errorMsg, instance_id: campaign.instance_id, instance_name: campaign.instance_name }
                     });
                 }
 
@@ -584,11 +650,14 @@ export const checkAndStartScheduledCampaigns = async (io?: any) => {
         let result = null;
         try {
             result = await pool.query(
-                `SELECT id, name, status FROM whatsapp_campaigns 
-                 WHERE (status = 'scheduled' AND (scheduled_at <= NOW() OR scheduled_at IS NULL))
-                    OR (status = 'running')`
+                `SELECT wc.id, wc.name, wc.status, wc.instance_id, ci.status as instance_status 
+                 FROM whatsapp_campaigns wc
+                 LEFT JOIN company_instances ci ON wc.instance_id = ci.id
+                 WHERE (wc.status = 'scheduled' AND (wc.scheduled_at <= NOW() OR wc.scheduled_at IS NULL))
+                    OR (wc.status = 'running')`
             );
         } catch (queryErr) {
+            console.error("[Scheduler] Error querying campaigns:", queryErr);
             return;
         }
 
@@ -635,14 +704,36 @@ async function sendWhatsAppMessage(
 
         // Try to get specific config
         if (companyId) {
-            const companyResult = await pool.query(
-                'SELECT evolution_instance, evolution_apikey FROM companies WHERE id = $1',
-                [companyId]
-            );
-            if (companyResult.rows.length > 0) {
-                const row = companyResult.rows[0];
-                if (row.evolution_instance) evolution_instance = row.evolution_instance;
-                if (row.evolution_apikey) evolution_apikey = row.evolution_apikey;
+            // Priority 1: Use specific instance_id if provided
+            if (campaignId) {
+                const campaignRes = await pool.query('SELECT instance_id FROM whatsapp_campaigns WHERE id = $1', [campaignId]);
+                const instanceId = campaignRes.rows[0]?.instance_id;
+
+                if (instanceId) {
+                    const instRes = await pool.query(
+                        'SELECT instance_key, api_key FROM company_instances WHERE id = $1',
+                        [instanceId]
+                    );
+                    if (instRes.rows.length > 0) {
+                        const row = instRes.rows[0];
+                        evolution_instance = row.instance_key;
+                        if (row.api_key) evolution_apikey = row.api_key;
+                        console.log(`[sendWhatsAppMessage] Using campaign-specific instance: ${evolution_instance}`);
+                    }
+                }
+            }
+
+            // Priority 2: If no campaign specific instance (fallback), use company main config
+            if (evolution_instance === "integrai") {
+                const companyResult = await pool.query(
+                    'SELECT evolution_instance, evolution_apikey FROM companies WHERE id = $1',
+                    [companyId]
+                );
+                if (companyResult.rows.length > 0) {
+                    const row = companyResult.rows[0];
+                    if (row.evolution_instance) evolution_instance = row.evolution_instance;
+                    if (row.evolution_apikey) evolution_apikey = row.evolution_apikey;
+                }
             }
         }
 

@@ -172,6 +172,11 @@ const startServer = async () => {
                 UNIQUE(instance_key)
             );
         `);
+        // Campaign Instance Support Migration
+        await pool.query(`ALTER TABLE whatsapp_campaigns ADD COLUMN IF NOT EXISTS instance_id INTEGER REFERENCES company_instances(id) ON DELETE SET NULL;`);
+        await pool.query(`ALTER TABLE whatsapp_campaigns ADD COLUMN IF NOT EXISTS instance_name TEXT;`);
+        await pool.query(`ALTER TABLE company_instances ADD COLUMN IF NOT EXISTS phone TEXT;`);
+
         console.log("Multi-Instance migration completed.");
 
         // const { rows } = await pool.query("SELECT value FROM system_settings WHERE key = 'operational_mode'");
