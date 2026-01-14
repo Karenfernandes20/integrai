@@ -261,6 +261,13 @@ const AtendimentoPage = () => {
   const [contactSearchTerm, setContactSearchTerm] = useState("");
   const [filteredContacts, setFilteredContacts] = useState<Contact[]>([]);
 
+  // Audio Recording State
+  const [isRecording, setIsRecording] = useState(false);
+  const [recordingDuration, setRecordingDuration] = useState(0);
+  const [mediaRecorder, setMediaRecorder] = useState<MediaRecorder | null>(null);
+  const recordingTimerRef = useRef<any>(null);
+  const audioChunksRef = useRef<Blob[]>([]);
+
   // Fetch initial data on mount
   useEffect(() => {
     if (token) {
@@ -1822,6 +1829,139 @@ const AtendimentoPage = () => {
     }
   };
 
+  const startRecording = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+
+      let options = {};
+      if (MediaRecorder.isTypeSupported('audio/webm;codecs=opus')) {
+        options = { mimeType: 'audio/webm;codecs=opus' };
+      }
+
+      const recorder = new MediaRecorder(stream, options);
+
+      audioChunksRef.current = [];
+      recorder.ondataavailable = (e) => {
+        if (e.data.size > 0) {
+          audioChunksRef.current.push(e.data);
+        }
+      };
+
+      recorder.start();
+      setMediaRecorder(recorder);
+      setIsRecording(true);
+      setRecordingDuration(0);
+
+      recordingTimerRef.current = setInterval(() => {
+        setRecordingDuration(prev => prev + 1);
+      }, 1000);
+
+    } catch (err) {
+      console.error("Erro ao acessar microfone:", err);
+      toast.error("Erro ao acessar microfone. Verifique as permissões.");
+    }
+  };
+
+  const stopAndSendRecording = () => {
+    if (!mediaRecorder) return;
+
+    mediaRecorder.onstop = async () => {
+      const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/ogg;codecs=opus' });
+      await handleSendAudio(audioBlob);
+
+      // Stop all tracks to release microphone
+      mediaRecorder.stream.getTracks().forEach(track => track.stop());
+    };
+
+    mediaRecorder.stop();
+    setIsRecording(false);
+    if (recordingTimerRef.current) {
+      clearInterval(recordingTimerRef.current);
+      recordingTimerRef.current = null;
+    }
+  };
+
+  const cancelRecording = () => {
+    if (!mediaRecorder) return;
+
+    // Override onstop to do nothing but cleanup
+    mediaRecorder.onstop = () => {
+      mediaRecorder.stream.getTracks().forEach(track => track.stop());
+    };
+
+    mediaRecorder.stop();
+    setIsRecording(false);
+    if (recordingTimerRef.current) {
+      clearInterval(recordingTimerRef.current);
+      recordingTimerRef.current = null;
+    }
+    audioChunksRef.current = [];
+  };
+
+  const formatDuration = (seconds: number) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+  };
+
+  const handleSendAudio = async (blob: Blob) => {
+    if (!selectedConversation) return;
+
+    try {
+      // Create reader to convert blob to data url
+      const reader = new FileReader();
+      reader.readAsDataURL(blob);
+      reader.onloadend = async () => {
+        const base64data = reader.result as string;
+
+        const tempId = `temp-${Date.now()}`;
+        const optimisticMsg: Message = {
+          id: tempId,
+          direction: 'outbound',
+          content: 'Mensagem de voz',
+          sent_at: new Date().toISOString(),
+          status: 'sending',
+          message_type: 'audio',
+          user_id: user?.id,
+          agent_name: user?.full_name
+        };
+        setMessages(prev => [...prev, optimisticMsg]);
+
+        const res = await fetch("/api/evolution/messages/media", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${token}`
+          },
+          body: JSON.stringify({
+            phone: selectedConversation.phone,
+            media: base64data,
+            mediaType: "audio",
+            ptt: true,
+            companyId: (selectedConversation as any).company_id || selectedCompanyFilter,
+            instanceKey: (selectedConversation as any).instance
+          })
+        });
+
+        if (res.ok) {
+          const data = await res.json();
+          setMessages(prev => prev.map(m => m.id === tempId ? { ...m, id: data.databaseId, external_id: data.external_id, status: 'sent' } : m));
+
+          // Update conversation last message
+          setConversations(prev => prev.map(c =>
+            String(c.id) === String(selectedConversation.id) ? { ...c, last_message: '🎤 Áudio', last_message_at: new Date().toISOString() } : c
+          ));
+        } else {
+          setMessages(prev => prev.filter(m => m.id !== tempId));
+          toast.error("Erro ao enviar áudio");
+        }
+      };
+    } catch (e) {
+      console.error("Erro ao processar áudio:", e);
+      toast.error("Erro ao enviar áudio");
+    }
+  };
+
   const handleAddContact = (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
 
@@ -3249,41 +3389,65 @@ const AtendimentoPage = () => {
                 className="flex-1 flex items-center gap-2"
                 onSubmit={handleSendMessage}
               >
-                <div className="flex-1 relative flex items-center">
-                  <textarea
-                    className="flex-1 bg-[#2A3942] border-none text-[#E9EDEF] focus-visible:ring-0 focus-visible:ring-offset-0 placeholder:text-[#8696A0] py-[10px] px-[12px] rounded-lg text-[15px] resize-none overflow-y-auto max-h-[200px] min-h-[42px] leading-[20px] scrollbar-thin"
-                    placeholder={
-                      !selectedConversation ? "Selecione um contato" :
-                        (isPending && !selectedConversation.is_group) ? "Inicie o atendimento para responder" :
-                          (isClosed && !selectedConversation.is_group) ? "Conversa encerrada" : "Digite uma mensagem"
-                    }
-                    rows={1}
-                    value={newMessage}
-                    onChange={(e) => {
-                      setNewMessage(e.target.value);
-                      // Auto-resize
-                      e.target.style.height = 'auto';
-                      e.target.style.height = `${Math.min(e.target.scrollHeight, 200)}px`;
-                    }}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' && !e.shiftKey) {
-                        e.preventDefault();
-                        handleSendMessage(e as any);
-                      }
-                    }}
-                    disabled={!selectedConversation || isReadOnly}
-                    onFocus={() => setShowEmojiPicker(false)}
-                  />
-                </div>
-
-                {newMessage.trim() && selectedConversation ? (
-                  <Button type="submit" size="icon" className="h-[42px] w-[42px] shrink-0 text-[#8696A0] hover:text-[#00a884] bg-transparent shadow-none hover:bg-white/5 rounded-full">
-                    <Send className="h-6 w-6" />
-                  </Button>
+                {isRecording ? (
+                  <div className="flex-1 flex items-center gap-4 bg-[#2A3942] rounded-lg px-4 h-[42px] animate-in fade-in slide-in-from-bottom-2">
+                    <div className="flex items-center gap-2 flex-1">
+                      <div className="h-2 w-2 rounded-full bg-red-500 animate-pulse" />
+                      <span className="text-[#E9EDEF] font-mono">{formatDuration(recordingDuration)}</span>
+                    </div>
+                    <Button type="button" variant="ghost" size="icon" className="text-red-500 hover:bg-red-500/10 rounded-full" onClick={cancelRecording}>
+                      <X className="h-6 w-6" />
+                    </Button>
+                    <Button type="button" variant="ghost" size="icon" className="text-[#00a884] hover:bg-[#00a884]/10 rounded-full" onClick={stopAndSendRecording}>
+                      <Send className="h-6 w-6" />
+                    </Button>
+                  </div>
                 ) : (
-                  <Button type="button" size="icon" variant="ghost" className="h-[42px] w-[42px] shrink-0 text-[#8696A0] hover:bg-white/5 rounded-full" disabled={!selectedConversation}>
-                    <Mic className="h-6 w-6" />
-                  </Button>
+                  <>
+                    <div className="flex-1 relative flex items-center">
+                      <textarea
+                        className="flex-1 bg-[#2A3942] border-none text-[#E9EDEF] focus-visible:ring-0 focus-visible:ring-offset-0 placeholder:text-[#8696A0] py-[10px] px-[12px] rounded-lg text-[15px] resize-none overflow-y-auto max-h-[200px] min-h-[42px] leading-[20px] scrollbar-thin"
+                        placeholder={
+                          !selectedConversation ? "Selecione um contato" :
+                            (isPending && !selectedConversation.is_group) ? "Inicie o atendimento para responder" :
+                              (isClosed && !selectedConversation.is_group) ? "Conversa encerrada" : "Digite uma mensagem"
+                        }
+                        rows={1}
+                        value={newMessage}
+                        onChange={(e) => {
+                          setNewMessage(e.target.value);
+                          // Auto-resize
+                          e.target.style.height = 'auto';
+                          e.target.style.height = `${Math.min(e.target.scrollHeight, 200)}px`;
+                        }}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' && !e.shiftKey) {
+                            e.preventDefault();
+                            handleSendMessage(e as any);
+                          }
+                        }}
+                        disabled={!selectedConversation || isReadOnly}
+                        onFocus={() => setShowEmojiPicker(false)}
+                      />
+                    </div>
+
+                    {newMessage.trim() && selectedConversation ? (
+                      <Button type="submit" size="icon" className="h-[42px] w-[42px] shrink-0 text-[#8696A0] hover:text-[#00a884] bg-transparent shadow-none hover:bg-white/5 rounded-full">
+                        <Send className="h-6 w-6" />
+                      </Button>
+                    ) : (
+                      <Button
+                        type="button"
+                        size="icon"
+                        variant="ghost"
+                        className="h-[42px] w-[42px] shrink-0 text-[#8696A0] hover:bg-white/5 rounded-full"
+                        disabled={!selectedConversation || isReadOnly}
+                        onClick={startRecording}
+                      >
+                        <Mic className="h-6 w-6" />
+                      </Button>
+                    )}
+                  </>
                 )}
               </form>
             </div>

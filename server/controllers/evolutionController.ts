@@ -605,7 +605,8 @@ export const sendEvolutionMedia = async (req: Request, res: Response) => {
           mediatype: mediaType, // image, video, document, audio
           caption: caption || "",
           media: media, // Base64 or URL
-          fileName: fileName
+          fileName: fileName,
+          ptt: req.body.ptt || false
         }
       }),
     });
