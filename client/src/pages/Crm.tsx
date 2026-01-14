@@ -139,23 +139,23 @@ function SortableLeadCard({ lead, onEdit, onChat, onFollowUp, onCall, onRemove }
     <div
       ref={setNodeRef}
       style={style}
-      className="group relative cursor-grab rounded-lg bg-background px-3 py-2 text-left shadow-sm transition-all hover:shadow-md border border-border"
+      className="group relative cursor-grab rounded-md bg-background px-2.5 py-1.5 text-left shadow-sm transition-all hover:shadow-md border border-border/60 hover:border-primary/30"
       {...attributes}
       {...listeners}
     >
       <div className="flex items-start justify-between gap-2">
         <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-1.5 min-w-0">
-            <p className="text-[13px] font-semibold text-foreground truncate">{lead.name || lead.phone}</p>
+          <div className="flex items-center gap-1 min-w-0">
+            <p className="text-[12px] font-bold text-foreground truncate leading-tight">{lead.name || lead.phone}</p>
             {lead.instance_friendly_name && (
-              <Badge variant="outline" className="h-[18px] px-1.5 text-[9px] font-bold uppercase tracking-wider text-muted-foreground border-muted-foreground/30 shrink-0">
+              <Badge variant="outline" className="h-[14px] px-1 text-[8px] font-bold uppercase tracking-tighter text-muted-foreground border-muted-foreground/20 shrink-0">
                 {lead.instance_friendly_name}
               </Badge>
             )}
           </div>
-          <div className="mt-1 flex items-center gap-1.5 overflow-hidden">
-            <MapPin className="h-3 w-3 text-muted-foreground flex-shrink-0" />
-            <p className="text-[11px] text-muted-foreground truncate">
+          <div className="mt-0.5 flex items-center gap-1 overflow-hidden opacity-70">
+            <MapPin className="h-2.5 w-2.5 text-muted-foreground flex-shrink-0" />
+            <p className="text-[10px] text-muted-foreground truncate">
               {lead.city && lead.state
                 ? `${lead.city}/${lead.state}`
                 : (getCityStateFromPhone(lead.phone) || lead.phone)
@@ -163,29 +163,29 @@ function SortableLeadCard({ lead, onEdit, onChat, onFollowUp, onCall, onRemove }
             </p>
           </div>
           {lead.value && (
-            <p className="mt-1 text-[11px] font-medium text-emerald-600">
+            <p className="mt-0.5 text-[10px] font-bold text-emerald-600">
               R$ {Number(lead.value).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
             </p>
           )}
         </div>
 
-        <div className="flex flex-col gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+        <div className="flex flex-col gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
           <Button
             size="icon"
             variant="ghost"
-            className="h-6 w-6 hover:bg-primary/10 hover:text-primary"
+            className="h-5 w-5 hover:bg-primary/10 hover:text-primary rounded-md"
             onPointerDown={(e) => e.stopPropagation()}
             onClick={(e) => {
               e.stopPropagation();
               onChat(lead);
             }}
           >
-            <MessageSquare className="h-3.5 w-3.5" />
+            <MessageSquare className="h-3 w-3" />
           </Button>
           <Button
             size="icon"
             variant="ghost"
-            className="h-6 w-6 hover:bg-primary/10 hover:text-primary"
+            className="h-5 w-5 hover:bg-primary/10 hover:text-primary rounded-md"
             onPointerDown={(e) => e.stopPropagation()}
             onClick={(e) => {
               e.stopPropagation();
@@ -193,12 +193,12 @@ function SortableLeadCard({ lead, onEdit, onChat, onFollowUp, onCall, onRemove }
             }}
             title="Ligar"
           >
-            <PhoneIcon className="h-3.5 w-3.5" />
+            <PhoneIcon className="h-3 w-3" />
           </Button>
           <Button
             size="icon"
             variant="ghost"
-            className="h-6 w-6 hover:bg-primary/10 hover:text-primary"
+            className="h-5 w-5 hover:bg-primary/10 hover:text-primary rounded-md"
             onPointerDown={(e) => e.stopPropagation()}
             onClick={(e) => {
               e.stopPropagation();
@@ -206,24 +206,24 @@ function SortableLeadCard({ lead, onEdit, onChat, onFollowUp, onCall, onRemove }
             }}
             title="Agendar Follow-up"
           >
-            <CalendarCheck className="h-3.5 w-3.5" />
+            <CalendarCheck className="h-3 w-3" />
           </Button>
           <Button
             size="icon"
             variant="ghost"
-            className="h-6 w-6 hover:bg-primary/10 hover:text-primary"
+            className="h-5 w-5 hover:bg-primary/10 hover:text-primary rounded-md"
             onPointerDown={(e) => e.stopPropagation()}
             onClick={(e) => {
               e.stopPropagation();
               onEdit(lead);
             }}
           >
-            <Pencil className="h-3.5 w-3.5" />
+            <Pencil className="h-3 w-3" />
           </Button>
           <Button
             size="icon"
             variant="ghost"
-            className="h-6 w-6 hover:bg-red-500/10 hover:text-red-500"
+            className="h-5 w-5 hover:bg-red-500/10 hover:text-red-500 rounded-md"
             onPointerDown={(e) => e.stopPropagation()}
             onClick={(e) => {
               e.stopPropagation();
@@ -231,27 +231,27 @@ function SortableLeadCard({ lead, onEdit, onChat, onFollowUp, onCall, onRemove }
             }}
             title="Remover (volta para Leads)"
           >
-            <Trash2 className="h-3.5 w-3.5" />
+            <Trash2 className="h-3 w-3" />
           </Button>
         </div>
       </div>
 
       {lead.follow_up_status && (
         <div className={cn(
-          "mt-2 pt-2 border-t border-dashed flex gap-1.5 items-center",
+          "mt-1.5 pt-1.5 border-t border-dashed flex gap-1 items-center",
           lead.follow_up_status === 'overdue' ? "text-red-600" : "text-blue-600"
         )}>
-          {lead.follow_up_status === 'overdue' ? <AlertCircle className="h-3 w-3" /> : <CalendarClock className="h-3 w-3" />}
-          <span className="text-[10px] font-medium">
-            Follow-up: {lead.follow_up_date ? new Date(lead.follow_up_date).toLocaleDateString() : 'Pendente'}
+          {lead.follow_up_status === 'overdue' ? <AlertCircle className="h-2.5 w-2.5" /> : <CalendarClock className="h-2.5 w-2.5" />}
+          <span className="text-[9px] font-bold uppercase tracking-tight">
+            Agenda: {lead.follow_up_date ? new Date(lead.follow_up_date).toLocaleDateString('pt-BR') : 'Pendente'}
           </span>
         </div>
       )}
 
       {lead.description && (
-        <div className="mt-2 pt-2 border-t border-dashed flex gap-1.5 items-start">
-          <ClipboardList className="h-3 w-3 text-amber-500 mt-0.5 flex-shrink-0" />
-          <p className="text-[10px] text-muted-foreground line-clamp-1 italic">
+        <div className="mt-1.5 pt-1.5 border-t border-dashed flex gap-1 items-start opacity-80">
+          <ClipboardList className="h-2.5 w-2.5 text-amber-500 mt-0.5 flex-shrink-0" />
+          <p className="text-[9px] text-muted-foreground line-clamp-1 italic">
             {lead.description}
           </p>
         </div>
@@ -744,14 +744,14 @@ const CrmPage = () => {
           {stages.length === 0 && isLoadingData ? (
             // Skeleton display while first load
             Array.from({ length: 4 }).map((_, i) => (
-              <Card key={i} className="min-w-[320px] max-w-[320px] flex flex-col border-slate-200 shrink-0 h-full animate-pulse bg-slate-50/50">
+              <Card key={i} className="min-w-[260px] max-w-[260px] flex flex-col border-slate-200 shrink-0 h-full animate-pulse bg-slate-50/50">
                 <div className="h-1.5 w-full bg-slate-200" />
-                <div className="p-3 border-b flex justify-between">
-                  <div className="h-4 w-24 bg-slate-200 rounded" />
+                <div className="p-2 border-b flex justify-between">
+                  <div className="h-3 w-20 bg-slate-200 rounded" />
                 </div>
-                <div className="flex-1 p-2 space-y-2">
-                  <div className="h-20 w-full bg-slate-200 rounded" />
-                  <div className="h-20 w-full bg-slate-200 rounded" />
+                <div className="flex-1 p-1.5 space-y-2">
+                  <div className="h-16 w-full bg-slate-200 rounded" />
+                  <div className="h-16 w-full bg-slate-200 rounded" />
                 </div>
               </Card>
             ))
@@ -761,36 +761,36 @@ const CrmPage = () => {
               .map((column) => (
                 <Card
                   key={column.id}
-                  className="min-w-[320px] max-w-[320px] flex flex-col border-slate-200 shrink-0 h-full overflow-hidden"
-                  style={{ backgroundColor: column.color ? `${column.color}20` : 'rgba(248, 250, 252, 0.5)' }}
+                  className="min-w-[260px] max-w-[260px] flex flex-col border-slate-200 shrink-0 h-full overflow-hidden shadow-none"
+                  style={{ backgroundColor: column.color ? `${column.color}15` : 'rgba(248, 250, 252, 0.4)' }}
                 >
                   <div
-                    className="h-1.5 w-full"
+                    className="h-1 w-full"
                     style={{ backgroundColor: column.color || '#cbd5e1' }}
                   />
-                  <CardHeader className="flex flex-row items-center justify-between p-3 border-b bg-white/80 backdrop-blur-sm shrink-0">
-                    <CardTitle className="text-xs font-bold uppercase tracking-wider text-slate-600 flex items-center justify-between w-full">
-                      <div className="flex items-center">
+                  <CardHeader className="flex flex-row items-center justify-between p-2 border-b bg-white/90 backdrop-blur-sm shrink-0">
+                    <CardTitle className="text-[10px] font-bold uppercase tracking-widest text-slate-500 flex items-center justify-between w-full">
+                      <div className="flex items-center gap-1.5">
                         {column.name}
-                        <Badge variant="secondary" className="ml-2 bg-slate-100 text-slate-600 border-none h-5 px-1.5">{leadsByStage(column.id).length}</Badge>
+                        <Badge variant="secondary" className="bg-slate-100 text-slate-600 border-none h-4 px-1 text-[9px]">{leadsByStage(column.id).length}</Badge>
                       </div>
                       {column.name.toUpperCase() !== 'LEADS' && (
                         <Button
                           variant="ghost"
                           size="icon"
-                          className="h-6 w-6 text-slate-400 hover:text-red-500"
+                          className="h-5 w-5 text-slate-300 hover:text-red-500"
                           onClick={() => deleteStage(column.id)}
                         >
-                          <Trash2 className="h-4 w-4" />
+                          <Trash2 className="h-3 w-3" />
                         </Button>
                       )}
                     </CardTitle>
                   </CardHeader>
 
                   <DroppableColumn id={column.id.toString()}>
-                    <CardContent className="flex-1 p-2 overflow-y-auto scrollbar-thin scrollbar-thumb-zinc-300 dark:scrollbar-thumb-zinc-700">
+                    <CardContent className="flex-1 p-1.5 overflow-y-auto scrollbar-thin scrollbar-thumb-zinc-200 dark:scrollbar-thumb-zinc-800">
                       <SortableContext id={column.id.toString()} items={leadsByStage(column.id).map((l) => l.id)} strategy={verticalListSortingStrategy}>
-                        <div className="flex flex-col gap-2 min-h-[150px]">
+                        <div className="flex flex-col gap-1.5 min-h-[150px]">
                           {leadsByStage(column.id).map((lead) => (
                             <SortableLeadCard key={lead.id} lead={lead} onEdit={handleEditLead} onChat={handleChatLead} onFollowUp={handleFollowUpLead} onCall={handleCallLead} onRemove={handleRemoveLead} />
                           ))}
