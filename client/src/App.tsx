@@ -94,6 +94,7 @@ import LoginPage from "./pages/Login";
 import SuperAdminLoginPage from "./pages/SuperAdminLogin";
 import SignupPage from "./pages/Signup";
 import OnboardingPage from "./pages/Onboarding";
+import LegalPage from "./pages/LegalPage";
 const queryClient = new QueryClient();
 
 import { ThemeProvider } from "next-themes";
@@ -115,6 +116,8 @@ const App = () => (
                 <Route path="/forgot-password" element={<ForgotPasswordPage />} />
                 <Route path="/reset-password" element={<ResetPasswordPage />} />
                 <Route path="/onboarding" element={<OnboardingPage />} />
+                <Route path="/termos-de-servico" element={<LegalPage type="terms" />} />
+                <Route path="/politica-de-privacidade" element={<LegalPage type="privacy" />} />
 
                 <Route element={<AdminRoute roles={['SUPERADMIN']} />}>
                   <Route path="/superadmin" element={<SuperadminPage />} />

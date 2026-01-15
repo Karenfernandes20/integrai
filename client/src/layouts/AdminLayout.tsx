@@ -189,6 +189,16 @@ export const AdminLayout = () => {
                 </div>
               )}
             </main>
+
+            {!isAtendimento && (
+              <footer className="border-t py-4 px-6 bg-background/50 text-xs text-muted-foreground flex justify-center gap-4">
+                <span>&copy; {new Date().getFullYear()} Integrai</span>
+                <span>•</span>
+                <a href="/termos-de-servico" target="_blank" className="hover:text-primary transition-colors">Termos</a>
+                <span>•</span>
+                <a href="/politica-de-privacidade" target="_blank" className="hover:text-primary transition-colors">Privacidade</a>
+              </footer>
+            )}
           </SidebarInset>
         </div>
       </div>

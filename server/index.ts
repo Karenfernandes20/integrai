@@ -210,6 +210,24 @@ const startServer = async () => {
             ADD COLUMN IF NOT EXISTS instagram_message_id VARCHAR(255);
         `);
 
+        // Legal Pages Migrations
+        console.log("Running Legal Pages migrations...");
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS legal_pages (
+                id SERIAL PRIMARY KEY,
+                type VARCHAR(50) NOT NULL UNIQUE,
+                content TEXT,
+                last_updated_at TIMESTAMP DEFAULT NOW(),
+                last_updated_by INTEGER REFERENCES app_users(id) ON DELETE SET NULL
+            );
+        `);
+        await pool.query(`
+            INSERT INTO legal_pages (type, content) 
+            VALUES ('terms', '<h2>Termos de Serviço</h2><p>Conteúdo pendente de atualização.</p>'), 
+                   ('privacy', '<h2>Política de Privacidade</h2><p>Conteúdo pendente de atualização.</p>')
+            ON CONFLICT (type) DO NOTHING;
+        `);
+
         // Handle duplicates and update constraints
         try {
           // 0. Populate phone in whatsapp_contacts if null

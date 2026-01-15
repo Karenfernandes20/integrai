@@ -118,6 +118,11 @@ const LoginPage = () => {
                     </form>
                 </CardContent>
             </Card>
+            <div className="absolute bottom-4 flex gap-4 text-xs text-muted-foreground">
+                <a href="/termos-de-servico" className="hover:text-primary transition-colors">Termos de Serviço</a>
+                <span>•</span>
+                <a href="/politica-de-privacidade" className="hover:text-primary transition-colors">Política de Privacidade</a>
+            </div>
         </div>
     );
 };

@@ -38,6 +38,8 @@ import {
 import { Pencil, Trash2, Upload, Users, KeyRound, RotateCcw, ShieldAlert } from "lucide-react";
 import { Checkbox } from "../components/ui/checkbox";
 import { cn } from "../lib/utils";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs";
+import { Textarea } from "../components/ui/textarea";
 
 const AVAILABLE_PERMISSIONS = [
   { id: "dashboard", label: "Dashboard" },
@@ -106,6 +108,12 @@ const SuperadminPage = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [editingCompany, setEditingCompany] = useState<Company | null>(null);
+
+  // Legal Pages State
+  const [legalTerms, setLegalTerms] = useState("");
+  const [legalPrivacy, setLegalPrivacy] = useState("");
+  const [savingLegal, setSavingLegal] = useState<string | null>(null);
+
 
   // Form states
   const [formValues, setFormValues] = useState({
@@ -621,750 +629,367 @@ const SuperadminPage = () => {
   };
 
   return (
-    <div className="flex min-h-screen items-stretch bg-gradient-to-br from-primary-soft via-background to-primary/5 px-4 py-6">
-      <main className="mx-auto flex w-full max-w-6xl flex-col gap-6 md:flex-row">
-        <section className="flex-1 space-y-4">
-          <header>
-            <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl md:text-4xl">
-              Painel de <span className="text-primary">Gestão de Clientes</span>
-            </h1>
-            <p className="mt-2 max-w-xl text-sm text-muted-foreground">
-              Cadastre e gerencie seus clientes, visualize estatísticas e acesse os painéis individuais.
-            </p>
-          </header>
-          <Card className="border border-primary-soft/70 bg-card/95 shadow-strong">
-            <CardHeader className="flex flex-row items-center justify-between space-y-0">
-              <CardTitle className="text-base sm:text-lg">Carteira de Clientes</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              {isLoading ? (
-                <p className="text-sm text-muted-foreground">Carregando empresas...</p>
-              ) : companies.length === 0 ? (
-                <p className="text-sm text-muted-foreground">Nenhuma empresa cadastrada até o momento.</p>
-              ) : (
-                <div className="space-y-2 overflow-hidden rounded-xl border border-border/60 bg-background/60">
-                  <div className="grid grid-cols-6 gap-3 border-b border-border/60 bg-muted/60 px-3 py-2 text-[11px] font-medium text-muted-foreground sm:text-xs">
-                    <span>Nome</span>
-                    <span>CNPJ</span>
-                    <span>Cidade/UF</span>
-                    <span>Vencimento</span>
-                    <span>Logo</span>
-                    <span className="text-right">Ações</span>
-                  </div>
-                  <div className="divide-y divide-border/60">
+    <div className="min-h-screen bg-slate-50/50 p-4 md:p-8">
+      <div className="max-w-7xl mx-auto space-y-8">
+        <header className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+          <div>
+            <h1 className="text-3xl font-bold tracking-tight text-slate-800">Super Admin</h1>
+            <p className="text-slate-500 mt-1">Gestão global do sistema Integrai</p>
+          </div>
+          <div className="flex gap-3">
+            <Button variant="outline" onClick={() => window.open('/termos-de-servico', '_blank')}>Ver Termos</Button>
+            <Button variant="outline" onClick={() => window.open('/politica-de-privacidade', '_blank')}>Ver Privacidade</Button>
+          </div>
+        </header>
+
+        <div className="flex flex-col lg:flex-row gap-8 items-start">
+          <section className="flex-1 w-full space-y-6">
+            {/* COMPANIES LIST */}
+            <Card className="border border-primary-soft/70 bg-card/95 shadow-strong">
+              <CardHeader className="flex flex-row items-center justify-between">
+                <CardTitle className="text-xl flex items-center gap-2">
+                  <Users className="h-5 w-5 text-primary" />
+                  Empresas Cadastradas ({companies.length})
+                </CardTitle>
+                <Button variant="outline" size="sm" onClick={loadCompanies} disabled={isLoading}>
+                  <RotateCcw className={cn("w-4 h-4 mr-2", isLoading && "animate-spin")} />
+                  Atualizar
+                </Button>
+              </CardHeader>
+              <CardContent>
+                {isLoading ? (
+                  <div className="text-center py-8 text-muted-foreground">Carregando empresas...</div>
+                ) : (
+                  <div className="space-y-4">
                     {companies.map((company) => (
                       <div
                         key={company.id}
-                        className="grid grid-cols-6 items-center gap-3 px-3 py-2 text-[11px] sm:text-xs"
+                        className="flex flex-col sm:flex-row sm:items-center justify-between p-4 rounded-lg border bg-card hover:bg-accent/5 transition-colors gap-4"
                       >
-                        <button
-                          type="button"
-                          onClick={() => handleOpenDashboard(company)}
-                          className="truncate text-left font-medium text-primary hover:underline"
-                        >
-                          {company.name}
-                        </button>
-                        <span className="truncate text-muted-foreground">{company.cnpj || "-"}</span>
-                        <span className="truncate text-muted-foreground">
-                          {company.city || company.state ? `${company.city ?? ""}/${company.state ?? ""}` : "-"}
-                        </span>
-                        <span className={cn("truncate font-medium",
-                          company.due_date && new Date(company.due_date) < new Date() ? "text-destructive" : "text-muted-foreground"
-                        )}>
-                          {company.due_date ? new Date(company.due_date).toLocaleDateString('pt-BR') : "-"}
-                        </span>
-                        <div className="truncate text-primary flex items-center gap-2">
+                        <div className="flex items-center gap-4">
                           {company.logo_url ? (
-                            <>
-                              <img src={company.logo_url} alt="Logo" className="h-6 w-6 object-cover rounded" />
-                              <span>Configurado</span>
-                            </>
-                          ) : "Sem logo"}
+                            <img src={company.logo_url} alt={company.name} className="h-10 w-10 rounded-full object-cover border" />
+                          ) : (
+                            <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center text-primary font-bold">
+                              {company.name.substring(0, 2).toUpperCase()}
+                            </div>
+                          )}
+                          <div>
+                            <h3 className="font-semibold text-slate-800 text-lg">{company.name}</h3>
+                            <div className="flex flex-wrap gap-2 text-xs text-slate-500">
+                              <span>ID: {company.id}</span>
+                              {company.city && <span>• {company.city}/{company.state}</span>}
+                              {company.phone && <span>• {company.phone}</span>}
+                              {company.due_date && (
+                                <span className={new Date(company.due_date) < new Date() ? "text-destructive font-bold" : ""}>
+                                  • Vence: {new Date(company.due_date).toLocaleDateString()}
+                                </span>
+                              )}
+                            </div>
+                          </div>
                         </div>
-                        <span className="flex items-center justify-end gap-1.5">
+                        <div className="flex items-center gap-2 self-end sm:self-center">
+                          <Button size="sm" variant="outline" onClick={() => handleOpenDashboard(company)}>Dashboard</Button>
+
+                          {/* USERS DIALOG */}
                           <Dialog>
                             <DialogTrigger asChild>
-                              <Button
-                                variant="outline"
-                                size="icon"
-                                className="h-7 w-7 border-primary-soft/60 text-primary"
-                                onClick={() => handleManageUsers(company)}
-                              >
-                                <Users className="h-3.5 w-3.5" />
-                                <span className="sr-only">Usuários</span>
-                              </Button>
+                              <Button size="icon" variant="ghost" onClick={() => handleManageUsers(company)} title="Gerenciar Usuários"><Users className="w-4 h-4" /></Button>
                             </DialogTrigger>
-                            <DialogContent className="max-w-2xl">
+                            <DialogContent className="max-w-3xl max-h-[85vh] overflow-auto">
                               <DialogHeader>
-                                <DialogTitle>Usuários: {company.name}</DialogTitle>
-                                <DialogDescription>
-                                  Gerencie o acesso dos usuários desta empresa.
-                                </DialogDescription>
+                                <DialogTitle>Usuários - {company.name}</DialogTitle>
+                                <DialogDescription>Gerencie o acesso a esta empresa.</DialogDescription>
                               </DialogHeader>
-                              <div className="space-y-4 py-4">
-                                {loadingUsers ? (
-                                  <p className="text-sm text-muted-foreground">Carregando usuários...</p>
-                                ) : (
-                                  <div className="space-y-4">
-                                    {companyUsers.length === 0 ? (
-                                      <p className="text-sm text-muted-foreground">Nenhum usuário encontrado.</p>
-                                    ) : (
-                                      <div className="space-y-2 max-h-[300px] overflow-y-auto pr-2 custom-scrollbar">
-                                        {companyUsers.map(user => (
-                                          <div key={user.id} className="flex items-center justify-between rounded-lg border p-3 bg-muted/40">
-                                            <div className="space-y-1">
-                                              <p className="text-sm font-medium">{user.full_name}</p>
-                                              <p className="text-xs text-muted-foreground">{user.email}</p>
-                                              <span className="text-[10px] uppercase bg-primary/10 text-primary px-1.5 py-0.5 rounded">{user.role}</span>
-                                            </div>
-                                            <div className="flex items-center gap-2">
-                                              <div className="flex items-center gap-2">
-                                                <KeyRound className="h-3.5 w-3.5 text-muted-foreground" />
-                                                <Input
-                                                  type="password"
-                                                  placeholder="Nova senha"
-                                                  className="h-7 w-32 text-xs"
-                                                  value={resetPasswords[user.id] || ''}
-                                                  onChange={(e) => handlePasswordChange(user.id, e.target.value)}
-                                                />
-                                              </div>
-                                              <Button
-                                                size="sm"
-                                                className="h-7 text-xs"
-                                                disabled={savingPassword === user.id}
-                                                onClick={() => submitPasswordReset(user.id)}
-                                              >
-                                                {savingPassword === user.id ? 'Sal...' : 'Redefinir'}
-                                              </Button>
-
-                                              <AlertDialog>
-                                                <AlertDialogTrigger asChild>
-                                                  <Button
-                                                    size="icon"
-                                                    variant="outline"
-                                                    className="h-7 w-7 border-destructive/40 text-destructive"
-                                                    title="Excluir Usuário"
-                                                  >
-                                                    <Trash2 className="h-3.5 w-3.5" />
-                                                  </Button>
-                                                </AlertDialogTrigger>
-                                                <AlertDialogContent>
-                                                  <AlertDialogHeader>
-                                                    <AlertDialogTitle>Excluir Usuário</AlertDialogTitle>
-                                                    <AlertDialogDescription>
-                                                      Tem certeza que deseja excluir o usuário {user.full_name}? Esta ação não pode ser desfeita.
-                                                    </AlertDialogDescription>
-                                                  </AlertDialogHeader>
-                                                  <AlertDialogFooter>
-                                                    <AlertDialogCancel>Cancelar</AlertDialogCancel>
-                                                    <AlertDialogAction
-                                                      className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                                                      onClick={() => handleDeleteUser(user.id)}
-                                                    >
-                                                      Excluir
-                                                    </AlertDialogAction>
-                                                  </AlertDialogFooter>
-                                                </AlertDialogContent>
-                                              </AlertDialog>
-                                            </div>
+                              <div className="space-y-6 pt-4">
+                                <div className="space-y-2">
+                                  <h3 className="font-medium text-sm">Usuários Existentes</h3>
+                                  {loadingUsers ? <p className="text-xs">Carregando...</p> : companyUsers.length === 0 ? <p className="text-xs text-muted-foreground">Nenhum usuário.</p> : (
+                                    <div className="grid gap-2">
+                                      {companyUsers.map(u => (
+                                        <div key={u.id} className="flex justify-between items-center p-2 border rounded bg-muted/20">
+                                          <div className="text-sm">
+                                            <div className="font-medium">{u.full_name}</div>
+                                            <div className="text-xs text-muted-foreground">{u.email} ({u.role})</div>
                                           </div>
-                                        ))}
-                                      </div>
-                                    )}
-
-                                    <Separator />
-
-                                    <div className="space-y-3 pt-2">
-                                      <h4 className="text-sm font-medium">Adicionar novo usuário</h4>
-                                      <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
-                                        <Input
-                                          placeholder="Nome completo"
-                                          className="h-8 text-xs"
-                                          value={newUser.full_name}
-                                          onChange={(e) => setNewUser({ ...newUser, full_name: e.target.value })}
-                                        />
-                                        <Input
-                                          placeholder="Email"
-                                          type="email"
-                                          className="h-8 text-xs"
-                                          value={newUser.email}
-                                          onChange={(e) => setNewUser({ ...newUser, email: e.target.value })}
-                                        />
-                                        <Input
-                                          placeholder="Senha"
-                                          type="password"
-                                          className="h-8 text-xs"
-                                          value={newUser.password}
-                                          onChange={(e) => setNewUser({ ...newUser, password: e.target.value })}
-                                        />
-                                        <Input
-                                          placeholder="Telefone"
-                                          className="h-8 text-xs"
-                                          value={newUser.phone}
-                                          onChange={(e) => setNewUser({ ...newUser, phone: e.target.value })}
-                                        />
-                                        <Input
-                                          placeholder="Cidade"
-                                          className="h-8 text-xs"
-                                          value={newUser.city}
-                                          onChange={(e) => setNewUser({ ...newUser, city: e.target.value })}
-                                        />
-                                        <Input
-                                          placeholder="UF"
-                                          className="h-8 text-xs"
-                                          maxLength={2}
-                                          value={newUser.state}
-                                          onChange={(e) => setNewUser({ ...newUser, state: e.target.value.toUpperCase() })}
-                                        />
-                                        <div className="col-span-1 md:col-span-3 flex justify-end">
-                                          <Button
-                                            size="sm"
-                                            className="h-8 text-xs"
-                                            onClick={handleCreateUser}
-                                            disabled={creatingUser}
-                                          >
-                                            {creatingUser ? "Adicionando..." : "Adicionar Usuário"}
-                                          </Button>
+                                          <div className="flex gap-1">
+                                            <Dialog>
+                                              <DialogTrigger asChild>
+                                                <Button size="icon" variant="ghost" className="h-7 w-7"><KeyRound className="w-3 h-3" /></Button>
+                                              </DialogTrigger>
+                                              <DialogContent>
+                                                <DialogHeader><DialogTitle>Resetar Senha</DialogTitle></DialogHeader>
+                                                <div className="flex gap-2 pt-4">
+                                                  <Input
+                                                    type="password"
+                                                    placeholder="Nova Senha"
+                                                    value={resetPasswords[u.id] || ''}
+                                                    onChange={e => handlePasswordChange(u.id, e.target.value)}
+                                                  />
+                                                  <Button onClick={() => submitPasswordReset(u.id)}>Salvar</Button>
+                                                </div>
+                                              </DialogContent>
+                                            </Dialog>
+                                            <Button size="icon" variant="ghost" className="h-7 w-7 text-destructive" onClick={() => handleDeleteUser(u.id)}><Trash2 className="w-3 h-3" /></Button>
+                                          </div>
                                         </div>
-                                      </div>
-
-                                      <div className="pt-2">
-                                        <label className="text-xs font-medium mb-2 block">Permissões de Acesso</label>
-                                        <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
-                                          {AVAILABLE_PERMISSIONS.map((perm) => (
-                                            <div key={perm.id} className="flex items-center space-x-2">
-                                              <Checkbox
-                                                id={`perm-${perm.id}`}
-                                                checked={newUser.permissions.includes(perm.id)}
-                                                onCheckedChange={(checked) => {
-                                                  setNewUser(prev => {
-                                                    if (checked) {
-                                                      return { ...prev, permissions: [...prev.permissions, perm.id] };
-                                                    } else {
-                                                      return { ...prev, permissions: prev.permissions.filter(p => p !== perm.id) };
-                                                    }
-                                                  })
-                                                }}
-                                              />
-                                              <label
-                                                htmlFor={`perm-${perm.id}`}
-                                                className="text-xs font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer"
-                                              >
-                                                {perm.label}
-                                              </label>
-                                            </div>
-                                          ))}
-                                        </div>
-                                      </div>
+                                      ))}
                                     </div>
+                                  )}
+                                </div>
+                                <Separator />
+                                <div className="space-y-3">
+                                  <h3 className="font-medium text-sm">Adicionar Usuário</h3>
+                                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                    <Input placeholder="Nome" value={newUser.full_name} onChange={e => setNewUser({ ...newUser, full_name: e.target.value })} className="h-8 text-xs" />
+                                    <Input placeholder="Email" value={newUser.email} onChange={e => setNewUser({ ...newUser, email: e.target.value })} className="h-8 text-xs" />
+                                    <Input placeholder="Senha" type="password" value={newUser.password} onChange={e => setNewUser({ ...newUser, password: e.target.value })} className="h-8 text-xs" />
+                                    <Input placeholder="Telefone" value={newUser.phone} onChange={e => setNewUser({ ...newUser, phone: e.target.value })} className="h-8 text-xs" />
                                   </div>
-                                )}
+                                  <div className="flex justify-end">
+                                    <Button size="sm" onClick={handleCreateUser} disabled={creatingUser}>{creatingUser ? 'Adicionando...' : 'Adicionar'}</Button>
+                                  </div>
+                                </div>
                               </div>
                             </DialogContent>
                           </Dialog>
 
-                          <Button
-                            type="button"
-                            variant="outline"
-                            size="icon"
-                            className="h-7 w-7 border-primary-soft/60 text-primary"
-                            onClick={() => handleEdit(company)}
-                          >
-                            <Pencil className="h-3.5 w-3.5" />
-                            <span className="sr-only">Editar</span>
-                          </Button>
+                          <Button size="icon" variant="ghost" onClick={() => handleEdit(company)} title="Editar Empresa"><Pencil className="w-4 h-4" /></Button>
+
                           <AlertDialog>
                             <AlertDialogTrigger asChild>
-                              <Button
-                                type="button"
-                                variant="outline"
-                                size="icon"
-                                className="h-7 w-7 border-destructive/40 text-destructive"
-                                disabled={deletingId === company.id}
-                              >
-                                <Trash2 className="h-3.5 w-3.5" />
-                                <span className="sr-only">Excluir</span>
-                              </Button>
+                              <Button size="icon" variant="ghost" className="text-destructive" title="Excluir Empresa"><Trash2 className="w-4 h-4" /></Button>
                             </AlertDialogTrigger>
                             <AlertDialogContent>
                               <AlertDialogHeader>
-                                <AlertDialogTitle>Excluir empresa</AlertDialogTitle>
-                                <AlertDialogDescription>
-                                  Tem certeza que deseja excluir a empresa {company.name}? Esta ação não pode ser
-                                  desfeita.
-                                </AlertDialogDescription>
+                                <AlertDialogTitle>Excluir {company.name}?</AlertDialogTitle>
+                                <AlertDialogDescription>Esta ação é irreversível.</AlertDialogDescription>
                               </AlertDialogHeader>
                               <AlertDialogFooter>
                                 <AlertDialogCancel>Cancelar</AlertDialogCancel>
-                                <AlertDialogAction
-                                  className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                                  onClick={() => handleDelete(company)}
-                                >
-                                  {deletingId === company.id ? "Excluindo..." : "Confirmar"}
-                                </AlertDialogAction>
+                                <AlertDialogAction className="bg-destructive" onClick={() => handleDelete(company)}>Excluir</AlertDialogAction>
                               </AlertDialogFooter>
                             </AlertDialogContent>
                           </AlertDialog>
-                        </span>
+                        </div>
                       </div>
                     ))}
                   </div>
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        </section>
+                )}
+              </CardContent>
+            </Card>
 
-        <section className="w-full max-w-md space-y-6">
-          <Card className="border border-primary-soft/70 bg-card/95 shadow-strong">
-            <CardHeader>
-              <CardTitle className="text-base sm:text-lg flex items-center gap-2">
-                <ShieldAlert className="h-4 w-4 text-primary" />
-                Modos Operacionais
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="grid grid-cols-2 gap-2">
-                <Button
-                  variant={currentMode === "normal" ? "default" : "outline"}
-                  className={cn("h-16 flex-col gap-1", currentMode === "normal" && "border-2 border-primary")}
-                  onClick={() => handleModeChange("normal")}
-                  disabled={isChangingMode}
-                >
-                  <span className="font-bold">Normal</span>
-                  <span className="text-[10px] opacity-70">Padrão</span>
-                </Button>
-                <Button
-                  variant={currentMode === "maintenance" ? "default" : "outline"}
-                  className={cn("h-16 flex-col gap-1", currentMode === "maintenance" && "bg-amber-500 hover:bg-amber-600 text-white")}
-                  onClick={() => handleModeChange("maintenance")}
-                  disabled={isChangingMode}
-                >
-                  <span className="font-bold">Manutenção</span>
-                  <span className="text-[10px] opacity-70">Admin apenas</span>
-                </Button>
-                <Button
-                  variant={currentMode === "emergency" ? "default" : "outline"}
-                  className={cn("h-16 flex-col gap-1", currentMode === "emergency" && "bg-red-600 hover:bg-red-700 text-white")}
-                  onClick={() => handleModeChange("emergency")}
-                  disabled={isChangingMode}
-                >
-                  <span className="font-bold">Emergência</span>
-                  <span className="text-[10px] opacity-70">SuperAdmin</span>
-                </Button>
-                <Button
-                  variant={currentMode === "readonly" ? "default" : "outline"}
-                  className={cn("h-16 flex-col gap-1", currentMode === "readonly" && "bg-blue-600 hover:bg-blue-700 text-white")}
-                  onClick={() => handleModeChange("readonly")}
-                  disabled={isChangingMode}
-                >
-                  <span className="font-bold">Somente Leitura</span>
-                  <span className="text-[10px] opacity-70">Bloqueia escrita</span>
-                </Button>
-              </div>
+            {/* LEGAL PAGES EDITOR */}
+            <Card className="border border-primary-soft/70 bg-card/95 shadow-strong">
+              <CardHeader>
+                <CardTitle className="text-xl">Páginas Legais</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <Tabs defaultValue="terms" className="w-full">
+                  <TabsList className="grid w-full grid-cols-2">
+                    <TabsTrigger value="terms">Termos de Serviço</TabsTrigger>
+                    <TabsTrigger value="privacy">Política de Privacidade</TabsTrigger>
+                  </TabsList>
 
-              <div className="bg-muted/50 p-3 rounded-lg border text-xs text-muted-foreground space-y-1">
-                <p>● <b>Normal:</b> Acesso total para todos.</p>
-                <p>● <b>Manutenção:</b> Apenas administradores entram.</p>
-                <p>● <b>Emergência:</b> Apenas SuperAdmin entra.</p>
-                <p>● <b>Somente Leitura:</b> Ninguém pode salvar ou deletar.</p>
-              </div>
-            </CardContent>
-          </Card>
-          <Card className="border border-primary-soft/70 bg-card/95 shadow-strong">
-            <CardHeader>
-              <CardTitle className="text-base sm:text-lg">Novo Cliente</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <form className="space-y-3" onSubmit={handleSubmit}>
-                {/* Form fields: Name */}
-                <div className="space-y-1.5">
-                  <Label htmlFor="name">Nome do Cliente / Empresa</Label>
-                  <Input
-                    id="name"
-                    name="name"
-                    placeholder="Minha Empresa"
-                    required
-                    value={formValues.name}
-                    onChange={handleChange}
-                  />
-                </div>
-                {/* Form fields: CNPJ */}
-                <div className="space-y-1.5">
-                  <Label htmlFor="cnpj">CNPJ</Label>
-                  <Input
-                    id="cnpj"
-                    name="cnpj"
-                    placeholder="00.000.000/0000-00"
-                    value={formValues.cnpj}
-                    onChange={handleChange}
-                  />
-                </div>
-                {/* Form fields: City/State */}
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="space-y-1.5">
-                    <Label htmlFor="city">Cidade</Label>
-                    <Input
-                      id="city"
-                      name="city"
-                      placeholder="Goiânia"
-                      value={formValues.city}
-                      onChange={handleChange}
-                    />
-                  </div>
-                  <div className="space-y-1.5">
-                    <Label htmlFor="state">UF</Label>
-                    <Input
-                      id="state"
-                      name="state"
-                      placeholder="GO"
-                      maxLength={2}
-                      value={formValues.state}
-                      onChange={handleChange}
-                    />
-                  </div>
-                </div>
-
-                {/* Operation Type Selector */}
-                <div className="space-y-1.5">
-                  <Label htmlFor="operation_type">Tipo de Operação</Label>
-                  <Select onValueChange={handleSelectChange} value={formValues.operation_type}>
-                    <SelectTrigger className="w-full">
-                      <SelectValue placeholder="Selecione o ramo" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="clientes">Clientes (Padrão)</SelectItem>
-                      <SelectItem value="motoristas">Motoristas</SelectItem>
-                      <SelectItem value="pacientes">Pacientes</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                {/* Form fields: Phone */}
-                <div className="space-y-1.5">
-                  <Label htmlFor="phone">Telefone de contato</Label>
-                  <Input
-                    id="phone"
-                    name="phone"
-                    placeholder="(62) 99999-9999"
-                    value={formValues.phone}
-                    onChange={handleChange}
-                  />
-                </div>
-
-
-                <Separator className="my-2" />
-                {(!editingCompany || currentInstances.length <= 1) && (
-                  <>
-                    <p className="text-sm font-semibold text-primary">Integração Evolution API (Principal)</p>
-                    <div className="space-y-1.5">
-                      <Label htmlFor="evolution_instance">Nome da Instância</Label>
-                      <Input
-                        id="evolution_instance"
-                        name="evolution_instance"
-                        placeholder="minha-instancia"
-                        value={formValues.evolution_instance}
-                        onChange={handleChange}
+                  <TabsContent value="terms" className="space-y-4 pt-4">
+                    <div className="space-y-2">
+                      <Label>Conteúdo HTML (Termos)</Label>
+                      <Textarea
+                        rows={15}
+                        value={legalTerms}
+                        onChange={(e) => setLegalTerms(e.target.value)}
+                        className="font-mono text-xs"
+                        placeholder="Use tags HTML: <h2>Título</h2>, <p>Parágrafo</p>"
                       />
                     </div>
-                    <div className="space-y-1.5">
-                      <Label htmlFor="evolution_apikey">API Key</Label>
-                      <Input
-                        id="evolution_apikey"
-                        name="evolution_apikey"
-                        type="password"
-                        placeholder="sk_..."
-                        value={formValues.evolution_apikey}
-                        onChange={handleChange}
+                    <Button
+                      onClick={() => handleSaveLegal('terms')}
+                      disabled={savingLegal === 'terms'}
+                    >
+                      {savingLegal === 'terms' ? 'Salvando...' : 'Salvar Termos'}
+                    </Button>
+                  </TabsContent>
+
+                  <TabsContent value="privacy" className="space-y-4 pt-4">
+                    <div className="space-y-2">
+                      <Label>Conteúdo HTML (Privacidade)</Label>
+                      <Textarea
+                        rows={15}
+                        value={legalPrivacy}
+                        onChange={(e) => setLegalPrivacy(e.target.value)}
+                        className="font-mono text-xs"
+                        placeholder="Use tags HTML: <h2>Título</h2>, <p>Parágrafo</p>"
                       />
                     </div>
-                  </>
-                )}
+                    <Button
+                      onClick={() => handleSaveLegal('privacy')}
+                      disabled={savingLegal === 'privacy'}
+                    >
+                      {savingLegal === 'privacy' ? 'Salvando...' : 'Salvar Política'}
+                    </Button>
+                  </TabsContent>
+                </Tabs>
+              </CardContent>
+            </Card>
+          </section>
 
-                <div className="space-y-1.5">
-                  <Label htmlFor="max_instances">Número de Instâncias (Multi-Atendimento)</Label>
-                  <Input
-                    id="max_instances"
-                    name="max_instances"
-                    type="number"
-                    min="1"
-                    placeholder="1"
-                    value={formValues.max_instances}
-                    onChange={handleChange}
-                  />
+          <section className="w-full max-w-md space-y-6">
+            {/* MODOS OPERACIONAIS */}
+            <Card className="border border-primary-soft/70 bg-card/95 shadow-strong">
+              <CardHeader>
+                <CardTitle className="text-base sm:text-lg flex items-center gap-2">
+                  <ShieldAlert className="h-4 w-4 text-primary" />
+                  Modos Operacionais
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="grid grid-cols-2 gap-2">
+                  <Button
+                    variant={currentMode === "normal" ? "default" : "outline"}
+                    className={cn("h-16 flex-col gap-1", currentMode === "normal" && "border-2 border-primary")}
+                    onClick={() => handleModeChange("normal")}
+                    disabled={isChangingMode}
+                  >
+                    <span className="font-bold">Normal</span>
+                  </Button>
+                  <Button
+                    variant={currentMode === "maintenance" ? "default" : "outline"}
+                    className={cn("h-16 flex-col gap-1", currentMode === "maintenance" && "bg-amber-500 hover:bg-amber-600 text-white")}
+                    onClick={() => handleModeChange("maintenance")}
+                    disabled={isChangingMode}
+                  >
+                    <span className="font-bold">Manutenção</span>
+                  </Button>
+                  <Button
+                    variant={currentMode === "emergency" ? "default" : "outline"}
+                    className={cn("h-16 flex-col gap-1", currentMode === "emergency" && "bg-red-600 hover:bg-red-700 text-white")}
+                    onClick={() => handleModeChange("emergency")}
+                    disabled={isChangingMode}
+                  >
+                    <span className="font-bold">Emergência</span>
+                  </Button>
+                  <Button
+                    variant={currentMode === "readonly" ? "default" : "outline"}
+                    className={cn("h-16 flex-col gap-1", currentMode === "readonly" && "bg-blue-600 hover:bg-blue-700 text-white")}
+                    onClick={() => handleModeChange("readonly")}
+                    disabled={isChangingMode}
+                  >
+                    <span className="font-bold">Leitura</span>
+                  </Button>
                 </div>
+                <div className="bg-muted/50 p-3 rounded-lg border text-xs text-muted-foreground space-y-1">
+                  <p>● <b>Normal:</b> Acesso total.</p>
+                  <p>● <b>Manutenção:</b> Apenas Admins.</p>
+                  <p>● <b>Emergência:</b> Apenas SuperAdmin.</p>
+                </div>
+              </CardContent>
+            </Card>
 
-                {editingCompany && currentInstances.length > 0 && (
-                  <div className="space-y-3 mt-4 border rounded-md p-3 bg-muted/20">
-                    <div className="flex justify-between items-center">
-                      <Label className="text-primary font-semibold">Configuração Multi-Instância</Label>
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => loadInstancesForCompany(editingCompany.id)}
-                        disabled={loadingInstances}
-                      >
-                        <RotateCcw className={cn("w-3 h-3 mr-1", loadingInstances && "animate-spin")} />
-                        Atualizar Lista
-                      </Button>
-                    </div>
-
-                    <div className="grid gap-3">
-                      {currentInstances.map((inst, idx) => (
-                        <div key={inst.id} className="grid grid-cols-1 md:grid-cols-2 gap-2 p-2 border rounded bg-background">
-                          <div className="space-y-1">
-                            <Label className="text-[10px] uppercase font-bold text-muted-foreground">Instância #{idx + 1} (Chave)</Label>
-                            <Input
-                              className="h-8 text-xs"
-                              value={inst.instance_key || ""}
-                              onChange={(e) => {
-                                handleUpdateInstanceConfig(inst.id, 'instance_key', e.target.value);
-                                handleUpdateInstanceConfig(inst.id, 'name', e.target.value);
-                              }}
-                              placeholder={`integrai_${inst.id}`}
-                            />
-                          </div>
-                          <div className="space-y-1">
-                            <Label className="text-[10px] uppercase font-bold text-muted-foreground">API Key</Label>
-                            <Input
-                              className="h-8 text-xs"
-                              type="password"
-                              value={inst.api_key || ""}
-                              onChange={(e) => handleUpdateInstanceConfig(inst.id, 'api_key', e.target.value)}
-                              placeholder="API Key Individual"
-                            />
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                    <p className="text-[10px] text-muted-foreground italic">
-                      * Alterações nessas instâncias são salvas automaticamente ao digitar.
-                    </p>
+            {/* NOVO CLIENTE / EDITAR */}
+            <Card className="border border-primary-soft/70 bg-card/95 shadow-strong">
+              <CardHeader><CardTitle>{editingCompany ? 'Editar Empresa' : 'Novo Cliente'}</CardTitle></CardHeader>
+              <CardContent>
+                <form className="space-y-3" onSubmit={handleSubmit}>
+                  <div className="space-y-1.5">
+                    <Label>Nome da Empresa</Label>
+                    <Input name="name" value={formValues.name} onChange={handleChange} required placeholder="Nome Fantasia" />
                   </div>
-                )}
+                  <div className="space-y-1.5">
+                    <Label>CNPJ</Label>
+                    <Input name="cnpj" value={formValues.cnpj} onChange={handleChange} placeholder="00.000.000/0000-00" />
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div className="space-y-1.5"><Label>Cidade</Label><Input name="city" value={formValues.city} onChange={handleChange} /></div>
+                    <div className="space-y-1.5"><Label>UF</Label><Input name="state" value={formValues.state} onChange={handleChange} maxLength={2} /></div>
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label>Telefone</Label>
+                    <Input name="phone" value={formValues.phone} onChange={handleChange} placeholder="(XX) XXXXX-XXXX" />
+                  </div>
 
-                <Separator className="my-2" />
-                <div className="space-y-3">
+                  <Separator className="my-2" />
+                  <div className="space-y-1.5">
+                    <Label>Tipo de Operação</Label>
+                    <Select value={formValues.operation_type} onValueChange={handleSelectChange}>
+                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="clientes">Clientes</SelectItem>
+                        <SelectItem value="vendas">Vendas</SelectItem>
+                        <SelectItem value="suporte">Suporte</SelectItem>
+                        <SelectItem value="hibrido">Híbrido</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <Label>Nome da Instância (Evolution)</Label>
+                    <Input name="evolution_instance" value={formValues.evolution_instance} onChange={handleChange} />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label>API Key</Label>
+                    <Input name="evolution_apikey" type="password" value={formValues.evolution_apikey} onChange={handleChange} />
+                  </div>
+
+                  <Separator className="my-2" />
                   <div className="flex items-center space-x-2">
-                    <Checkbox
-                      id="instagram_enabled"
-                      checked={formValues.instagram_enabled}
-                      onCheckedChange={(checked) => setFormValues(prev => ({ ...prev, instagram_enabled: !!checked }))}
-                    />
-                    <Label htmlFor="instagram_enabled" className="font-semibold text-primary cursor-pointer">
-                      Integrar com Instagram
-                    </Label>
+                    <Checkbox id="ig_enabled" checked={formValues.instagram_enabled} onCheckedChange={(c) => setFormValues(p => ({ ...p, instagram_enabled: !!c }))} />
+                    <Label htmlFor="ig_enabled" className="cursor-pointer">Integrar com Instagram</Label>
                   </div>
-
                   {formValues.instagram_enabled && (
-                    <div className="pl-6 border-l-2 border-primary/20 space-y-3 mt-2">
-                      <div className="grid grid-cols-2 gap-3">
-                        <div className="space-y-1.5">
-                          <Label htmlFor="instagram_app_id">Instagram App ID</Label>
-                          <Input
-                            id="instagram_app_id"
-                            name="instagram_app_id"
-                            value={formValues.instagram_app_id}
-                            onChange={handleChange}
-                            placeholder="Ex: 1234567890"
-                          />
-                        </div>
-                        <div className="space-y-1.5">
-                          <Label htmlFor="instagram_app_secret">Instagram App Secret</Label>
-                          <Input
-                            id="instagram_app_secret"
-                            name="instagram_app_secret"
-                            type="password"
-                            value={formValues.instagram_app_secret}
-                            onChange={handleChange}
-                            placeholder="Ex: xxxxx..."
-                          />
-                        </div>
-                      </div>
-
-                      <div className="grid grid-cols-2 gap-3">
-                        <div className="space-y-1.5">
-                          <Label htmlFor="instagram_page_id">Facebook Page ID</Label>
-                          <Input
-                            id="instagram_page_id"
-                            name="instagram_page_id"
-                            value={formValues.instagram_page_id}
-                            onChange={handleChange}
-                            placeholder="Ex: 1000..."
-                          />
-                        </div>
-                        <div className="space-y-1.5">
-                          <Label htmlFor="instagram_business_id">Instagram Business ID</Label>
-                          <Input
-                            id="instagram_business_id"
-                            name="instagram_business_id"
-                            value={formValues.instagram_business_id}
-                            onChange={handleChange}
-                            placeholder="Ex: 178..."
-                          />
-                        </div>
-                      </div>
-
-                      <div className="space-y-1.5">
-                        <Label htmlFor="instagram_access_token">Access Token (Manual ou via Fluxo)</Label>
-                        <Input
-                          id="instagram_access_token"
-                          name="instagram_access_token"
-                          type="password"
-                          value={formValues.instagram_access_token}
-                          onChange={handleChange}
-                          placeholder="EAAG..."
-                        />
-                      </div>
-
-                      <div className="space-y-1.5">
-                        <Label>Webhook URL (Configure no Meta)</Label>
-                        <div className="flex items-center gap-2">
-                          <code className="flex-1 bg-muted p-2 rounded text-xs select-all">
-                            {window.location.origin.replace('localhost', 'sua-api.com')}/webhooks/instagram
-                          </code>
-                        </div>
-                      </div>
-
-                      <Button type="button" variant="secondary" className="w-full gap-2">
-                        <img src="https://upload.wikimedia.org/wikipedia/commons/thumb/e/e7/Instagram_logo_2016.svg/2048px-Instagram_logo_2016.svg.png" className="w-4 h-4" />
-                        Conectar com Instagram (OAuth)
-                      </Button>
+                    <div className="pl-4 border-l-2 space-y-2 mt-2">
+                      <Input name="instagram_page_id" placeholder="Page ID" value={formValues.instagram_page_id} onChange={handleChange} className="h-8 text-xs" />
+                      <Input name="instagram_access_token" placeholder="Access Token" type="password" value={formValues.instagram_access_token} onChange={handleChange} className="h-8 text-xs" />
                     </div>
                   )}
-                </div>
 
-                <Separator className="my-2" />
-                <p className="text-sm font-semibold text-primary">Plano e Pagamento</p>
-
-                <div className="grid grid-cols-2 gap-3">
+                  <Separator className="my-2" />
                   <div className="space-y-1.5">
-                    <Label htmlFor="plan_id">Plano</Label>
-                    <Select onValueChange={(val) => setFormValues(prev => ({ ...prev, plan_id: val }))} value={String(formValues.plan_id)}>
+                    <Label>Plano</Label>
+                    <Select value={formValues.plan_id ? String(formValues.plan_id) : ""} onValueChange={(val) => setFormValues(prev => ({ ...prev, plan_id: val }))}>
                       <SelectTrigger>
-                        <SelectValue placeholder="Selecione o plano" />
+                        <SelectValue placeholder="Selecione" />
                       </SelectTrigger>
                       <SelectContent>
-                        {plans.map(p => (
-                          <SelectItem key={p.id} value={String(p.id)}>
-                            {p.name}
-                          </SelectItem>
+                        {plans.map((p) => (
+                          <SelectItem key={p.id} value={String(p.id)}>{p.name}</SelectItem>
                         ))}
                       </SelectContent>
                     </Select>
                   </div>
                   <div className="space-y-1.5">
-                    <Label htmlFor="due_date">Vencimento</Label>
-                    <Input
-                      id="due_date"
-                      name="due_date"
-                      type="date"
-                      value={formValues.due_date}
-                      onChange={handleChange}
-                    />
+                    <Label>Vencimento</Label>
+                    <Input type="date" value={formValues.due_date} onChange={(e) => setFormValues(prev => ({ ...prev, due_date: e.target.value }))} />
                   </div>
-                </div>
+                  <div className="space-y-1.5">
+                    <Label>Máximo de Instâncias</Label>
+                    <Input type="number" min="1" value={formValues.max_instances} onChange={(e) => setFormValues(prev => ({ ...prev, max_instances: e.target.value }))} />
+                  </div>
 
-                <Separator className="my-2" />
-
-                <div className="space-y-2">
-                  <Label htmlFor="logo">Logo da empresa</Label>
-
-                  {editingCompany?.logo_url && !selectedFile && (
-                    <div className="flex items-center gap-3 p-2 rounded-lg border border-primary-soft/40 bg-primary-soft/5 mb-1.5 transition-all">
-                      <div className="relative">
-                        <img
-                          src={editingCompany.logo_url}
-                          alt="Logo"
-                          className={cn(
-                            "h-12 w-12 rounded object-contain bg-white border border-border/50",
-                            removeLogo && "opacity-40 grayscale"
-                          )}
-                        />
-                        {removeLogo && (
-                          <div className="absolute inset-0 flex items-center justify-center">
-                            <span className="h-0.5 w-6 bg-destructive absolute rotate-45" />
-                            <span className="h-0.5 w-6 bg-destructive absolute -rotate-45" />
-                          </div>
-                        )}
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-xs font-semibold truncate leading-tight">
-                          {removeLogo ? "Marcar para remover" : "Logotipo atual"}
-                        </p>
-                        <p className="text-[10px] text-muted-foreground truncate">
-                          {removeLogo ? "A logo será apagada ao salvar" : "Imagem configurada no perfil"}
-                        </p>
-                      </div>
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="icon"
-                        className={cn(
-                          "h-8 w-8",
-                          removeLogo ? "text-primary hover:bg-primary/10" : "text-destructive hover:bg-destructive/10"
-                        )}
-                        onClick={() => setRemoveLogo(!removeLogo)}
-                        title={removeLogo ? "Cancelar remoção" : "Remover logotipo"}
-                      >
-                        {removeLogo ? <RotateCcw className="h-4 w-4" /> : <Trash2 className="h-4 w-4" />}
-                      </Button>
+                  <div className="space-y-1.5">
+                    <Label>Logo</Label>
+                    <div className="flex gap-2">
+                      {editingCompany?.logo_url && !removeLogo && (
+                        <div className="relative">
+                          <img src={editingCompany.logo_url} className="h-8 w-8 rounded object-cover" />
+                          <Button type="button" size="icon" variant="destructive" className="h-4 w-4 absolute -top-1 -right-1 rounded-full" onClick={() => setRemoveLogo(true)}>x</Button>
+                        </div>
+                      )}
+                      <Input type="file" ref={fileInputRef} onChange={handleFileChange} className="text-xs" />
                     </div>
-                  )}
-
-                  <div className="flex items-center gap-2">
-                    <Input
-                      id="logo"
-                      name="logo"
-                      type="file"
-                      accept="image/*"
-                      ref={fileInputRef}
-                      onChange={handleFileChange}
-                      className="flex-1 cursor-pointer h-9 text-xs"
-                    />
-                    {selectedFile && (
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => {
-                          setSelectedFile(null);
-                          if (fileInputRef.current) fileInputRef.current.value = "";
-                        }}
-                        className="text-xs h-9 px-3"
-                      >
-                        Limpar
-                      </Button>
-                    )}
+                    {removeLogo && <p className="text-xs text-destructive">Logo será removido.</p>}
                   </div>
-                  <p className="text-[10px] text-muted-foreground px-1">
-                    Formatos aceitos: JPG, PNG, WEBP, GIF. Máx 5MB.
-                  </p>
-                </div>
-                <div className="mt-2 flex items-center gap-2">
-                  <Button type="submit" className="flex-1" size="lg" disabled={isSubmitting}>
-                    {isSubmitting
-                      ? "Salvando..."
-                      : editingCompany
-                        ? "Atualizar empresa"
-                        : "Salvar empresa"}
+
+                  <Button type="submit" className="w-full" disabled={isSubmitting}>
+                    {isSubmitting ? "Salvando..." : (editingCompany ? "Atualizar" : "Cadastrar")}
                   </Button>
-                  {editingCompany && (
-                    <Button type="button" variant="outline" size="lg" onClick={resetForm}>
-                      Cancelar edição
-                    </Button>
-                  )}
-                </div>
-              </form>
-            </CardContent>
-          </Card>
-        </section>
-      </main>
-
-
-    </div >
+                  {editingCompany && <Button type="button" variant="outline" className="w-full" onClick={resetForm}>Cancelar Edição</Button>}
+                </form>
+              </CardContent>
+            </Card>
+          </section>
+        </div>
+      </div>
+    </div>
   );
 };
-
 export default SuperadminPage;

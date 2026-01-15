@@ -424,6 +424,11 @@ router.get('/onboarding/status', authenticateToken, getOnboardingStatus);
 router.post('/onboarding/step', authenticateToken, updateOnboardingStep);
 router.post('/onboarding/complete', authenticateToken, completeOnboarding);
 
+// Legal Pages Routes
+import { getLegalPage, updateLegalPage } from './controllers/legalController';
+router.get('/legal-pages/:type', getLegalPage); // Public
+router.put('/legal-pages/:type', authenticateToken, authorizeRole(['SUPERADMIN']), updateLegalPage);
+
 // Plan & Subscription
 import { getPlanStatus, getPlans } from './controllers/planController';
 import { getSubscription, createSubscription, cancelSubscription, getInvoices } from './controllers/subscriptionController';
