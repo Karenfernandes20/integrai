@@ -196,7 +196,8 @@ const startServer = async () => {
             ADD COLUMN IF NOT EXISTS instagram_page_id VARCHAR(255),
             ADD COLUMN IF NOT EXISTS instagram_business_id VARCHAR(255),
             ADD COLUMN IF NOT EXISTS instagram_access_token TEXT,
-            ADD COLUMN IF NOT EXISTS instagram_token_expires_at TIMESTAMP;
+            ADD COLUMN IF NOT EXISTS instagram_token_expires_at TIMESTAMP,
+            ADD COLUMN IF NOT EXISTS instagram_status VARCHAR(20) DEFAULT 'INATIVO';
         `);
         await pool.query(`
             ALTER TABLE whatsapp_conversations

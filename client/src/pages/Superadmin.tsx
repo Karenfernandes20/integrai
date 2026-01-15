@@ -40,6 +40,7 @@ import { Checkbox } from "../components/ui/checkbox";
 import { cn } from "../lib/utils";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs";
 import { Textarea } from "../components/ui/textarea";
+import { Badge } from "../components/ui/badge";
 
 const AVAILABLE_PERMISSIONS = [
   { id: "dashboard", label: "Dashboard" },
@@ -81,6 +82,7 @@ interface Company {
   instagram_page_id?: string;
   instagram_business_id?: string;
   instagram_access_token?: string;
+  instagram_status?: 'ATIVO' | 'INATIVO' | 'ERRO';
 }
 
 interface AppUser {
@@ -135,6 +137,7 @@ const SuperadminPage = () => {
     instagram_page_id: "",
     instagram_business_id: "",
     instagram_access_token: "",
+    instagram_status: "",
   });
   const [plans, setPlans] = useState<any[]>([]); // New state for plans
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
@@ -342,7 +345,8 @@ const SuperadminPage = () => {
       instagram_app_secret: company.instagram_app_secret || "",
       instagram_page_id: company.instagram_page_id || "",
       instagram_business_id: company.instagram_business_id || "",
-      instagram_access_token: company.instagram_access_token || ""
+      instagram_access_token: company.instagram_access_token || "",
+      instagram_status: company.instagram_status || ""
     });
     setSelectedFile(null);
     setRemoveLogo(false);
@@ -423,6 +427,7 @@ const SuperadminPage = () => {
       instagram_page_id: "",
       instagram_business_id: "",
       instagram_access_token: "",
+      instagram_status: ""
     });
     setSelectedFile(null);
     setRemoveLogo(false);
@@ -985,6 +990,12 @@ const SuperadminPage = () => {
                   <div className="flex items-center space-x-2">
                     <Checkbox id="ig_enabled" checked={formValues.instagram_enabled} onCheckedChange={(c) => setFormValues(p => ({ ...p, instagram_enabled: !!c }))} />
                     <Label htmlFor="ig_enabled" className="cursor-pointer">Integrar com Instagram</Label>
+                    {formValues.instagram_status === 'ATIVO' && (
+                      <Badge className="bg-green-600 hover:bg-green-600 text-white text-[10px] h-5">Conectado</Badge>
+                    )}
+                    {formValues.instagram_status === 'ERRO' && (
+                      <Badge variant="destructive" className="text-[10px] h-5">Erro</Badge>
+                    )}
                   </div>
                   {formValues.instagram_enabled && (
                     <div className="pl-4 border-l-2 space-y-2 mt-2">

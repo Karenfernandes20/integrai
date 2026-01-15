@@ -7,6 +7,7 @@ import UsuariosPage from "./Usuarios";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs";
 import { Building2, CreditCard, Users, Zap } from "lucide-react";
 import { EvolutionStatus } from "../components/EvolutionStatus";
+import { InstagramStatus } from "../components/InstagramStatus";
 
 const ConfiguracoesPage = () => {
   return (
@@ -66,6 +67,17 @@ const ConfiguracoesPage = () => {
                 <EvolutionStatus />
               </CardContent>
             </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle>Instagram Business</CardTitle>
+                <CardDescription>Integração oficial Meta.</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <InstagramStatus />
+              </CardContent>
+            </Card>
+
             <Card className="opacity-60">
               <CardHeader>
                 <CardTitle>Pagamentos (Em breve)</CardTitle>

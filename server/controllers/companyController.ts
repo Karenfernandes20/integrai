@@ -2,7 +2,7 @@ import { Request, Response } from 'express';
 import { pool } from '../db';
 import { logAudit } from '../auditLogger';
 import { getEvolutionConfig } from './evolutionController';
-
+import { validateInstagramCredentials } from '../services/instagramService';
 
 export const getCompanies = async (req: Request, res: Response) => {
     try {
@@ -84,9 +84,6 @@ export const getCompany = async (req: Request, res: Response) => {
         });
     }
 };
-
-
-
 
 export const createCompany = async (req: Request, res: Response) => {
     try {
@@ -242,6 +239,46 @@ export const updateCompany = async (req: Request, res: Response) => {
             return res.status(400).json({ error: 'O nome da empresa é obrigatório.' });
         }
 
+        // --- INSTAGRAM VALIDATION ---
+        let instagramStatus = 'INATIVO'; // Default
+
+        let newIsInstagramEnabled = instagram_enabled === 'true' || instagram_enabled === true;
+
+        if (instagram_access_token && instagram_page_id) {
+            console.log(`[Update Company ${id}] Validating new Instagram credentials...`);
+            try {
+                // If token is masked (starts with ***), do NOT re-validate or update unless it's new.
+                const currentRes = await pool.query('SELECT instagram_access_token, instagram_status FROM companies WHERE id = $1', [id]);
+                const current = currentRes.rows[0];
+
+                const isTokenMasked = instagram_access_token.includes('***');
+
+                if (isTokenMasked) {
+                    // Assuming no change
+                    instagramStatus = current.instagram_status || 'INATIVO';
+                    console.log(`[Update Company ${id}] Token is masked, keeping status: ${instagramStatus}`);
+                } else {
+                    await validateInstagramCredentials(instagram_access_token, instagram_page_id);
+                    instagramStatus = 'ATIVO';
+                    newIsInstagramEnabled = true; // Force enable if recognized
+                    console.log(`[Update Company ${id}] Instagram Validated! Status: ATIVO`);
+                }
+            } catch (instErr: any) {
+                console.error(`[Update Company ${id}] Instagram Validation Failed:`, instErr.message);
+                instagramStatus = 'ERRO';
+            }
+        } else {
+            // If clearing credentials
+            if (instagram_access_token === '') {
+                instagramStatus = 'INATIVO';
+                newIsInstagramEnabled = false;
+            } else {
+                // Not provided or partial, check DB
+                const currentRes = await pool.query('SELECT instagram_status FROM companies WHERE id = $1', [id]);
+                if (currentRes.rows.length > 0) instagramStatus = currentRes.rows[0].instagram_status || 'INATIVO';
+            }
+        }
+
         const isRemovingLogo = remove_logo === 'true' || remove_logo === true;
 
         let finalLogoUrl: string | null = null;
@@ -252,12 +289,18 @@ export const updateCompany = async (req: Request, res: Response) => {
         }
 
         // 1. Fetch current data to handle logo logic safely
-        const currentRes = await pool.query('SELECT logo_url FROM companies WHERE id = $1', [id]);
+        const currentRes = await pool.query('SELECT logo_url, instagram_access_token FROM companies WHERE id = $1', [id]);
 
         if (currentRes.rowCount === 0) {
             return res.status(404).json({ error: 'Empresa não encontrada no banco de dados.' });
         }
         const currentLogo = currentRes.rows[0].logo_url;
+
+        // Handle masked token: if input is masked, use DB value.
+        let finalAccessToken = instagram_access_token;
+        if (instagram_access_token && instagram_access_token.includes('***')) {
+            finalAccessToken = currentRes.rows[0].instagram_access_token;
+        }
 
         // 2. Determine new logo URL
         let newLogoUrl = currentLogo;
@@ -290,14 +333,13 @@ export const updateCompany = async (req: Request, res: Response) => {
                 instagram_app_secret = $20,
                 instagram_page_id = $21,
                 instagram_business_id = $22,
-                instagram_access_token = $23
+                instagram_access_token = $23,
+                instagram_status = $24
             WHERE id = $10 
             RETURNING *
         `;
 
         const newMax = max_instances ? parseInt(max_instances) : 1;
-        // Parse instagram_enabled
-        const isInstagramEnabled = instagram_enabled === 'true' || instagram_enabled === true;
 
         const values = [
             name,
@@ -305,11 +347,11 @@ export const updateCompany = async (req: Request, res: Response) => {
             city || null,
             state || null,
             phone || null,
-            newLogoUrl, // $6 is now the decided value
+            newLogoUrl, // $6
             evolution_instance || null,
             evolution_apikey || null,
             operation_type || 'clientes',
-            parseInt(id),
+            parseInt(id), // $10
             primary_color || null,
             secondary_color || null,
             system_name || null,
@@ -317,12 +359,13 @@ export const updateCompany = async (req: Request, res: Response) => {
             plan_id || null, // $15
             due_date || null, // $16
             newMax, // $17
-            isInstagramEnabled, // $18
+            newIsInstagramEnabled, // $18
             instagram_app_id || null, // $19
             instagram_app_secret || null, // $20
             instagram_page_id || null, // $21
             instagram_business_id || null, // $22
-            instagram_access_token || null // $23
+            finalAccessToken || null, // $23
+            instagramStatus // $24
         ];
 
         // --- INSTANCE SYNC ---
