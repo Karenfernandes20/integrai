@@ -57,6 +57,7 @@ import { Badge } from "../components/ui/badge";
 import { Label } from "../components/ui/label";
 import { useAuth } from "../contexts/AuthContext";
 import RelationshipManager from "../components/RelationshipManager";
+import { TagManager } from "../components/TagManager";
 
 // Tipos
 type Lead = {
@@ -152,6 +153,9 @@ function SortableLeadCard({ lead, onEdit, onChat, onFollowUp, onCall, onRemove }
                 {lead.instance_friendly_name}
               </Badge>
             )}
+          </div>
+          <div className="mb-1.5 -ml-0.5">
+            <TagManager entityId={lead.id} entityType="lead" maxVisible={2} />
           </div>
           <div className="flex items-center gap-1 overflow-hidden opacity-70">
             <MapPin className="h-3 w-3 text-muted-foreground flex-shrink-0" />

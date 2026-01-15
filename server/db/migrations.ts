@@ -132,6 +132,34 @@ export const runMigrations = async () => {
 
         // 4. CRM Tables
         await pool.query(`
+            CREATE TABLE IF NOT EXISTS crm_tags (
+                id SERIAL PRIMARY KEY,
+                name VARCHAR(50) NOT NULL,
+                color VARCHAR(20) DEFAULT '#cbd5e1',
+                company_id INTEGER REFERENCES companies(id),
+                created_at TIMESTAMP DEFAULT NOW()
+            );
+        `);
+
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS leads_tags (
+                lead_id INTEGER REFERENCES crm_leads(id) ON DELETE CASCADE,
+                tag_id INTEGER REFERENCES crm_tags(id) ON DELETE CASCADE,
+                created_at TIMESTAMP DEFAULT NOW(),
+                PRIMARY KEY (lead_id, tag_id)
+            );
+        `);
+
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS conversations_tags (
+                conversation_id INTEGER REFERENCES whatsapp_conversations(id) ON DELETE CASCADE,
+                tag_id INTEGER REFERENCES crm_tags(id) ON DELETE CASCADE,
+                created_at TIMESTAMP DEFAULT NOW(),
+                PRIMARY KEY (conversation_id, tag_id)
+            );
+        `);
+
+        await pool.query(`
             CREATE TABLE IF NOT EXISTS crm_stages (
                 id SERIAL PRIMARY KEY,
                 name VARCHAR(50) NOT NULL,

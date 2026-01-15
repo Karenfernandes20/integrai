@@ -58,6 +58,7 @@ import {
 } from "../components/ui/dropdown-menu";
 import { io } from "socket.io-client";
 import { useState, useEffect, useRef, useMemo, useLayoutEffect, Fragment } from "react";
+import { TagManager } from "../components/TagManager";
 import type { FormEvent } from "react";
 import { cn } from "../lib/utils";
 import { Avatar, AvatarFallback, AvatarImage } from "../components/ui/avatar";
@@ -2366,13 +2367,18 @@ const AtendimentoPage = () => {
             </div>
 
             <div className="flex justify-between items-center gap-2">
-              <div className="flex items-center gap-1 flex-1 min-w-0">
-                {isSelected && conv.status === 'OPEN' && conv.user_id && (
-                  <div className="shrink-0 h-1.5 w-1.5 rounded-full bg-[#25D366]" title="Em atendimento"></div>
-                )}
-                <p className="text-[14px] leading-[18px] text-[#8696A0] truncate max-w-full">
-                  {conv.last_message || <span className="italic opacity-60 italic">Iniciar conversa...</span>}
-                </p>
+              <div className="flex flex-col flex-1 min-w-0 gap-1">
+                <div className="flex items-center gap-1">
+                  {isSelected && conv.status === 'OPEN' && conv.user_id && (
+                    <div className="shrink-0 h-1.5 w-1.5 rounded-full bg-[#25D366]" title="Em atendimento"></div>
+                  )}
+                  <p className="text-[14px] leading-[18px] text-[#8696A0] truncate max-w-full">
+                    {conv.last_message || <span className="italic opacity-60 italic">Iniciar conversa...</span>}
+                  </p>
+                </div>
+                <div onClick={(e) => e.stopPropagation()}>
+                  <TagManager entityId={conv.id} entityType="conversation" maxVisible={3} />
+                </div>
               </div>
 
               {conv.unread_count && conv.unread_count > 0 ? (

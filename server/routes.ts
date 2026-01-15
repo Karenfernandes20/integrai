@@ -147,11 +147,21 @@ router.get('/cities', getCities);
 router.post('/cities', createCity);
 
 // CRM Tag Routes
-import { getTags, createTag, updateTag, deleteTag } from './controllers/tagController';
+import { getTags, createTag, updateTag, deleteTag, getLeadTags, addLeadTag, removeLeadTag, getConversationTags, addConversationTag, removeConversationTag } from './controllers/tagController';
 router.get('/crm/tags', authenticateToken, getTags);
 router.post('/crm/tags', authenticateToken, createTag);
 router.put('/crm/tags/:id', authenticateToken, updateTag);
 router.delete('/crm/tags/:id', authenticateToken, deleteTag);
+
+// Lead Tags
+router.get('/crm/leads/:leadId/tags', authenticateToken, getLeadTags);
+router.post('/crm/leads/:leadId/tags', authenticateToken, addLeadTag);
+router.delete('/crm/leads/:leadId/tags/:tagId', authenticateToken, removeLeadTag);
+
+// Conversation Tags
+router.get('/evolution/conversations/:conversationId/tags', authenticateToken, getConversationTags);
+router.post('/evolution/conversations/:conversationId/tags', authenticateToken, addConversationTag);
+router.delete('/evolution/conversations/:conversationId/tags/:tagId', authenticateToken, removeConversationTag);
 
 // CRM routes
 router.get('/crm/stages', authenticateToken, getStages);
