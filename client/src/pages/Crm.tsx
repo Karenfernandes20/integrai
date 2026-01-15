@@ -75,6 +75,7 @@ type Lead = {
   follow_up_status?: 'pending' | 'overdue' | 'completed';
   follow_up_date?: string;
   instance_friendly_name?: string;
+  tags?: { id: number; name: string; color: string }[];
 };
 
 type Stage = {
@@ -155,7 +156,7 @@ function SortableLeadCard({ lead, onEdit, onChat, onFollowUp, onCall, onRemove }
             )}
           </div>
           <div className="mb-1.5 -ml-0.5">
-            <TagManager entityId={lead.id} entityType="lead" maxVisible={2} />
+            <TagManager entityId={lead.id} entityType="lead" maxVisible={2} readOnly={true} tags={lead.tags} />
           </div>
           <div className="flex items-center gap-1 overflow-hidden opacity-70">
             <MapPin className="h-3 w-3 text-muted-foreground flex-shrink-0" />
@@ -873,19 +874,25 @@ const CrmPage = () => {
                 </Button>
               </div>
 
+              <div className="pt-6 border-t space-y-2">
+                <Label>Etiquetas</Label>
+                <TagManager entityId={editingLead.id} entityType="lead" variant="default" />
+              </div>
+
               <div className="pt-6 border-t">
                 <RelationshipManager entityType="document" entityId={editingLead.id} />
               </div>
             </div>
           )}
 
+
           <SheetFooter className="absolute bottom-0 left-0 w-full p-6 bg-white border-t">
             <Button className="w-full gap-2" onClick={saveLeadDetails} disabled={isSaving}>
               {isSaving ? "Salvando..." : <><Save className="h-4 w-4" /> Salvar Alterações</>}
             </Button>
           </SheetFooter>
-        </SheetContent>
-      </Sheet>
+        </SheetContent >
+      </Sheet >
 
       <FollowUpModal
         isOpen={isFollowUpModalOpen}
@@ -957,7 +964,7 @@ const CrmPage = () => {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </div>
+    </div >
   );
 };
 

@@ -2393,20 +2393,17 @@ const AtendimentoPage = () => {
               </span>
             </div>
 
-            {/* Conversation Tags - NEW */}
-            {conv.tags && conv.tags.length > 0 && (
-              <div className="flex items-center gap-1 mb-1 flex-wrap h-[18px] overflow-hidden">
-                {conv.tags.slice(0, 3).map(tag => (
-                  <span key={tag.id} className="px-1.5 rounded-[4px] text-[9px] font-medium truncate max-w-[80px]" style={{ backgroundColor: tag.color ? `${tag.color}30` : '#8696A030', color: tag.color || '#aebac1' }}>
-                    {tag.name}
-                  </span>
-                ))}
-                {conv.tags.length > 3 && (
-                  <span className="text-[9px] text-[#8696A0] font-medium">+{conv.tags.length - 3}</span>
-                )}
-              </div>
-            )}
-
+            {/* Tags Row */}
+            <div onClick={(e) => e.stopPropagation()} className="mb-0.5">
+              <TagManager
+                entityId={conv.id}
+                entityType="conversation"
+                maxVisible={4}
+                variant="list"
+                readOnly={true}
+                tags={conv.tags}
+              />
+            </div>
 
             <div className="flex justify-between items-center gap-2">
               <div className="flex flex-col flex-1 min-w-0 gap-1">
@@ -2417,9 +2414,6 @@ const AtendimentoPage = () => {
                   <p className="text-[14px] leading-[18px] text-[#8696A0] truncate max-w-full">
                     {conv.last_message || <span className="italic opacity-60 italic">Iniciar conversa...</span>}
                   </p>
-                </div>
-                <div onClick={(e) => e.stopPropagation()}>
-                  <TagManager entityId={conv.id} entityType="conversation" maxVisible={3} />
                 </div>
               </div>
 
@@ -2455,7 +2449,7 @@ const AtendimentoPage = () => {
                 size="icon"
                 variant="outline"
                 className="h-8 w-8 text-red-500 border-red-500 hover:bg-red-500 hover:text-white rounded-full"
-                title="Fechar Conversa" // User requested "open" and "close" icon in Pending.
+                title="Fechar Conversa"
                 onClick={(e) => {
                   e.preventDefault();
                   e.stopPropagation();

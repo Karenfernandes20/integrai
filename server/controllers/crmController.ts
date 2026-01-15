@@ -190,7 +190,13 @@ export const getLeads = async (req: Request, res: Response) => {
                 LEFT JOIN company_instances ci ON wc.instance = ci.instance_key
                 WHERE wc.phone = l.phone AND wc.company_id = l.company_id 
                 ORDER BY wc.last_message_at DESC LIMIT 1
-            ) as instance_friendly_name
+            ) as instance_friendly_name,
+            (
+                SELECT json_agg(json_build_object('id', t.id, 'name', t.name, 'color', t.color))
+                FROM crm_tags t
+                JOIN crm_lead_tags lt ON lt.tag_id = t.id
+                WHERE lt.lead_id = l.id
+            ) as tags
             FROM crm_leads l
             LEFT JOIN crm_stages s ON l.stage_id = s.id
             WHERE 1=1

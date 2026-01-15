@@ -1,3 +1,4 @@
+
 import { useState, useEffect } from "react";
 import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
@@ -42,6 +43,7 @@ export function TagManager({
     const [internalSelectedTags, setInternalSelectedTags] = useState<Tag[]>([]);
     const [isOpen, setIsOpen] = useState(false);
     const [isLoading, setIsLoading] = useState(false);
+    const [searchValue, setSearchValue] = useState("");
 
     // Use controlled tags if provided, otherwise internal state
     const selectedTags = tags || internalSelectedTags;
@@ -137,40 +139,96 @@ export function TagManager({
         }
     };
 
+    const handleCreateTag = async () => {
+        if (!searchValue.trim()) return;
+        try {
+            setIsLoading(true);
+            const res = await fetch('/api/crm/tags', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
+                },
+                body: JSON.stringify({ name: searchValue.trim(), color: '#cbd5e1' }) // Default color
+            });
+
+            if (res.ok) {
+                const newTag = await res.json();
+                setAllTags(prev => [...prev, newTag]);
+                // Auto select the new tag
+                toggleTag(newTag);
+                setSearchValue("");
+                toast.success("Etiqueta criada!");
+            } else {
+                toast.error("Erro ao criar etiqueta");
+            }
+        } catch (e) {
+            console.error(e);
+            toast.error("Erro ao criar etiqueta");
+        } finally {
+            setIsLoading(false);
+        }
+    }
+
+    const TagListCommand = () => (
+        <Command>
+            <CommandInput
+                placeholder="Buscar tag..."
+                className="h-8 text-xs"
+                value={searchValue}
+                onValueChange={setSearchValue}
+                id="tag-search-input"
+            />
+            <CommandEmpty className="py-2 text-center text-xs px-2">
+                <p className="mb-2">Nenhuma tag encontrada.</p>
+                {searchValue && (
+                    <Button
+                        size="sm"
+                        variant="outline"
+                        className="w-full h-7 text-xs"
+                        onClick={handleCreateTag}
+                        disabled={isLoading}
+                        id="create-tag-button"
+                    >
+                        {isLoading ? "Criando..." : `Criar "${searchValue}"`}
+                    </Button>
+                )}
+            </CommandEmpty>
+            <CommandGroup className="max-h-[200px] overflow-y-auto">
+                {allTags.map(tag => {
+                    const isSelected = selectedTags.some(t => t.id === tag.id);
+                    return (
+                        <CommandItem
+                            key={tag.id}
+                            onSelect={() => toggleTag(tag)}
+                            className="text-xs"
+                            id={`tag-item-${tag.id}`}
+                        >
+                            <div
+                                className="mr-2 h-2 w-2 rounded-full"
+                                style={{ backgroundColor: tag.color }}
+                            />
+                            {tag.name}
+                            {isSelected && <Check className="ml-auto h-3 w-3 opacity-100" />}
+                        </CommandItem>
+                    );
+                })}
+            </CommandGroup>
+        </Command>
+    );
+
     if (variant === 'trigger') {
         return (
-            <Popover open={isOpen} onOpenChange={setIsOpen}>
+            <Popover open={isOpen} onOpenChange={setIsOpen} modal={true}>
                 <PopoverTrigger asChild>
                     {trigger || (
-                        <Button variant="outline" size="sm">
+                        <Button variant="outline" size="sm" id="tags-trigger-btn">
                             Etiquetas
                         </Button>
                     )}
                 </PopoverTrigger>
-                <PopoverContent className="w-[200px] p-0" align="start">
-                    <Command>
-                        <CommandInput placeholder="Buscar tag..." className="h-8 text-xs" />
-                        <CommandEmpty className="py-2 text-center text-xs">Nenhuma tag encontrada.</CommandEmpty>
-                        <CommandGroup className="max-h-[200px] overflow-y-auto">
-                            {allTags.map(tag => {
-                                const isSelected = selectedTags.some(t => t.id === tag.id);
-                                return (
-                                    <CommandItem
-                                        key={tag.id}
-                                        onSelect={() => toggleTag(tag)}
-                                        className="text-xs"
-                                    >
-                                        <div
-                                            className="mr-2 h-2 w-2 rounded-full"
-                                            style={{ backgroundColor: tag.color }}
-                                        />
-                                        {tag.name}
-                                        {isSelected && <Check className="ml-auto h-3 w-3 opacity-100" />}
-                                    </CommandItem>
-                                );
-                            })}
-                        </CommandGroup>
-                    </Command>
+                <PopoverContent className="w-[200px] p-0 z-[9999]" align="start">
+                    <TagListCommand />
                 </PopoverContent>
             </Popover>
         )
@@ -187,6 +245,7 @@ export function TagManager({
                         borderColor: tag.color ? `${tag.color}60` : '#cbd5e160',
                         color: 'inherit'
                     }}
+                    id={`s-tag-${tag.id}`}
                 >
                     <TagIcon className="h-3 w-3 opacity-70" />
                     <span className="truncate max-w-[80px]">{tag.name}</span>
@@ -194,6 +253,7 @@ export function TagManager({
                         <button
                             onClick={(e) => { e.stopPropagation(); toggleTag(tag); }}
                             className="ml-0.5 rounded-full hover:bg-black/10 dark:hover:bg-white/10 p-0.5"
+                            id={`remove-tag-${tag.id}`}
                         >
                             <X className="h-2 w-2" />
                         </button>
@@ -208,41 +268,20 @@ export function TagManager({
             )}
 
             {!readOnly && variant === 'default' && (
-                <Popover open={isOpen} onOpenChange={setIsOpen}>
+                <Popover open={isOpen} onOpenChange={setIsOpen} modal={true}>
                     <PopoverTrigger asChild>
                         <Button
                             variant="ghost"
                             size="icon"
                             className="h-5 w-5 rounded-full hover:bg-muted text-muted-foreground"
                             onClick={(e) => e.stopPropagation()} // Prevent card click
+                            id="add-tag-trigger"
                         >
                             <Plus className="h-3 w-3" />
                         </Button>
                     </PopoverTrigger>
-                    <PopoverContent className="w-[200px] p-0" align="start">
-                        <Command>
-                            <CommandInput placeholder="Buscar tag..." className="h-8 text-xs" />
-                            <CommandEmpty className="py-2 text-center text-xs">Nenhuma tag encontrada.</CommandEmpty>
-                            <CommandGroup className="max-h-[200px] overflow-y-auto">
-                                {allTags.map(tag => {
-                                    const isSelected = selectedTags.some(t => t.id === tag.id);
-                                    return (
-                                        <CommandItem
-                                            key={tag.id}
-                                            onSelect={() => toggleTag(tag)}
-                                            className="text-xs"
-                                        >
-                                            <div
-                                                className="mr-2 h-2 w-2 rounded-full"
-                                                style={{ backgroundColor: tag.color }}
-                                            />
-                                            {tag.name}
-                                            {isSelected && <Check className="ml-auto h-3 w-3 opacity-100" />}
-                                        </CommandItem>
-                                    );
-                                })}
-                            </CommandGroup>
-                        </Command>
+                    <PopoverContent className="w-[200px] p-0 z-[9999]" align="start">
+                        <TagListCommand />
                     </PopoverContent>
                 </Popover>
             )}
