@@ -38,7 +38,6 @@ export async function sendWhatsAppMessage({
         let resolvedCompanyId = companyId;
 
         if (followUpId || campaignId) {
-            // Se tivermos um ID de contexto, podemos tentar buscar a conversa primeiro para saber a instância
             const contextQuery = followUpId
                 ? await pool.query('SELECT conversation_id, company_id FROM crm_follow_ups WHERE id = $1', [followUpId])
                 : await pool.query('SELECT instance_id, company_id FROM whatsapp_campaigns WHERE id = $1', [campaignId]);
@@ -79,9 +78,9 @@ export async function sendWhatsAppMessage({
         const baseUrl = (evolution_url || process.env.EVOLUTION_API_URL || "https://freelasdekaren-evolution-api.nhvvzr.easypanel.host").replace(/\/$/, "");
 
         const cleanPhone = phone.replace(/\D/g, "");
-        console.log(`[sendWhatsAppMessage] Preparing to send to ${cleanPhone} via ${evolution_instance}. Media: ${mediaUrl ? 'YES' : 'NO'}`);
+        console.log(`[sendWhatsAppMessage] Sending to ${cleanPhone} via instance ${evolution_instance}. Media: ${mediaUrl ? 'YES' : 'NO'}`);
 
-        // 2. Prepare Payload and Endpoint based on strict flows
+        // 2. Prepare Payload
         let targetUrl = '';
         const payload: any = {
             number: cleanPhone,
@@ -94,59 +93,79 @@ export async function sendWhatsAppMessage({
 
         if (mediaUrl) {
             // === MEDIA FLOW ===
-            targetUrl = `${baseUrl}/message/sendMedia/${evolution_instance}`;
+            // RULES:
+            // 1. Local URLs (localhost, 127.0.0.1, internal IPs) -> FORBIDDEN as URL -> Must convert to Base64
+            // 2. Public URLs -> Validated via HEAD. If fail -> convert to Base64 if file exists locally.
 
-            // Validate Media URL
-            if (mediaUrl.startsWith('http')) {
+            targetUrl = `${baseUrl}/message/sendMedia/${evolution_instance}`;
+            let finalMedia = mediaUrl;
+            let useBase64 = false;
+
+            const isLocalUrl = mediaUrl.includes('localhost') || mediaUrl.includes('127.0.0.1') || mediaUrl.startsWith('http://192.') || mediaUrl.startsWith('http://10.');
+            const isRelative = !mediaUrl.startsWith('http');
+
+            // Step A: Determine if we MUST use Base64
+            if (isLocalUrl || isRelative) {
+                console.log(`[sendWhatsAppMessage] Local/Internal URL detected (${mediaUrl}). Forcing Base64 conversion.`);
+                useBase64 = true;
+            } else {
+                // Step B: Validate Public URL
                 try {
-                    const check = await fetch(mediaUrl, { method: 'HEAD' });
+                    const controller = new AbortController();
+                    const timeout = setTimeout(() => controller.abort(), 5000);
+                    const check = await fetch(mediaUrl, {
+                        method: 'HEAD',
+                        signal: controller.signal
+                    });
+                    clearTimeout(timeout);
+
                     if (!check.ok) {
-                        console.error(`[sendWhatsAppMessage] Media URL unreachable: ${mediaUrl} (${check.status})`);
-                        return { success: false, error: `URL de mídia inválida ou inacessível (Status ${check.status})` };
+                        console.warn(`[sendWhatsAppMessage] Public URL verification failed (${check.status}). Fallback to Base64.`);
+                        useBase64 = true;
+                    } else {
+                        console.log(`[sendWhatsAppMessage] Public URL verified (200 OK). Using URL.`);
                     }
                 } catch (e: any) {
-                    console.error(`[sendWhatsAppMessage] Failed to check media URL: ${e.message}`);
-                    return { success: false, error: `Erro ao verificar URL da mídia: ${e.message}` };
+                    console.warn(`[sendWhatsAppMessage] Public URL unreachable (${e.message}). Fallback to Base64.`);
+                    useBase64 = true;
                 }
             }
 
-            // Process Local vs Remote
-            let finalMedia = mediaUrl;
-            let isBase64 = false;
+            // Step C: Perform Base64 Conversion if needed
+            if (useBase64) {
+                try {
+                    // Try to find the file locally in 'uploads'
+                    const filename = mediaUrl.split('/').pop()?.split('?')[0];
+                    if (!filename) throw new Error("Could not extract filename from URL");
 
-            try {
-                const filename = mediaUrl.split('/').pop()?.split('?')[0];
-                const ups = path.join(__dirname, '../uploads');
-                const possibleLocalPath = filename ? path.join(ups, filename) : '';
+                    const ups = path.join(__dirname, '../uploads');
+                    const possibleLocalPath = path.join(ups, filename);
 
-                const fileExists = filename && fs.existsSync(possibleLocalPath);
-                const isUploadPath = mediaUrl.includes('/uploads/');
-                const isLocalhost = mediaUrl.includes('localhost') || mediaUrl.includes('127.0.0.1');
-
-                if (fileExists && (isUploadPath || isLocalhost)) {
-                    console.log(`[sendWhatsAppMessage] Converting local file to Base64: ${filename}`);
-                    const fileBuffer = fs.readFileSync(possibleLocalPath);
-                    finalMedia = fileBuffer.toString('base64');
-                    isBase64 = true;
+                    if (fs.existsSync(possibleLocalPath)) {
+                        console.log(`[sendWhatsAppMessage] Reading local file: ${possibleLocalPath}`);
+                        const fileBuffer = fs.readFileSync(possibleLocalPath);
+                        // Evolution API expects PURE Base64 string for 'media' field if it's not a URL
+                        finalMedia = fileBuffer.toString('base64');
+                    } else {
+                        console.error(`[sendWhatsAppMessage] Fatal: File not found locally for Base64 conversion: ${possibleLocalPath}`);
+                        return { success: false, error: `Falha no envio: Imagem não acessível publicamente e arquivo local não encontrado.` };
+                    }
+                } catch (b64Err: any) {
+                    console.error(`[sendWhatsAppMessage] Base64 conversion error: ${b64Err.message}`);
+                    return { success: false, error: `Erro interno ao processar imagem: ${b64Err.message}` };
                 }
-            } catch (e) {
-                console.error("[sendWhatsAppMessage] Error reading local file:", e);
-                // Continue with URL if local read fails
             }
 
+            // Valid types
             const validTypes = ['image', 'video', 'document', 'audio'];
             const safeMediaType = validTypes.includes(mediaType?.toLowerCase() || '') ? mediaType?.toLowerCase() : 'image';
-            const fileName = (mediaUrl.split('/').pop() || 'file').split('?')[0];
+            const fileName = (mediaUrl.split('/').pop() || 'media_file').split('?')[0];
 
-            // Strict Payload for sendMedia (Evolution API typically accepts this flat structure OR mediaMessage)
-            // We use the flattened structure as per "campos corretos" requirement
-            payload.media = finalMedia;
+            // STRICT PAYLOAD STRUCTURE (Requirement 3)
             payload.mediatype = safeMediaType;
+            payload.media = finalMedia; // Valid Public URL OR Pure Base64
             payload.caption = message || "";
             payload.fileName = fileName;
-
-            // Note: If Evolution expects 'mediaMessage' object, this might fail.
-            // But user specifically asked for "image", "caption" etc. in specific workflow.
 
         } else {
             // === TEXT FLOW ===
@@ -155,9 +174,10 @@ export async function sendWhatsAppMessage({
             payload.text = message;
         }
 
-        // 3. LOG PAYLOAD (Requirement 2)
+        // 3. LOG PAYLOAD (Requirement 6)
         const logPayload = { ...payload };
         if (logPayload.media && logPayload.media.length > 200) logPayload.media = '[BASE64_HIDDEN]';
+
         console.log(`[sendWhatsAppMessage] POST ${targetUrl}`);
         console.log(`[sendWhatsAppMessage] Headers: { apikey: '${evolution_apikey ? '***' : 'MISSING'}' }`);
         console.log(`[sendWhatsAppMessage] Payload:`, JSON.stringify(logPayload, null, 2));
@@ -174,7 +194,7 @@ export async function sendWhatsAppMessage({
 
         const responseText = await response.text();
 
-        // 5. Log Response (Requirement 2 & 7)
+        // 5. Log Response
         console.log(`[sendWhatsAppMessage] Response Status: ${response.status}`);
         console.log(`[sendWhatsAppMessage] Response Body: ${responseText.substring(0, 500)}${responseText.length > 500 ? '...' : ''}`);
 
@@ -184,16 +204,13 @@ export async function sendWhatsAppMessage({
                 const jsonErr = JSON.parse(responseText);
                 errorMsg = jsonErr.message || jsonErr.error || JSON.stringify(jsonErr);
             } catch (e) { }
-            // Never mask as success
             return { success: false, error: `Evolution Error (${response.status}): ${errorMsg}` };
         }
 
         const data = JSON.parse(responseText);
-
-        // 6. DB Updates (Success flow)
         const remoteJid = cleanPhone.includes('@') ? cleanPhone : `${cleanPhone}@s.whatsapp.net`;
 
-        // Sync with Atendimento
+        // Sync with Atendimento (Database updates)
         const checkConv = await pool.query(
             'SELECT id FROM whatsapp_conversations WHERE external_id = $1 AND instance = $2',
             [remoteJid, evolution_instance]

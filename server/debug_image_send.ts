@@ -65,50 +65,38 @@ async function main() {
             return;
         }
 
-        // 2. Mock the sendWhatsAppMessage logic (since importing it might be hard with mixed TS config)
-        // OR better: Import it dynamically if possible? 
-        // No, I will just Re-implement the Fetch call here to TEST THE API ENDPOINT directly as requested in Step 5 (Manual unit test).
-        // User said: "Criar teste manual interno: Enviar imagem fixa... Se não enviar: problema na integração."
+        console.log("--- STARTING BASE64 SEND TEST ---");
 
-        console.log("--- STARTING FORCED IMAGE TEST ---");
+        // 1. Read Local File
+        const filename = "1767040385270-10611731.jpg";
+        const localPath = path.join(__dirname, 'uploads', filename); // server/uploads/...
 
-        const imageUrl = "https://freelasdekaren-evolution-api.nhvvzr.easypanel.host/files/evolution/evolution/store.png"; // Use a known public image or any valid image
-        // Or "https://via.placeholder.com/150"
+        if (!fs.existsSync(localPath)) {
+            console.error(`File not found: ${localPath} - Cannot run Base64 test`);
+            return;
+        }
+
+        console.log(`Reading file: ${localPath}`);
+        const fileBuffer = fs.readFileSync(localPath);
+        const base64Media = fileBuffer.toString('base64');
+        console.log(`Converted to Base64 (Length: ${base64Media.length})`);
 
         const targetUrl = `${company.evolution_url || process.env.EVOLUTION_API_URL}/message/sendMedia/${company.evolution_instance}`;
         const apiKey = company.evolution_apikey;
         const phone = company.phone.replace(/\D/g, "");
 
-        // Payload structure we decided on:
-        const payload = {
-            number: phone,
-            options: {
-                delay: 1200,
-                presence: "composing",
-                linkPreview: false
-            },
-            mediaMessage: {
-                mediatype: "image",
-                caption: "Teste de Imagem Forçado",
-                media: imageUrl,
-                fileName: "test_image.png"
-            }
-            // TRY FLATTENED IF THIS FAILS? 
-            // Logic in my update uses `media`, `mediatype`, `caption` at top level.
-        };
-
-        // Wait, I updated `whatsappService.ts` to use flattened. I should test THAT.
+        // Payload structure - FLATTENED as per updated Service
         const payloadFlat = {
             number: phone,
             options: { delay: 1200, presence: "composing", linkPreview: false },
-            media: imageUrl,
+            media: base64Media,
             mediatype: "image",
-            caption: "Teste de Imagem Forçado (Flat Payload)",
-            fileName: "test_image.png"
+            caption: "Teste Base64 STRICT (Sem prefixo)",
+            fileName: filename
         };
 
         console.log(`Sending to URL: ${targetUrl}`);
-        console.log(`Payload:`, JSON.stringify(payloadFlat, null, 2));
+        // console.log(`Payload:`, JSON.stringify(payloadFlat, null, 2)); // Too big
 
         const response = await fetch(targetUrl, {
             method: 'POST',
