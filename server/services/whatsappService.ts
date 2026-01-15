@@ -94,7 +94,6 @@ export async function sendWhatsAppMessage({
                 const isHttp = mediaUrl.startsWith('http');
 
                 // If it's a local file URL or explicitly localhost, we MUST convert to Base64
-                // Evolution cannot access localhost URLs from outside the server
                 if (isLocalhost || !isHttp) {
                     console.log(`[sendWhatsAppMessage] Detected local/private URL: ${mediaUrl}. Converting to Base64...`);
                     const filename = mediaUrl.split('/').pop()?.split('?')[0];
@@ -113,7 +112,7 @@ export async function sendWhatsAppMessage({
                                 'doc': 'application/msword', 'docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
                             };
                             finalMimeType = mimes[ext] || 'application/octet-stream';
-                            finalMedia = base64; // Evolution V2 often accepts raw base64 in 'media' field
+                            finalMedia = base64;
                             isBase64 = true;
                             console.log(`[sendWhatsAppMessage] Converted to Base64 (${base64.length} chars). Mime: ${finalMimeType}`);
                         } else {
@@ -140,8 +139,9 @@ export async function sendWhatsAppMessage({
         if (mediaUrl) {
             // Ensure mediaType is valid
             const validTypes = ['image', 'video', 'document', 'audio'];
-            const safeMediaType = validTypes.includes(mediaType || '') ? mediaType : 'image';
+            const safeMediaType = validTypes.includes(mediaType?.toLowerCase() || '') ? mediaType?.toLowerCase() : 'image';
 
+            // Evolution API Structure for Media
             payload.mediaMessage = {
                 mediatype: safeMediaType,
                 caption: message || "",
@@ -170,8 +170,16 @@ export async function sendWhatsAppMessage({
         });
 
         const responseText = await response.text();
+
+        // Handle Error Responses strictly
         if (!response.ok) {
-            return { success: false, error: responseText };
+            console.error(`[sendWhatsAppMessage] Failed. Status: ${response.status}. Response: ${responseText}`);
+            let errorMsg = responseText;
+            try {
+                const jsonErr = JSON.parse(responseText);
+                errorMsg = jsonErr.message || jsonErr.error || JSON.stringify(jsonErr);
+            } catch (e) { }
+            return { success: false, error: `Evolution Error (${response.status}): ${errorMsg}` };
         }
 
         const data = JSON.parse(responseText);

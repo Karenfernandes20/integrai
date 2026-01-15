@@ -9,6 +9,42 @@ import { systemMode } from '../systemState';
 import { checkLimit, incrementUsage } from '../services/limitService';
 import { sendWhatsAppMessage } from '../services/whatsappService';
 
+// Helper to validate Media URL
+async function validateMediaUrl(url: string, type: string): Promise<{ valid: boolean; error?: string }> {
+    if (!url) return { valid: true }; // No media is valid
+
+    // 1. Check if it's localhost (we assume server can access its own uploads)
+    if (url.includes('localhost') || url.includes('127.0.0.1')) {
+        // Optional: Check if file exists on disk if it matches upload path pattern
+        return { valid: true };
+    }
+
+    // 2. Head Request to check availability
+    try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 5000); // 5s timeout
+
+        const res = await fetch(url, {
+            method: 'HEAD',
+            signal: controller.signal
+        });
+        clearTimeout(timeoutId);
+
+        if (!res.ok) {
+            return { valid: false, error: `URL de mídia inacessível (Status ${res.status})` };
+        }
+
+        const contentType = res.headers.get('content-type');
+        if (contentType && type === 'image' && !contentType.startsWith('image/')) {
+            return { valid: false, error: `URL não parece ser uma imagem (Tipo: ${contentType})` };
+        }
+
+        return { valid: true };
+    } catch (e: any) {
+        return { valid: false, error: `Erro ao acessar URL de mídia: ${e.message}` };
+    }
+}
+
 // Create Campaign
 export const createCampaign = async (req: Request, res: Response) => {
     try {
@@ -38,6 +74,9 @@ export const createCampaign = async (req: Request, res: Response) => {
             instance_name
         } = req.body;
 
+        const media_url = req.body.media_url;
+        let media_type = req.body.media_type;
+
         // Validation
         if (!name || !message_template) {
             return res.status(400).json({ error: 'Name and message template are required' });
@@ -45,6 +84,17 @@ export const createCampaign = async (req: Request, res: Response) => {
 
         if (!instance_id) {
             return res.status(400).json({ error: 'Você deve selecionar uma instância para enviar a campanha.' });
+        }
+
+        // Validate Media if present
+        if (media_url) {
+            // Default to image if type is missing but url exists
+            if (!media_type) media_type = 'image';
+
+            const mediaCheck = await validateMediaUrl(media_url, media_type);
+            if (!mediaCheck.valid) {
+                return res.status(400).json({ error: mediaCheck.error });
+            }
         }
 
         // Create campaign
@@ -65,8 +115,8 @@ export const createCampaign = async (req: Request, res: Response) => {
                 delay_max || 15,
                 contacts?.length || 0,
                 scheduled_at ? 'scheduled' : 'draft',
-                req.body.media_url || null,
-                req.body.media_type || null,
+                media_url || null,
+                media_type || null,
                 instance_id,
                 instance_name
             ]
@@ -276,6 +326,20 @@ export const updateCampaign = async (req: Request, res: Response) => {
             return res.status(403).json({ error: 'Access denied' });
         }
 
+        const media_url = req.body.media_url;
+        let media_type = req.body.media_type;
+
+        // Validate Media if present
+        if (media_url) {
+            // Default to image if type is missing but url exists
+            if (!media_type) media_type = 'image';
+
+            const mediaCheck = await validateMediaUrl(media_url, media_type);
+            if (!mediaCheck.valid) {
+                return res.status(400).json({ error: mediaCheck.error });
+            }
+        }
+
         const campaignResult = await pool.query(
             `UPDATE whatsapp_campaigns 
              SET name = COALESCE($1, name),
@@ -300,8 +364,8 @@ export const updateCampaign = async (req: Request, res: Response) => {
                 end_time,
                 delay_min,
                 delay_max,
-                req.body.media_url || null,
-                req.body.media_type || null,
+                media_url || null,
+                media_type || null,
                 instance_id,
                 instance_name,
                 id

@@ -5,7 +5,7 @@ import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Textarea } from "../components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../components/ui/dialog";
-import { Plus, Play, Pause, Trash2, Eye, Upload, Pencil, Phone, RefreshCcw } from "lucide-react";
+import { Plus, Play, Pause, Trash2, Eye, Upload, Pencil, Phone, RefreshCcw, FileText } from "lucide-react";
 import { toast } from "sonner";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../components/ui/select";
 import { cn } from "../lib/utils";
@@ -29,6 +29,8 @@ interface Campaign {
     instance_display_name?: string;
     instance_phone?: string;
     instance_status?: string;
+    media_url?: string;
+    media_type?: string;
 }
 
 interface Instance {
@@ -660,6 +662,17 @@ const CampanhasPage = () => {
                                             <div className="flex items-center gap-2 mb-2">
                                                 <h3 className="font-semibold">{campaign.name}</h3>
                                                 {getStatusBadge(campaign.status)}
+                                                {campaign.media_url ? (
+                                                    <span className="flex items-center gap-1 text-[10px] font-bold uppercase text-blue-600 bg-blue-50 px-2 py-0.5 rounded border border-blue-100">
+                                                        <Upload className="h-3 w-3" />
+                                                        {campaign.media_type || 'Mídia'}
+                                                    </span>
+                                                ) : (
+                                                    <span className="flex items-center gap-1 text-[10px] font-bold uppercase text-slate-500 bg-slate-50 px-2 py-0.5 rounded border border-slate-100">
+                                                        <FileText className="h-3 w-3" />
+                                                        Texto
+                                                    </span>
+                                                )}
                                             </div>
                                             <p className="text-sm text-muted-foreground line-clamp-2 mb-2">
                                                 {campaign.message_template}
