@@ -299,7 +299,7 @@ export const addConversationTag = async (req: Request, res: Response) => {
         res.json({ message: 'Tag added to conversation' });
     } catch (error) {
         console.error('Error adding tag to conversation:', error);
-        res.status(500).json({ error: 'Failed to add tag to conversation' });
+        res.status(500).json({ error: (error as Error).message });
     }
 };
 
@@ -333,6 +333,6 @@ export const removeConversationTag = async (req: Request, res: Response) => {
         res.json({ message: 'Tag removed from conversation' });
     } catch (error) {
         console.error('Error removing tag from conversation:', error);
-        res.status(500).json({ error: 'Failed to remove tag from conversation' });
+        res.status(500).json({ error: (error as Error).message });
     }
 };
