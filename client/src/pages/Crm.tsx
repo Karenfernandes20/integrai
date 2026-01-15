@@ -155,12 +155,12 @@ function SortableLeadCard({ lead, onEdit, onChat, onFollowUp, onCall, onRemove }
               </Badge>
             )}
           </div>
-          <div className="mb-1.5 -ml-0.5">
+          <div className="mb-1 -ml-0.5">
             <TagManager entityId={lead.id} entityType="lead" maxVisible={2} readOnly={true} tags={lead.tags} />
           </div>
-          <div className="flex items-center gap-1 overflow-hidden opacity-70">
+          <div className="flex items-center gap-1 overflow-hidden opacity-70 mb-0.5">
             <MapPin className="h-3 w-3 text-muted-foreground flex-shrink-0" />
-            <p className="text-[12px] text-muted-foreground truncate leading-[1.15]">
+            <p className="text-[12px] text-muted-foreground truncate leading-none">
               {lead.city && lead.state
                 ? `${lead.city}/${lead.state}`
                 : (getCityStateFromPhone(lead.phone) || lead.phone)
@@ -168,7 +168,7 @@ function SortableLeadCard({ lead, onEdit, onChat, onFollowUp, onCall, onRemove }
             </p>
           </div>
           {lead.value && (
-            <p className="mt-[2px] text-[12px] font-bold text-emerald-600 leading-[1.15]">
+            <p className="mt-0 text-[12px] font-bold text-emerald-600 leading-none">
               R$ {Number(lead.value).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
             </p>
           )}
@@ -242,14 +242,14 @@ function SortableLeadCard({ lead, onEdit, onChat, onFollowUp, onCall, onRemove }
       </div>
 
       {(lead.follow_up_status || lead.description) && (
-        <div className="mt-[2px] space-y-0.5">
+        <div className="mt-0.5 space-y-0.5">
           {lead.follow_up_status && (
             <div className={cn(
-              "pt-0.5 border-t border-dashed flex gap-1 items-center",
+              "pt-0 border-t border-dashed flex gap-1 items-center border-t-0",
               lead.follow_up_status === 'overdue' ? "text-red-600" : "text-blue-600"
             )}>
               {lead.follow_up_status === 'overdue' ? <AlertCircle className="h-3 w-3" /> : <CalendarClock className="h-3 w-3" />}
-              <span className="text-[12px] font-bold uppercase tracking-tight leading-[1.15] px-0.5">
+              <span className="text-[12px] font-bold uppercase tracking-tight leading-none px-0.5">
                 Agenda: {lead.follow_up_date ? new Date(lead.follow_up_date).toLocaleDateString('pt-BR') : 'Pendente'}
               </span>
             </div>
@@ -258,10 +258,10 @@ function SortableLeadCard({ lead, onEdit, onChat, onFollowUp, onCall, onRemove }
           {lead.description && (
             <div className={cn(
               "flex gap-1 items-start opacity-80",
-              !lead.follow_up_status && "pt-0.5 border-t border-dashed"
+              !lead.follow_up_status && "pt-0 border-t-0"
             )}>
-              <ClipboardList className="h-3 w-3 text-amber-500 mt-0.5 flex-shrink-0" />
-              <p className="text-[12px] text-muted-foreground line-clamp-1 italic leading-[1.15]">
+              <ClipboardList className="h-3 w-3 text-amber-500 mt-0 flex-shrink-0" />
+              <p className="text-[11px] text-muted-foreground line-clamp-1 italic leading-tight">
                 {lead.description}
               </p>
             </div>
