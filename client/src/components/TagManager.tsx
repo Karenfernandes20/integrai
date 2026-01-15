@@ -45,8 +45,9 @@ export function TagManager({
     const [isLoading, setIsLoading] = useState(false);
     const [searchValue, setSearchValue] = useState("");
 
-    // Use controlled tags if provided, otherwise internal state
-    const selectedTags = tags || internalSelectedTags;
+    // Always rely on internal state for rendering to support optimistic updates
+    // The internal state is synced with props via the useEffect below
+    const selectedTags = internalSelectedTags;
 
     // Initial Fetch
     useEffect(() => {
@@ -58,7 +59,7 @@ export function TagManager({
         }
     }, [token, entityId, entityType]);
 
-    // Update internal state when controlled tags change (if we want to keep them in sync or just rely on prop)
+    // Update internal state when controlled tags change
     useEffect(() => {
         if (tags) {
             setInternalSelectedTags(tags);
@@ -128,11 +129,14 @@ export function TagManager({
             });
 
             if (!res.ok) {
-                throw new Error("Failed");
+                const errorData = await res.json().catch(() => ({}));
+                const errorMessage = errorData.error || errorData.message || "Erro desconhecido";
+                throw new Error(errorMessage);
             }
             // If success, keep optimistic state. 
-        } catch (e) {
-            toast.error("Erro ao atualizar tag");
+        } catch (e: any) {
+            toast.error(`Erro ao atualizar tag: ${e.message}`);
+            console.error("Tag update failed", e);
             // Rollback
             setInternalSelectedTags(prevTags);
             if (onTagsChange) onTagsChange(prevTags);
