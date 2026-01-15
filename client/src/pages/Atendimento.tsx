@@ -404,6 +404,12 @@ const AtendimentoPage = () => {
 
   // Notification Sound Function (iPhone 16 "Rebound" style synthesis)
   const playNotificationSound = async (isGroup?: boolean) => {
+    // START CHANGE: Block sound for groups
+    if (isGroup) {
+      console.log("[Notificação] Som silenciado para mensagem de grupo.");
+      return;
+    }
+    // END CHANGE
     console.log("[Notificação] Reproduzindo som iPhone 16... Mudo:", mutedRef.current, "Volume:", volumeRef.current, "Grupo:", isGroup);
     if (mutedRef.current) return;
 
