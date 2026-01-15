@@ -89,41 +89,41 @@ export async function sendWhatsAppMessage({
 
         if (mediaUrl) {
             try {
-                // Check if URL is public/accessible
+                // 1. Determine if it's likely a local upload
+                const filename = mediaUrl.split('/').pop()?.split('?')[0];
+                const ups = path.join(__dirname, '../uploads');
+                const possibleLocalPath = filename ? path.join(ups, filename) : '';
+
+                // Check if file exists locally AND the URL reflects an upload path or localhost
+                // This 'aggressive' check ensures that even if using a public domain, 
+                // if the file is on this server's disk, we send it directly as Base64.
+                // This bypasses docker networking issues, firewalls, and public accessibility requirements.
+                const fileExists = filename && fs.existsSync(possibleLocalPath);
+                const isUploadPath = mediaUrl.includes('/uploads/');
                 const isLocalhost = mediaUrl.includes('localhost') || mediaUrl.includes('127.0.0.1');
-                const isHttp = mediaUrl.startsWith('http');
 
-                // If it's a local file URL or explicitly localhost, we MUST convert to Base64
-                if (isLocalhost || !isHttp) {
-                    console.log(`[sendWhatsAppMessage] Detected local/private URL: ${mediaUrl}. Converting to Base64...`);
-                    const filename = mediaUrl.split('/').pop()?.split('?')[0];
-                    if (filename) {
-                        const ups = path.join(__dirname, '../uploads');
-                        const filePath = path.join(ups, filename);
+                if (fileExists && (isUploadPath || isLocalhost)) {
+                    console.log(`[sendWhatsAppMessage] Found local file for ${mediaUrl}. Converting to Base64 to ensure delivery.`);
 
-                        // Security check to prevent traversing out of uploads
-                        if (fs.existsSync(filePath) && filePath.startsWith(path.resolve(ups))) {
-                            const fileBuffer = fs.readFileSync(filePath);
-                            const base64 = fileBuffer.toString('base64');
-                            const ext = filename.split('.').pop()?.toLowerCase() || '';
-                            const mimes: Record<string, string> = {
-                                'jpg': 'image/jpeg', 'jpeg': 'image/jpeg', 'png': 'image/png', 'gif': 'image/gif', 'webp': 'image/webp',
-                                'mp3': 'audio/mpeg', 'ogg': 'audio/ogg', 'mp4': 'video/mp4', 'pdf': 'application/pdf',
-                                'doc': 'application/msword', 'docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
-                            };
-                            finalMimeType = mimes[ext] || 'application/octet-stream';
-                            finalMedia = base64;
-                            isBase64 = true;
-                            console.log(`[sendWhatsAppMessage] Converted to Base64 (${base64.length} chars). Mime: ${finalMimeType}`);
-                        } else {
-                            console.error(`[sendWhatsAppMessage] File not found or invalid path: ${filePath}`);
-                            return { success: false, error: 'Arquivo de mídia não encontrado no servidor' };
-                        }
-                    }
+                    const fileBuffer = fs.readFileSync(possibleLocalPath);
+                    const base64 = fileBuffer.toString('base64');
+                    const ext = filename!.split('.').pop()?.toLowerCase() || '';
+                    const mimes: Record<string, string> = {
+                        'jpg': 'image/jpeg', 'jpeg': 'image/jpeg', 'png': 'image/png', 'gif': 'image/gif', 'webp': 'image/webp',
+                        'mp3': 'audio/mpeg', 'ogg': 'audio/ogg', 'mp4': 'video/mp4', 'pdf': 'application/pdf',
+                        'doc': 'application/msword', 'docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+                    };
+
+                    finalMimeType = mimes[ext] || 'application/octet-stream';
+                    finalMedia = base64;
+                    isBase64 = true;
+                } else if (!mediaUrl.startsWith('http')) {
+                    // Fallback for weird local paths not caught above
+                    console.warn(`[sendWhatsAppMessage] Non-HTTP URL detected but file not found locally: ${mediaUrl}`);
                 }
             } catch (e) {
                 console.error("[sendWhatsAppMessage] Error processing media:", e);
-                return { success: false, error: 'Erro ao processar arquivo de mídia' };
+                return { success: false, error: 'Erro no processamento da imagem (Base64)' };
             }
         }
 
