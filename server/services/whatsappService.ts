@@ -105,35 +105,9 @@ export async function sendWhatsAppMessage({
             const isLocalUrl = mediaUrl.includes('localhost') || mediaUrl.includes('127.0.0.1') || mediaUrl.startsWith('http://192.') || mediaUrl.startsWith('http://10.');
             const isRelative = !mediaUrl.startsWith('http');
 
-            // Step A: Determine if we MUST use Base64
+            // Step A: Determine source and conversion strategy
             if (isLocalUrl || isRelative) {
-                console.log(`[sendWhatsAppMessage] Local/Internal URL detected (${mediaUrl}). Forcing Base64 conversion.`);
-                useBase64 = true;
-            } else {
-                // Step B: Validate Public URL
-                try {
-                    const controller = new AbortController();
-                    const timeout = setTimeout(() => controller.abort(), 5000);
-                    const check = await fetch(mediaUrl, {
-                        method: 'HEAD',
-                        signal: controller.signal
-                    });
-                    clearTimeout(timeout);
-
-                    if (!check.ok) {
-                        console.warn(`[sendWhatsAppMessage] Public URL verification failed (${check.status}). Fallback to Base64.`);
-                        useBase64 = true;
-                    } else {
-                        console.log(`[sendWhatsAppMessage] Public URL verified (200 OK). Using URL.`);
-                    }
-                } catch (e: any) {
-                    console.warn(`[sendWhatsAppMessage] Public URL unreachable (${e.message}). Fallback to Base64.`);
-                    useBase64 = true;
-                }
-            }
-
-            // Step C: Perform Base64 Conversion if needed
-            if (useBase64) {
+                console.log(`[sendWhatsAppMessage] Local/Internal URL detected (${mediaUrl}). Reading from disk.`);
                 try {
                     // Try to find the file locally in 'uploads'
                     const filename = mediaUrl.split('/').pop()?.split('?')[0];
@@ -143,11 +117,9 @@ export async function sendWhatsAppMessage({
                     const possibleLocalPath = path.join(ups, filename);
 
                     if (fs.existsSync(possibleLocalPath)) {
-                        console.log(`[sendWhatsAppMessage] Reading local file: ${possibleLocalPath}`);
                         const fileBuffer = fs.readFileSync(possibleLocalPath);
                         const base64Raw = fileBuffer.toString('base64');
 
-                        // Determine Mime Type
                         const ext = filename.split('.').pop()?.toLowerCase() || '';
                         const mimes: Record<string, string> = {
                             'jpg': 'image/jpeg', 'jpeg': 'image/jpeg', 'png': 'image/png', 'gif': 'image/gif', 'webp': 'image/webp',
@@ -155,16 +127,35 @@ export async function sendWhatsAppMessage({
                         };
                         const mime = mimes[ext] || 'application/octet-stream';
 
-                        // Evolution requires Data URI prefix for local base64 in many versions
                         finalMedia = `data:${mime};base64,${base64Raw}`;
                         finalMimeType = mime;
+                        console.log(`[sendWhatsAppMessage] Local file converted to Base64 successfully.`);
                     } else {
-                        console.error(`[sendWhatsAppMessage] Fatal: File not found locally for Base64 conversion: ${possibleLocalPath}`);
-                        return { success: false, error: `Falha no envio: Imagem não acessível publicamente e arquivo local não encontrado.` };
+                        console.error(`[sendWhatsAppMessage] Fatal: File not found locally: ${possibleLocalPath}`);
+                        return { success: false, error: `Falha no envio: Arquivo local não encontrado.` };
                     }
                 } catch (b64Err: any) {
-                    console.error(`[sendWhatsAppMessage] Base64 conversion error: ${b64Err.message}`);
-                    return { success: false, error: `Erro interno ao processar imagem: ${b64Err.message}` };
+                    console.error(`[sendWhatsAppMessage] Local file error: ${b64Err.message}`);
+                    return { success: false, error: `Erro ao processar arquivo local: ${b64Err.message}` };
+                }
+            } else {
+                console.log(`[sendWhatsAppMessage] Public URL detected. Downloading to convert to Base64 for maximum reliability.`);
+                try {
+                    const response = await fetch(mediaUrl);
+                    if (!response.ok) {
+                        throw new Error(`Failed to download media: ${response.status} ${response.statusText}`);
+                    }
+                    const arrayBuffer = await response.arrayBuffer();
+                    const buffer = Buffer.from(arrayBuffer);
+                    const base64Raw = buffer.toString('base64');
+                    const mime = response.headers.get('content-type') || 'application/octet-stream';
+
+                    finalMedia = `data:${mime};base64,${base64Raw}`;
+                    finalMimeType = mime;
+                    console.log(`[sendWhatsAppMessage] Remote media downloaded and converted to Base64 (${buffer.length} bytes).`);
+                } catch (downloadErr: any) {
+                    console.error(`[sendWhatsAppMessage] Download error: ${downloadErr.message}`);
+                    return { success: false, error: `Falha ao baixar mídia da URL: ${downloadErr.message}` };
                 }
             }
 
@@ -179,7 +170,8 @@ export async function sendWhatsAppMessage({
                 mediatype: safeMediaType,
                 caption: message || "",
                 media: finalMedia, // URL or Base64 Data URI
-                fileName: fileName
+                fileName: fileName,
+                mimetype: finalMimeType
             };
 
             // Explicitly set mimetype if available (helps some versions)

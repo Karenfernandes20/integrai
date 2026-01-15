@@ -241,12 +241,32 @@ const SuperadminPage = () => {
     }
   };
 
+  const loadLegalPages = async () => {
+    try {
+      const [resTerms, resPrivacy] = await Promise.all([
+        fetch('/api/legal-pages/terms'),
+        fetch('/api/legal-pages/privacy')
+      ]);
+
+      if (resTerms.ok) {
+        const data = await resTerms.json();
+        setLegalTerms(data.content || '');
+      }
+      if (resPrivacy.ok) {
+        const data = await resPrivacy.json();
+        setLegalPrivacy(data.content || '');
+      }
+    } catch (e) {
+      console.error("Failed to load legal pages", e);
+    }
+  };
+
   useEffect(() => {
     if (token) {
       loadCompanies();
       loadMode();
-      loadCompanies();
-      loadMode();
+      loadLegalPages(); // Load legal pages
+
       // Load plans
       fetch("/api/plans", { headers: { Authorization: `Bearer ${token}` } })
         .then(res => res.json())
@@ -254,6 +274,37 @@ const SuperadminPage = () => {
         .catch(err => console.error("Failed to load plans", err));
     }
   }, [token]);
+
+  const handleSaveLegal = async (type: 'terms' | 'privacy') => {
+    try {
+      setSavingLegal(type);
+      const content = type === 'terms' ? legalTerms : legalPrivacy;
+
+      const res = await fetch(`/api/legal-pages/${type}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ content })
+      });
+
+      if (!res.ok) throw new Error('Falha ao salvar');
+
+      toast({
+        title: "Salvo com sucesso!",
+        description: `Página de ${type === 'terms' ? 'Termos' : 'Privacidade'} atualizada.`
+      });
+    } catch (error) {
+      console.error(error);
+      toast({
+        title: "Erro ao salvar",
+        variant: "destructive"
+      });
+    } finally {
+      setSavingLegal(null);
+    }
+  };
 
   const handleChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = event.target;
