@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from "react";
 import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
@@ -21,21 +20,49 @@ interface TagManagerProps {
     readOnly?: boolean;
     maxVisible?: number;
     onTagsChange?: (tags: Tag[]) => void;
+
+    // New Props for Flexibilty
+    variant?: 'default' | 'list' | 'trigger';
+    tags?: Tag[]; // Controlled state support
+    trigger?: React.ReactNode; // Custom trigger for 'trigger' variant
 }
 
-export function TagManager({ entityId, entityType, readOnly = false, maxVisible = 3, onTagsChange }: TagManagerProps) {
+export function TagManager({
+    entityId,
+    entityType,
+    readOnly = false,
+    maxVisible = 3,
+    onTagsChange,
+    variant = 'default',
+    tags,
+    trigger
+}: TagManagerProps) {
     const { token } = useAuth();
     const [allTags, setAllTags] = useState<Tag[]>([]);
-    const [selectedTags, setSelectedTags] = useState<Tag[]>([]);
+    const [internalSelectedTags, setInternalSelectedTags] = useState<Tag[]>([]);
     const [isOpen, setIsOpen] = useState(false);
     const [isLoading, setIsLoading] = useState(false);
+
+    // Use controlled tags if provided, otherwise internal state
+    const selectedTags = tags || internalSelectedTags;
 
     // Initial Fetch
     useEffect(() => {
         if (!token) return;
         fetchAllTags();
-        fetchEntityTags();
+        // Only fetch entity tags if not controlled (or if we want to sync internal state when controlled prop might be missing initially)
+        if (!tags) {
+            fetchEntityTags();
+        }
     }, [token, entityId, entityType]);
+
+    // Update internal state when controlled tags change (if we want to keep them in sync or just rely on prop)
+    useEffect(() => {
+        if (tags) {
+            setInternalSelectedTags(tags);
+        }
+    }, [tags]);
+
 
     const fetchAllTags = async () => {
         try {
@@ -59,7 +86,7 @@ export function TagManager({ entityId, entityType, readOnly = false, maxVisible 
             });
             if (res.ok) {
                 const data = await res.json();
-                setSelectedTags(data);
+                setInternalSelectedTags(data);
                 if (onTagsChange) onTagsChange(data);
             }
         } catch (e) {
@@ -76,11 +103,17 @@ export function TagManager({ entityId, entityType, readOnly = false, maxVisible 
 
         // Optimistic Update
         const prevTags = selectedTags;
+        let newTags;
         if (isSelected) {
-            setSelectedTags(prev => prev.filter(t => t.id !== tag.id));
+            newTags = prevTags.filter(t => t.id !== tag.id);
         } else {
-            setSelectedTags(prev => [...prev, tag]);
+            newTags = [...prevTags, tag];
         }
+
+        // Update Internal
+        setInternalSelectedTags(newTags);
+        // Trigger Callback immediately for optimistic UI
+        if (onTagsChange) onTagsChange(newTags);
 
         try {
             const res = await fetch(url, {
@@ -95,18 +128,53 @@ export function TagManager({ entityId, entityType, readOnly = false, maxVisible 
             if (!res.ok) {
                 throw new Error("Failed");
             }
-            // If success, maybe trigger parent update
-            if (onTagsChange) {
-                onTagsChange(isSelected
-                    ? prevTags.filter(t => t.id !== tag.id)
-                    : [...prevTags, tag]
-                );
-            }
+            // If success, keep optimistic state. 
         } catch (e) {
             toast.error("Erro ao atualizar tag");
-            setSelectedTags(prevTags); // Rollback
+            // Rollback
+            setInternalSelectedTags(prevTags);
+            if (onTagsChange) onTagsChange(prevTags);
         }
     };
+
+    if (variant === 'trigger') {
+        return (
+            <Popover open={isOpen} onOpenChange={setIsOpen}>
+                <PopoverTrigger asChild>
+                    {trigger || (
+                        <Button variant="outline" size="sm">
+                            Etiquetas
+                        </Button>
+                    )}
+                </PopoverTrigger>
+                <PopoverContent className="w-[200px] p-0" align="start">
+                    <Command>
+                        <CommandInput placeholder="Buscar tag..." className="h-8 text-xs" />
+                        <CommandEmpty className="py-2 text-center text-xs">Nenhuma tag encontrada.</CommandEmpty>
+                        <CommandGroup className="max-h-[200px] overflow-y-auto">
+                            {allTags.map(tag => {
+                                const isSelected = selectedTags.some(t => t.id === tag.id);
+                                return (
+                                    <CommandItem
+                                        key={tag.id}
+                                        onSelect={() => toggleTag(tag)}
+                                        className="text-xs"
+                                    >
+                                        <div
+                                            className="mr-2 h-2 w-2 rounded-full"
+                                            style={{ backgroundColor: tag.color }}
+                                        />
+                                        {tag.name}
+                                        {isSelected && <Check className="ml-auto h-3 w-3 opacity-100" />}
+                                    </CommandItem>
+                                );
+                            })}
+                        </CommandGroup>
+                    </Command>
+                </PopoverContent>
+            </Popover>
+        )
+    }
 
     return (
         <div className="flex flex-wrap items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
@@ -139,7 +207,7 @@ export function TagManager({ entityId, entityType, readOnly = false, maxVisible 
                 </div>
             )}
 
-            {!readOnly && (
+            {!readOnly && variant === 'default' && (
                 <Popover open={isOpen} onOpenChange={setIsOpen}>
                     <PopoverTrigger asChild>
                         <Button

@@ -18,9 +18,10 @@ interface ContactDetailsPanelProps {
     conversation: any;
     getDisplayName: (conv: any) => string;
     onRename: () => void;
+    onTagsUpdate?: (tags: any[]) => void;
 }
 
-export function ContactDetailsPanel({ isOpen, onClose, conversation, getDisplayName, onRename }: ContactDetailsPanelProps) {
+export function ContactDetailsPanel({ isOpen, onClose, conversation, getDisplayName, onRename, onTagsUpdate }: ContactDetailsPanelProps) {
     const [isEditingName, setIsEditingName] = useState(false);
     const [newName, setNewName] = useState("");
 
@@ -94,6 +95,21 @@ export function ContactDetailsPanel({ isOpen, onClose, conversation, getDisplayN
                                         </div>
                                         <span className="text-[12px] text-[#00a884]">Perfil</span>
                                     </div>
+                                    <TagManager
+                                        entityId={conversation.id}
+                                        entityType="conversation"
+                                        variant="trigger"
+                                        tags={conversation.tags}
+                                        onTagsChange={onTagsUpdate}
+                                        trigger={(
+                                            <div className="flex flex-col items-center gap-2 cursor-pointer group">
+                                                <div className="w-10 h-10 rounded-full border border-[#8696A0]/30 flex items-center justify-center text-[#00a884] group-hover:bg-[#202C33] transition-colors">
+                                                    <Tag className="h-5 w-5" />
+                                                </div>
+                                                <span className="text-[12px] text-[#00a884]">Etiquetas</span>
+                                            </div>
+                                        )}
+                                    />
                                 </div>
                             </div>
 
@@ -109,8 +125,11 @@ export function ContactDetailsPanel({ isOpen, onClose, conversation, getDisplayN
                                     <TagManager
                                         entityId={conversation.id}
                                         entityType="conversation"
-                                        maxVisible={10}
+                                        maxVisible={20}
                                         readOnly={false}
+                                        variant="list"
+                                        tags={conversation.tags}
+                                        onTagsChange={onTagsUpdate}
                                     />
                                 </div>
                             </div>

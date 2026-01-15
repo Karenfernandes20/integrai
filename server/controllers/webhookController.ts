@@ -349,7 +349,21 @@ export const handleWebhook = async (req: Request, res: Response) => {
             const direction = isFromMe ? 'outbound' : 'inbound';
             let messageSource: string | null = null;
             if (direction === 'outbound') {
-                const rawSource = msg.source || (normalizedType.includes('SEND') ? 'api' : 'unknown');
+                // Enhanced Source Detection for Mobile
+                let rawSource = msg.source;
+
+                // If no explicit source but it's an UPSERT event not triggered by our API call (usually), assume Mobile sync
+                if (!rawSource && normalizedType.includes('UPSERT')) {
+                    rawSource = 'whatsapp_mobile';
+                }
+
+                // Fallback if still unknown but came from API send
+                if (!rawSource && normalizedType.includes('SEND')) {
+                    rawSource = 'api';
+                }
+
+                if (!rawSource) rawSource = 'unknown';
+
                 // Map common physical device sources to 'whatsapp_mobile'
                 if (['ios', 'android', 'web', 'whatsapp_mobile'].includes(rawSource)) {
                     messageSource = 'whatsapp_mobile';
@@ -393,9 +407,30 @@ export const handleWebhook = async (req: Request, res: Response) => {
                 conversationId = row.id;
                 currentStatus = row.status || 'PENDING';
                 let newStatus = currentStatus;
-                if (direction === 'inbound' && currentStatus === 'CLOSED') newStatus = 'PENDING';
-                else if (direction === 'outbound' && currentStatus === 'CLOSED') newStatus = 'OPEN';
-                else if (direction === 'outbound' && currentStatus !== 'OPEN' && currentStatus !== 'CLOSED') newStatus = 'OPEN';
+
+                if (direction === 'inbound') {
+                    // Inbound messages always reopen CLOSED chats to PENDING
+                    if (currentStatus === 'CLOSED') newStatus = 'PENDING';
+                }
+                else if (direction === 'outbound') {
+                    // Start logic for User Request: Mobile-initiated -> PENDING
+                    const isMobile = messageSource === 'whatsapp_mobile';
+
+                    if (isMobile) {
+                        // If I initiate/reply on mobile, user wants it to be PENDING so they can 'open' it in system later
+                        // Applies if it's currently CLOSED.
+                        if (currentStatus === 'CLOSED') {
+                            newStatus = 'PENDING';
+                        }
+                        // If it's already OPEN, we keep it OPEN (assuming agent is working on it)
+                        // If it's PENDING, we keep it PENDING.
+                    } else {
+                        // API/System sent messages -> Auto Open
+                        if (currentStatus === 'CLOSED' || currentStatus === 'PENDING') {
+                            newStatus = 'OPEN';
+                        }
+                    }
+                }
 
                 currentStatus = newStatus;
                 if (newStatus !== row.status || (msg.pushName && !row.is_group && row.contact_name !== msg.pushName)) {
@@ -417,7 +452,16 @@ export const handleWebhook = async (req: Request, res: Response) => {
                     return;
                 }
 
-                currentStatus = direction === 'outbound' ? 'OPEN' : 'PENDING';
+                if (direction === 'outbound') {
+                    // New Conversation Logic
+                    // Mobile -> PENDING
+                    // System -> OPEN
+                    const isMobile = messageSource === 'whatsapp_mobile';
+                    currentStatus = isMobile ? 'PENDING' : 'OPEN';
+                } else {
+                    currentStatus = 'PENDING';
+                }
+
                 let finalName = isGroup ? (name || `Grupo ${phone.substring(0, 8)}`) : name;
 
                 // Final Check for Duplication before Insert (Race Condition buffer)

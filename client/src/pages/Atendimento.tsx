@@ -89,6 +89,7 @@ interface Conversation {
   last_message_source?: string;
   instance?: string;
   instance_friendly_name?: string;
+  tags?: { id: number; name: string; color: string }[];
 }
 
 interface Message {
@@ -2184,6 +2185,23 @@ const AtendimentoPage = () => {
     }
   };
 
+  const handleTagsUpdate = (tags: any[]) => {
+    if (!selectedConversation) return;
+
+    setConversations(prev => prev.map(c =>
+      String(c.id) === String(selectedConversation.id)
+        ? { ...c, tags }
+        : c
+    ));
+
+    setSelectedConversation(prev =>
+      prev && String(prev.id) === String(selectedConversation.id)
+        ? { ...prev, tags }
+        : prev
+    );
+  };
+
+
   const handleReturnToPending = async (conversation?: Conversation) => {
     const conv = conversation || selectedConversation;
     if (!conv) return;
@@ -2351,24 +2369,44 @@ const AtendimentoPage = () => {
           </div>
 
           <div className="flex-1 min-w-0 flex flex-col justify-center">
-            <div className="flex justify-between items-center mb-1">
-              <div className="flex items-center min-w-0 gap-2 flex-1 mr-2">
-                <span className="text-[16px] font-medium leading-5 text-[#E9EDEF] truncate">
+            <div className="flex justify-between items-baseline mb-0.5">
+              <div className="flex items-center gap-1.5 min-w-0 pr-2 max-w-[75%]">
+                <span className={cn(
+                  "font-normal text-[16px] truncate leading-tight",
+                  isSelected ? "text-[#E9EDEF]" : "text-[#E9EDEF]"
+                )}>
                   {getDisplayName(conv)}
                 </span>
-                {(conv.instance_friendly_name || conv.instance) && (
-                  <span className="px-1.5 py-0.5 rounded-[4px] text-[10px] font-bold bg-[#202C33] text-[#8696A0] uppercase tracking-wide border border-[#222E35] shrink-0">
-                    {conv.instance_friendly_name || conv.instance}
+
+                {/* Instance Tags */}
+                {conv.instance_friendly_name && (
+                  <span className="px-1 py-0.5 rounded-[3px] text-[8px] font-bold bg-[#202C33] text-[#8696A0] uppercase tracking-tighter border border-[#222E35] shrink-0">
+                    {conv.instance_friendly_name}
                   </span>
                 )}
               </div>
               <span className={cn(
-                "text-[12px] whitespace-nowrap",
-                conv.unread_count && conv.unread_count > 0 ? "text-[#25D366] font-medium" : "text-[#8696A0]"
+                "text-[12px] shrink-0 font-normal",
+                conv.unread_count && conv.unread_count > 0 ? "text-[#00a884]" : "text-[#8696A0]"
               )}>
                 {conv.last_message_at ? formatListDate(conv.last_message_at) : ""}
               </span>
             </div>
+
+            {/* Conversation Tags - NEW */}
+            {conv.tags && conv.tags.length > 0 && (
+              <div className="flex items-center gap-1 mb-1 flex-wrap h-[18px] overflow-hidden">
+                {conv.tags.slice(0, 3).map(tag => (
+                  <span key={tag.id} className="px-1.5 rounded-[4px] text-[9px] font-medium truncate max-w-[80px]" style={{ backgroundColor: tag.color ? `${tag.color}30` : '#8696A030', color: tag.color || '#aebac1' }}>
+                    {tag.name}
+                  </span>
+                ))}
+                {conv.tags.length > 3 && (
+                  <span className="text-[9px] text-[#8696A0] font-medium">+{conv.tags.length - 3}</span>
+                )}
+              </div>
+            )}
+
 
             <div className="flex justify-between items-center gap-2">
               <div className="flex flex-col flex-1 min-w-0 gap-1">
@@ -3627,6 +3665,7 @@ const AtendimentoPage = () => {
         conversation={selectedConversation}
         getDisplayName={getDisplayName}
         onRename={handleRenameContact}
+        onTagsUpdate={handleTagsUpdate}
       />
     </div >
   );
