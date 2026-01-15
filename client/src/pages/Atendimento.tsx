@@ -59,6 +59,7 @@ import {
 import { io } from "socket.io-client";
 import { useState, useEffect, useRef, useMemo, useLayoutEffect, Fragment } from "react";
 import { TagManager } from "../components/TagManager";
+import { ContactDetailsPanel } from "../components/ContactDetailsPanel";
 import type { FormEvent } from "react";
 import { cn } from "../lib/utils";
 import { Avatar, AvatarFallback, AvatarImage } from "../components/ui/avatar";
@@ -255,6 +256,9 @@ const AtendimentoPage = () => {
 
   // Call Modal State
   const [isCallModalOpen, setIsCallModalOpen] = useState(false);
+
+  // Contact Info Panel State
+  const [isContactInfoOpen, setIsContactInfoOpen] = useState(false);
 
   // New states for contact import
   const [importedContacts, setImportedContacts] = useState<Contact[]>([]);
@@ -2889,9 +2893,7 @@ const AtendimentoPage = () => {
                   <AvatarImage src={selectedConversation.profile_pic_url || `https://api.dicebear.com/7.x/initials/svg?seed=${getDisplayName(selectedConversation)}`} />
                   <AvatarFallback className="bg-[#6a7175] text-white">{(getDisplayName(selectedConversation)?.[0] || "?").toUpperCase()}</AvatarFallback>
                 </Avatar>
-                <div className="flex flex-col cursor-pointer min-w-0" onClick={() => {
-                  if (selectedConversation.is_group) handleRefreshMetadata();
-                }}>
+                <div className="flex flex-col cursor-pointer min-w-0" onClick={() => setIsContactInfoOpen(true)}>
                   <span className="text-[16px] font-medium text-[#E9EDEF] truncate leading-tight flex items-center gap-2">
                     {getDisplayName(selectedConversation)}
                     {selectedConversation.is_group && (
@@ -3618,7 +3620,15 @@ const AtendimentoPage = () => {
           </div>
         </DialogContent>
       </Dialog>
-    </div>
+
+      <ContactDetailsPanel
+        isOpen={isContactInfoOpen}
+        onClose={() => setIsContactInfoOpen(false)}
+        conversation={selectedConversation}
+        getDisplayName={getDisplayName}
+        onRename={handleRenameContact}
+      />
+    </div >
   );
 };
 
