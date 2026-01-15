@@ -9,6 +9,7 @@ import routes from "./routes";
 import { checkAndStartScheduledCampaigns } from "./controllers/campaignController";
 import { checkSubscriptions } from "./controllers/subscriptionController";
 import { runEngagementChecks } from "./controllers/engagementController";
+import { processFollowUps } from "./services/followUpScheduler";
 import { setSystemModeInMem, systemMode } from "./systemState";
 
 import { systemModeMiddleware } from "./middleware/systemModeMiddleware";
@@ -276,6 +277,7 @@ const startServer = async () => {
     setInterval(() => {
       try {
         checkAndStartScheduledCampaigns(io);
+        processFollowUps(io);
       } catch (e) { }
     }, 60000);
 
@@ -290,6 +292,7 @@ const startServer = async () => {
     try {
       console.log("Starting background tasks...");
       checkAndStartScheduledCampaigns(io);
+      processFollowUps(io);
       checkSubscriptions(io);
       runEngagementChecks();
       console.log("Background tasks started.");

@@ -130,7 +130,7 @@ function SortableLeadCard({ lead, onEdit, onChat, onFollowUp, onCall, onRemove }
       <div
         ref={setNodeRef}
         style={style}
-        className="opacity-50 bg-background border rounded-lg h-[90px] w-full border-primary/50 shadow-lg"
+        className="opacity-50 bg-background border rounded-lg w-full border-primary/50 shadow-lg"
       />
     );
   }
@@ -139,23 +139,23 @@ function SortableLeadCard({ lead, onEdit, onChat, onFollowUp, onCall, onRemove }
     <div
       ref={setNodeRef}
       style={style}
-      className="group relative cursor-grab rounded-md bg-background px-3 py-2.5 text-left shadow-sm transition-all hover:shadow-md border border-border/60 hover:border-primary/30"
+      className="group relative cursor-grab rounded-md bg-background px-3 py-2 text-left shadow-sm transition-all hover:shadow-md border border-border/60 hover:border-primary/30"
       {...attributes}
       {...listeners}
     >
-      <div className="flex items-start justify-between gap-2">
+      <div className="flex items-start justify-between gap-1">
         <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-1 min-w-0">
+          <div className="flex items-center gap-1 min-w-0 mb-[2px]">
             <p className="text-[13px] font-bold text-foreground truncate leading-tight">{lead.name || lead.phone}</p>
             {lead.instance_friendly_name && (
-              <Badge variant="outline" className="h-[14px] px-1 text-[8px] font-bold uppercase tracking-tighter text-muted-foreground border-muted-foreground/20 shrink-0">
+              <Badge variant="outline" className="h-[18px] px-1.5 py-0.5 text-[8px] font-bold uppercase tracking-tighter text-muted-foreground border-muted-foreground/20 shrink-0">
                 {lead.instance_friendly_name}
               </Badge>
             )}
           </div>
-          <div className="mt-1 flex items-center gap-1 overflow-hidden opacity-70">
-            <MapPin className="h-2.5 w-2.5 text-muted-foreground flex-shrink-0" />
-            <p className="text-[12px] text-muted-foreground truncate leading-tight">
+          <div className="flex items-center gap-1 overflow-hidden opacity-70">
+            <MapPin className="h-3 w-3 text-muted-foreground flex-shrink-0" />
+            <p className="text-[12px] text-muted-foreground truncate leading-[1.15]">
               {lead.city && lead.state
                 ? `${lead.city}/${lead.state}`
                 : (getCityStateFromPhone(lead.phone) || lead.phone)
@@ -163,13 +163,13 @@ function SortableLeadCard({ lead, onEdit, onChat, onFollowUp, onCall, onRemove }
             </p>
           </div>
           {lead.value && (
-            <p className="mt-1 text-[12px] font-bold text-emerald-600 leading-tight">
+            <p className="mt-[2px] text-[12px] font-bold text-emerald-600 leading-[1.15]">
               R$ {Number(lead.value).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
             </p>
           )}
         </div>
 
-        <div className="flex flex-col gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
+        <div className="flex flex-col gap-0 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
           <Button
             size="icon"
             variant="ghost"
@@ -237,14 +237,14 @@ function SortableLeadCard({ lead, onEdit, onChat, onFollowUp, onCall, onRemove }
       </div>
 
       {(lead.follow_up_status || lead.description) && (
-        <div className="mt-1 space-y-1">
+        <div className="mt-[2px] space-y-0.5">
           {lead.follow_up_status && (
             <div className={cn(
-              "pt-1 border-t border-dashed flex gap-1 items-center",
+              "pt-0.5 border-t border-dashed flex gap-1 items-center",
               lead.follow_up_status === 'overdue' ? "text-red-600" : "text-blue-600"
             )}>
-              {lead.follow_up_status === 'overdue' ? <AlertCircle className="h-2.5 w-2.5" /> : <CalendarClock className="h-2.5 w-2.5" />}
-              <span className="text-[11px] font-bold uppercase tracking-tight leading-tight px-0.5">
+              {lead.follow_up_status === 'overdue' ? <AlertCircle className="h-3 w-3" /> : <CalendarClock className="h-3 w-3" />}
+              <span className="text-[12px] font-bold uppercase tracking-tight leading-[1.15] px-0.5">
                 Agenda: {lead.follow_up_date ? new Date(lead.follow_up_date).toLocaleDateString('pt-BR') : 'Pendente'}
               </span>
             </div>
@@ -253,10 +253,10 @@ function SortableLeadCard({ lead, onEdit, onChat, onFollowUp, onCall, onRemove }
           {lead.description && (
             <div className={cn(
               "flex gap-1 items-start opacity-80",
-              !lead.follow_up_status && "pt-1 border-t border-dashed"
+              !lead.follow_up_status && "pt-0.5 border-t border-dashed"
             )}>
-              <ClipboardList className="h-2.5 w-2.5 text-amber-500 mt-0.5 flex-shrink-0" />
-              <p className="text-[12px] text-muted-foreground line-clamp-1 italic leading-tight">
+              <ClipboardList className="h-3 w-3 text-amber-500 mt-0.5 flex-shrink-0" />
+              <p className="text-[12px] text-muted-foreground line-clamp-1 italic leading-[1.15]">
                 {lead.description}
               </p>
             </div>
@@ -797,7 +797,7 @@ const CrmPage = () => {
                   <DroppableColumn id={column.id.toString()}>
                     <CardContent className="flex-1 p-1.5 overflow-y-auto scrollbar-thin scrollbar-thumb-zinc-200 dark:scrollbar-thumb-zinc-800">
                       <SortableContext id={column.id.toString()} items={leadsByStage(column.id).map((l) => l.id)} strategy={verticalListSortingStrategy}>
-                        <div className="flex flex-col gap-1.5 min-h-[150px]">
+                        <div className="flex flex-col gap-1 min-h-[150px]">
                           {leadsByStage(column.id).map((lead) => (
                             <SortableLeadCard key={lead.id} lead={lead} onEdit={handleEditLead} onChat={handleChatLead} onFollowUp={handleFollowUpLead} onCall={handleCallLead} onRemove={handleRemoveLead} />
                           ))}

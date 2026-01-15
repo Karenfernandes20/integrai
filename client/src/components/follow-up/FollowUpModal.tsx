@@ -137,10 +137,12 @@ export function FollowUpModal({ isOpen, onClose, initialData }: FollowUpModalPro
             <DialogContent className="sm:max-w-[500px] max-h-[90vh] overflow-y-auto">
                 <DialogHeader>
                     <DialogTitle className="flex items-center gap-2">
-                        {isEditing ? "Editar Follow-up" : "Novo Follow-up"}
+                        {isEditing ? "Editar Agendamento" : (formData.type === 'whatsapp' ? "Agendar Mensagem" : "Novo Follow-up")}
                     </DialogTitle>
                     <DialogDescription>
-                        Agende uma ação futura para o contato <strong>{normalizedName || normalizedPhone}</strong>.
+                        {formData.type === 'whatsapp'
+                            ? "Agende uma mensagem automática para ser enviada pelo WhatsApp."
+                            : `Agende uma ação futura para o contato ${normalizedName || normalizedPhone || ""}.`}
                     </DialogDescription>
                 </DialogHeader>
 

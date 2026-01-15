@@ -7,6 +7,7 @@ import { fileURLToPath } from 'url';
 import { systemMode } from '../systemState';
 
 import { checkLimit, incrementUsage } from '../services/limitService';
+import { sendWhatsAppMessage } from '../services/whatsappService';
 
 // Create Campaign
 export const createCampaign = async (req: Request, res: Response) => {
@@ -387,16 +388,25 @@ async function processCampaign(campaignId: number, io?: any) {
         return;
     }
 
-    activeProcesses.add(campaignId);
-    console.log(`[Campaign ${campaignId}] Starting/Resuming processing...`);
+    if (!pool) {
+        console.error(`[Campaign ${campaignId}] Database connection failed.`);
+        return;
+    }
 
+    // ADVISORY LOCK: Prevent multiple workers (even on different server instances) from processing the SAME campaign
+    const lockClient = await pool.connect();
     try {
-        if (!pool) {
-            console.error(`[Campaign ${campaignId}] Database connection failed.`);
+        const lockRes = await lockClient.query('SELECT pg_try_advisory_lock(12345678, $1)', [campaignId]);
+        if (!lockRes.rows[0].pg_try_advisory_lock) {
+            console.log(`[Campaign ${campaignId}] Already being processed by another worker instance.`);
             return;
         }
 
-        const campaignResult = await pool.query(`
+        activeProcesses.add(campaignId);
+        console.log(`[Campaign ${campaignId}] Starting/Resuming processing with advisory lock...`);
+
+        // Check if campaign is still valid and connected
+        const campaignResult = await lockClient.query(`
             SELECT wc.*, ci.status as instance_status, ci.name as instance_name 
             FROM whatsapp_campaigns wc
             LEFT JOIN company_instances ci ON wc.instance_id = ci.id
@@ -404,85 +414,34 @@ async function processCampaign(campaignId: number, io?: any) {
         `, [campaignId]);
 
         if (campaignResult.rows.length === 0) {
-            console.warn(`[Campaign ${campaignId}] Not found in DB.`);
             activeProcesses.delete(campaignId);
             return;
         }
 
         const campaign = campaignResult.rows[0];
 
-        // Ensure status is running
         if (campaign.status === 'paused' || campaign.status === 'completed' || campaign.status === 'cancelled') {
-            console.log(`[Campaign ${campaignId}] Status is ${campaign.status}, skipping.`);
             activeProcesses.delete(campaignId);
             return;
         }
-
-        // Validate Instance status
-        if (!campaign.instance_id) {
-            console.warn(`[Campaign ${campaignId}] No instance selected. Pausing campaign.`);
-            await pool.query("UPDATE whatsapp_campaigns SET status = 'paused' WHERE id = $1", [campaignId]);
-            activeProcesses.delete(campaignId);
-            return;
-        }
-
-        const instStatus = (campaign.instance_status || '').toLowerCase();
-        if (instStatus !== 'connected' && instStatus !== 'open' && instStatus !== 'online') {
-            console.warn(`[Campaign ${campaignId}] Instance "${campaign.instance_name}" status is "${instStatus}". Proceeding with attempt...`);
-        }
-
-        // Get pending contacts
-        const contactsResult = await pool.query(
-            `SELECT * FROM whatsapp_campaign_contacts 
-             WHERE campaign_id = $1 AND status = 'pending' 
-             ORDER BY id ASC`,
-            [campaignId]
-        );
-
-        const contacts = contactsResult.rows;
-
-        console.log(`[Campaign ${campaignId}] Found ${contacts.length} pending contacts for campaign "${campaign.name}".`);
-
-        if (contacts.length === 0) {
-            await pool.query(
-                `UPDATE whatsapp_campaigns 
-                 SET status = 'completed', completed_at = NOW(), updated_at = NOW() 
-                 WHERE id = $1`,
-                [campaignId]
-            );
-            console.log(`[Campaign ${campaignId}] Completed (no pending contacts).`);
-            return;
-        }
-
 
         // Processing loop
-        for (const contact of contacts) {
+        while (true) {
             try {
-                // Re-check system mode
-                if (systemMode === 'readonly' || systemMode === 'emergency') {
-                    console.log(`[Campaign ${campaignId}] Stopping because system switched to ${systemMode} mode.`);
-                    return;
-                }
+                // 1. RE-CHECK STATUS AND SESSION
+                if (systemMode === 'readonly' || systemMode === 'emergency') break;
 
-                // Re-check status every iteration
-                const statusCheck = await pool.query(
+                const statusCheck = await lockClient.query(
                     'SELECT status FROM whatsapp_campaigns WHERE id = $1',
                     [campaignId]
                 );
+                if (statusCheck.rows[0]?.status !== 'running') break;
 
-                const currentStatus = statusCheck.rows[0]?.status;
-                if (currentStatus !== 'running') {
-                    console.log(`[Campaign ${campaignId}] Loop stopped because status is ${currentStatus}`);
-                    return; // Exit process
-                }
-
-                // Time window check
+                // 2. TIME WINDOW CHECK
                 const now = new Date();
                 const brazilTimeStr = now.toLocaleTimeString('pt-BR', {
                     timeZone: 'America/Sao_Paulo',
-                    hour: '2-digit',
-                    minute: '2-digit',
-                    hour12: false
+                    hour: '2-digit', minute: '2-digit', hour12: false
                 });
 
                 const currentMinutes = getMinutes(brazilTimeStr);
@@ -490,14 +449,55 @@ async function processCampaign(campaignId: number, io?: any) {
                 const endMinutes = getMinutes(campaign.end_time || '23:59');
 
                 if (currentMinutes < startMinutes || currentMinutes > endMinutes) {
-                    console.log(`[Campaign ${campaignId}] Outside window (${campaign.start_time}-${campaign.end_time}). Current: ${brazilTimeStr}. Waiting for window...`);
-                    return;
+                    console.log(`[Campaign ${campaignId}] Outside window. Waiting...`);
+                    break; // Stop for now, scheduler will re-run it when window opens
                 }
 
-                // Replace variables
+                // 3. ATOMIC PICK NEXT CONTACT
+                // This marks the contact as 'sending' atomically so no other process picks it
+                const claimContact = await lockClient.query(`
+                    UPDATE whatsapp_campaign_contacts
+                    SET status = 'sending', updated_at = NOW()
+                    WHERE id = (
+                        SELECT id FROM whatsapp_campaign_contacts
+                        WHERE campaign_id = $1 AND status = 'pending'
+                        ORDER BY id ASC
+                        LIMIT 1
+                        FOR UPDATE SKIP LOCKED
+                    )
+                    RETURNING *
+                `, [campaignId]);
+
+                if (claimContact.rows.length === 0) {
+                    // No more pending contacts
+                    await lockClient.query(
+                        `UPDATE whatsapp_campaigns SET status = 'completed', completed_at = NOW(), updated_at = NOW() WHERE id = $1`,
+                        [campaignId]
+                    );
+                    break;
+                }
+
+                const contact = claimContact.rows[0];
+
+                // 4. PREVENT DUPLICATE SENDS (REGRA OBRIGATÓRIA 2)
+                // Check if this phone ALREADY received a message from this campaign successfully
+                const alreadySent = await lockClient.query(
+                    `SELECT id FROM whatsapp_campaign_contacts WHERE campaign_id = $1 AND phone = $2 AND status = 'sent' AND id != $3`,
+                    [campaignId, contact.phone, contact.id]
+                );
+
+                if (alreadySent.rows.length > 0) {
+                    console.log(`[Campaign ${campaignId}] Contact ${contact.phone} already received this campaign. Skipping duplicate.`);
+                    await lockClient.query(
+                        `UPDATE whatsapp_campaign_contacts SET status = 'skipped', error_message = 'Contato duplicado' WHERE id = $1`,
+                        [contact.id]
+                    );
+                    continue;
+                }
+
+                // 5. SEND MESSAGE
                 let message = campaign.message_template;
                 const variables = (typeof contact.variables === 'string' ? JSON.parse(contact.variables) : contact.variables) || {};
-
                 if (contact.name) variables.nome = contact.name;
                 if (contact.phone) variables.telefone = contact.phone;
 
@@ -506,121 +506,67 @@ async function processCampaign(campaignId: number, io?: any) {
                     message = message.replace(new RegExp(`{${key}}`, 'gi'), val);
                 });
 
-                console.log(`[Campaign ${campaignId}] Sending to ${contact.phone}...`);
-
                 let result: { success: boolean; error?: string } = { success: false, error: 'Not started' };
                 let attempts = 0;
                 const maxAttempts = 3;
 
                 while (attempts < maxAttempts) {
                     attempts++;
-                    result = await sendWhatsAppMessage(
-                        campaign.company_id,
-                        contact.phone,
+                    result = await sendWhatsAppMessage({
+                        companyId: campaign.company_id,
+                        phone: contact.phone,
                         message,
-                        contact.name,
-                        campaign.user_id,
+                        contactName: contact.name,
+                        userId: campaign.user_id,
                         io,
-                        campaign.media_url,
-                        campaign.media_type,
-                        campaign.id
-                    );
+                        mediaUrl: campaign.media_url,
+                        mediaType: campaign.media_type,
+                        campaignId: campaign.id
+                    });
 
                     if (result.success) break;
-
-                    if (attempts < maxAttempts) {
-                        console.log(`[Campaign ${campaignId}] Retry ${attempts}/${maxAttempts} for ${contact.phone} after 2s delay...`);
-                        await new Promise(r => setTimeout(r, 2000));
-
-                        await logEvent({
-                            eventType: 'campaign_retry',
-                            origin: 'system',
-                            status: 'info',
-                            message: `Campanha ${campaignId}: Tentativa ${attempts} de envio para ${contact.phone}`,
-                            phone: contact.phone,
-                            details: { campaignId, contactId: contact.id, attempt: attempts, instance_id: campaign.instance_id, instance_name: campaign.instance_name }
-                        });
-                    }
+                    if (attempts < maxAttempts) await new Promise(r => setTimeout(r, 2000));
                 }
 
+                // 6. UPDATE STATUS
                 if (result.success) {
-                    await pool.query(
+                    await lockClient.query(
                         `UPDATE whatsapp_campaign_contacts SET status = 'sent', sent_at = NOW() WHERE id = $1`,
                         [contact.id]
                     );
-
-                    await pool.query(
-                        `UPDATE whatsapp_campaigns SET sent_count = sent_count + 1, updated_at = NOW() WHERE id = $1`,
+                    await lockClient.query(
+                        `UPDATE whatsapp_campaigns SET sent_count = sent_count + 1 WHERE id = $1`,
                         [campaignId]
                     );
-
-                    await logEvent({
-                        eventType: 'campaign_success',
-                        origin: 'system',
-                        status: 'success',
-                        message: `Campanha ${campaignId}: Mensagem enviada para ${contact.phone} (Tentativas: ${attempts})`,
-                        phone: contact.phone,
-                        details: { campaignId, contactId: contact.id, attempts, instance_id: campaign.instance_id, instance_name: campaign.instance_name }
-                    });
                 } else {
-                    let errorMsg = (result.error || 'Evolution API failed (Unknown Error)').substring(0, 255);
-                    if (!errorMsg || errorMsg.trim() === "") {
-                        errorMsg = "Falha crítica: erro ocorreu no envio de imagem e não foi retornado pela Evolution API";
-                    }
-
-                    console.error(`[Campaign ${campaignId}] FAILED for ${contact.phone}: ${errorMsg}`);
-
-                    await pool.query(
+                    const errorMsg = (result.error || 'Failed').substring(0, 255);
+                    await lockClient.query(
                         `UPDATE whatsapp_campaign_contacts SET status = 'failed', error_message = $1 WHERE id = $2`,
                         [errorMsg, contact.id]
                     );
-
-                    await pool.query(
-                        `UPDATE whatsapp_campaigns SET failed_count = failed_count + 1, updated_at = NOW() WHERE id = $1`,
+                    await lockClient.query(
+                        `UPDATE whatsapp_campaigns SET failed_count = failed_count + 1 WHERE id = $1`,
                         [campaignId]
                     );
-
-                    await logEvent({
-                        eventType: 'campaign_fail',
-                        origin: 'system',
-                        status: 'error',
-                        message: `Campanha ${campaignId}: Falha para ${contact.phone}: ${errorMsg}`,
-                        phone: contact.phone,
-                        details: { campaignId, contactId: contact.id, error: errorMsg, instance_id: campaign.instance_id, instance_name: campaign.instance_name }
-                    });
                 }
 
-                // Random delay between messages
+                // 7. DELAY (REGRA OBRIGATÓRIA 5)
                 const delayMs = (Math.random() * (campaign.delay_max - campaign.delay_min) + parseInt(campaign.delay_min || 5)) * 1000;
                 await new Promise(r => setTimeout(r, delayMs));
 
-            } catch (err: any) {
-                console.error(`[Campaign ${campaignId}] EXCEPTION on contact ${contact.phone}:`, err);
-                const errorMsg = (err.message || "Erro interno não tratado").substring(0, 255);
-                await pool.query(
-                    `UPDATE whatsapp_campaign_contacts SET status = 'failed', error_message = $1 WHERE id = $2`,
-                    [errorMsg, contact.id]
-                );
+            } catch (innerError: any) {
+                console.error(`[Campaign ${campaignId}] Inner loop error:`, innerError);
             }
-        }
-
-        // Final check
-        const remaining = await pool.query(
-            "SELECT count(*) as count FROM whatsapp_campaign_contacts WHERE campaign_id = $1 AND status = 'pending'",
-            [campaignId]
-        );
-
-        if (parseInt(remaining.rows[0].count) === 0) {
-            await pool.query(
-                `UPDATE whatsapp_campaigns SET status = 'completed', completed_at = NOW(), updated_at = NOW() WHERE id = $1`,
-                [campaignId]
-            );
-            console.log(`[Campaign ${campaignId}] Finished processing all contacts.`);
         }
 
     } catch (error: any) {
         console.error(`[Campaign ${campaignId}] Fatal error:`, error.message);
     } finally {
+        // RELEASE LOCK
+        try {
+            await lockClient.query('SELECT pg_advisory_unlock(12345678, $1)', [campaignId]);
+        } catch (e) { }
+        lockClient.release();
         activeProcesses.delete(campaignId);
     }
 }
@@ -672,299 +618,3 @@ export const checkAndStartScheduledCampaigns = async (io?: any) => {
     }
 };
 
-// Send WhatsApp message via Evolution API
-async function sendWhatsAppMessage(
-    companyId: number | null,
-    phone: string,
-    message: string,
-    contactName?: string,
-    userId?: number | null,
-    io?: any,
-    mediaUrl?: string | null,
-    mediaType?: string | null,
-    campaignId?: number
-): Promise<{ success: boolean; error?: string }> {
-    try {
-        if (!pool) return { success: false, error: 'Database not configured' };
-
-        let evolution_instance = "integrai";
-        let evolution_apikey = process.env.EVOLUTION_API_KEY;
-
-        // Try to get specific config
-        if (companyId) {
-            // Priority 1: Use specific instance_id if provided
-            if (campaignId) {
-                const campaignRes = await pool.query('SELECT instance_id FROM whatsapp_campaigns WHERE id = $1', [campaignId]);
-                const instanceId = campaignRes.rows[0]?.instance_id;
-
-                if (instanceId) {
-                    const instRes = await pool.query(
-                        'SELECT instance_key, api_key FROM company_instances WHERE id = $1',
-                        [instanceId]
-                    );
-                    if (instRes.rows.length > 0) {
-                        const row = instRes.rows[0];
-                        evolution_instance = row.instance_key;
-                        if (row.api_key) evolution_apikey = row.api_key;
-                        console.log(`[sendWhatsAppMessage] Using campaign-specific instance: ${evolution_instance}`);
-                    }
-                }
-            }
-
-            // Priority 2: If no campaign specific instance (fallback), use company main config
-            if (evolution_instance === "integrai") {
-                const companyResult = await pool.query(
-                    'SELECT evolution_instance, evolution_apikey FROM companies WHERE id = $1',
-                    [companyId]
-                );
-                if (companyResult.rows.length > 0) {
-                    const row = companyResult.rows[0];
-                    if (row.evolution_instance) evolution_instance = row.evolution_instance;
-                    if (row.evolution_apikey) evolution_apikey = row.evolution_apikey;
-                }
-            }
-        }
-
-        // Final fallback if still no api key (Try company 1)
-        if (!evolution_apikey) {
-            const res = await pool.query('SELECT evolution_apikey FROM companies WHERE id = 1 LIMIT 1');
-            if (res.rows.length > 0) evolution_apikey = res.rows[0].evolution_apikey;
-        }
-
-        if (!evolution_apikey) {
-            console.error(`[sendWhatsAppMessage] No API Key found for campaign.`);
-            return { success: false, error: 'No API Key found' };
-        }
-
-        // Limit Check for Messages
-        if (companyId) {
-            const allowed = await checkLimit(companyId, 'messages');
-            if (!allowed) {
-                console.error(`[sendWhatsAppMessage] Message limit reached for company ${companyId}`);
-                return { success: false, error: 'Message limit reached' };
-            }
-        }
-
-        const EVOLUTION_API_BASE = (process.env.EVOLUTION_API_URL || 'https://freelasdekaren-evolution-api.nhvvzr.easypanel.host').replace(/\/$/, "");
-
-        let cleanPhone = phone.replace(/\D/g, '');
-        // Ensure Brazil CC if looks like standard number
-        if (cleanPhone.length === 10 || (cleanPhone.length === 11 && cleanPhone[0] !== '0')) {
-            cleanPhone = '55' + cleanPhone;
-        }
-
-        const isMedia = !!mediaUrl && !!mediaType;
-        const endpoint = isMedia ? 'sendMedia' : 'sendText';
-        const targetUrl = `${EVOLUTION_API_BASE}/message/${endpoint}/${evolution_instance}`;
-
-        // FIX: Convert local media to Base64 for remote Evolution API
-        // Always try to resolve the file locally if it looks like it belongs to our uploads
-        let finalMedia = mediaUrl;
-        let finalMimeType = 'application/octet-stream';
-
-        if (isMedia && mediaUrl) {
-            try {
-                // Check if it's a local file URL
-                if (mediaUrl.includes('localhost') || mediaUrl.includes('127.0.0.1') || mediaUrl.includes('/uploads/')) {
-                    const urlParts = mediaUrl.split('/uploads/');
-                    const filename = urlParts.length > 1 ? urlParts[1].split('?')[0] : null;
-
-                    if (filename) {
-                        const __filename = fileURLToPath(import.meta.url);
-                        const __dirname = path.dirname(__filename);
-
-                        const projectRoot = process.cwd();
-                        const possiblePaths = [
-                            path.join(projectRoot, 'server', 'uploads', filename),
-                            path.join(projectRoot, 'uploads', filename),
-                            path.join(__dirname, '..', 'uploads', filename),
-                            path.join(__dirname, '..', '..', 'uploads', filename)
-                        ];
-
-                        console.log(`[sendWhatsAppMessage] MEDIA DEBUG - Searching for file: ${filename}`);
-                        let fileFoundPath = null;
-                        for (const p of possiblePaths) {
-                            const exists = fs.existsSync(p);
-                            console.log(`[sendWhatsAppMessage] -> Checking: ${p} | Exists: ${exists}`);
-                            if (exists) {
-                                fileFoundPath = p;
-                                break;
-                            }
-                        }
-
-                        if (fileFoundPath) {
-                            console.log(`[sendWhatsAppMessage] ✓ Local file found at: ${fileFoundPath}`);
-                            const fileBuffer = fs.readFileSync(fileFoundPath);
-                            const fileSizeKB = (fileBuffer.length / 1024).toFixed(2);
-                            console.log(`[sendWhatsAppMessage] File size: ${fileSizeKB} KB`);
-
-                            const base64 = fileBuffer.toString('base64');
-                            const ext = filename.split('.').pop()?.toLowerCase() || '';
-                            const mimes: Record<string, string> = {
-                                'jpg': 'image/jpeg', 'jpeg': 'image/jpeg', 'png': 'image/png', 'gif': 'image/gif', 'webp': 'image/webp',
-                                'mp3': 'audio/mpeg', 'ogg': 'audio/ogg', 'mp4': 'video/mp4', 'pdf': 'application/pdf',
-                                'doc': 'application/msword', 'docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
-                            };
-                            finalMimeType = mimes[ext] || 'application/octet-stream';
-                            finalMedia = `data:${finalMimeType};base64,${base64}`;
-
-                            console.log(`[sendWhatsAppMessage] ✓ Base64 conversion successful. MIME: ${finalMimeType}, Length: ${base64.length}`);
-                        } else {
-                            console.error(`[sendWhatsAppMessage] ✗ File NOT found locally: ${filename}`);
-                            // Fallback: If it's NOT a localhost URL, permit Evolution to fetch directly
-                            if (!mediaUrl.includes('localhost') && !mediaUrl.includes('127.0.0.1')) {
-                                console.log(`[sendWhatsAppMessage] ! URL is NOT localhost, permitting Evolution to fetch directly: ${mediaUrl}`);
-                                finalMedia = mediaUrl;
-                            } else {
-                                return { success: false, error: `Arquivo local não encontrado: ${filename}` };
-                            }
-                        }
-                    } else {
-                        console.error(`[sendWhatsAppMessage] Could not extract filename from URL: ${mediaUrl}`);
-                        return { success: false, error: 'URL de mídia inválida - não foi possível extrair o nome do arquivo' };
-                    }
-                } else {
-                    console.log(`[sendWhatsAppMessage] Using remote media URL directly: ${mediaUrl}`);
-                }
-            } catch (e) {
-                console.error(`[sendWhatsAppMessage] ✗ EXCEPTION processing media:`, e);
-                console.error(`[sendWhatsAppMessage] Stack trace:`, (e as Error).stack);
-                return { success: false, error: `Falha ao processar mídia: ${(e as Error).message}` };
-            }
-        }
-
-        console.log(`[sendWhatsAppMessage] POST ${targetUrl} | Target: ${cleanPhone} | Type: ${isMedia ? mediaType : 'text'} | Media: ${finalMedia?.substring(0, 50)}...`);
-
-        let payload: any = {
-            number: cleanPhone,
-            options: {
-                delay: 1200,
-                presence: "composing",
-                linkPreview: false
-            }
-        };
-
-        if (isMedia) {
-            // Simplified and documented payload structure matching Atendimento/evolutionController logic
-            payload.mediaMessage = {
-                mediatype: mediaType, // image, video, audio, document
-                caption: message || "",
-                media: finalMedia, // Base64 or URL
-                fileName: (mediaUrl?.split('/').pop() || 'file').split('?')[0]
-            };
-
-            // LOG THE MEDIA PAYLOAD (MASKED)
-            console.log(`[sendWhatsAppMessage] PAYLOAD PREVIEW (Media):`, JSON.stringify({
-                ...payload,
-                mediaMessage: {
-                    ...payload.mediaMessage,
-                    media: finalMedia && finalMedia.length > 100 ? `${finalMedia.substring(0, 50)}... [Total: ${finalMedia.length} chars]` : finalMedia
-                }
-            }, null, 2));
-        } else {
-            payload.textMessage = { text: message };
-            payload.text = message; // backward compat key
-        }
-
-        const response = await fetch(targetUrl, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'apikey': evolution_apikey
-            },
-            body: JSON.stringify(payload)
-        });
-
-        const responseText = await response.text();
-
-        if (!response.ok) {
-            console.error(`[sendWhatsAppMessage] FAILED RESPONSE: Status ${response.status}`);
-            console.error(`[sendWhatsAppMessage] RESPONSE BODY: ${responseText}`);
-
-            // Try to extract a clean error message
-            let cleanError = `Evolution API Error ${response.status}: ${responseText.substring(0, 100)}`;
-            try {
-                const jsonErr = JSON.parse(responseText);
-                cleanError = jsonErr.message || jsonErr.error || jsonErr.response?.message || cleanError;
-            } catch (p) { }
-
-            return { success: false, error: cleanError };
-        }
-
-        const data = JSON.parse(responseText);
-
-        // SYNC WITH ATENDIMENTO (OPEN status as requested)
-        if (pool) {
-            try {
-                const remoteJid = cleanPhone.includes('@') ? cleanPhone : `${cleanPhone}@s.whatsapp.net`;
-                let conversationId: number;
-
-                // Find or create conversation
-                const checkConv = await pool.query(
-                    'SELECT id FROM whatsapp_conversations WHERE external_id = $1 AND instance = $2',
-                    [remoteJid, evolution_instance]
-                );
-
-                if (checkConv.rows.length > 0) {
-                    conversationId = checkConv.rows[0].id;
-                    await pool.query(
-                        `UPDATE whatsapp_conversations 
-                         SET last_message = $1, last_message_at = NOW(), status = 'OPEN', user_id = COALESCE(user_id, $2), company_id = COALESCE(company_id, $3), last_message_source = $5
-                         WHERE id = $4`,
-                        [message, userId, companyId, conversationId, campaignId ? 'campaign' : null]
-                    );
-                } else {
-                    // Create new conversation
-                    const newConv = await pool.query(
-                        `INSERT INTO whatsapp_conversations (external_id, phone, contact_name, instance, status, user_id, last_message, last_message_at, company_id, last_message_source) 
-                         VALUES ($1, $2, $3, $4, 'OPEN', $5, $6, NOW(), $7, $8) RETURNING id`,
-                        [remoteJid, cleanPhone, contactName || cleanPhone, evolution_instance, userId, message, companyId, campaignId ? 'campaign' : null]
-                    );
-                    conversationId = newConv.rows[0].id;
-                }
-
-                const externalMessageId = data?.key?.id;
-
-                // Insert message
-                // Note: We should probably store media_url if it's a media message
-                const insertedMsg = await pool.query(
-                    'INSERT INTO whatsapp_messages (conversation_id, direction, content, sent_at, status, external_id, user_id, media_url, message_type, campaign_id) VALUES ($1, $2, $3, NOW(), $4, $5, $6, $7, $8, $9) RETURNING id',
-                    [conversationId, 'outbound', message, 'sent', externalMessageId, userId, mediaUrl || null, mediaType || 'text', campaignId || null]
-                );
-
-                // Increment Usage
-                if (companyId) {
-                    await incrementUsage(companyId, 'messages', 1);
-                }
-
-                // Socket Emit
-                if (io && companyId) {
-                    const socketPayload = {
-                        ...insertedMsg.rows[0],
-                        phone: cleanPhone,
-                        contact_name: contactName || cleanPhone,
-                        status: 'OPEN',
-                        direction: 'outbound',
-                        content: message,
-                        sent_at: new Date().toISOString(),
-                        user_id: userId,
-                        remoteJid,
-                        instance: evolution_instance,
-                        company_id: companyId,
-                        agent_name: "(Campanha)",
-                        media_url: mediaUrl,
-                        message_type: mediaType || 'text'
-                    };
-                    io.to(`company_${companyId}`).emit('message:received', socketPayload);
-                }
-            } catch (p) {
-                console.error("[sendWhatsAppMessage] Error syncing with Atendimento:", p);
-            }
-        }
-
-        return { success: true };
-    } catch (error: any) {
-        console.error('Error sending WhatsApp message:', error);
-        return { success: false, error: error.message };
-    }
-}
