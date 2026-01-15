@@ -68,8 +68,8 @@ router.post('/evolution/messages/send', authenticateToken, rateLimit({ windowMs:
 router.post('/evolution/messages/media', authenticateToken, sendEvolutionMedia);
 router.post('/evolution/messages/react', authenticateToken, sendEvolutionReaction);
 router.put('/evolution/messages/:conversationId/:messageId', authenticateToken, editEvolutionMessage);
-router.delete('/evolution/messages/:conversationId/:messageId', authenticateToken, deleteEvolutionMessage);
-router.post('/evolution/messages/delete-global', authenticateToken, deleteMessage);
+router.delete('/evolution/messages/:id', authenticateToken, deleteMessage);
+router.post('/evolution/messages/delete', authenticateToken, deleteEvolutionMessage);
 // router.get('/evolution/webhook/debug', authenticateToken, authorizeRole(['SUPERADMIN']), debugWebhookPayloads);
 router.get('/evolution/webhook/debug', debugWebhookPayloads); // Temp public for diagnostic
 router.get('/evolution/debug/mapping', async (req, res) => {

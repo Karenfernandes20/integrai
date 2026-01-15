@@ -145,11 +145,12 @@ const CampanhasPage = () => {
         }
     };
 
-    const fetchInstances = async () => {
+    const fetchInstances = async (forceSync = false) => {
         try {
             const companyId = user?.company_id || user?.company?.id;
             if (companyId) {
-                const res = await fetch(`/api/companies/${companyId}/instances`, {
+                const url = `/api/companies/${companyId}/instances${forceSync ? '?sync=true' : ''}`;
+                const res = await fetch(url, {
                     headers: { "Authorization": `Bearer ${token}` }
                 });
                 if (res.ok) {
@@ -164,7 +165,7 @@ const CampanhasPage = () => {
 
     useEffect(() => {
         fetchCampaigns();
-        fetchInstances();
+        fetchInstances(true); // Sincroniza status real ao carregar o módulo
         const interval = setInterval(fetchCampaigns, 5000); // Refresh every 5s
         return () => clearInterval(interval);
     }, [token, user?.company_id, user?.company?.id]);
@@ -424,8 +425,8 @@ const CampanhasPage = () => {
                                     size="sm"
                                     className="h-6 px-2 text-[10px] gap-1 text-muted-foreground hover:text-primary"
                                     onClick={() => {
-                                        fetchInstances();
-                                        toast.info("Atualizando status das instâncias...");
+                                        fetchInstances(true);
+                                        toast.info("Sincronizando status real das instâncias...");
                                     }}
                                 >
                                     <RefreshCcw className="h-3 w-3" /> Atualizar Status

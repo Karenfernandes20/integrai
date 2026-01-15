@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import { pool } from '../db';
 import { logAudit } from '../auditLogger';
+import { getEvolutionConfig } from './evolutionController';
 
 
 export const getCompanies = async (req: Request, res: Response) => {
@@ -618,8 +619,56 @@ export const getCompanyInstances = async (req: Request, res: Response) => {
             return res.status(403).json({ error: 'Unauthorized' });
         }
 
+        const { sync } = req.query;
         const result = await pool.query('SELECT * FROM company_instances WHERE company_id = $1 ORDER BY id ASC', [id]);
-        res.json(result.rows);
+        let instances = result.rows;
+
+        if (sync === 'true') {
+            const syncedInstances = [];
+            for (const inst of instances) {
+                try {
+                    const config = await getEvolutionConfig(user, 'sync_list', id, inst.instance_key);
+                    const url = `${config.url}/instance/connectionState/${inst.instance_key}`;
+
+                    const response = await fetch(url, {
+                        method: 'GET',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'apikey': config.apikey
+                        }
+                    });
+
+                    if (response.ok) {
+                        const data = await response.json();
+                        // Evolution V2 returns { instance: { state: 'open' } } or { state: 'open' }
+                        const state = data?.instance?.state || data?.state;
+
+                        // Normalize status
+                        const lowerState = (state || '').toLowerCase();
+                        let status = 'disconnected';
+                        if (['open', 'connected', 'online'].includes(lowerState)) status = 'connected';
+                        else if (['connecting', 'pairing'].includes(lowerState)) status = 'connecting';
+
+                        if (status !== inst.status) {
+                            await pool.query('UPDATE company_instances SET status = $1 WHERE id = $2', [status, inst.id]);
+                            inst.status = status;
+                        }
+                    } else if (response.status === 404) {
+                        // Instance not found in evolution but exists in our DB
+                        if (inst.status !== 'disconnected') {
+                            await pool.query('UPDATE company_instances SET status = $1 WHERE id = $2', ['disconnected', inst.id]);
+                            inst.status = 'disconnected';
+                        }
+                    }
+                } catch (err) {
+                    console.error(`[Sync] Failed sync for ${inst.instance_key}:`, err);
+                }
+                syncedInstances.push(inst);
+            }
+            instances = syncedInstances;
+        }
+
+        res.json(instances);
     } catch (error) {
         console.error('Error fetching instances:', error);
         res.status(500).json({ error: 'Failed' });

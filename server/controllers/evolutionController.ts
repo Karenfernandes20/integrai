@@ -380,6 +380,16 @@ export const getEvolutionConnectionState = async (req: Request, res: Response) =
 
     const data = await response.json();
     // Evolution usually returns { instance: { state: 'open' | 'close' | 'connecting' ... } }
+    const state = data?.instance?.state || data?.state;
+    if (state && pool) {
+      const lowerState = (state || '').toLowerCase();
+      let status = 'disconnected';
+      if (['open', 'connected', 'online'].includes(lowerState)) status = 'connected';
+      else if (['connecting', 'pairing'].includes(lowerState)) status = 'connecting';
+
+      pool.query('UPDATE company_instances SET status = $1 WHERE instance_key = $2', [status, EVOLUTION_INSTANCE])
+        .catch(e => console.error('[Status Sync] Failed to update DB:', e));
+    }
     return res.json(data);
 
   } catch (error) {
@@ -1397,81 +1407,6 @@ export const handleEvolutionWebhook = async (req: Request, res: Response) => {
   }
 };
 
-export const deleteEvolutionMessage = async (req: Request, res: Response) => {
-  const { conversationId, messageId } = req.params;
-
-  try {
-    if (!pool) return res.status(500).json({ error: "DB not configured" });
-
-    console.log(`[Delete] Request to delete message ${messageId} in conversation ${conversationId}`);
-
-    // 1. Get message info for API deletion
-    const msgQuery = await pool.query(`
-      SELECT m.external_id, c.external_id as remote_jid, m.direction
-      FROM whatsapp_messages m
-      JOIN whatsapp_conversations c ON m.conversation_id = c.id
-      WHERE m.id = $1
-    `, [messageId]);
-
-    if (msgQuery.rows.length > 0) {
-      const { external_id, remote_jid, direction } = msgQuery.rows[0];
-      console.log(`[Delete] Found message in DB. Direction: ${direction}, ExternalID: ${external_id}`);
-
-      if (external_id) {
-        const config = await getEvolutionConfig((req as any).user, 'deleteMessage');
-        const EVOLUTION_API_URL = config.url;
-        const EVOLUTION_API_KEY = config.apikey;
-        const EVOLUTION_INSTANCE = config.instance;
-
-        if (EVOLUTION_API_URL && EVOLUTION_API_KEY) {
-          const url = `${EVOLUTION_API_URL.replace(/\/$/, "")}/chat/deleteMessage/${EVOLUTION_INSTANCE}`;
-
-          // Determine if we delete for everyone (only for outbound)
-          const deleteForEveryone = direction === 'outbound';
-
-          console.log(`[Delete] Calling Evolution API: ${url} (Everyone: ${deleteForEveryone})`);
-
-          const evoRes = await fetch(url, {
-            method: "POST",
-            headers: { "Content-Type": "application/json", apikey: EVOLUTION_API_KEY },
-            body: JSON.stringify({
-              number: remote_jid.split('@')[0],
-              key: {
-                remoteJid: remote_jid,
-                fromMe: direction === 'outbound',
-                id: external_id
-              },
-              everyone: deleteForEveryone
-            })
-          });
-
-          if (!evoRes.ok) {
-            const errText = await evoRes.text();
-            console.error(`[Delete] Evolution API Error (${evoRes.status}):`, errText);
-            // We continue to delete locally anyway
-          } else {
-            console.log(`[Delete] Evolution API success.`);
-          }
-        } else {
-          console.warn(`[Delete] Evolution API not configured for this user/action.`);
-        }
-      } else {
-        console.warn(`[Delete] Message has no external_id (too old or not tracked). Deleting only local historical record.`);
-      }
-    } else {
-      console.warn(`[Delete] Message ${messageId} not found in DB.`);
-    }
-
-    // 2. Delete locally
-    await pool.query('DELETE FROM whatsapp_messages WHERE id = $1', [messageId]);
-    console.log(`[Delete] Message ${messageId} removed from local DB.`);
-
-    return res.json({ status: "deleted", id: messageId });
-  } catch (error) {
-    console.error("Error deleting message:", error);
-    return res.status(500).json({ error: "Failed to delete" });
-  }
-};
 
 export const editEvolutionMessage = async (req: Request, res: Response) => {
   const { conversationId, messageId } = req.params;
@@ -1968,7 +1903,7 @@ export const setEvolutionWebhook = async (req: Request, res: Response) => {
   }
 };
 // (Function moved or deleted to avoid duplication)
-export const deleteMessage = async (req: Request, res: Response) => {
+export const deleteEvolutionMessage = async (req: Request, res: Response) => {
   const config = await getEvolutionConfig((req as any).user, 'deleteMessage');
   const EVOLUTION_API_URL = config.url;
   const EVOLUTION_API_KEY = config.apikey;
@@ -2006,14 +1941,36 @@ export const deleteMessage = async (req: Request, res: Response) => {
 
     // Remove from local DB
     if (pool) {
-      await pool.query('DELETE FROM whatsapp_messages WHERE external_id = $1', [messageId]);
+      await pool.query('DELETE FROM whatsapp_messages WHERE external_id = $1 OR id = $2', [messageId, isNaN(Number(messageId)) ? -1 : Number(messageId)]);
     }
 
     return res.json(data);
 
   } catch (error) {
-    console.error("Error deleting message:", error);
+    console.error("Error deleting message for everyone:", error);
     return res.status(500).json({ error: "Internal Server Error" });
+  }
+};
+
+export const deleteMessage = async (req: Request, res: Response) => {
+  const { id } = req.params;
+  const user = (req as any).user;
+
+  try {
+    if (!pool) return res.status(500).json({ error: "DB not configured" });
+
+    // Se for um ID numérico, apaga direto
+    if (!isNaN(Number(id))) {
+      await pool.query('DELETE FROM whatsapp_messages WHERE id = $1', [id]);
+    } else {
+      // Se for external_id
+      await pool.query('DELETE FROM whatsapp_messages WHERE external_id = $1', [id]);
+    }
+
+    return res.json({ status: "deleted", id });
+  } catch (error) {
+    console.error("Error deleting message for me:", error);
+    return res.status(500).json({ error: "Failed to delete message" });
   }
 };
 
