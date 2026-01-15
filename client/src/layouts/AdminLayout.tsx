@@ -11,6 +11,7 @@ import { SystemModeBanner } from "../components/SystemModeBanner";
 import { SubscriptionBanner } from "../components/SubscriptionBanner";
 import { useSubscriptionBanner } from "../hooks/useSubscriptionBanner";
 import { UpgradeModal } from "../components/UpgradeModal";
+import { ThemeToggle } from "../components/ThemeToggle";
 
 
 const SECTION_TITLES: Record<string, string> = {
@@ -118,6 +119,8 @@ export const AdminLayout = () => {
                     SuperAdmin
                   </Button>
                 )}
+
+                <ThemeToggle />
 
                 <div className="hidden text-right md:block">
                   <p className="font-medium">{user?.role === 'SUPERADMIN' ? 'Acesso SuperAdmin' : (user?.full_name || 'Usuário')}</p>

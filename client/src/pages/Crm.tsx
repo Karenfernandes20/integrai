@@ -768,18 +768,18 @@ const CrmPage = () => {
               .map((column) => (
                 <Card
                   key={column.id}
-                  className="min-w-[260px] max-w-[260px] flex flex-col border-slate-200 shrink-0 h-full overflow-hidden shadow-none"
-                  style={{ backgroundColor: column.color ? `${column.color}15` : 'rgba(248, 250, 252, 0.4)' }}
+                  className="min-w-[260px] max-w-[260px] flex flex-col border-slate-200 dark:border-slate-800 shrink-0 h-full overflow-hidden shadow-none bg-slate-50/50 dark:bg-slate-900/40"
+                  style={column.color ? { backgroundColor: `${column.color}15` } : undefined}
                 >
                   <div
                     className="h-1 w-full"
                     style={{ backgroundColor: column.color || '#cbd5e1' }}
                   />
-                  <CardHeader className="flex flex-row items-center justify-between p-2 border-b bg-white/90 backdrop-blur-sm shrink-0">
+                  <CardHeader className="flex flex-row items-center justify-between p-2 border-b bg-white/90 dark:bg-slate-900/90 backdrop-blur-sm shrink-0">
                     <CardTitle className="text-[10px] font-bold uppercase tracking-widest text-slate-500 flex items-center justify-between w-full">
                       <div className="flex items-center gap-1.5">
                         {column.name}
-                        <Badge variant="secondary" className="bg-slate-100 text-slate-600 border-none h-4 px-1 text-[9px]">{leadsByStage(column.id).length}</Badge>
+                        <Badge variant="secondary" className="bg-slate-100 text-slate-600 border-none h-4 px-1 text-[9px] dark:bg-slate-800 dark:text-slate-400">{leadsByStage(column.id).length}</Badge>
                       </div>
                       {column.name.toUpperCase() !== 'LEADS' && (
                         <Button
