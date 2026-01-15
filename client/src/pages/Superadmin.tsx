@@ -715,28 +715,28 @@ const SuperadminPage = () => {
                     {companies.map((company) => (
                       <div
                         key={company.id}
-                        className="flex flex-col sm:flex-row sm:items-center justify-between p-4 rounded-lg border bg-card hover:bg-accent/5 transition-colors gap-4"
+                        className="flex flex-col sm:flex-row sm:items-center justify-between p-6 rounded-xl border bg-white shadow-sm hover:shadow-md hover:border-primary/20 transition-all duration-200 gap-6"
                       >
-                        <div className="flex items-center gap-4">
+                        <div className="flex items-center gap-5">
                           {company.logo_url ? (
-                            <img src={company.logo_url} alt={company.name} className="h-10 w-10 rounded-full object-cover border" />
+                            <img src={company.logo_url} alt={company.name} className="h-16 w-16 rounded-xl object-cover border shadow-sm" />
                           ) : (
-                            <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center text-primary font-bold">
+                            <div className="h-16 w-16 rounded-xl bg-primary/10 flex items-center justify-center text-primary font-bold text-xl border border-primary/20">
                               {company.name.substring(0, 2).toUpperCase()}
                             </div>
                           )}
-                          <div>
-                            <h3 className="font-semibold text-slate-800 text-lg">{company.name}</h3>
-                            <div className="flex flex-wrap gap-2 text-xs text-slate-500">
-                              <span>ID: {company.id}</span>
-                              {company.city && <span>• {company.city}/{company.state}</span>}
-                              {company.phone && <span>• {company.phone}</span>}
-                              {company.due_date && (
-                                <span className={new Date(company.due_date) < new Date() ? "text-destructive font-bold" : ""}>
-                                  • Vence: {new Date(company.due_date).toLocaleDateString()}
-                                </span>
-                              )}
+                          <div className="space-y-1">
+                            <h3 className="font-bold text-slate-800 text-xl tracking-wide">{company.name}</h3>
+                            <div className="flex flex-wrap gap-3 text-sm text-slate-500 items-center">
+                              <span className="bg-slate-100 px-2 py-0.5 rounded text-xs font-mono">ID: {company.id}</span>
+                              {company.city && <span>{company.city}/{company.state}</span>}
+                              {company.phone && <span>{company.phone}</span>}
                             </div>
+                            {company.due_date && (
+                              <div className={cn("text-xs font-medium mt-1 inline-block px-2 py-0.5 rounded", new Date(company.due_date) < new Date() ? "bg-red-100 text-red-700" : "bg-green-100 text-green-700")}>
+                                Vence: {new Date(company.due_date).toLocaleDateString()}
+                              </div>
+                            )}
                           </div>
                         </div>
                         <div className="flex items-center gap-2 self-end sm:self-center">
