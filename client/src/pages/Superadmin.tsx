@@ -72,6 +72,13 @@ interface Company {
   plan_id?: number;
   due_date?: string;
   max_instances?: number;
+  // Instagram fields
+  instagram_enabled?: boolean;
+  instagram_app_id?: string;
+  instagram_app_secret?: string;
+  instagram_page_id?: string;
+  instagram_business_id?: string;
+  instagram_access_token?: string;
 }
 
 interface AppUser {
@@ -113,6 +120,13 @@ const SuperadminPage = () => {
     plan_id: "",
     due_date: "",
     max_instances: "1",
+    // Instagram
+    instagram_enabled: false,
+    instagram_app_id: "",
+    instagram_app_secret: "",
+    instagram_page_id: "",
+    instagram_business_id: "",
+    instagram_access_token: "",
   });
   const [plans, setPlans] = useState<any[]>([]); // New state for plans
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
@@ -263,6 +277,13 @@ const SuperadminPage = () => {
       plan_id: company.plan_id ? String(company.plan_id) : "",
       due_date: company.due_date ? new Date(company.due_date).toISOString().split('T')[0] : "",
       max_instances: company.max_instances ? String(company.max_instances) : "1",
+      // Instagram Mapping
+      instagram_enabled: company.instagram_enabled || false,
+      instagram_app_id: company.instagram_app_id || "",
+      instagram_app_secret: company.instagram_app_secret || "",
+      instagram_page_id: company.instagram_page_id || "",
+      instagram_business_id: company.instagram_business_id || "",
+      instagram_access_token: company.instagram_access_token || ""
     });
     setSelectedFile(null);
     setRemoveLogo(false);
@@ -313,6 +334,7 @@ const SuperadminPage = () => {
 
       if (!res.ok) throw new Error("Failed");
 
+      // Optional: Update success state or toast
     } catch (error) {
       toast({ title: "Erro", description: "Falha ao salvar configuração da instância", variant: "destructive" });
     }
@@ -336,6 +358,12 @@ const SuperadminPage = () => {
       plan_id: "",
       due_date: "",
       max_instances: "1",
+      instagram_enabled: false,
+      instagram_app_id: "",
+      instagram_app_secret: "",
+      instagram_page_id: "",
+      instagram_business_id: "",
+      instagram_access_token: "",
     });
     setSelectedFile(null);
     setRemoveLogo(false);
@@ -385,6 +413,18 @@ const SuperadminPage = () => {
       // Evolution fields
       if (formValues.evolution_instance) formData.append("evolution_instance", formValues.evolution_instance);
       if (formValues.evolution_apikey) formData.append("evolution_apikey", formValues.evolution_apikey);
+
+      // Instagram fields
+      if (formValues.instagram_enabled) {
+        formData.append("instagram_enabled", "true");
+        if (formValues.instagram_app_id) formData.append("instagram_app_id", formValues.instagram_app_id);
+        if (formValues.instagram_app_secret) formData.append("instagram_app_secret", formValues.instagram_app_secret);
+        if (formValues.instagram_page_id) formData.append("instagram_page_id", formValues.instagram_page_id);
+        if (formValues.instagram_business_id) formData.append("instagram_business_id", formValues.instagram_business_id);
+        if (formValues.instagram_access_token) formData.append("instagram_access_token", formValues.instagram_access_token);
+      } else {
+        formData.append("instagram_enabled", "false");
+      }
 
       if (selectedFile) {
         formData.append("logo", selectedFile);
@@ -1103,6 +1143,97 @@ const SuperadminPage = () => {
                     </p>
                   </div>
                 )}
+
+                <Separator className="my-2" />
+                <div className="space-y-3">
+                  <div className="flex items-center space-x-2">
+                    <Checkbox
+                      id="instagram_enabled"
+                      checked={formValues.instagram_enabled}
+                      onCheckedChange={(checked) => setFormValues(prev => ({ ...prev, instagram_enabled: !!checked }))}
+                    />
+                    <Label htmlFor="instagram_enabled" className="font-semibold text-primary cursor-pointer">
+                      Integrar com Instagram
+                    </Label>
+                  </div>
+
+                  {formValues.instagram_enabled && (
+                    <div className="pl-6 border-l-2 border-primary/20 space-y-3 mt-2">
+                      <div className="grid grid-cols-2 gap-3">
+                        <div className="space-y-1.5">
+                          <Label htmlFor="instagram_app_id">Instagram App ID</Label>
+                          <Input
+                            id="instagram_app_id"
+                            name="instagram_app_id"
+                            value={formValues.instagram_app_id}
+                            onChange={handleChange}
+                            placeholder="Ex: 1234567890"
+                          />
+                        </div>
+                        <div className="space-y-1.5">
+                          <Label htmlFor="instagram_app_secret">Instagram App Secret</Label>
+                          <Input
+                            id="instagram_app_secret"
+                            name="instagram_app_secret"
+                            type="password"
+                            value={formValues.instagram_app_secret}
+                            onChange={handleChange}
+                            placeholder="Ex: xxxxx..."
+                          />
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-3">
+                        <div className="space-y-1.5">
+                          <Label htmlFor="instagram_page_id">Facebook Page ID</Label>
+                          <Input
+                            id="instagram_page_id"
+                            name="instagram_page_id"
+                            value={formValues.instagram_page_id}
+                            onChange={handleChange}
+                            placeholder="Ex: 1000..."
+                          />
+                        </div>
+                        <div className="space-y-1.5">
+                          <Label htmlFor="instagram_business_id">Instagram Business ID</Label>
+                          <Input
+                            id="instagram_business_id"
+                            name="instagram_business_id"
+                            value={formValues.instagram_business_id}
+                            onChange={handleChange}
+                            placeholder="Ex: 178..."
+                          />
+                        </div>
+                      </div>
+
+                      <div className="space-y-1.5">
+                        <Label htmlFor="instagram_access_token">Access Token (Manual ou via Fluxo)</Label>
+                        <Input
+                          id="instagram_access_token"
+                          name="instagram_access_token"
+                          type="password"
+                          value={formValues.instagram_access_token}
+                          onChange={handleChange}
+                          placeholder="EAAG..."
+                        />
+                      </div>
+
+                      <div className="space-y-1.5">
+                        <Label>Webhook URL (Configure no Meta)</Label>
+                        <div className="flex items-center gap-2">
+                          <code className="flex-1 bg-muted p-2 rounded text-xs select-all">
+                            {window.location.origin.replace('localhost', 'sua-api.com')}/webhooks/instagram
+                          </code>
+                        </div>
+                      </div>
+
+                      <Button type="button" variant="secondary" className="w-full gap-2">
+                        <img src="https://upload.wikimedia.org/wikipedia/commons/thumb/e/e7/Instagram_logo_2016.svg/2048px-Instagram_logo_2016.svg.png" className="w-4 h-4" />
+                        Conectar com Instagram (OAuth)
+                      </Button>
+                    </div>
+                  )}
+                </div>
 
                 <Separator className="my-2" />
                 <p className="text-sm font-semibold text-primary">Plano e Pagamento</p>

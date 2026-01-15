@@ -186,6 +186,30 @@ const startServer = async () => {
         await pool.query(`ALTER TABLE whatsapp_conversations ADD COLUMN IF NOT EXISTS last_instance_key TEXT;`);
         await pool.query(`ALTER TABLE whatsapp_contacts ADD COLUMN IF NOT EXISTS phone TEXT;`);
 
+        // Instagram Integration Migrations
+        console.log("Running Instagram Integration migrations...");
+        await pool.query(`
+            ALTER TABLE companies
+            ADD COLUMN IF NOT EXISTS instagram_enabled BOOLEAN DEFAULT FALSE,
+            ADD COLUMN IF NOT EXISTS instagram_app_id VARCHAR(255),
+            ADD COLUMN IF NOT EXISTS instagram_app_secret VARCHAR(255),
+            ADD COLUMN IF NOT EXISTS instagram_page_id VARCHAR(255),
+            ADD COLUMN IF NOT EXISTS instagram_business_id VARCHAR(255),
+            ADD COLUMN IF NOT EXISTS instagram_access_token TEXT,
+            ADD COLUMN IF NOT EXISTS instagram_token_expires_at TIMESTAMP;
+        `);
+        await pool.query(`
+            ALTER TABLE whatsapp_conversations
+            ADD COLUMN IF NOT EXISTS channel VARCHAR(50) DEFAULT 'whatsapp',
+            ADD COLUMN IF NOT EXISTS instagram_user_id VARCHAR(255),
+            ADD COLUMN IF NOT EXISTS instagram_username VARCHAR(255);
+        `);
+        await pool.query(`
+            ALTER TABLE whatsapp_messages
+            ADD COLUMN IF NOT EXISTS channel VARCHAR(50) DEFAULT 'whatsapp',
+            ADD COLUMN IF NOT EXISTS instagram_message_id VARCHAR(255);
+        `);
+
         // Handle duplicates and update constraints
         try {
           // 0. Populate phone in whatsapp_contacts if null

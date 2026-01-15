@@ -1123,3 +1123,193 @@ export const getMessages = async (req: Request, res: Response) => {
         res.status(500).json({ error: 'Failed to fetch messages' });
     }
 };
+// --- INSTAGRAM INTEGRATION ---
+
+export const verifyInstagramWebhook = async (req: Request, res: Response) => {
+    try {
+        const mode = req.query['hub.mode'];
+        const token = req.query['hub.token'];
+        const challenge = req.query['hub.challenge'];
+
+        // We can use a global verify token or check against companies?
+        // Simpler: Use a fixed token for the platform, or allow companies to set it?
+        // User instructions said "Webhook URL (read only)". Usually implies platform handles it.
+        // Let's us "integrai_instagram_verify_token" or check env.
+        const VERIFY_TOKEN = process.env.INSTAGRAM_VERIFY_TOKEN || 'integrai_verify_token';
+
+        if (mode && token) {
+            if (mode === 'subscribe' && token === VERIFY_TOKEN) {
+                console.log('[Instagram Webhook] Verified successfully.');
+                res.status(200).send(challenge);
+            } else {
+                console.warn(`[Instagram Webhook] Verification failed. Token: ${token}, Mode: ${mode}`);
+                res.sendStatus(403);
+            }
+        } else {
+            res.sendStatus(400);
+        }
+    } catch (e) {
+        console.error('[Instagram Verify Error]', e);
+        res.sendStatus(500);
+    }
+};
+
+export const handleInstagramWebhook = async (req: Request, res: Response) => {
+    try {
+        const body = req.body;
+        console.log('[Instagram Webhook] Received event:', JSON.stringify(body, null, 2));
+
+        // 1. Acknowledge immediately
+        res.status(200).send('EVENT_RECEIVED');
+
+        // 2. Process
+        if (body.object === 'instagram' || body.object === 'page') {
+            for (const entry of body.entry) {
+                // Determine Company by Page ID/Instagram Business ID (recipient.id)
+                // We need to match entry.id (Page ID) or messaging.recipient.id with company
+                const pageId = entry.id;
+
+                // Find company by page_id or business_id
+                const companyRes = await pool!.query(`
+                    SELECT id, instagram_enabled, instagram_access_token 
+                    FROM companies 
+                    WHERE instagram_page_id = $1 OR instagram_business_id = $1
+                    LIMIT 1
+                `, [pageId]);
+
+                if (companyRes.rows.length === 0) {
+                    console.warn(`[Instagram Webhook] Unknown Page ID: ${pageId}. No company found.`);
+                    continue;
+                }
+                const company = companyRes.rows[0];
+                if (!company.instagram_enabled) {
+                    console.log(`[Instagram Webhook] Company ${company.id} has Instagram disabled.`);
+                    continue;
+                }
+
+                // Process Messaging Events
+                if (entry.messaging) {
+                    for (const event of entry.messaging) {
+                        const senderId = event.sender.id; // IGSID (Instagram Scoped User ID)
+
+                        // Handle Messages
+                        if (event.message) {
+                            const messageId = event.message.mid;
+                            const text = event.message.text;
+                            const isEcho = event.message.is_echo;
+                            const attachments = event.message.attachments;
+
+                            // Skip echoes for now (messages sent by page), unless we want to sync outbound from other tools
+                            if (isEcho) continue;
+
+                            console.log(`[Instagram Webhook] Msg from ${senderId}: ${text}`);
+
+                            // Get User Profile (optional, async)
+                            let username = 'Instagram User';
+                            let profilePic = null;
+                            try {
+                                const url = `https://graph.facebook.com/v18.0/${senderId}?fields=name,username,profile_pic&access_token=${company.instagram_access_token}`;
+                                const profileRes = await fetch(url);
+                                if (profileRes.ok) {
+                                    const profile = await profileRes.json();
+                                    username = profile.username || profile.name || username;
+                                    profilePic = profile.profile_pic;
+                                }
+                            } catch (e) { /* ignore profile fetch error */ }
+
+                            // Create/Update Conversation
+                            // We use 'instagram:' + senderId as external_id? Or just senderId?
+                            // To avoid collision with phone numbers, prefixed is safer, but whatsapp uses raw numbers.
+                            // Let's use senderId as external_id and channel='instagram'
+
+                            // Check existing conversation
+                            const convRes = await pool!.query(`
+                                SELECT id, status FROM whatsapp_conversations 
+                                WHERE external_id = $1 AND company_id = $2
+                            `, [senderId, company.id]);
+
+                            let conversationId;
+                            if (convRes.rows.length > 0) {
+                                conversationId = convRes.rows[0].id;
+                                // Update status if needed (reopen logic similar to whatsapp)
+                                if (convRes.rows[0].status === 'CLOSED') {
+                                    await pool!.query('UPDATE whatsapp_conversations SET status = $1 WHERE id = $2', ['PENDING', conversationId]);
+                                }
+                            } else {
+                                // Create New Conversation
+                                const newConv = await pool!.query(`
+                                    INSERT INTO whatsapp_conversations 
+                                    (company_id, external_id, phone, contact_name, status, channel, instagram_user_id, instagram_username, profile_pic_url)
+                                    VALUES ($1, $2, $3, $4, 'PENDING', 'instagram', $5, $6, $7)
+                                    RETURNING id
+                                `, [company.id, senderId, '0000000000', username, senderId, username, profilePic]);
+                                conversationId = newConv.rows[0].id;
+                            }
+
+                            // Determine Message Type
+                            let msgType = 'text';
+                            let mediaUrl = null;
+                            let content = text || '';
+
+                            if (attachments && attachments.length > 0) {
+                                const att = attachments[0];
+                                if (att.type === 'image') {
+                                    msgType = 'image';
+                                    mediaUrl = att.payload.url;
+                                    content = 'Imagem';
+                                } else if (att.type === 'video') {
+                                    msgType = 'video';
+                                    mediaUrl = att.payload.url;
+                                    content = 'Vídeo';
+                                } else if (att.type === 'audio') {
+                                    msgType = 'audio';
+                                    mediaUrl = att.payload.url;
+                                    content = 'Áudio';
+                                } else {
+                                    content = `[Anexo: ${att.type}]`;
+                                }
+                            }
+
+                            // Save Message
+                            const insertedMsg = await pool!.query(`
+                                INSERT INTO whatsapp_messages 
+                                (company_id, conversation_id, direction, content, message_type, media_url, status, external_id, channel, sender_name, sent_at)
+                                VALUES ($1, $2, 'inbound', $3, $4, $5, 'received', $6, 'instagram', $7, NOW())
+                                RETURNING *
+                            `, [company.id, conversationId, content, msgType, mediaUrl, messageId, username]);
+
+                            // Emit Socket
+                            const io = req.app.get('io');
+                            if (io) {
+                                const payload = {
+                                    ...insertedMsg.rows[0],
+                                    contact_name: username,
+                                    profile_pic_url: profilePic,
+                                    message_origin: 'instagram'
+                                };
+                                io.to(`company_${company.id}`).emit('message:received', payload);
+                            }
+
+                            // Trigger Workflow (Unified)
+                            triggerWorkflow('message_received', {
+                                message_id: insertedMsg.rows[0].id,
+                                content,
+                                direction: 'inbound',
+                                company_id: company.id,
+                                conversation_id: conversationId,
+                                phone: senderId, // Use ID as identifier
+                                channel: 'instagram'
+                            }).catch(() => { });
+
+                        }
+                    }
+                }
+            }
+        } else {
+            res.sendStatus(404);
+        }
+    } catch (e: any) {
+        console.error('[Instagram Webhook Error]', e);
+        if (!res.headersSent) res.sendStatus(500);
+    }
+};

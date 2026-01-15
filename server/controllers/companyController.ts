@@ -231,7 +231,10 @@ export const updateCompany = async (req: Request, res: Response) => {
 
         const { id } = req.params;
         const { name, cnpj, city, state, phone, evolution_instance, evolution_apikey, operation_type, remove_logo,
-            primary_color, secondary_color, system_name, custom_domain, plan_id, due_date, max_instances } = req.body;
+            primary_color, secondary_color, system_name, custom_domain, plan_id, due_date, max_instances,
+            // Instagram
+            instagram_enabled, instagram_app_id, instagram_app_secret, instagram_page_id, instagram_business_id, instagram_access_token
+        } = req.body;
 
         console.log('DEBUG: updateCompany request', { id, body: req.body, hasFile: !!req.file });
 
@@ -281,12 +284,20 @@ export const updateCompany = async (req: Request, res: Response) => {
                 custom_domain = COALESCE($14, custom_domain),
                 plan_id = $15,
                 due_date = $16,
-                max_instances = $17
+                max_instances = $17,
+                instagram_enabled = $18,
+                instagram_app_id = $19,
+                instagram_app_secret = $20,
+                instagram_page_id = $21,
+                instagram_business_id = $22,
+                instagram_access_token = $23
             WHERE id = $10 
             RETURNING *
         `;
 
         const newMax = max_instances ? parseInt(max_instances) : 1;
+        // Parse instagram_enabled
+        const isInstagramEnabled = instagram_enabled === 'true' || instagram_enabled === true;
 
         const values = [
             name,
@@ -305,7 +316,13 @@ export const updateCompany = async (req: Request, res: Response) => {
             custom_domain || null,
             plan_id || null, // $15
             due_date || null, // $16
-            newMax // $17
+            newMax, // $17
+            isInstagramEnabled, // $18
+            instagram_app_id || null, // $19
+            instagram_app_secret || null, // $20
+            instagram_page_id || null, // $21
+            instagram_business_id || null, // $22
+            instagram_access_token || null // $23
         ];
 
         // --- INSTANCE SYNC ---

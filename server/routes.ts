@@ -13,7 +13,9 @@ import {
   handleWebhook,
   getConversations,
   getMessages,
-  debugWebhookPayloads
+  debugWebhookPayloads,
+  verifyInstagramWebhook,
+  handleInstagramWebhook
 } from './controllers/webhookController';
 import { getCities, createCity } from './controllers/cityController';
 import { login, register } from './controllers/authController';
@@ -25,6 +27,8 @@ import { startConversation, closeConversation, updateContactNameWithAudit, delet
 import { getFollowUps, createFollowUp, updateFollowUp, deleteFollowUp, getFollowUpStats } from './controllers/followUpController';
 
 const router = express.Router();
+router.get('/webhooks/instagram', verifyInstagramWebhook);
+router.post('/webhooks/instagram', handleInstagramWebhook);
 
 // Auth routes
 router.post('/auth/login', login);
