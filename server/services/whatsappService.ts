@@ -78,20 +78,32 @@ export async function sendWhatsAppMessage({
         evolution_url = compData.evolution_url;
         const baseUrl = (evolution_url || process.env.EVOLUTION_API_URL || "https://freelasdekaren-evolution-api.nhvvzr.easypanel.host").replace(/\/$/, "");
 
+        console.log(`[sendWhatsAppMessage] Sending to ${phone} via instance ${evolution_instance}. Media: ${mediaUrl ? 'YES' : 'NO'} (${mediaType})`);
+
         const cleanPhone = phone.replace(/\D/g, "");
         const targetUrl = `${baseUrl}/message/send${mediaUrl ? 'Media' : 'Text'}/${evolution_instance}`;
 
         let finalMedia = mediaUrl;
         let finalMimeType = '';
+        let isBase64 = false;
 
         if (mediaUrl) {
             try {
-                // If it's a local file URL or just a filename from our uploads
-                if (mediaUrl.includes('localhost') || !mediaUrl.startsWith('http')) {
+                // Check if URL is public/accessible
+                const isLocalhost = mediaUrl.includes('localhost') || mediaUrl.includes('127.0.0.1');
+                const isHttp = mediaUrl.startsWith('http');
+
+                // If it's a local file URL or explicitly localhost, we MUST convert to Base64
+                // Evolution cannot access localhost URLs from outside the server
+                if (isLocalhost || !isHttp) {
+                    console.log(`[sendWhatsAppMessage] Detected local/private URL: ${mediaUrl}. Converting to Base64...`);
                     const filename = mediaUrl.split('/').pop()?.split('?')[0];
                     if (filename) {
-                        const filePath = path.join(__dirname, '../../uploads', filename);
-                        if (fs.existsSync(filePath)) {
+                        const ups = path.join(__dirname, '../uploads');
+                        const filePath = path.join(ups, filename);
+
+                        // Security check to prevent traversing out of uploads
+                        if (fs.existsSync(filePath) && filePath.startsWith(path.resolve(ups))) {
                             const fileBuffer = fs.readFileSync(filePath);
                             const base64 = fileBuffer.toString('base64');
                             const ext = filename.split('.').pop()?.toLowerCase() || '';
@@ -101,12 +113,18 @@ export async function sendWhatsAppMessage({
                                 'doc': 'application/msword', 'docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
                             };
                             finalMimeType = mimes[ext] || 'application/octet-stream';
-                            finalMedia = `data:${finalMimeType};base64,${base64}`;
+                            finalMedia = base64; // Evolution V2 often accepts raw base64 in 'media' field
+                            isBase64 = true;
+                            console.log(`[sendWhatsAppMessage] Converted to Base64 (${base64.length} chars). Mime: ${finalMimeType}`);
+                        } else {
+                            console.error(`[sendWhatsAppMessage] File not found or invalid path: ${filePath}`);
+                            return { success: false, error: 'Arquivo de mídia não encontrado no servidor' };
                         }
                     }
                 }
             } catch (e) {
                 console.error("[sendWhatsAppMessage] Error processing media:", e);
+                return { success: false, error: 'Erro ao processar arquivo de mídia' };
             }
         }
 
@@ -120,8 +138,12 @@ export async function sendWhatsAppMessage({
         };
 
         if (mediaUrl) {
+            // Ensure mediaType is valid
+            const validTypes = ['image', 'video', 'document', 'audio'];
+            const safeMediaType = validTypes.includes(mediaType || '') ? mediaType : 'image';
+
             payload.mediaMessage = {
-                mediatype: mediaType || 'image',
+                mediatype: safeMediaType,
                 caption: message || "",
                 media: finalMedia,
                 fileName: (mediaUrl?.split('/').pop() || 'file').split('?')[0]
@@ -130,6 +152,13 @@ export async function sendWhatsAppMessage({
             payload.textMessage = { text: message };
             payload.text = message;
         }
+
+        // Log payload (hide base64)
+        const logPayload = { ...payload };
+        if (logPayload.mediaMessage && logPayload.mediaMessage.media && logPayload.mediaMessage.media.length > 200) {
+            logPayload.mediaMessage.media = '[BASE64_CONTENT_HIDDEN]';
+        }
+        console.log(`[sendWhatsAppMessage] Payload to Evolution:`, JSON.stringify(logPayload));
 
         const response = await fetch(targetUrl, {
             method: 'POST',

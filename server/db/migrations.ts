@@ -537,6 +537,7 @@ const runWhatsappMigrations = async () => {
         await pool.query('CREATE INDEX IF NOT EXISTS idx_system_logs_status ON system_logs(status)');
         await pool.query('CREATE INDEX IF NOT EXISTS idx_system_logs_created_at ON system_logs(created_at)');
         await pool.query('CREATE INDEX IF NOT EXISTS idx_system_logs_phone ON system_logs(phone)');
+        await addColumn('system_logs', 'company_id', 'INTEGER REFERENCES companies(id)');
 
         // Admin Alerts Table
         await pool.query(`

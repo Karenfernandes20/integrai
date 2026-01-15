@@ -217,6 +217,13 @@ export const getCashFlow = async (req: Request, res: Response) => {
   }
 };
 
+// Helper to normalize date to noon to avoid timezone shifts (e.g., 2026-01-14 -> 2026-01-14T12:00:00)
+const normalizeDate = (dateStr: any) => {
+  if (!dateStr || typeof dateStr !== 'string') return null;
+  if (dateStr.length === 10) return `${dateStr}T12:00:00`;
+  return dateStr;
+}
+
 export const createFinancialTransaction = async (req: Request, res: Response) => {
   try {
     if (!pool) return res.status(500).json({ error: 'Database not configured' });
@@ -242,8 +249,8 @@ export const createFinancialTransaction = async (req: Request, res: Response) =>
         type || 'payable',
         amount,
         status || 'pending',
-        (due_date && due_date !== "") ? due_date : null,
-        (issue_date && issue_date !== "") ? issue_date : new Date(),
+        normalizeDate(due_date),
+        normalizeDate(issue_date) || new Date(), // Use provided date (normalized) or current timestamp
         category || null,
         (city_id && city_id !== "") ? city_id : null,
         notes || null,
@@ -283,8 +290,8 @@ export const updateFinancialTransaction = async (req: Request, res: Response) =>
       [
         description,
         amount,
-        (due_date && due_date !== "") ? due_date : null,
-        (issue_date && issue_date !== "") ? issue_date : null,
+        normalizeDate(due_date),
+        normalizeDate(issue_date),
         category || null,
         status,
         type,

@@ -423,10 +423,10 @@ export const sendEvolutionMessage = async (req: Request, res: Response) => {
       }
     }
 
-    const { phone, message, text, to, quoted } = req.body;
+    const { phone, message, text, to, quoted, number, isGroup } = req.body;
 
-    // Normalize fields (User asked for "text" but we support "message" too for backward compat, and "to" or "phone")
-    const targetPhone = phone || to;
+    // Normalize fields (User asked for "text" but we support "message" too for backward compat, and "to" or "phone" or "number")
+    let targetPhone = phone || to || number;
     const messageContent = text || message;
 
     if (!targetPhone || !messageContent) {
@@ -435,6 +435,15 @@ export const sendEvolutionMessage = async (req: Request, res: Response) => {
 
     if (typeof messageContent !== 'string' || messageContent.trim().length === 0) {
       return res.status(400).json({ error: "Message text cannot be empty" });
+    }
+
+    // Ensure correct JID format
+    if (targetPhone && !targetPhone.includes('@')) {
+      if (isGroup) {
+        targetPhone = `${targetPhone}@g.us`;
+      } else {
+        targetPhone = `${targetPhone}@s.whatsapp.net`;
+      }
     }
 
     const url = `${EVOLUTION_API_URL.replace(/\/$/, "")}/message/sendText/${EVOLUTION_INSTANCE}`;
@@ -478,7 +487,7 @@ export const sendEvolutionMessage = async (req: Request, res: Response) => {
 
         // Basic normalization of remoteJid
         const safePhone = targetPhone || "";
-        const remoteJid = safePhone.includes('@') ? safePhone : `${safePhone}@s.whatsapp.net`;
+        const remoteJid = safePhone; // Already normalized above
 
         // Find or create conversation
         let conversationId: number;
