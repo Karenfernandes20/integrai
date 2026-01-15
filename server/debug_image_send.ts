@@ -1,118 +1,120 @@
 
-import dotenv from 'dotenv';
+// Import env first to ensure vars are loaded
+import './env';
 import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
-import dns from 'dns';
-if (dns.setDefaultResultOrder) {
-    dns.setDefaultResultOrder('ipv4first');
-}
-import { Pool } from 'pg';
+import { pool } from './db';
 
-// Setup Env
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const envPath = path.resolve(__dirname, '../.env'); // integrai/.env is one level up from server? 
-// No, server is inside integrai. So ../.env matches.
-
-if (fs.existsSync(envPath)) {
-    dotenv.config({ path: envPath });
-    console.log("Loaded .env from", envPath);
-} else {
-    // Try two levels up if executed from server dir
-    const envPath2 = path.resolve(__dirname, '../../.env');
-    if (fs.existsSync(envPath2)) {
-        dotenv.config({ path: envPath2 });
-        console.log("Loaded .env from", envPath2);
-    } else {
-        console.log("Could not find .env file");
-    }
-}
 
 async function main() {
-    if (!process.env.DATABASE_URL) {
-        console.error("DATABASE_URL missing");
+    const logFile = path.join(__dirname, 'debug_result.txt');
+    const log = (msg: string) => {
+        console.log(msg);
+        fs.appendFileSync(logFile, msg + '\n');
+    };
+    fs.writeFileSync(logFile, "STARTING DEBUG\n");
+
+    if (!pool) {
+        log("Pool not initialized");
         return;
     }
 
-    const pool = new Pool({
-        connectionString: process.env.DATABASE_URL,
-        ssl: { rejectUnauthorized: false }
-    });
-
     try {
-        // 1. Get a valid company with Evolution connected
         const res = await pool.query(`
             SELECT c.id, c.name, c.evolution_instance, c.evolution_apikey, c.evolution_url, ci.phone 
             FROM companies c 
             JOIN company_instances ci ON c.id = ci.company_id 
-            WHERE ci.status = 'connected' 
-            LIMIT 1
+            WHERE ci.status = 'connected' LIMIT 1
         `);
 
         if (res.rows.length === 0) {
-            console.log("No connected company found.");
+            log("No connected company found.");
             return;
         }
 
         const company = res.rows[0];
-        console.log(`Using Company: ${company.name} (ID: ${company.id})`);
-        console.log(`Instance: ${company.evolution_instance}`);
-        console.log(`Target Phone (Self): ${company.phone}`);
-
-        if (!company.phone) {
-            console.log("Company has no phone number to test with.");
-            return;
-        }
-
-        console.log("--- STARTING BASE64 SEND TEST ---");
-
-        // 1. Read Local File
-        const filename = "1767040385270-10611731.jpg";
-        const localPath = path.join(__dirname, 'uploads', filename); // server/uploads/...
-
-        if (!fs.existsSync(localPath)) {
-            console.error(`File not found: ${localPath} - Cannot run Base64 test`);
-            return;
-        }
-
-        console.log(`Reading file: ${localPath}`);
-        const fileBuffer = fs.readFileSync(localPath);
-        const base64Media = fileBuffer.toString('base64');
-        console.log(`Converted to Base64 (Length: ${base64Media.length})`);
-
-        const targetUrl = `${company.evolution_url || process.env.EVOLUTION_API_URL}/message/sendMedia/${company.evolution_instance}`;
-        const apiKey = company.evolution_apikey;
+        log(`Using Company: ${company.name}`);
         const phone = company.phone.replace(/\D/g, "");
+        const apiKey = company.evolution_apikey;
+        const targetUrl = `${company.evolution_url || process.env.EVOLUTION_API_URL}/message/sendMedia/${company.evolution_instance}`;
 
-        // Payload structure - FLATTENED as per updated Service
+        // Prepare Base64
+        const filename = "1767040385270-10611731.jpg";
+        const localPath = path.join(__dirname, 'uploads', filename);
+        if (!fs.existsSync(localPath)) {
+            log("File not found"); return;
+        }
+        const fileBuffer = fs.readFileSync(localPath);
+        const base64Raw = fileBuffer.toString('base64');
+        const base64WithPrefix = `data:image/jpeg;base64,${base64Raw}`;
+
+        // TEST 1: FLATTENED (Current Implementation)
+        log("\n--- TEST 1: FLATTENED PAYLOAD ---");
         const payloadFlat = {
             number: phone,
             options: { delay: 1200, presence: "composing", linkPreview: false },
-            media: base64Media,
+            media: base64Raw, // Pure base64
             mediatype: "image",
-            caption: "Teste Base64 STRICT (Sem prefixo)",
+            caption: "TEST 1: FLATTENED + PURE BASE64",
             fileName: filename
         };
+        try {
+            const resp1 = await fetch(targetUrl, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'apikey': apiKey },
+                body: JSON.stringify(payloadFlat)
+            });
+            log(`Status: ${resp1.status}`);
+            log(`Body: ${await resp1.text()}`);
+        } catch (e: any) { log(`Error: ${e.message}`); }
 
-        console.log(`Sending to URL: ${targetUrl}`);
-        // console.log(`Payload:`, JSON.stringify(payloadFlat, null, 2)); // Too big
+        // TEST 2: NESTED + PREFIX
+        log("\n--- TEST 2: NESTED + PREFIX ---");
+        const payloadNested = {
+            number: phone,
+            options: { delay: 1200, presence: "composing", linkPreview: false },
+            mediaMessage: {
+                mediatype: "image",
+                caption: "TEST 2: NESTED + PREFIX",
+                media: base64WithPrefix,
+                fileName: filename
+            }
+        };
+        try {
+            const resp2 = await fetch(targetUrl, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'apikey': apiKey },
+                body: JSON.stringify(payloadNested)
+            });
+            log(`Status: ${resp2.status}`);
+            log(`Body: ${await resp2.text()}`);
+        } catch (e: any) { log(`Error: ${e.message}`); }
 
-        const response = await fetch(targetUrl, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'apikey': apiKey
-            },
-            body: JSON.stringify(payloadFlat)
-        });
+        // TEST 3: FLATTENED + PREFIX
+        log("\n--- TEST 3: FLATTENED + PREFIX ---");
+        const payloadFlatPrefix = {
+            number: phone,
+            options: { delay: 1200, presence: "composing", linkPreview: false },
+            media: base64WithPrefix,
+            mediatype: "image",
+            caption: "TEST 3: FLATTENED + PREFIX",
+            fileName: filename
+        };
+        try {
+            const resp3 = await fetch(targetUrl, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'apikey': apiKey },
+                body: JSON.stringify(payloadFlatPrefix)
+            });
+            log(`Status: ${resp3.status}`);
+            log(`Body: ${await resp3.text()}`);
+        } catch (e: any) { log(`Error: ${e.message}`); }
 
-        const txt = await response.text();
-        console.log(`Response Status: ${response.status}`);
-        console.log(`Response Body: ${txt}`);
-
-    } catch (e) {
-        console.error("Test Error:", e);
+    } catch (e: any) {
+        log(`Fatal: ${e.message}`);
     } finally {
         await pool.end();
     }

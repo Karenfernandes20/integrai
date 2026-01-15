@@ -99,6 +99,7 @@ export async function sendWhatsAppMessage({
 
             targetUrl = `${baseUrl}/message/sendMedia/${evolution_instance}`;
             let finalMedia = mediaUrl;
+            let finalMimeType = '';
             let useBase64 = false;
 
             const isLocalUrl = mediaUrl.includes('localhost') || mediaUrl.includes('127.0.0.1') || mediaUrl.startsWith('http://192.') || mediaUrl.startsWith('http://10.');
@@ -144,8 +145,19 @@ export async function sendWhatsAppMessage({
                     if (fs.existsSync(possibleLocalPath)) {
                         console.log(`[sendWhatsAppMessage] Reading local file: ${possibleLocalPath}`);
                         const fileBuffer = fs.readFileSync(possibleLocalPath);
-                        // Evolution API expects PURE Base64 string for 'media' field if it's not a URL
-                        finalMedia = fileBuffer.toString('base64');
+                        const base64Raw = fileBuffer.toString('base64');
+
+                        // Determine Mime Type
+                        const ext = filename.split('.').pop()?.toLowerCase() || '';
+                        const mimes: Record<string, string> = {
+                            'jpg': 'image/jpeg', 'jpeg': 'image/jpeg', 'png': 'image/png', 'gif': 'image/gif', 'webp': 'image/webp',
+                            'mp3': 'audio/mpeg', 'ogg': 'audio/ogg', 'mp4': 'video/mp4', 'pdf': 'application/pdf'
+                        };
+                        const mime = mimes[ext] || 'application/octet-stream';
+
+                        // Evolution requires Data URI prefix for local base64 in many versions
+                        finalMedia = `data:${mime};base64,${base64Raw}`;
+                        finalMimeType = mime;
                     } else {
                         console.error(`[sendWhatsAppMessage] Fatal: File not found locally for Base64 conversion: ${possibleLocalPath}`);
                         return { success: false, error: `Falha no envio: Imagem não acessível publicamente e arquivo local não encontrado.` };
@@ -161,11 +173,19 @@ export async function sendWhatsAppMessage({
             const safeMediaType = validTypes.includes(mediaType?.toLowerCase() || '') ? mediaType?.toLowerCase() : 'image';
             const fileName = (mediaUrl.split('/').pop() || 'media_file').split('?')[0];
 
-            // STRICT PAYLOAD STRUCTURE (Requirement 3)
-            payload.mediatype = safeMediaType;
-            payload.media = finalMedia; // Valid Public URL OR Pure Base64
-            payload.caption = message || "";
-            payload.fileName = fileName;
+            // NESTED PAYLOAD STRUCTURE (Standard Evolution/Baileys)
+            // Reverting to 'mediaMessage' wrapper as flattened structure might be failing on this version.
+            payload.mediaMessage = {
+                mediatype: safeMediaType,
+                caption: message || "",
+                media: finalMedia, // URL or Base64 Data URI
+                fileName: fileName
+            };
+
+            // Explicitly set mimetype if available (helps some versions)
+            if (finalMimeType) {
+                // Some versions use 'mimetype' at top level or inside options, but usually inferred from DataURI
+            }
 
         } else {
             // === TEXT FLOW ===
@@ -176,7 +196,9 @@ export async function sendWhatsAppMessage({
 
         // 3. LOG PAYLOAD (Requirement 6)
         const logPayload = { ...payload };
-        if (logPayload.media && logPayload.media.length > 200) logPayload.media = '[BASE64_HIDDEN]';
+        if (logPayload.mediaMessage && logPayload.mediaMessage.media && logPayload.mediaMessage.media.length > 200) {
+            logPayload.mediaMessage.media = '[BASE64_HIDDEN]';
+        }
 
         console.log(`[sendWhatsAppMessage] POST ${targetUrl}`);
         console.log(`[sendWhatsAppMessage] Headers: { apikey: '${evolution_apikey ? '***' : 'MISSING'}' }`);

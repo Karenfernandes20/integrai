@@ -1,0 +1,2 @@
+STARTING DEBUG
+Fatal: password authentication failed for user "postgres"
