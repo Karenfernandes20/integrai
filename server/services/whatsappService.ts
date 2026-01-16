@@ -86,16 +86,13 @@ export async function sendWhatsAppMessage({
         };
         let bodyPayload: any = null;
 
-        // === MEDIA FLOW (Multipart/Form-Data) ===
+        // === MEDIA FLOW (Multipart/Form-Data with Node Streams) ===
         if (mediaUrl) {
             targetUrl = `${baseUrl}/message/sendMedia/${evolution_instance}`;
 
-            // Note: When using FormData with fetch in Node, consistent boundary handling is key.
-            // Native global FormData works in Node 18+
-
             const formData = new FormData();
             formData.append('number', cleanPhone);
-            formData.append('caption', message || ''); // Evolution expects 'caption'
+            formData.append('caption', message || '');
 
             // Handling Valid Media Types
             const safeMediaType = mediaType?.toLowerCase() || 'image';
@@ -121,15 +118,14 @@ export async function sendWhatsAppMessage({
                         throw new Error(`File not found at ${possibleLocalPath}`);
                     }
 
+                    // READ AS BUFFER -> BLOB (Node 18+ style)
+                    // Evolution expects 'media' to be a file
                     const buffer = fs.readFileSync(possibleLocalPath);
-                    // Determine mime type manually or default
                     const ext = path.extname(fileName).toLowerCase();
                     let mime = 'application/octet-stream';
                     if (['.jpg', '.jpeg'].includes(ext)) mime = 'image/jpeg';
                     else if (ext === '.png') mime = 'image/png';
                     else if (ext === '.webp') mime = 'image/webp';
-                    else if (ext === '.mp4') mime = 'video/mp4';
-                    else if (ext === '.pdf') mime = 'application/pdf';
 
                     fileBlob = new Blob([buffer], { type: mime });
                     console.log(`[sendWhatsAppMessage] File loaded: ${fileName} (${buffer.length} bytes, ${mime})`);
@@ -151,9 +147,8 @@ export async function sendWhatsAppMessage({
                 }
             }
 
-            // Append the file (3rd arg is filename)
+            // Append file to form data
             formData.append('media', fileBlob, fileName);
-
             bodyPayload = formData;
 
         } else {
@@ -168,7 +163,7 @@ export async function sendWhatsAppMessage({
                     linkPreview: false
                 },
                 textMessage: { text: message },
-                text: message // Redundant but safe
+                text: message
             });
         }
 
@@ -176,15 +171,6 @@ export async function sendWhatsAppMessage({
         console.log(`[sendWhatsAppMessage] POST ${targetUrl}`);
         if (mediaUrl) {
             console.log(`[sendWhatsAppMessage] Mode: MULTIPART/FORM-DATA`);
-            // Cannot easily stringify FormData, logging keys presence
-            // @ts-ignore
-            if (bodyPayload && typeof bodyPayload.forEach === 'function') {
-                // @ts-ignore
-                bodyPayload.forEach((value, key) => {
-                    if (key === 'media') console.log(`  ${key}: [Binary Blob]`);
-                    else console.log(`  ${key}: ${value}`);
-                });
-            }
         } else {
             console.log(`[sendWhatsAppMessage] Mode: JSON`);
             console.log(bodyPayload);
@@ -210,16 +196,14 @@ export async function sendWhatsAppMessage({
                     console.log(`[sendWhatsAppMessage] 404 on sendMedia. Retrying with sendImage...`);
                     const retryUrl = `${baseUrl}/message/sendImage/${evolution_instance}`;
 
-                    // Need to create new FormData or reuse? Fetch usually consumes body if it's a stream, but Blob-based FormData is reusable.
-                    // Making a request again.
+                    // Must recreate fetch with same payload
                     const retryResp = await fetch(retryUrl, { method: 'POST', headers, body: bodyPayload });
                     const retryText = await retryResp.text();
 
                     if (retryResp.ok) {
                         console.log(`[sendWhatsAppMessage] Retry with sendImage success!`);
-                        responseText = retryText; // Update response text for success processing
+                        responseText = retryText;
                     } else {
-                        // Retry failed
                         return { success: false, error: `Evolution Error (Retry sendImage): ${retryText}` };
                     }
                 } else {
