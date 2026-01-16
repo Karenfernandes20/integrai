@@ -82,7 +82,7 @@ export async function sendWhatsAppMessage({
 
         // 2. Prepare Payload
         let targetUrl = '';
-        const payload: any = {
+        let payload: any = {
             number: cleanPhone,
             options: {
                 delay: 1200,
@@ -92,24 +92,30 @@ export async function sendWhatsAppMessage({
         };
 
         if (mediaUrl) {
-            // === MEDIA FLOW ===
-            // RULES:
-            // 1. Local URLs (localhost, 127.0.0.1, internal IPs) -> FORBIDDEN as URL -> Must convert to Base64
-            // 2. Public URLs -> Validated via HEAD. If fail -> convert to Base64 if file exists locally.
+            // === MEDIA FLOW (User Requested Structure) ===
+            const safeMediaType = mediaType?.toLowerCase() || 'image';
 
-            targetUrl = `${baseUrl}/message/sendMedia/${evolution_instance}`;
-            let finalMedia = mediaUrl;
-            let finalMimeType = '';
-            let useBase64 = false;
+            // Endpoint selection
+            if (safeMediaType === 'image') {
+                targetUrl = `${baseUrl}/message/sendImage/${evolution_instance}`;
+            } else if (safeMediaType === 'video') {
+                targetUrl = `${baseUrl}/message/sendVideo/${evolution_instance}`;
+            } else if (safeMediaType === 'audio') {
+                targetUrl = `${baseUrl}/message/sendAudio/${evolution_instance}`;
+            } else if (safeMediaType === 'document' || safeMediaType === 'application/pdf') {
+                targetUrl = `${baseUrl}/message/sendDocument/${evolution_instance}`;
+            } else {
+                targetUrl = `${baseUrl}/message/sendMedia/${evolution_instance}`;
+            }
+
+            let finalMediaContent: any = {};
 
             const isLocalUrl = mediaUrl.includes('localhost') || mediaUrl.includes('127.0.0.1') || mediaUrl.startsWith('http://192.') || mediaUrl.startsWith('http://10.');
             const isRelative = !mediaUrl.startsWith('http');
 
-            // Step A: Determine source and conversion strategy
             if (isLocalUrl || isRelative) {
-                console.log(`[sendWhatsAppMessage] Local/Internal URL detected (${mediaUrl}). Reading from disk.`);
+                console.log(`[sendWhatsAppMessage] Local/Internal URL detected (${mediaUrl}). Converting to Base64.`);
                 try {
-                    // Try to find the file locally in 'uploads'
                     const filename = mediaUrl.split('/').pop()?.split('?')[0];
                     if (!filename) throw new Error("Could not extract filename from URL");
 
@@ -119,78 +125,82 @@ export async function sendWhatsAppMessage({
                     if (fs.existsSync(possibleLocalPath)) {
                         const fileBuffer = fs.readFileSync(possibleLocalPath);
                         const base64Raw = fileBuffer.toString('base64');
-
-                        const ext = filename.split('.').pop()?.toLowerCase() || '';
-                        const mimes: Record<string, string> = {
-                            'jpg': 'image/jpeg', 'jpeg': 'image/jpeg', 'png': 'image/png', 'gif': 'image/gif', 'webp': 'image/webp',
-                            'mp3': 'audio/mpeg', 'ogg': 'audio/ogg', 'mp4': 'video/mp4', 'pdf': 'application/pdf'
-                        };
-                        const mime = mimes[ext] || 'application/octet-stream';
-
-                        finalMedia = `data:${mime};base64,${base64Raw}`;
-                        finalMimeType = mime;
-                        console.log(`[sendWhatsAppMessage] Local file converted to Base64 successfully.`);
+                        finalMediaContent = { base64: base64Raw };
                     } else {
-                        console.error(`[sendWhatsAppMessage] Fatal: File not found locally: ${possibleLocalPath}`);
-                        return { success: false, error: `Falha no envio: Arquivo local não encontrado.` };
+                        // Fallback: If in dev mode, maybe it's in client public folder? 
+                        // But for now, error is safer.
+                        throw new Error(`Local file not found: ${possibleLocalPath}`);
                     }
                 } catch (b64Err: any) {
                     console.error(`[sendWhatsAppMessage] Local file error: ${b64Err.message}`);
                     return { success: false, error: `Erro ao processar arquivo local: ${b64Err.message}` };
                 }
             } else {
-                console.log(`[sendWhatsAppMessage] Public URL detected. Downloading to convert to Base64 for maximum reliability.`);
-                try {
-                    const response = await fetch(mediaUrl);
-                    if (!response.ok) {
-                        throw new Error(`Failed to download media: ${response.status} ${response.statusText}`);
-                    }
-                    const arrayBuffer = await response.arrayBuffer();
-                    const buffer = Buffer.from(arrayBuffer);
-                    const base64Raw = buffer.toString('base64');
-                    const mime = response.headers.get('content-type') || 'application/octet-stream';
-
-                    finalMedia = `data:${mime};base64,${base64Raw}`;
-                    finalMimeType = mime;
-                    console.log(`[sendWhatsAppMessage] Remote media downloaded and converted to Base64 (${buffer.length} bytes).`);
-                } catch (downloadErr: any) {
-                    console.error(`[sendWhatsAppMessage] Download error: ${downloadErr.message}`);
-                    return { success: false, error: `Falha ao baixar mídia da URL: ${downloadErr.message}` };
-                }
+                // Public URL
+                finalMediaContent = { url: mediaUrl };
             }
 
-            // Valid types
-            const validTypes = ['image', 'video', 'document', 'audio'];
-            const safeMediaType = validTypes.includes(mediaType?.toLowerCase() || '') ? mediaType?.toLowerCase() : 'image';
-            const fileName = (mediaUrl.split('/').pop() || 'media_file').split('?')[0];
-
-            // NESTED PAYLOAD STRUCTURE (Standard Evolution/Baileys)
-            // Reverting to 'mediaMessage' wrapper as flattened structure might be failing on this version.
-            payload.mediaMessage = {
-                mediatype: safeMediaType,
-                caption: message || "",
-                media: finalMedia, // URL or Base64 Data URI
-                fileName: fileName,
-                mimetype: finalMimeType
-            };
-
-            // Explicitly set mimetype if available (helps some versions)
-            if (finalMimeType) {
-                // Some versions use 'mimetype' at top level or inside options, but usually inferred from DataURI
+            // Payloads
+            if (safeMediaType === 'image') {
+                payload = {
+                    number: cleanPhone,
+                    image: finalMediaContent,
+                    caption: message || "",
+                    options: payload.options
+                };
+            } else if (safeMediaType === 'video') {
+                payload = {
+                    number: cleanPhone,
+                    video: finalMediaContent,
+                    caption: message || "",
+                    options: payload.options
+                };
+            } else if (safeMediaType === 'audio') {
+                payload = {
+                    number: cleanPhone,
+                    audio: finalMediaContent,
+                    options: payload.options // Audio usually doesn't have caption
+                };
+            } else {
+                // Document / Media
+                payload = {
+                    number: cleanPhone,
+                    document: finalMediaContent,
+                    caption: message || "",
+                    fileName: (mediaUrl.split('/').pop() || 'file'),
+                    options: payload.options
+                };
+                // If falling back to sendMedia generic
+                if (targetUrl.includes('sendMedia')) {
+                    payload = {
+                        number: cleanPhone,
+                        mediaMessage: {
+                            mediatype: safeMediaType,
+                            media: finalMediaContent.url ? { url: finalMediaContent.url } : finalMediaContent.base64, // simplified
+                            caption: message || ""
+                        },
+                        options: payload.options
+                    };
+                }
             }
 
         } else {
             // === TEXT FLOW ===
             targetUrl = `${baseUrl}/message/sendText/${evolution_instance}`;
-            payload.textMessage = { text: message };
-            payload.text = message;
+            payload = {
+                number: cleanPhone,
+                textMessage: { text: message },
+                text: message,
+                options: payload.options
+            };
         }
 
-        // 3. LOG PAYLOAD (Requirement 6)
-        const logPayload = { ...payload };
-        if (logPayload.mediaMessage && logPayload.mediaMessage.media && logPayload.mediaMessage.media.length > 200) {
-            logPayload.mediaMessage.media = '[BASE64_HIDDEN]';
-        }
+        // 3. LOG PAYLOAD
+        const logPayload = JSON.parse(JSON.stringify(payload));
+        if (logPayload.image?.base64) logPayload.image.base64 = '[BASE64_HIDDEN]';
+        if (logPayload.video?.base64) logPayload.video.base64 = '[BASE64_HIDDEN]';
+        if (logPayload.audio?.base64) logPayload.audio.base64 = '[BASE64_HIDDEN]';
+        if (logPayload.document?.base64) logPayload.document.base64 = '[BASE64_HIDDEN]';
 
         console.log(`[sendWhatsAppMessage] POST ${targetUrl}`);
         console.log(`[sendWhatsAppMessage] Headers: { apikey: '${evolution_apikey ? '***' : 'MISSING'}' }`);

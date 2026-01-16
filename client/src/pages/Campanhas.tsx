@@ -292,6 +292,24 @@ const CampanhasPage = () => {
         const file = e.target.files?.[0];
         if (!file) return;
 
+        // VALIDAÇÃO RIGOROSA (User Request)
+        const MAX_SIZE = 5 * 1024 * 1024; // 5MB
+        if (file.size > MAX_SIZE) {
+            toast.error("O arquivo deve ter no máximo 5MB.");
+            e.target.value = ""; // Clear input
+            return;
+        }
+
+        // Se for imagem, validar tipos
+        if (file.type.startsWith('image/')) {
+            const allowedTypes = ['image/jpeg', 'image/png', 'image/webp'];
+            if (!allowedTypes.includes(file.type)) {
+                toast.error("Formatos de imagem permitidos: JPG, PNG, WEBP");
+                e.target.value = "";
+                return;
+            }
+        }
+
         setIsUploading(true);
         const formData = new FormData();
         formData.append("file", file);
@@ -315,12 +333,13 @@ const CampanhasPage = () => {
                 else if (mime === 'application/pdf') setMediaType('document');
                 else setMediaType('document'); // fallback
 
-                toast.success("Arquivo anexado!");
+                toast.success("Arquivo enviado com sucesso!");
             } else {
-                toast.error("Erro ao fazer upload");
+                const err = await res.json();
+                toast.error(err.error || "Erro ao fazer upload");
             }
         } catch (error) {
-            toast.error("Erro ao enviar arquivo");
+            toast.error("Erro ao conectar ao servidor para upload");
         } finally {
             setIsUploading(false);
         }
@@ -336,6 +355,9 @@ const CampanhasPage = () => {
             if (res.ok) {
                 toast.success("Campanha iniciada!");
                 fetchCampaigns();
+            } else {
+                const err = await res.json();
+                toast.error(err.error || "Erro ao iniciar campanha");
             }
         } catch (error) {
             toast.error("Erro ao iniciar campanha");
@@ -496,7 +518,7 @@ const CampanhasPage = () => {
                                     id="campaign-file"
                                     onChange={handleFileUpload}
                                     disabled={isUploading}
-                                    accept="image/*,video/*,audio/*,.pdf,.doc,.docx"
+                                    accept="image/jpeg,image/png,image/webp,video/*,audio/*,.pdf,.doc,.docx"
                                 />
                                 <label
                                     htmlFor="campaign-file"
@@ -516,6 +538,9 @@ const CampanhasPage = () => {
                                     </div>
                                 )}
                             </div>
+                            <p className="text-[10px] text-muted-foreground mt-1">
+                                Imagens: Max 5MB (JPG, PNG, WEBP). Outros arquivos permitidos.
+                            </p>
                         </div>
 
                         <div className="grid grid-cols-2 gap-4">
@@ -573,7 +598,7 @@ const CampanhasPage = () => {
                         </div>
 
                         <div className="flex gap-2">
-                            <Button onClick={handleSaveCampaign}>
+                            <Button onClick={handleSaveCampaign} disabled={isUploading}>
                                 {editingCampaignId ? "Salvar Alterações" : "Criar Campanha"}
                             </Button>
                             <Button variant="outline" onClick={() => { setShowCreateForm(false); setEditingCampaignId(null); resetForm(); }}>
@@ -665,12 +690,12 @@ const CampanhasPage = () => {
                                                 {campaign.media_url ? (
                                                     <span className="flex items-center gap-1 text-[10px] font-bold uppercase text-blue-600 bg-blue-50 px-2 py-0.5 rounded border border-blue-100">
                                                         <Upload className="h-3 w-3" />
-                                                        {campaign.media_type || 'Mídia'}
+                                                        {campaign.media_type === 'image' ? 'IMAGEM' : campaign.media_type?.toUpperCase() || 'MÍDIA'}
                                                     </span>
                                                 ) : (
                                                     <span className="flex items-center gap-1 text-[10px] font-bold uppercase text-slate-500 bg-slate-50 px-2 py-0.5 rounded border border-slate-100">
                                                         <FileText className="h-3 w-3" />
-                                                        Texto
+                                                        TEXTO
                                                     </span>
                                                 )}
                                             </div>
@@ -680,6 +705,7 @@ const CampanhasPage = () => {
                                             <div className="flex gap-4 text-xs text-muted-foreground">
                                                 <span>Total: {campaign.total_contacts}</span>
                                                 <span className="text-green-600">Enviados: {campaign.sent_count}</span>
+                                                <span className="text-amber-600">Pendentes: {Math.max(0, campaign.total_contacts - campaign.sent_count - campaign.failed_count)}</span>
                                                 <span
                                                     className="text-red-600 cursor-pointer hover:underline font-bold hover:text-red-800 transition-colors"
                                                     onClick={(e) => {
