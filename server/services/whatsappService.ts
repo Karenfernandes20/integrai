@@ -80,158 +80,163 @@ export async function sendWhatsAppMessage({
         const cleanPhone = phone.replace(/\D/g, "");
         console.log(`[sendWhatsAppMessage] Sending to ${cleanPhone} via instance ${evolution_instance}. Media: ${mediaUrl ? 'YES' : 'NO'}`);
 
-        // 2. Prepare Payload
         let targetUrl = '';
-        let payload: any = {
-            number: cleanPhone,
-            options: {
-                delay: 1200,
-                presence: "composing",
-                linkPreview: false
-            }
+        let headers: any = {
+            'apikey': evolution_apikey
         };
+        let bodyPayload: any = null;
 
+        // === MEDIA FLOW (Multipart/Form-Data) ===
         if (mediaUrl) {
-            // === MEDIA FLOW (User Requested Structure) ===
+            targetUrl = `${baseUrl}/message/sendMedia/${evolution_instance}`;
+
+            // Note: When using FormData with fetch in Node, consistent boundary handling is key.
+            // Native global FormData works in Node 18+
+
+            const formData = new FormData();
+            formData.append('number', cleanPhone);
+            formData.append('caption', message || ''); // Evolution expects 'caption'
+
+            // Handling Valid Media Types
             const safeMediaType = mediaType?.toLowerCase() || 'image';
-
-            // Endpoint selection
-            if (safeMediaType === 'image') {
-                targetUrl = `${baseUrl}/message/sendImage/${evolution_instance}`;
-            } else if (safeMediaType === 'video') {
-                targetUrl = `${baseUrl}/message/sendVideo/${evolution_instance}`;
-            } else if (safeMediaType === 'audio') {
-                targetUrl = `${baseUrl}/message/sendAudio/${evolution_instance}`;
-            } else if (safeMediaType === 'document' || safeMediaType === 'application/pdf') {
-                targetUrl = `${baseUrl}/message/sendDocument/${evolution_instance}`;
-            } else {
-                targetUrl = `${baseUrl}/message/sendMedia/${evolution_instance}`;
-            }
-
-            let finalMediaContent: any = {};
+            formData.append('mediatype', safeMediaType);
 
             const isLocalUrl = mediaUrl.includes('localhost') || mediaUrl.includes('127.0.0.1') || mediaUrl.startsWith('http://192.') || mediaUrl.startsWith('http://10.');
             const isRelative = !mediaUrl.startsWith('http');
 
+            let fileBlob: Blob;
+            let fileName = 'file';
+
             if (isLocalUrl || isRelative) {
-                console.log(`[sendWhatsAppMessage] Local/Internal URL detected (${mediaUrl}). Converting to Base64.`);
+                console.log(`[sendWhatsAppMessage] Local media detected. Reading from disk: ${mediaUrl}`);
                 try {
-                    const filename = mediaUrl.split('/').pop()?.split('?')[0];
-                    if (!filename) throw new Error("Could not extract filename from URL");
+                    // Extract filename
+                    const urlPath = mediaUrl.split('?')[0];
+                    fileName = path.basename(urlPath) || 'media_file';
 
                     const ups = path.join(__dirname, '../uploads');
-                    const possibleLocalPath = path.join(ups, filename);
+                    const possibleLocalPath = path.join(ups, fileName);
 
-                    if (fs.existsSync(possibleLocalPath)) {
-                        const fileBuffer = fs.readFileSync(possibleLocalPath);
-                        const base64Raw = fileBuffer.toString('base64');
-                        finalMediaContent = { base64: base64Raw };
-                    } else {
-                        // Fallback: If in dev mode, maybe it's in client public folder? 
-                        // But for now, error is safer.
-                        throw new Error(`Local file not found: ${possibleLocalPath}`);
+                    if (!fs.existsSync(possibleLocalPath)) {
+                        throw new Error(`File not found at ${possibleLocalPath}`);
                     }
-                } catch (b64Err: any) {
-                    console.error(`[sendWhatsAppMessage] Local file error: ${b64Err.message}`);
-                    return { success: false, error: `Erro ao processar arquivo local: ${b64Err.message}` };
+
+                    const buffer = fs.readFileSync(possibleLocalPath);
+                    // Determine mime type manually or default
+                    const ext = path.extname(fileName).toLowerCase();
+                    let mime = 'application/octet-stream';
+                    if (['.jpg', '.jpeg'].includes(ext)) mime = 'image/jpeg';
+                    else if (ext === '.png') mime = 'image/png';
+                    else if (ext === '.webp') mime = 'image/webp';
+                    else if (ext === '.mp4') mime = 'video/mp4';
+                    else if (ext === '.pdf') mime = 'application/pdf';
+
+                    fileBlob = new Blob([buffer], { type: mime });
+                    console.log(`[sendWhatsAppMessage] File loaded: ${fileName} (${buffer.length} bytes, ${mime})`);
+
+                } catch (readErr: any) {
+                    console.error(`[sendWhatsAppMessage] Failed to read local file:`, readErr);
+                    return { success: false, error: `Erro ao ler arquivo local: ${readErr.message}` };
                 }
             } else {
-                // Public URL
-                finalMediaContent = { url: mediaUrl };
+                console.log(`[sendWhatsAppMessage] Remote media detected. Fetching: ${mediaUrl}`);
+                try {
+                    const mediaResp = await fetch(mediaUrl);
+                    if (!mediaResp.ok) throw new Error(`Failed to fetch media: ${mediaResp.status}`);
+                    fileBlob = await mediaResp.blob();
+                    fileName = path.basename(mediaUrl.split('?')[0]) || 'downloaded_media';
+                } catch (fetchErr: any) {
+                    console.error(`[sendWhatsAppMessage] Failed to download remote file:`, fetchErr);
+                    return { success: false, error: `Erro ao baixar mídia externa: ${fetchErr.message}` };
+                }
             }
 
-            // Payloads
-            if (safeMediaType === 'image') {
-                payload = {
-                    number: cleanPhone,
-                    image: finalMediaContent,
-                    caption: message || "",
-                    options: payload.options
-                };
-            } else if (safeMediaType === 'video') {
-                payload = {
-                    number: cleanPhone,
-                    video: finalMediaContent,
-                    caption: message || "",
-                    options: payload.options
-                };
-            } else if (safeMediaType === 'audio') {
-                payload = {
-                    number: cleanPhone,
-                    audio: finalMediaContent,
-                    options: payload.options // Audio usually doesn't have caption
-                };
-            } else {
-                // Document / Media
-                payload = {
-                    number: cleanPhone,
-                    document: finalMediaContent,
-                    caption: message || "",
-                    fileName: (mediaUrl.split('/').pop() || 'file'),
-                    options: payload.options
-                };
-                // If falling back to sendMedia generic
-                if (targetUrl.includes('sendMedia')) {
-                    payload = {
-                        number: cleanPhone,
-                        mediaMessage: {
-                            mediatype: safeMediaType,
-                            media: finalMediaContent.url ? { url: finalMediaContent.url } : finalMediaContent.base64, // simplified
-                            caption: message || ""
-                        },
-                        options: payload.options
-                    };
-                }
-            }
+            // Append the file (3rd arg is filename)
+            formData.append('media', fileBlob, fileName);
+
+            bodyPayload = formData;
 
         } else {
-            // === TEXT FLOW ===
+            // === TEXT FLOW (JSON) ===
             targetUrl = `${baseUrl}/message/sendText/${evolution_instance}`;
-            payload = {
+            headers['Content-Type'] = 'application/json';
+            bodyPayload = JSON.stringify({
                 number: cleanPhone,
+                options: {
+                    delay: 1200,
+                    presence: "composing",
+                    linkPreview: false
+                },
                 textMessage: { text: message },
-                text: message,
-                options: payload.options
-            };
+                text: message // Redundant but safe
+            });
         }
 
-        // 3. LOG PAYLOAD
-        const logPayload = JSON.parse(JSON.stringify(payload));
-        if (logPayload.image?.base64) logPayload.image.base64 = '[BASE64_HIDDEN]';
-        if (logPayload.video?.base64) logPayload.video.base64 = '[BASE64_HIDDEN]';
-        if (logPayload.audio?.base64) logPayload.audio.base64 = '[BASE64_HIDDEN]';
-        if (logPayload.document?.base64) logPayload.document.base64 = '[BASE64_HIDDEN]';
-
+        // 3. LOG PAYLOAD (Technical Log)
         console.log(`[sendWhatsAppMessage] POST ${targetUrl}`);
-        console.log(`[sendWhatsAppMessage] Headers: { apikey: '${evolution_apikey ? '***' : 'MISSING'}' }`);
-        console.log(`[sendWhatsAppMessage] Payload:`, JSON.stringify(logPayload, null, 2));
+        if (mediaUrl) {
+            console.log(`[sendWhatsAppMessage] Mode: MULTIPART/FORM-DATA`);
+            // Cannot easily stringify FormData, logging keys presence
+            // @ts-ignore
+            if (bodyPayload && typeof bodyPayload.forEach === 'function') {
+                // @ts-ignore
+                bodyPayload.forEach((value, key) => {
+                    if (key === 'media') console.log(`  ${key}: [Binary Blob]`);
+                    else console.log(`  ${key}: ${value}`);
+                });
+            }
+        } else {
+            console.log(`[sendWhatsAppMessage] Mode: JSON`);
+            console.log(bodyPayload);
+        }
 
         // 4. Send Request
         const response = await fetch(targetUrl, {
             method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'apikey': evolution_apikey
-            },
-            body: JSON.stringify(payload)
+            headers: headers,
+            body: bodyPayload
         });
 
-        const responseText = await response.text();
+        let responseText = await response.text();
 
-        // 5. Log Response
-        console.log(`[sendWhatsAppMessage] Response Status: ${response.status}`);
-        console.log(`[sendWhatsAppMessage] Response Body: ${responseText.substring(0, 500)}${responseText.length > 500 ? '...' : ''}`);
-
+        // 5. Check response and fallback
         if (!response.ok) {
-            let errorMsg = responseText;
-            try {
-                const jsonErr = JSON.parse(responseText);
-                errorMsg = jsonErr.message || jsonErr.error || JSON.stringify(jsonErr);
-            } catch (e) { }
-            return { success: false, error: `Evolution Error (${response.status}): ${errorMsg}` };
+            console.log(`[sendWhatsAppMessage] Initial request failed (${response.status}): ${responseText}`);
+
+            // Fallback strategy: If 404 on sendMedia, try sendImage for images
+            if (response.status === 404 && mediaUrl && bodyPayload instanceof FormData) {
+                const safeMediaType = mediaType?.toLowerCase() || 'image';
+                if (safeMediaType === 'image') {
+                    console.log(`[sendWhatsAppMessage] 404 on sendMedia. Retrying with sendImage...`);
+                    const retryUrl = `${baseUrl}/message/sendImage/${evolution_instance}`;
+
+                    // Need to create new FormData or reuse? Fetch usually consumes body if it's a stream, but Blob-based FormData is reusable.
+                    // Making a request again.
+                    const retryResp = await fetch(retryUrl, { method: 'POST', headers, body: bodyPayload });
+                    const retryText = await retryResp.text();
+
+                    if (retryResp.ok) {
+                        console.log(`[sendWhatsAppMessage] Retry with sendImage success!`);
+                        responseText = retryText; // Update response text for success processing
+                    } else {
+                        // Retry failed
+                        return { success: false, error: `Evolution Error (Retry sendImage): ${retryText}` };
+                    }
+                } else {
+                    return { success: false, error: `Evolution Error (${response.status}): ${responseText}` };
+                }
+            } else {
+                return { success: false, error: `Evolution Error (${response.status}): ${responseText}` };
+            }
         }
 
-        const data = JSON.parse(responseText);
+        console.log(`[sendWhatsAppMessage] Response Body: ${responseText.substring(0, 500)}`);
+
+        let data: any = {};
+        try {
+            data = JSON.parse(responseText);
+        } catch (e) { }
+
         const remoteJid = cleanPhone.includes('@') ? cleanPhone : `${cleanPhone}@s.whatsapp.net`;
 
         // Sync with Atendimento (Database updates)
@@ -260,7 +265,7 @@ export async function sendWhatsAppMessage({
             conversationId = newConv.rows[0].id;
         }
 
-        const externalMessageId = data?.key?.id;
+        const externalMessageId = data?.key?.id || data?.id || 'unknown';
         const insertedMsg = await pool.query(
             'INSERT INTO whatsapp_messages (conversation_id, direction, content, sent_at, status, external_id, user_id, media_url, message_type, campaign_id, follow_up_id, company_id) VALUES ($1, $2, $3, NOW(), $4, $5, $6, $7, $8, $9, $10, $11) RETURNING id',
             [conversationId, 'outbound', message, 'sent', externalMessageId, userId, mediaUrl || null, mediaType || 'text', campaignId || null, followUpId || null, companyId]
