@@ -207,16 +207,8 @@ const startServer = async () => {
             ADD COLUMN IF NOT EXISTS instagram_username VARCHAR(255);
         `);
 
-        // N8N Integration Migrations (On-the-fly)
-        console.log("Running N8N Integration migrations...");
-        await pool.query(`ALTER TABLE companies ADD COLUMN IF NOT EXISTS n8n_base_url TEXT`);
-        await pool.query(`ALTER TABLE companies ADD COLUMN IF NOT EXISTS n8n_api_key TEXT`);
-        await pool.query(`ALTER TABLE companies ADD COLUMN IF NOT EXISTS n8n_webhook_secret TEXT`);
 
-        await pool.query(`ALTER TABLE system_workflows ADD COLUMN IF NOT EXISTS n8n_workflow_id VARCHAR(100)`);
-        await pool.query(`ALTER TABLE system_workflows ADD COLUMN IF NOT EXISTS n8n_last_synced_at TIMESTAMP`);
-        await pool.query(`ALTER TABLE system_workflows ADD COLUMN IF NOT EXISTS n8n_active BOOLEAN DEFAULT FALSE`);
-        // We can try adding index, but might fail if exists without proper check, let's skip index for now or wrap in query
+
 
         await pool.query(`
             ALTER TABLE whatsapp_messages

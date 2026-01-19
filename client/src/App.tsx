@@ -82,7 +82,8 @@ import AlertsPage from "./pages/Alerts";
 import HealthPage from "./pages/Health";
 import IAPage from "./pages/IA";
 import AuditoriaPage from "./pages/Auditoria";
-import WorkflowsPage from "./pages/Workflows";
+
+
 import TemplatesPage from "./pages/Templates";
 import RoadmapPage from "./pages/Roadmap";
 import ConversionReports from "./pages/ConversionReports";
@@ -152,7 +153,8 @@ const App = () => (
                     <Route path="saude" element={<HealthPage />} />
                     <Route path="ia" element={<IAPage />} />
                     <Route path="auditoria" element={<AuditoriaPage />} />
-                    <Route path="workflows" element={<WorkflowsPage />} />
+
+
                     <Route path="relatorios/conversao" element={<ConversionReports />} />
                   </Route>
 

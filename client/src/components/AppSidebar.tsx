@@ -113,7 +113,7 @@ export function AppSidebar() {
     navItems.splice(5, 0, { label: "Saúde", icon: Activity, to: "/app/saude" });
     navItems.splice(6, 0, { label: "IA", icon: Bot, to: "/app/ia" });
     navItems.splice(7, 0, { label: "Auditoria", icon: Fingerprint, to: "/app/auditoria" });
-    navItems.splice(8, 0, { label: "Workflows", icon: GitBranch, to: "/app/workflows" });
+    // navItems.splice(8, 0, { label: "Workflows", icon: GitBranch, to: "/app/workflows" }); // REMOVED
     navItems.splice(9, 0, { label: "Templates", icon: LayoutTemplate, to: "/app/templates" });
     navItems.splice(10, 0, { label: "Roadmap", icon: Map, to: "/app/roadmap" });
   }
@@ -135,7 +135,7 @@ export function AppSidebar() {
   // Permission Logic
   const filteredNavItems = navItems.filter(item => {
     // Force hide SuperAdmin items for non-SuperAdmins
-    const superAdminOnly = ["Clientes", "Tarefas", "Logs", "Alertas", "Saúde", "IA", "Auditoria", "Workflows", "Templates", "Roadmap"];
+    const superAdminOnly = ["Clientes", "Tarefas", "Logs", "Alertas", "Saúde", "IA", "Auditoria", "Templates", "Roadmap"];
     if (user?.role !== 'SUPERADMIN' && superAdminOnly.includes(item.label)) return false;
 
     if (user?.role === 'SUPERADMIN') return true;

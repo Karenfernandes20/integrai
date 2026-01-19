@@ -26,11 +26,13 @@ import { getCompanies, createCompany, updateCompany, deleteCompany, getCompanyUs
 import { startConversation, closeConversation, updateContactNameWithAudit, deleteConversation, returnToPending } from './controllers/conversationController';
 import { getFollowUps, createFollowUp, updateFollowUp, deleteFollowUp, getFollowUpStats } from './controllers/followUpController';
 
-import { handleN8nWebhook } from './controllers/n8nWebhookController';
+
+
 const router = express.Router();
 router.get('/webhooks/instagram', verifyInstagramWebhook);
 router.post('/webhooks/instagram', handleInstagramWebhook);
-router.post('/webhooks/n8n/workflows', handleN8nWebhook);
+
+
 
 
 // Auth routes
