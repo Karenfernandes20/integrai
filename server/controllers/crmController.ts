@@ -466,6 +466,7 @@ export const getCrmDashboardStats = async (req: Request, res: Response) => {
         const activeConvsRes = await pool.query(`
             SELECT COUNT(*) FROM whatsapp_conversations 
             WHERE ${getFilter('')} 
+            AND status = 'OPEN'
             AND (is_group = false OR is_group IS NULL) 
             AND phone NOT LIKE '%@g.us'
         `, filterParams);
