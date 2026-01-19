@@ -29,9 +29,12 @@ export const CrmDashboard = ({ company }: CrmDashboardProps) => {
         const fetchDashboard = async () => {
             try {
                 const token = localStorage.getItem("auth_token");
-                const url = company.id && company.id !== 'superadmin-view'
+                let url = company.id && company.id !== 'superadmin-view'
                     ? `/api/crm/dashboard?companyId=${company.id}`
-                    : "/api/crm/dashboard";
+                    : "/api/crm/dashboard?";
+
+                if (dateRange?.start) url += `&startDate=${dateRange.start}`;
+                if (dateRange?.end) url += `&endDate=${dateRange.end}`;
 
                 const res = await fetch(url, {
                     headers: { "Authorization": `Bearer ${token}` }
@@ -52,7 +55,7 @@ export const CrmDashboard = ({ company }: CrmDashboardProps) => {
 
         const interval = setInterval(fetchDashboard, 10000); // Increased polling slightly to 10s
         return () => clearInterval(interval);
-    }, [company.id]);
+    }, [company.id, dateRange]);
 
     return (
         <div className="space-y-6 animate-in fade-in duration-500">
@@ -69,24 +72,29 @@ export const CrmDashboard = ({ company }: CrmDashboardProps) => {
                 <div className="flex flex-wrap items-center gap-2">
                     {/* Filters preserved... */}
                     <div className="flex items-center gap-2 bg-background p-1 rounded-md border shadow-sm">
+
+                        <div className="flex items-center gap-1 mx-2">
+                            <input
+                                type="date"
+                                className="h-8 text-xs border rounded px-2 bg-transparent"
+                                value={dateRange?.start || ''}
+                                onChange={(e) => setDateRange(prev => ({ ...prev, start: e.target.value }))}
+                            />
+                            <span className="text-xs text-muted-foreground">-</span>
+                            <input
+                                type="date"
+                                className="h-8 text-xs border rounded px-2 bg-transparent"
+                                value={dateRange?.end || ''}
+                                onChange={(e) => setDateRange(prev => ({ ...prev, end: e.target.value }))}
+                            />
+                        </div>
+
                         <Select defaultValue="all">
                             <SelectTrigger className="w-[140px] h-8 text-xs">
                                 <SelectValue placeholder="Atendente" />
                             </SelectTrigger>
                             <SelectContent>
                                 <SelectItem value="all">Todos Atendentes</SelectItem>
-                            </SelectContent>
-                        </Select>
-
-                        <Select defaultValue="today">
-                            <SelectTrigger className="w-[130px] h-8 text-xs">
-                                <SelectValue placeholder="Período" />
-                            </SelectTrigger>
-                            <SelectContent>
-                                <SelectItem value="today">Hoje</SelectItem>
-                                <SelectItem value="yesterday">Ontem</SelectItem>
-                                <SelectItem value="week">Esta Semana</SelectItem>
-                                <SelectItem value="month">Este Mês</SelectItem>
                             </SelectContent>
                         </Select>
 

@@ -416,12 +416,34 @@ export const getCrmDashboardStats = async (req: Request, res: Response) => {
             companyId = req.query.companyId;
         }
 
+        const { startDate, endDate } = req.query;
+
         // Helper to generate safe filter clause with table alias
         const getFilter = (alias: string = '') => {
             const prefix = alias ? `${alias}.` : '';
             return companyId ? `${prefix}company_id = $1` : '1=1';
         };
         const filterParams = companyId ? [companyId] : [];
+        let dateFilterParams = [...filterParams]; // Copy for date-dependent queries in case we need index shifting if necessary, but here we can just append if strict order
+
+        // However, pg node driver uses $1, $2. So we need to be careful with index.
+        // Let's create specific parameter sets for each query to avoid index confusion.
+
+        // Base Params for Company Filter
+        const baseParams = companyId ? [companyId] : [];
+
+        // Date Logic
+        let dateCondition = "current_date";
+        let dateParams = [...baseParams];
+        let dateParamStartIndex = baseParams.length + 1;
+
+        if (startDate && endDate) {
+            dateCondition = `$${dateParamStartIndex}::date AND $${dateParamStartIndex + 1}::date`; // BETWEEN $2 AND $3
+            dateParams.push(String(startDate), String(endDate));
+        } else {
+            dateCondition = "CURRENT_DATE"; // Default to Today if no range
+        }
+
 
         // 1. Funnel Data (Stages + Lead Counts)
         let funnelRes;
@@ -463,14 +485,20 @@ export const getCrmDashboardStats = async (req: Request, res: Response) => {
         });
 
         // 2. Overview Stats
+        // Active Conversas (Snapshot, no date filter usually, or should it be "active during period"?)
+        // User asked for "date period". Usually "Active Conversations" means "currently open".
+        // Filtering "currently open" by "date range" is ambiguous.
+        // If users want "conversations that were active in that period", it's complex without audit logs.
+        // We will keep Active as Current Snapshot for now to match "Atendimentos > Abertos".
         const activeConvsRes = await pool.query(`
             SELECT COUNT(*) FROM whatsapp_conversations 
             WHERE ${getFilter('')} 
             AND status = 'OPEN'
             AND (is_group = false OR is_group IS NULL) 
             AND phone NOT LIKE '%@g.us'
-        `, filterParams);
+        `, baseParams);
 
+        // Messages Received (Flow) -> Apply Date Range
         const msgsTodayRes = await pool.query(`
             SELECT COUNT(*) FROM whatsapp_messages m
             JOIN whatsapp_conversations c ON m.conversation_id = c.id
@@ -478,17 +506,19 @@ export const getCrmDashboardStats = async (req: Request, res: Response) => {
             AND (c.is_group = false OR c.is_group IS NULL)
             AND c.phone NOT LIKE '%@g.us'
             AND m.direction = 'inbound' 
-            AND m.sent_at::date = CURRENT_DATE
-        `, filterParams);
+            AND m.sent_at::date BETWEEN ${startDate && endDate ? dateCondition : 'CURRENT_DATE AND CURRENT_DATE'}
+        `, dateParams);
 
+        // New Leads (Flow) -> Apply Date Range
         const newLeadsRes = await pool.query(`
             SELECT COUNT(*) FROM crm_leads 
             WHERE ${getFilter('')}
-            AND created_at::date = CURRENT_DATE
+            AND created_at::date BETWEEN ${startDate && endDate ? dateCondition : 'CURRENT_DATE AND CURRENT_DATE'}
             AND phone NOT LIKE '%@g.us'
             AND origin != 'Simulação'
-        `, filterParams);
+        `, dateParams);
 
+        // Attended Clients (Flow) -> Apply Date Range
         const attendedClientsRes = await pool.query(`
              SELECT COUNT(DISTINCT m.conversation_id) 
              FROM whatsapp_messages m
@@ -496,8 +526,9 @@ export const getCrmDashboardStats = async (req: Request, res: Response) => {
              WHERE ${getFilter('c')}
              AND (c.is_group = false OR c.is_group IS NULL) 
              AND c.phone NOT LIKE '%@g.us'
-             AND m.direction = 'outbound' AND m.sent_at::date = CURRENT_DATE
-        `, filterParams);
+             AND m.direction = 'outbound' 
+             AND m.sent_at::date BETWEEN ${startDate && endDate ? dateCondition : 'CURRENT_DATE AND CURRENT_DATE'}
+        `, dateParams);
 
         // Follow-ups summary
         const followUpsStatRes = await pool.query(`
