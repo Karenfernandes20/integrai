@@ -34,9 +34,15 @@ const getEvolutionConfig = async (user: any, targetCompanyId?: string) => {
                 config.instance = "integrai";
 
                 // Priority for SuperAdmin: DB Key (Company 1) > ENV Key
-                const res = await pool.query('SELECT evolution_apikey FROM companies WHERE id = 1 LIMIT 1');
-                if (res.rows.length > 0 && res.rows[0].evolution_apikey) {
-                    config.apikey = res.rows[0].evolution_apikey;
+                // Priority for SuperAdmin: DB Instance & Key (Company 1) > ENV Key
+                const res = await pool.query('SELECT evolution_instance, evolution_apikey FROM companies WHERE id = 1 LIMIT 1');
+                if (res.rows.length > 0) {
+                    if (res.rows[0].evolution_instance) {
+                        config.instance = res.rows[0].evolution_instance;
+                    }
+                    if (res.rows[0].evolution_apikey) {
+                        config.apikey = res.rows[0].evolution_apikey;
+                    }
                 }
                 return config;
             }
@@ -105,7 +111,7 @@ const getEvolutionConnectionStateInternal = async (user: any, targetCompanyId?: 
 
         const state = String(rawState).toLowerCase();
 
-        if (state === 'open') return 'Online';
+        if (state === 'open' || state === 'connected') return 'Online';
         if (state === 'connecting') return 'Conectando';
         if (state === 'close') return 'Offline';
         if (state.includes('qr') || state.includes('scann')) return 'QR Code pendente';
