@@ -198,6 +198,14 @@ export const runMigrations = async () => {
             );
         `);
 
+        try {
+            await pool.query("ALTER TABLE crm_leads ADD COLUMN IF NOT EXISTS instance VARCHAR(100)");
+        } catch (e) {
+            console.error("Error adding instance column to crm_leads:", e);
+        }
+
+
+
 
         // 5. Companies Updates
         try {

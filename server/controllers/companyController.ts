@@ -177,9 +177,10 @@ export const createCompany = async (req: Request, res: Response) => {
             const stageRes = await pool.query('SELECT id FROM crm_stages WHERE company_id = $1 AND name = $2 LIMIT 1', [newCompany.id, 'LEADS']);
             if (stageRes.rows.length > 0) {
                 await pool.query(
-                    `INSERT INTO crm_leads (name, phone, stage_id, company_id, description, value, origin) 
-                     VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-                    ['João Silva (Exemplo)', '5511999999999', stageRes.rows[0].id, newCompany.id, 'Este é um lead de exemplo. Arraste-o para mover de fase!', 1500.00, 'Simulação']
+                    `INSERT INTO crm_leads (name, phone, stage_id, company_id, description, value, origin, instance) 
+                     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+                    ['João Silva (Exemplo)', '5511999999999', stageRes.rows[0].id, newCompany.id, 'Este é um lead de exemplo. Arraste-o para mover de fase!', 1500.00, 'Simulação', newCompany.evolution_instance]
+
                 );
             }
 

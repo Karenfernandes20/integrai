@@ -423,6 +423,16 @@ export const getCrmDashboardStats = async (req: Request, res: Response) => {
             const prefix = alias ? `${alias}.` : '';
             return companyId ? `${prefix}company_id = $1` : '1=1';
         };
+
+        // TARGET INSTANCE LOGIC FOR FILTERING
+        let targetInstance: string | null = null;
+        if (companyId && pool) {
+            const instRes = await pool.query('SELECT evolution_instance FROM companies WHERE id = $1', [companyId]);
+            if (instRes.rows.length > 0) {
+                targetInstance = instRes.rows[0].evolution_instance;
+            }
+        }
+
         const filterParams = companyId ? [companyId] : [];
         let dateFilterParams = [...filterParams]; // Copy for date-dependent queries in case we need index shifting if necessary, but here we can just append if strict order
 
@@ -446,16 +456,24 @@ export const getCrmDashboardStats = async (req: Request, res: Response) => {
 
 
         // 1. Funnel Data (Stages + Lead Counts)
+        // Note: Funnel counts leads. Filters: Company + Instance (if applicable)
+        let funnelParams = [...baseParams];
+        let funnelInstanceFilter = '';
+        if (targetInstance) {
+            funnelParams.push(targetInstance);
+            funnelInstanceFilter = ` AND l.instance = $${funnelParams.length}`;
+        }
+
         let funnelRes;
         if (companyId) {
             funnelRes = await pool.query(`
                 SELECT s.name as label, COUNT(l.id) as count, s.position
                 FROM crm_stages s
-                LEFT JOIN crm_leads l ON s.id = l.stage_id AND l.company_id = $1 AND l.origin != 'Simulação'
+                LEFT JOIN crm_leads l ON s.id = l.stage_id AND l.company_id = $1 ${funnelInstanceFilter} AND l.origin != 'Simulação'
                 WHERE s.company_id = $1
                 GROUP BY s.id, s.name, s.position
                 ORDER BY s.position ASC
-            `, [companyId]);
+            `, funnelParams);
         } else {
             funnelRes = await pool.query(`
                 SELECT name as label, COUNT(id) as count, 0 as position
@@ -485,50 +503,102 @@ export const getCrmDashboardStats = async (req: Request, res: Response) => {
         });
 
         // 2. Overview Stats
-        // Active Conversas (Snapshot, no date filter usually, or should it be "active during period"?)
-        // User asked for "date period". Usually "Active Conversations" means "currently open".
-        // Filtering "currently open" by "date range" is ambiguous.
-        // If users want "conversations that were active in that period", it's complex without audit logs.
-        // We will keep Active as Current Snapshot for now to match "Atendimentos > Abertos".
+
+        // Active Conversas Params
+        let activeParams = [...baseParams];
+        let activeInstanceFilter = '';
+        if (targetInstance) {
+            activeParams.push(targetInstance);
+            activeInstanceFilter = ` AND instance = $${activeParams.length}`;
+        }
+
         const activeConvsRes = await pool.query(`
             SELECT COUNT(*) FROM whatsapp_conversations 
             WHERE ${getFilter('')} 
+            ${activeInstanceFilter}
             AND status = 'OPEN'
             AND (is_group = false OR is_group IS NULL) 
             AND phone NOT LIKE '%@g.us'
-        `, baseParams);
+        `, activeParams);
 
-        // Messages Received (Flow) -> Apply Date Range
+        // Messages Today Params
+        // Base ($1) + Instance? + Date1 + Date2
+        let msgsParams = [...baseParams];
+        let msgsInstanceFilter = '';
+        if (targetInstance) {
+            msgsParams.push(targetInstance);
+            msgsInstanceFilter = ` AND c.instance = $${msgsParams.length}`;
+        }
+
+        // Add dates
+        let msgsDateCondition = "CURRENT_DATE";
+        if (startDate && endDate) {
+            msgsParams.push(String(startDate), String(endDate));
+            msgsDateCondition = `$${msgsParams.length - 1}::date AND $${msgsParams.length}::date`;
+        } else {
+            msgsDateCondition = "CURRENT_DATE";
+        }
+
         const msgsTodayRes = await pool.query(`
             SELECT COUNT(*) FROM whatsapp_messages m
             JOIN whatsapp_conversations c ON m.conversation_id = c.id
             WHERE ${getFilter('c')}
+            ${msgsInstanceFilter}
             AND (c.is_group = false OR c.is_group IS NULL)
             AND c.phone NOT LIKE '%@g.us'
             AND m.direction = 'inbound' 
-            AND m.sent_at::date BETWEEN ${startDate && endDate ? dateCondition : 'CURRENT_DATE AND CURRENT_DATE'}
-        `, dateParams);
+            AND m.sent_at::date BETWEEN ${startDate && endDate ? msgsDateCondition : 'CURRENT_DATE AND CURRENT_DATE'}
+        `, msgsParams);
 
-        // New Leads (Flow) -> Apply Date Range
+        // New Leads Params
+        let leadsParams = [...baseParams];
+        let leadsInstanceFilter = '';
+        if (targetInstance) {
+            leadsParams.push(targetInstance);
+            leadsInstanceFilter = ` AND instance = $${leadsParams.length}`;
+        }
+
+        let leadsDateCondition = "CURRENT_DATE";
+        if (startDate && endDate) {
+            leadsParams.push(String(startDate), String(endDate));
+            leadsDateCondition = `$${leadsParams.length - 1}::date AND $${leadsParams.length}::date`;
+        }
+
         const newLeadsRes = await pool.query(`
             SELECT COUNT(*) FROM crm_leads 
             WHERE ${getFilter('')}
-            AND created_at::date BETWEEN ${startDate && endDate ? dateCondition : 'CURRENT_DATE AND CURRENT_DATE'}
+            ${leadsInstanceFilter}
+            AND created_at::date BETWEEN ${startDate && endDate ? leadsDateCondition : 'CURRENT_DATE AND CURRENT_DATE'}
             AND phone NOT LIKE '%@g.us'
             AND origin != 'Simulação'
-        `, dateParams);
+        `, leadsParams);
 
-        // Attended Clients (Flow) -> Apply Date Range
+        // Attended Clients Params
+        // Same structure as msgsParams
+        let attendedParams = [...baseParams];
+        let attendedInstanceFilter = '';
+        if (targetInstance) {
+            attendedParams.push(targetInstance);
+            attendedInstanceFilter = ` AND c.instance = $${attendedParams.length}`;
+        }
+
+        let attendedDateCondition = "CURRENT_DATE";
+        if (startDate && endDate) {
+            attendedParams.push(String(startDate), String(endDate));
+            attendedDateCondition = `$${attendedParams.length - 1}::date AND $${attendedParams.length}::date`;
+        }
+
         const attendedClientsRes = await pool.query(`
              SELECT COUNT(DISTINCT m.conversation_id) 
              FROM whatsapp_messages m
              JOIN whatsapp_conversations c ON m.conversation_id = c.id
              WHERE ${getFilter('c')}
+             ${attendedInstanceFilter}
              AND (c.is_group = false OR c.is_group IS NULL) 
              AND c.phone NOT LIKE '%@g.us'
              AND m.direction = 'outbound' 
-             AND m.sent_at::date BETWEEN ${startDate && endDate ? dateCondition : 'CURRENT_DATE AND CURRENT_DATE'}
-        `, dateParams);
+             AND m.sent_at::date BETWEEN ${startDate && endDate ? attendedDateCondition : 'CURRENT_DATE AND CURRENT_DATE'}
+        `, attendedParams);
 
         // Follow-ups summary
         const followUpsStatRes = await pool.query(`
@@ -537,7 +607,7 @@ export const getCrmDashboardStats = async (req: Request, res: Response) => {
                 COUNT(*) FILTER (WHERE status = 'pending' AND scheduled_at < NOW()) as overdue
             FROM crm_follow_ups
             WHERE ${getFilter('')}
-        `, filterParams);
+        `, baseParams);
 
         const recentFollowUpsRes = await pool.query(`
             SELECT f.*, COALESCE(l.name, c.contact_name) as contact_name
@@ -551,16 +621,26 @@ export const getCrmDashboardStats = async (req: Request, res: Response) => {
         `, filterParams);
 
         // 3. Realtime Activities
+        // 3. Realtime Activities
+        // Params management for Recent Activities
+        let recentParams = [...baseParams];
+        let recentInstanceFilter = '';
+        if (targetInstance) {
+            recentParams.push(targetInstance);
+            recentInstanceFilter = ` AND c.instance = $${recentParams.length}`;
+        }
+
         const recentMsgsRes = await pool.query(`
              SELECT m.content as text, m.sent_at, m.direction, c.phone, c.contact_name
              FROM whatsapp_messages m
              JOIN whatsapp_conversations c ON m.conversation_id = c.id
              WHERE ${getFilter('c')}
+             ${recentInstanceFilter}
              AND (c.is_group = false OR c.is_group IS NULL)
              AND c.phone NOT LIKE '%@g.us'
              ORDER BY m.sent_at DESC
              LIMIT 5
-        `, filterParams);
+        `, recentParams);
 
         const recentActivities = recentMsgsRes.rows.map(m => ({
             type: m.direction === 'inbound' ? 'msg_in' : 'msg_out',

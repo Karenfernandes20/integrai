@@ -853,9 +853,9 @@ export const handleWebhook = async (req: Request, res: Response) => {
                                 : name;
 
                             await pool!.query(
-                                `INSERT INTO crm_leads (name, phone, origin, stage_id, company_id, created_at, updated_at, description) 
-                                 VALUES ($1, $2, $3, $4, $5, NOW(), NOW(), 'Lead automático (Nova mensagem)')`,
-                                [bestName || name || phone, phone, 'WhatsApp', leadsStageId, companyId]
+                                `INSERT INTO crm_leads (name, phone, origin, stage_id, company_id, instance, created_at, updated_at, description) 
+                                 VALUES ($1, $2, $3, $4, $5, $6, NOW(), NOW(), 'Lead automático (Nova mensagem)')`,
+                                [bestName || name || phone, phone, 'WhatsApp', leadsStageId, companyId, instance]
                             );
                         } else if (checkLead.rows.length > 0) {
                             const lead = checkLead.rows[0];

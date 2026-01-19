@@ -1360,9 +1360,10 @@ export const handleEvolutionWebhook = async (req: Request, res: Response) => {
                   if (checkLead.rows.length === 0) {
                     console.log(`[CRM] Auto-creating lead for UNSAVED contact ${phone}`);
                     await pool.query(
-                      `INSERT INTO crm_leads (name, phone, stage_id, origin, created_at, updated_at)
-                                 VALUES ($1, $2, $3, 'WhatsApp', NOW(), NOW())`,
-                      [pushName || phone, phone, leadsStageId]
+                      `INSERT INTO crm_leads (name, phone, stage_id, origin, company_id, instance, created_at, updated_at)
+                                 VALUES ($1, $2, $3, 'WhatsApp', $4, $5, NOW(), NOW())`,
+                      [pushName || phone, phone, leadsStageId, resolvedCompanyId, instance]
+
                     );
                   }
                 } else {
