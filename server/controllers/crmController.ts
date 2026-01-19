@@ -416,7 +416,11 @@ export const getCrmDashboardStats = async (req: Request, res: Response) => {
             companyId = req.query.companyId;
         }
 
-        const filterClause = companyId ? 'company_id = $1' : '1=1';
+        // Helper to generate safe filter clause with table alias
+        const getFilter = (alias: string = '') => {
+            const prefix = alias ? `${alias}.` : '';
+            return companyId ? `${prefix}company_id = $1` : '1=1';
+        };
         const filterParams = companyId ? [companyId] : [];
 
         // 1. Funnel Data (Stages + Lead Counts)
@@ -461,7 +465,7 @@ export const getCrmDashboardStats = async (req: Request, res: Response) => {
         // 2. Overview Stats
         const activeConvsRes = await pool.query(`
             SELECT COUNT(*) FROM whatsapp_conversations 
-            WHERE ${filterClause} 
+            WHERE ${getFilter('')} 
             AND (is_group = false OR is_group IS NULL) 
             AND phone NOT LIKE '%@g.us'
         `, filterParams);
@@ -469,7 +473,7 @@ export const getCrmDashboardStats = async (req: Request, res: Response) => {
         const msgsTodayRes = await pool.query(`
             SELECT COUNT(*) FROM whatsapp_messages m
             JOIN whatsapp_conversations c ON m.conversation_id = c.id
-            WHERE c.${filterClause}
+            WHERE ${getFilter('c')}
             AND (c.is_group = false OR c.is_group IS NULL)
             AND c.phone NOT LIKE '%@g.us'
             AND m.direction = 'inbound' 
@@ -478,7 +482,7 @@ export const getCrmDashboardStats = async (req: Request, res: Response) => {
 
         const newLeadsRes = await pool.query(`
             SELECT COUNT(*) FROM crm_leads 
-            WHERE ${filterClause}
+            WHERE ${getFilter('')}
             AND created_at::date = CURRENT_DATE
             AND phone NOT LIKE '%@g.us'
             AND origin != 'Simulação'
@@ -488,7 +492,7 @@ export const getCrmDashboardStats = async (req: Request, res: Response) => {
              SELECT COUNT(DISTINCT m.conversation_id) 
              FROM whatsapp_messages m
              JOIN whatsapp_conversations c ON m.conversation_id = c.id
-             WHERE c.${filterClause}
+             WHERE ${getFilter('c')}
              AND (c.is_group = false OR c.is_group IS NULL) 
              AND c.phone NOT LIKE '%@g.us'
              AND m.direction = 'outbound' AND m.sent_at::date = CURRENT_DATE
@@ -500,7 +504,7 @@ export const getCrmDashboardStats = async (req: Request, res: Response) => {
                 COUNT(*) FILTER (WHERE status = 'pending') as pending,
                 COUNT(*) FILTER (WHERE status = 'pending' AND scheduled_at < NOW()) as overdue
             FROM crm_follow_ups
-            WHERE ${filterClause}
+            WHERE ${getFilter('')}
         `, filterParams);
 
         const recentFollowUpsRes = await pool.query(`
@@ -508,7 +512,7 @@ export const getCrmDashboardStats = async (req: Request, res: Response) => {
             FROM crm_follow_ups f
             LEFT JOIN crm_leads l ON f.lead_id = l.id
             LEFT JOIN whatsapp_conversations c ON f.conversation_id = c.id
-            WHERE f.${filterClause}
+            WHERE ${getFilter('f')}
             AND f.status = 'pending'
             ORDER BY f.scheduled_at ASC
             LIMIT 5
@@ -519,7 +523,7 @@ export const getCrmDashboardStats = async (req: Request, res: Response) => {
              SELECT m.content as text, m.sent_at, m.direction, c.phone, c.contact_name
              FROM whatsapp_messages m
              JOIN whatsapp_conversations c ON m.conversation_id = c.id
-             WHERE c.${filterClause}
+             WHERE ${getFilter('c')}
              AND (c.is_group = false OR c.is_group IS NULL)
              AND c.phone NOT LIKE '%@g.us'
              ORDER BY m.sent_at DESC
@@ -566,7 +570,7 @@ export const getCrmDashboardStats = async (req: Request, res: Response) => {
                 receivedMessages: 45,
                 attendedClients: 8,
                 newLeads: 3,
-                whatsappStatus: 'Offline (Mock)',
+                whatsappStatus: `Error: ${error.message || 'Unknown'}`,
                 followUpPending: 2,
                 followUpOverdue: 1
             },
