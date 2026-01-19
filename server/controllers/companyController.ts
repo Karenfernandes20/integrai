@@ -231,7 +231,9 @@ export const updateCompany = async (req: Request, res: Response) => {
         const { name, cnpj, city, state, phone, evolution_instance, evolution_apikey, operation_type, remove_logo,
             primary_color, secondary_color, system_name, custom_domain, plan_id, due_date, max_instances,
             // Instagram
-            instagram_enabled, instagram_app_id, instagram_app_secret, instagram_page_id, instagram_business_id, instagram_access_token
+            instagram_enabled, instagram_app_id, instagram_app_secret, instagram_page_id, instagram_business_id, instagram_access_token,
+            // N8N
+            n8n_base_url, n8n_api_key, n8n_webhook_secret
         } = req.body;
 
         console.log('DEBUG: updateCompany request', { id, body: req.body, hasFile: !!req.file });
@@ -242,7 +244,6 @@ export const updateCompany = async (req: Request, res: Response) => {
 
         // --- INSTAGRAM VALIDATION ---
         let instagramStatus = 'INATIVO'; // Default
-
         let newIsInstagramEnabled = instagram_enabled === 'true' || instagram_enabled === true;
 
         if (instagram_access_token && instagram_page_id) {
@@ -335,7 +336,10 @@ export const updateCompany = async (req: Request, res: Response) => {
                 instagram_page_id = $21,
                 instagram_business_id = $22,
                 instagram_access_token = $23,
-                instagram_status = $24
+                instagram_status = $24,
+                n8n_base_url = $25,
+                n8n_api_key = $26,
+                n8n_webhook_secret = $27
             WHERE id = $10 
             RETURNING *
         `;
@@ -366,8 +370,12 @@ export const updateCompany = async (req: Request, res: Response) => {
             instagram_page_id || null, // $21
             instagram_business_id || null, // $22
             finalAccessToken || null, // $23
-            instagramStatus // $24
+            instagramStatus, // $24
+            n8n_base_url || null, // $25
+            n8n_api_key || null, // $26
+            n8n_webhook_secret || null // $27
         ];
+
 
         // --- INSTANCE SYNC ---
         // Create new instances if limit increased

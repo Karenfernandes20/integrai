@@ -801,6 +801,26 @@ const runWhatsappMigrations = async () => {
         } catch (e) {
             console.error("Error applying plans migration:", e);
         }
+
+        // --- N8N Integration Migration ---
+        console.log("Applying N8N Integration Migration...");
+        try {
+            // Companies: N8N Config
+            await pool.query(`ALTER TABLE companies ADD COLUMN IF NOT EXISTS n8n_base_url TEXT`);
+            await pool.query(`ALTER TABLE companies ADD COLUMN IF NOT EXISTS n8n_api_key TEXT`);
+            await pool.query(`ALTER TABLE companies ADD COLUMN IF NOT EXISTS n8n_webhook_secret TEXT`);
+
+            // Workflows: Mapping
+            await pool.query(`ALTER TABLE system_workflows ADD COLUMN IF NOT EXISTS n8n_workflow_id VARCHAR(100)`);
+            await pool.query(`ALTER TABLE system_workflows ADD COLUMN IF NOT EXISTS n8n_last_synced_at TIMESTAMP`);
+            await pool.query(`ALTER TABLE system_workflows ADD COLUMN IF NOT EXISTS n8n_active BOOLEAN DEFAULT FALSE`);
+            await pool.query('CREATE INDEX IF NOT EXISTS idx_workflows_n8n_id ON system_workflows(n8n_workflow_id)');
+
+            console.log("N8N columns added.");
+        } catch (e) {
+            console.error("Error applying N8N migration:", e);
+        }
+
         console.log("Workflows migrations finished.");
         console.log("Universal Audit logs migration finished.");
         console.log("AI Agents migrations finished.");

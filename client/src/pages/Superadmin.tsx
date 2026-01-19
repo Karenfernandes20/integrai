@@ -83,6 +83,10 @@ interface Company {
   instagram_business_id?: string;
   instagram_access_token?: string;
   instagram_status?: 'ATIVO' | 'INATIVO' | 'ERRO';
+  // N8N fields
+  n8n_base_url?: string;
+  n8n_api_key?: string;
+  n8n_webhook_secret?: string;
 }
 
 interface AppUser {
@@ -138,6 +142,10 @@ const SuperadminPage = () => {
     instagram_business_id: "",
     instagram_access_token: "",
     instagram_status: "",
+    // N8N
+    n8n_base_url: "",
+    n8n_api_key: "",
+    n8n_webhook_secret: ""
   });
   const [plans, setPlans] = useState<any[]>([]); // New state for plans
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
@@ -346,7 +354,11 @@ const SuperadminPage = () => {
       instagram_page_id: company.instagram_page_id || "",
       instagram_business_id: company.instagram_business_id || "",
       instagram_access_token: company.instagram_access_token || "",
-      instagram_status: company.instagram_status || ""
+      instagram_status: company.instagram_status || "",
+      // N8N Mapping
+      n8n_base_url: company.n8n_base_url || "",
+      n8n_api_key: company.n8n_api_key || "",
+      n8n_webhook_secret: company.n8n_webhook_secret || ""
     });
     setSelectedFile(null);
     setRemoveLogo(false);
@@ -427,7 +439,10 @@ const SuperadminPage = () => {
       instagram_page_id: "",
       instagram_business_id: "",
       instagram_access_token: "",
-      instagram_status: ""
+      instagram_status: "",
+      n8n_base_url: "",
+      n8n_api_key: "",
+      n8n_webhook_secret: ""
     });
     setSelectedFile(null);
     setRemoveLogo(false);
@@ -489,6 +504,11 @@ const SuperadminPage = () => {
       } else {
         formData.append("instagram_enabled", "false");
       }
+
+      // N8N Fields
+      if (formValues.n8n_base_url) formData.append("n8n_base_url", formValues.n8n_base_url);
+      if (formValues.n8n_api_key) formData.append("n8n_api_key", formValues.n8n_api_key);
+      if (formValues.n8n_webhook_secret) formData.append("n8n_webhook_secret", formValues.n8n_webhook_secret);
 
       if (selectedFile) {
         formData.append("logo", selectedFile);
@@ -1003,6 +1023,14 @@ const SuperadminPage = () => {
                       <Input name="instagram_access_token" placeholder="Access Token" type="password" value={formValues.instagram_access_token} onChange={handleChange} className="h-8 text-xs" />
                     </div>
                   )}
+
+                  <Separator className="my-2" />
+                  <div className="space-y-1.5">
+                    <Label>Integração N8N</Label>
+                    <Input name="n8n_base_url" placeholder="URL Base (ex: https://n8n.exemplo.com)" value={formValues.n8n_base_url} onChange={handleChange} className="h-8 text-xs" />
+                    <Input name="n8n_api_key" placeholder="API Key" type="password" value={formValues.n8n_api_key} onChange={handleChange} className="h-8 text-xs" />
+                    <Input name="n8n_webhook_secret" placeholder="Webhook Secret (para eventos de entrada)" value={formValues.n8n_webhook_secret} onChange={handleChange} className="h-8 text-xs" />
+                  </div>
 
                   <Separator className="my-2" />
                   <div className="space-y-1.5">

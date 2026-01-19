@@ -3,6 +3,7 @@ import { pool } from '../db';
 import { logAudit } from '../auditLogger';
 
 import { checkLimit } from '../services/limitService';
+import { syncWorkflowToN8n, deleteN8nWorkflow } from '../services/n8nService';
 
 export const getWorkflows = async (req: Request, res: Response) => {
     try {
@@ -70,6 +71,11 @@ export const createWorkflow = async (req: Request, res: Response) => {
             details: `Criou workflow automático: ${workflow.name}`
         });
 
+        // N8N Sync
+        if (targetCompanyId) {
+            syncWorkflowToN8n(targetCompanyId, { ...workflow, status: 'active' }).catch(err => console.error('[N8N Sync Error]', err));
+        }
+
         res.status(201).json(workflow);
     } catch (error) {
         res.status(500).json({ error: 'Failed to create workflow' });
@@ -113,6 +119,11 @@ export const updateWorkflow = async (req: Request, res: Response) => {
             details: `Atualizou workflow: ${result.rows[0].name}`
         });
 
+        // N8N Sync
+        if (result.rows[0].company_id) {
+            syncWorkflowToN8n(result.rows[0].company_id, result.rows[0]).catch(err => console.error('[N8N Sync Error]', err));
+        }
+
         res.json(result.rows[0]);
     } catch (error) {
         res.status(500).json({ error: 'Failed to update workflow' });
@@ -126,10 +137,12 @@ export const deleteWorkflow = async (req: Request, res: Response) => {
         const isSuperAdmin = user.role === 'SUPERADMIN';
 
         // Check ownership
-        const currentRes = await pool!.query('SELECT company_id FROM system_workflows WHERE id = $1', [id]);
+        const currentRes = await pool!.query('SELECT company_id, n8n_workflow_id FROM system_workflows WHERE id = $1', [id]);
         if (currentRes.rowCount === 0) return res.status(404).json({ error: 'Workflow not found' });
 
-        if (!isSuperAdmin && currentRes.rows[0].company_id !== user.company_id) {
+        const { company_id, n8n_workflow_id } = currentRes.rows[0];
+
+        if (!isSuperAdmin && company_id !== user.company_id) {
             return res.status(403).json({ error: 'Access denied' });
         }
 
@@ -137,13 +150,18 @@ export const deleteWorkflow = async (req: Request, res: Response) => {
 
         await logAudit({
             userId: user.id,
-            companyId: result.rows[0].company_id,
+            companyId: company_id,
             action: 'delete',
             resourceType: 'setting',
             resourceId: id,
             oldValues: result.rows[0],
             details: `Removeu workflow: ${result.rows[0].name}`
         });
+
+        // N8N Sync
+        if (company_id && n8n_workflow_id) {
+            deleteN8nWorkflow(company_id, n8n_workflow_id).catch(err => console.error('[N8N Sync Error]', err));
+        }
 
         res.json({ message: 'Workflow deleted' });
     } catch (error) {
