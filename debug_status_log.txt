@@ -1,0 +1,3 @@
+Starting check...
+Error: password authentication failed for user "postgres"
+{"length":78,"name":"error","severity":"FATAL","code":"28P01"}

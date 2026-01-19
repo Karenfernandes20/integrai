@@ -94,20 +94,15 @@ const getEvolutionConnectionStateInternal = async (user: any, targetCompanyId?: 
 
         if (!response.ok) {
             console.error(`[CRM Dashboard] Status Fetch Failed for '${instance}'. Status: ${response.status}`);
-            return 'Offline';
+            return `Offline (API ${response.status})`;
         }
 
         const data = await response.json();
-        // Evolution returns { instance: { state: 'open' | 'close' | 'connecting' ... } }
         const rawState = data?.instance?.state || data?.state;
 
-        // Log explicitly for debugging
         console.log(`[CRM Dashboard] Instance '${instance}' Status: ${rawState}`);
 
-        if (!rawState) return 'Offline';
-
-
-        if (!rawState) return 'Offline';
+        if (!rawState) return 'Offline (No State Data)';
 
         const state = String(rawState).toLowerCase();
 
@@ -116,10 +111,10 @@ const getEvolutionConnectionStateInternal = async (user: any, targetCompanyId?: 
         if (state === 'close') return 'Offline';
         if (state.includes('qr') || state.includes('scann')) return 'QR Code pendente';
 
-        return 'Offline'; // Default for unknown states
-    } catch (error) {
+        return `Offline (Raw: ${rawState})`;
+    } catch (error: any) {
         console.error(`[CRM Dashboard] Exception checking status:`, error);
-        return 'Offline';
+        return `Offline (Err: ${error.message})`;
     }
 };
 
