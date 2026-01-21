@@ -2175,13 +2175,32 @@ export const getSystemWhatsappStatus = async (req: Request, res: Response) => {
       }
     }
 
-    // Se nenhuma instância existir no banco
+    // Se nenhuma instância existir no banco, verificamos o legado e tentamos migrar
     if (!targetInstance) {
-      return res.json({
-        status: 'disconnected',
-        message: 'Nenhuma instância configurada.',
-        instance: null
-      });
+      // Fallback Legado: Verificar tabela companies
+      if (companyId) {
+        const legacyRes = await pool!.query("SELECT evolution_instance, evolution_apikey FROM companies WHERE id = $1", [companyId]);
+        if (legacyRes.rows.length > 0 && legacyRes.rows[0].evolution_instance) {
+          const legacyInstanceName = legacyRes.rows[0].evolution_instance;
+          console.log(`[SystemStatus] Checking Legacy Instance for Migration: ${legacyInstanceName}`);
+
+          // Cria um objeto temporário para validação
+          targetInstance = {
+            instance_key: legacyInstanceName,
+            status: 'unknown',
+            phone: 'Migrating...',
+            is_legacy_check: true // Flag para saber que precisamos criar depois
+          };
+        }
+      }
+
+      if (!targetInstance) {
+        return res.json({
+          status: 'disconnected',
+          message: 'Nenhuma instância configurada.',
+          instance: null
+        });
+      }
     }
 
     // 2. BUSCA CONFIGURAÇÃO DA EVOLUTION (URL/KEY)
@@ -2224,10 +2243,22 @@ export const getSystemWhatsappStatus = async (req: Request, res: Response) => {
       if (['open', 'connected', 'online'].includes(state)) finalStatus = 'connected';
       else if (['connecting', 'pairing'].includes(state)) finalStatus = 'connecting';
 
-      // 4. ATUALIZA O BANCO SE HOUVER MUDANÇA (Self-Healing)
-      if (targetInstance.status !== finalStatus) {
-        console.log(`[SystemStatus] Updating DB for ${instance}: ${targetInstance.status} -> ${finalStatus}`);
-        await pool!.query("UPDATE company_instances SET status = $1, updated_at = NOW() WHERE instance_key = $2", [finalStatus, instance]);
+      // 4. ATUALIZA O BANCO SE HOUVER MUDANÇA (Self-Healing & Migration)
+      if (finalStatus !== 'disconnected' || targetInstance.status !== finalStatus) {
+        if (targetInstance.is_legacy_check && finalStatus === 'connected') {
+          // MIGRATION: Insert logic
+          console.log(`[SystemStatus] MIGRATING Legacy Instance ${instance} to company_instances...`);
+          await pool!.query(
+            `INSERT INTO company_instances (company_id, instance_key, api_key, status, phone, created_at, updated_at)
+                  VALUES ($1, $2, $3, $4, $5, NOW(), NOW())
+                  ON CONFLICT (instance_key) DO UPDATE SET status = $4, updated_at = NOW()`,
+            [companyId, instance, apikey, finalStatus, 'Importado']
+          );
+        } else if (!targetInstance.is_legacy_check && targetInstance.status !== finalStatus) {
+          // UPDATE Logic
+          console.log(`[SystemStatus] Updating DB for ${instance}: ${targetInstance.status} -> ${finalStatus}`);
+          await pool!.query("UPDATE company_instances SET status = $1, updated_at = NOW() WHERE instance_key = $2", [finalStatus, instance]);
+        }
       }
 
       return res.json({
