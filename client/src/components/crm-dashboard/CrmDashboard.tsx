@@ -29,6 +29,17 @@ export const CrmDashboard = ({ company }: CrmDashboardProps) => {
         const fetchDashboard = async () => {
             try {
                 const token = localStorage.getItem("auth_token");
+
+                // 1. Ping System Status to Self-Heal DB Logic
+                try {
+                    await fetch(`/api/system/whatsapp/status`, {
+                        headers: { "Authorization": `Bearer ${token}` }
+                    });
+                } catch (err) {
+                    console.warn("Status ping failed", err);
+                }
+
+                // 2. Fetch Dashboard Data
                 let url = company.id && company.id !== 'superadmin-view'
                     ? `/api/crm/dashboard?companyId=${company.id}`
                     : "/api/crm/dashboard?";
