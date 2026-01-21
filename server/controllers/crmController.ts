@@ -427,9 +427,20 @@ export const getCrmDashboardStats = async (req: Request, res: Response) => {
         // TARGET INSTANCE LOGIC FOR FILTERING
         let targetInstance: string | null = null;
         if (companyId && pool) {
-            const instRes = await pool.query('SELECT evolution_instance FROM companies WHERE id = $1', [companyId]);
+            // Prioridade 1: Instância conectada na tabela company_instances
+            const instRes = await pool.query(
+                "SELECT instance_key FROM company_instances WHERE company_id = $1 AND status = 'connected' LIMIT 1",
+                [companyId]
+            );
+
             if (instRes.rows.length > 0) {
-                targetInstance = instRes.rows[0].evolution_instance;
+                targetInstance = instRes.rows[0].instance_key;
+            } else {
+                // Prioridade 2: Fallback para a coluna legada evolution_instance na tabela companies
+                const compRes = await pool.query('SELECT evolution_instance FROM companies WHERE id = $1', [companyId]);
+                if (compRes.rows.length > 0 && compRes.rows[0].evolution_instance) {
+                    targetInstance = compRes.rows[0].evolution_instance;
+                }
             }
         }
 
@@ -461,7 +472,7 @@ export const getCrmDashboardStats = async (req: Request, res: Response) => {
         let funnelInstanceFilter = '';
         if (targetInstance) {
             funnelParams.push(targetInstance);
-            funnelInstanceFilter = ` AND l.instance = $${funnelParams.length}`;
+            funnelInstanceFilter = ` AND LOWER(l.instance) = LOWER($${funnelParams.length})`;
         }
 
         let funnelRes;
@@ -509,7 +520,7 @@ export const getCrmDashboardStats = async (req: Request, res: Response) => {
         let activeInstanceFilter = '';
         if (targetInstance) {
             activeParams.push(targetInstance);
-            activeInstanceFilter = ` AND instance = $${activeParams.length}`;
+            activeInstanceFilter = ` AND LOWER(instance) = LOWER($${activeParams.length})`;
         }
 
         const activeConvsRes = await pool.query(`
@@ -527,7 +538,7 @@ export const getCrmDashboardStats = async (req: Request, res: Response) => {
         let msgsInstanceFilter = '';
         if (targetInstance) {
             msgsParams.push(targetInstance);
-            msgsInstanceFilter = ` AND c.instance = $${msgsParams.length}`;
+            msgsInstanceFilter = ` AND LOWER(c.instance) = LOWER($${msgsParams.length})`;
         }
 
         // Add dates
@@ -555,7 +566,7 @@ export const getCrmDashboardStats = async (req: Request, res: Response) => {
         let leadsInstanceFilter = '';
         if (targetInstance) {
             leadsParams.push(targetInstance);
-            leadsInstanceFilter = ` AND instance = $${leadsParams.length}`;
+            leadsInstanceFilter = ` AND LOWER(instance) = LOWER($${leadsParams.length})`;
         }
 
         let leadsDateCondition = "CURRENT_DATE";
@@ -579,7 +590,7 @@ export const getCrmDashboardStats = async (req: Request, res: Response) => {
         let attendedInstanceFilter = '';
         if (targetInstance) {
             attendedParams.push(targetInstance);
-            attendedInstanceFilter = ` AND c.instance = $${attendedParams.length}`;
+            attendedInstanceFilter = ` AND LOWER(c.instance) = LOWER($${attendedParams.length})`;
         }
 
         let attendedDateCondition = "CURRENT_DATE";
@@ -627,7 +638,7 @@ export const getCrmDashboardStats = async (req: Request, res: Response) => {
         let recentInstanceFilter = '';
         if (targetInstance) {
             recentParams.push(targetInstance);
-            recentInstanceFilter = ` AND c.instance = $${recentParams.length}`;
+            recentInstanceFilter = ` AND LOWER(m.instance_key) = LOWER($${recentParams.length})`;
         }
 
         const recentMsgsRes = await pool.query(`
