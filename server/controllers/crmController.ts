@@ -435,17 +435,29 @@ export const getCrmDashboardStats = async (req: Request, res: Response) => {
                 activeInstanceId = adminCompRes.rows[0]?.whatsapp_instance_id;
             }
         } else if (companyId) {
-            // Empresa Mode: SELECT whatsapp_instance_id FROM companies
-            const compRes = await pool.query("SELECT whatsapp_instance_id FROM companies WHERE id = $1", [companyId]);
-            activeInstanceId = compRes.rows[0]?.whatsapp_instance_id;
+            // Empresa Mode: Prioritize any CONNECTED instance
+            // 1. Try to find any instance that is actually connected/open for this company
+            const connectedInstRes = await pool.query(
+                "SELECT id, whatsapp_instance_id FROM companies c LEFT JOIN company_instances ci ON ci.company_id = c.id WHERE c.id = $1 AND ci.status IN ('open', 'connected') ORDER BY ci.updated_at DESC LIMIT 1",
+                [companyId]
+            );
 
-            // Fallback: Se não estiver setado no company, busca a primeira conectada via QR
+            if (connectedInstRes.rows.length > 0 && connectedInstRes.rows[0].id) {
+                // Found a live connected instance!
+                activeInstanceId = connectedInstRes.rows[0].id;
+            } else {
+                // If none explicitly connected, fallback to the one assigned in companies table (even if offline, to show status)
+                const compRes = await pool.query("SELECT whatsapp_instance_id FROM companies WHERE id = $1", [companyId]);
+                activeInstanceId = compRes.rows[0]?.whatsapp_instance_id;
+            }
+
+            // Fallback 2: If still null, try one marked as 'connecting' or just the most recent created one
             if (!activeInstanceId) {
-                const instRes = await pool.query(
-                    "SELECT id FROM company_instances WHERE company_id = $1 AND status = 'connected' LIMIT 1",
+                const anyInstRes = await pool.query(
+                    "SELECT id FROM company_instances WHERE company_id = $1 ORDER BY created_at DESC LIMIT 1",
                     [companyId]
                 );
-                activeInstanceId = instRes.rows[0]?.id || null;
+                activeInstanceId = anyInstRes.rows[0]?.id || null;
             }
         }
 
