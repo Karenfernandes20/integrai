@@ -569,26 +569,62 @@ export const getCrmDashboardStats = async (req: Request, res: Response) => {
         const attendedRes = await pool.query(attendedQuery, [...activeParams, activeInstanceKey, dateStart, dateEnd]);
 
 
-        // Mensagens Recebidas (Inbound) - Usa instance_id
-        const receivedMsgsQuery = `
-            SELECT COUNT(*) FROM whatsapp_messages 
-            WHERE ${getFilter('')} 
-            AND instance_id = $${activeParams.length + 1}
-            AND direction = 'inbound'
-            AND sent_at::date BETWEEN $${activeParams.length + 2} AND $${activeParams.length + 3}
-        `; // Params: [comp, id, start, end]
-        const receivedMsgsRes = await pool.query(receivedMsgsQuery, [...activeParams, activeInstanceId, dateStart, dateEnd]);
+        // Mensagens Recebidas (Inbound)
+        let receivedMsgsQuery;
+        let receivedParams;
+
+        if (activeInstanceId === -1) {
+            // LEGACY/HYBRID: Join with conversations to filter by instance KEY
+            receivedMsgsQuery = `
+                SELECT COUNT(m.*) FROM whatsapp_messages m
+                JOIN whatsapp_conversations c ON m.conversation_id = c.id
+                WHERE ${getFilter('m')} 
+                AND c.instance = $${activeParams.length + 1}
+                AND m.direction = 'inbound'
+                AND m.sent_at::date BETWEEN $${activeParams.length + 2} AND $${activeParams.length + 3}
+            `;
+            receivedParams = [...activeParams, activeInstanceKey, dateStart, dateEnd];
+        } else {
+            // STANDARD: Filter by instance_id
+            receivedMsgsQuery = `
+                SELECT COUNT(*) FROM whatsapp_messages 
+                WHERE ${getFilter('')} 
+                AND instance_id = $${activeParams.length + 1}
+                AND direction = 'inbound'
+                AND sent_at::date BETWEEN $${activeParams.length + 2} AND $${activeParams.length + 3}
+            `;
+            receivedParams = [...activeParams, activeInstanceId, dateStart, dateEnd];
+        }
+        const receivedMsgsRes = await pool.query(receivedMsgsQuery, receivedParams);
 
 
-        // Mensagens Enviadas (Outbound) - Usa instance_id
-        const sentMsgsQuery = `
-            SELECT COUNT(*) FROM whatsapp_messages 
-            WHERE ${getFilter('')} 
-            AND instance_id = $${activeParams.length + 1}
-            AND direction = 'outbound'
-            AND sent_at::date BETWEEN $${activeParams.length + 2} AND $${activeParams.length + 3}
-        `; // Params: [comp, id, start, end]
-        const sentMsgsRes = await pool.query(sentMsgsQuery, [...activeParams, activeInstanceId, dateStart, dateEnd]);
+        // Mensagens Enviadas (Outbound)
+        let sentMsgsQuery;
+        let sentParams;
+
+        if (activeInstanceId === -1) {
+            // LEGACY/HYBRID: Join with conversations
+            sentMsgsQuery = `
+                SELECT COUNT(m.*) FROM whatsapp_messages m
+                JOIN whatsapp_conversations c ON m.conversation_id = c.id
+                WHERE ${getFilter('m')} 
+                AND c.instance = $${activeParams.length + 1}
+                AND m.direction = 'outbound'
+                AND m.sent_at::date BETWEEN $${activeParams.length + 2} AND $${activeParams.length + 3}
+            `;
+            sentParams = [...activeParams, activeInstanceKey, dateStart, dateEnd];
+        } else {
+            // STANDARD: Filter by instance_id
+            sentMsgsQuery = `
+                SELECT COUNT(*) FROM whatsapp_messages 
+                WHERE ${getFilter('')} 
+                AND instance_id = $${activeParams.length + 1}
+                AND direction = 'outbound'
+                AND sent_at::date BETWEEN $${activeParams.length + 2} AND $${activeParams.length + 3}
+            `;
+            sentParams = [...activeParams, activeInstanceId, dateStart, dateEnd];
+        }
+        const sentMsgsRes = await pool.query(sentMsgsQuery, sentParams);
 
 
         // Novos Leads - Usa instance key (schema legacy)
