@@ -418,243 +418,219 @@ export const getCrmDashboardStats = async (req: Request, res: Response) => {
 
         const { startDate, endDate } = req.query;
 
-        // Helper to generate safe filter clause with table alias
+        // 1. DETECÇÃO DA INSTÂNCIA ATIVA (REGRA MESTRA)
+        let activeInstanceId: number | null = null;
+        let activeInstanceKey: string | null = null;
+        let activeInstancePhone: string | null = null;
+        let activeInstanceStatus: string = 'disconnected';
+
+        if (user.role === 'SUPERADMIN' && !req.query.companyId) {
+            // SuperAdmin Global Mode: Número oficial da Integrai (System Settings)
+            // Se não houver setting, tenta pegar da Company 1 (Admin) como fallback
+            const settingsRes = await pool.query("SELECT value->>'instance_id' as id FROM system_settings WHERE key = 'integrai_official_instance'");
+            if (settingsRes.rows.length > 0 && settingsRes.rows[0].id) {
+                activeInstanceId = parseInt(settingsRes.rows[0].id);
+            } else {
+                const adminCompRes = await pool.query("SELECT whatsapp_instance_id FROM companies WHERE id = 1");
+                activeInstanceId = adminCompRes.rows[0]?.whatsapp_instance_id;
+            }
+        } else if (companyId) {
+            // Empresa Mode: SELECT whatsapp_instance_id FROM companies
+            const compRes = await pool.query("SELECT whatsapp_instance_id FROM companies WHERE id = $1", [companyId]);
+            activeInstanceId = compRes.rows[0]?.whatsapp_instance_id;
+
+            // Fallback: Se não estiver setado no company, busca a primeira conectada via QR
+            if (!activeInstanceId) {
+                const instRes = await pool.query(
+                    "SELECT id FROM company_instances WHERE company_id = $1 AND status = 'connected' LIMIT 1",
+                    [companyId]
+                );
+                activeInstanceId = instRes.rows[0]?.id || null;
+            }
+        }
+
+        // BLOQUEIO DE SEGURANÇA
+        if (!activeInstanceId) {
+            console.warn(`[SECURITY] Dashboard access blocked — instance not resolved for user ${user.id}`);
+            return res.status(403).json({
+                error: 'Instance not resolved',
+                message: "Conecte um número de WhatsApp via QR Code para visualizar os dados do dashboard."
+            });
+        }
+
+        // Carrega metadados da instância ativa para exibição e uso como filtro de chave
+        const activeInstRes = await pool.query("SELECT * FROM company_instances WHERE id = $1", [activeInstanceId]);
+        const instanceData = activeInstRes.rows[0];
+        if (!instanceData) {
+            return res.status(403).json({
+                error: 'Instance Data Not Found',
+                message: "A instância configurada não foi encontrada no banco de dados."
+            });
+        }
+        activeInstanceKey = instanceData.instance_key;
+        activeInstancePhone = instanceData.phone;
+        activeInstanceStatus = instanceData.status;
+
+
+        // Helper para filtros
         const getFilter = (alias: string = '') => {
             const prefix = alias ? `${alias}.` : '';
             return companyId ? `${prefix}company_id = $1` : '1=1';
         };
 
-        // TARGET INSTANCE LOGIC FOR FILTERING
-        let targetInstance: string | null = null;
-        if (companyId && pool) {
-            // Prioridade 1: Instância conectada na tabela company_instances
-            const instRes = await pool.query(
-                "SELECT instance_key FROM company_instances WHERE company_id = $1 AND status = 'connected' LIMIT 1",
-                [companyId]
-            );
+        const activeParams = companyId ? [companyId] : [];
+        const dateStart = startDate ? String(startDate) : new Date().toISOString().split('T')[0];
+        const dateEnd = endDate ? String(endDate) : new Date().toISOString().split('T')[0];
 
-            if (instRes.rows.length > 0) {
-                targetInstance = instRes.rows[0].instance_key;
-            } else {
-                // Prioridade 2: Fallback para a coluna legada evolution_instance na tabela companies
-                const compRes = await pool.query('SELECT evolution_instance FROM companies WHERE id = $1', [companyId]);
-                if (compRes.rows.length > 0 && compRes.rows[0].evolution_instance) {
-                    targetInstance = compRes.rows[0].evolution_instance;
-                }
-            }
-        }
+        // Params padronizados para queries
+        // $1 = companyId (se existir) ou ignore
+        // $2 = activeInstanceKey
+        // $3 = activeInstanceId
+        // $4 = startDate
+        // $5 = endDate
 
-        const filterParams = companyId ? [companyId] : [];
-        let dateFilterParams = [...filterParams]; // Copy for date-dependent queries in case we need index shifting if necessary, but here we can just append if strict order
+        // Como o número de params varia se companyId existe ou não, vamos construir dinamicamente
+        const buildParams = (contextParams: any[], useKey: boolean, useId: boolean, useDate: boolean) => {
+            const params = [...contextParams];
+            if (useKey) params.push(activeInstanceKey);
+            if (useId) params.push(activeInstanceId);
+            if (useDate) params.push(dateStart, dateEnd);
+            return params;
+        };
 
-        // However, pg node driver uses $1, $2. So we need to be careful with index.
-        // Let's create specific parameter sets for each query to avoid index confusion.
+        // 2. MÉTRICAS (Overview)
 
-        // Base Params for Company Filter
-        const baseParams = companyId ? [companyId] : [];
-
-        // Date Logic
-        let dateCondition = "current_date";
-        let dateParams = [...baseParams];
-        let dateParamStartIndex = baseParams.length + 1;
-
-        if (startDate && endDate) {
-            dateCondition = `$${dateParamStartIndex}::date AND $${dateParamStartIndex + 1}::date`; // BETWEEN $2 AND $3
-            dateParams.push(String(startDate), String(endDate));
-        } else {
-            dateCondition = "CURRENT_DATE"; // Default to Today if no range
-        }
+        // Conversas Ativas (status open/active)
+        // Filtro por instance string/key (pois conversations não tem instance_id garantido em migration antiga)
+        const activeConvsQuery = `
+            SELECT COUNT(*) FROM whatsapp_conversations 
+            WHERE ${getFilter('')} 
+            AND (instance = $${activeParams.length + 1} OR last_instance_key = $${activeParams.length + 1})
+            AND LOWER(status) IN ('open', 'active')
+            AND (is_group = false OR is_group IS NULL) 
+            AND phone NOT LIKE '%@g.us'
+        `; // Params: [comp, key]
+        const activeConvsRes = await pool.query(activeConvsQuery, [...activeParams, activeInstanceKey]);
 
 
-        // 1. Funnel Data (Stages + Lead Counts)
-        // Note: Funnel counts leads. Filters: Company + Instance (if applicable)
-        let funnelParams = [...baseParams];
-        let funnelInstanceFilter = '';
-        if (targetInstance) {
-            funnelParams.push(targetInstance);
-            funnelInstanceFilter = ` AND LOWER(l.instance) = LOWER($${funnelParams.length})`;
-        }
+        // Clientes Atendidos (status closed/resolved)
+        const attendedQuery = `
+            SELECT COUNT(*) FROM whatsapp_conversations 
+            WHERE ${getFilter('')} 
+            AND (instance = $${activeParams.length + 1} OR last_instance_key = $${activeParams.length + 1})
+            AND LOWER(status) IN ('closed', 'resolved')
+            AND closed_at::date BETWEEN $${activeParams.length + 2} AND $${activeParams.length + 3}
+        `; // Params: [comp, key, start, end]
+        const attendedRes = await pool.query(attendedQuery, [...activeParams, activeInstanceKey, dateStart, dateEnd]);
 
-        let funnelRes;
-        if (companyId) {
-            funnelRes = await pool.query(`
-                SELECT s.name as label, COUNT(l.id) as count, s.position
-                FROM crm_stages s
-                LEFT JOIN crm_leads l ON s.id = l.stage_id AND l.company_id = $1 ${funnelInstanceFilter} AND l.origin != 'Simulação'
-                WHERE s.company_id = $1
-                GROUP BY s.id, s.name, s.position
-                ORDER BY s.position ASC
-            `, funnelParams);
-        } else {
-            funnelRes = await pool.query(`
-                SELECT name as label, COUNT(id) as count, 0 as position
-                FROM crm_leads
-                GROUP BY name
-                LIMIT 0
-            `);
-        }
+
+        // Mensagens Recebidas (Inbound) - Usa instance_id
+        const receivedMsgsQuery = `
+            SELECT COUNT(*) FROM whatsapp_messages 
+            WHERE ${getFilter('')} 
+            AND instance_id = $${activeParams.length + 1}
+            AND direction = 'inbound'
+            AND sent_at::date BETWEEN $${activeParams.length + 2} AND $${activeParams.length + 3}
+        `; // Params: [comp, id, start, end]
+        const receivedMsgsRes = await pool.query(receivedMsgsQuery, [...activeParams, activeInstanceId, dateStart, dateEnd]);
+
+
+        // Mensagens Enviadas (Outbound) - Usa instance_id
+        const sentMsgsQuery = `
+            SELECT COUNT(*) FROM whatsapp_messages 
+            WHERE ${getFilter('')} 
+            AND instance_id = $${activeParams.length + 1}
+            AND direction = 'outbound'
+            AND sent_at::date BETWEEN $${activeParams.length + 2} AND $${activeParams.length + 3}
+        `; // Params: [comp, id, start, end]
+        const sentMsgsRes = await pool.query(sentMsgsQuery, [...activeParams, activeInstanceId, dateStart, dateEnd]);
+
+
+        // Novos Leads - Usa instance key (schema legacy)
+        const newLeadsQuery = `
+            SELECT COUNT(*) FROM crm_leads 
+            WHERE ${getFilter('')} 
+            AND LOWER(instance) = LOWER($${activeParams.length + 1})
+            AND created_at::date BETWEEN $${activeParams.length + 2} AND $${activeParams.length + 3}
+            AND origin != 'Simulação'
+        `; // Params: [comp, key, start, end]
+        const newLeadsRes = await pool.query(newLeadsQuery, [...activeParams, activeInstanceKey, dateStart, dateEnd]);
+
+
+        // Follow-ups summary
+        // Filtra follow-ups linked to conversations of this instance OR generic company ones pending
+        // Para ser restrito: JOINS conversations on this instance
+        const followUpsQuery = `
+            SELECT 
+                COUNT(*) FILTER (WHERE f.status = 'pending') as pending,
+                COUNT(*) FILTER (WHERE f.status = 'pending' AND f.scheduled_at < NOW()) as overdue
+            FROM crm_follow_ups f
+            LEFT JOIN whatsapp_conversations c ON f.conversation_id = c.id
+            WHERE ${getFilter('f')}
+            AND (
+                c.id IS NULL OR 
+                c.instance = $${activeParams.length + 1} OR 
+                c.last_instance_key = $${activeParams.length + 1}
+            )
+        `; // Params: [comp, key]
+        const followUpsStatRes = await pool.query(followUpsQuery, [...activeParams, activeInstanceKey]);
+
+
+        // 3. FUNIL DE VENDAS
+        const funnelQuery = `
+            SELECT s.name as label, COUNT(l.id) as count, s.position
+            FROM crm_stages s
+            LEFT JOIN crm_leads l ON s.id = l.stage_id 
+                AND l.company_id = $1 
+                AND LOWER(l.instance) = LOWER($2) 
+                AND l.origin != 'Simulação'
+            WHERE s.company_id = $1
+            GROUP BY s.id, s.name, s.position
+            ORDER BY s.position ASC
+        `; // Params: [comp, key]
+        const funnelRes = await pool.query(funnelQuery, [...activeParams, activeInstanceKey]);
 
         const funnelData = funnelRes.rows.map((row, idx) => {
-            const colors = [
-                { border: "border-blue-500", bg: "bg-blue-50" },
-                { border: "border-indigo-500", bg: "bg-indigo-50" },
-                { border: "border-purple-500", bg: "bg-purple-50" },
-                { border: "border-orange-500", bg: "bg-orange-50" },
-                { border: "border-green-500", bg: "bg-green-50" }
-            ];
-            const theme = colors[idx % colors.length];
-
+            const colors = ["border-blue-500", "border-indigo-500", "border-purple-500", "border-orange-500", "border-green-500"];
             return {
                 label: row.label,
                 count: parseInt(row.count),
                 value: "R$ 0",
-                color: theme.border,
-                bg: theme.bg
+                color: colors[idx % colors.length],
+                bg: colors[idx % colors.length].replace('border-', 'bg-') + '/10'
             };
         });
 
-        // 2. Overview Stats
 
-        // Active Conversas Params
-        let activeParams = [...baseParams];
-        let activeInstanceFilter = '';
-        if (targetInstance) {
-            activeParams.push(targetInstance);
-            activeInstanceFilter = ` AND LOWER(instance) = LOWER($${activeParams.length})`;
-        }
+        // 4. CONVERSAS ATIVAS (LISTA LATERAL)
+        // Somente open/active desta instancia
+        const recentConvsQuery = `
+            SELECT id, phone, contact_name, last_message, last_message_at, unread_count, profile_pic_url 
+            FROM whatsapp_conversations
+            WHERE ${getFilter('')}
+            AND (instance = $${activeParams.length + 1} OR last_instance_key = $${activeParams.length + 1})
+            AND LOWER(status) IN ('open', 'active')
+            ORDER BY last_message_at DESC
+            LIMIT 20
+        `; // Params: [comp, key]
+        const recentConvsRes = await pool.query(recentConvsQuery, [...activeParams, activeInstanceKey]);
 
-        const activeConvsRes = await pool.query(`
-            SELECT COUNT(*) FROM whatsapp_conversations 
-            WHERE ${getFilter('')} 
-            ${activeInstanceFilter}
-            AND status = 'OPEN'
-            AND (is_group = false OR is_group IS NULL) 
-            AND phone NOT LIKE '%@g.us'
-        `, activeParams);
 
-        // Messages Today Params
-        // Base ($1) + Instance? + Date1 + Date2
-        let msgsParams = [...baseParams];
-        let msgsInstanceFilter = '';
-        if (targetInstance) {
-            msgsParams.push(targetInstance);
-            msgsInstanceFilter = ` AND LOWER(c.instance) = LOWER($${msgsParams.length})`;
-        }
-
-        // Add dates
-        let msgsDateCondition = "CURRENT_DATE";
-        if (startDate && endDate) {
-            msgsParams.push(String(startDate), String(endDate));
-            msgsDateCondition = `$${msgsParams.length - 1}::date AND $${msgsParams.length}::date`;
-        } else {
-            msgsDateCondition = "CURRENT_DATE";
-        }
-
-        const msgsTodayRes = await pool.query(`
-            SELECT COUNT(*) FROM whatsapp_messages m
+        // 5. ATIVIDADE EM TEMPO REAL (MENSAGENS)
+        // Usa instance_id
+        const recentMsgsQuery = `
+            SELECT m.content as text, m.sent_at, m.direction, c.phone, c.contact_name
+            FROM whatsapp_messages m
             JOIN whatsapp_conversations c ON m.conversation_id = c.id
             WHERE ${getFilter('c')}
-            ${msgsInstanceFilter}
-            AND (c.is_group = false OR c.is_group IS NULL)
-            AND c.phone NOT LIKE '%@g.us'
-            AND m.direction = 'inbound' 
-            AND m.sent_at::date BETWEEN ${startDate && endDate ? msgsDateCondition : 'CURRENT_DATE AND CURRENT_DATE'}
-        `, msgsParams);
+            AND m.instance_id = $${activeParams.length + 1}
+            AND LOWER(c.status) IN ('open', 'active')
+            ORDER BY m.sent_at DESC
+            LIMIT 10
+        `; // Params: [comp, id]
+        const recentMsgsRes = await pool.query(recentMsgsQuery, [...activeParams, activeInstanceId]);
 
-        // New Leads Params
-        let leadsParams = [...baseParams];
-        let leadsInstanceFilter = '';
-        if (targetInstance) {
-            leadsParams.push(targetInstance);
-            leadsInstanceFilter = ` AND LOWER(instance) = LOWER($${leadsParams.length})`;
-        }
-
-        let leadsDateCondition = "CURRENT_DATE";
-        if (startDate && endDate) {
-            leadsParams.push(String(startDate), String(endDate));
-            leadsDateCondition = `$${leadsParams.length - 1}::date AND $${leadsParams.length}::date`;
-        }
-
-        const newLeadsRes = await pool.query(`
-            SELECT COUNT(*) FROM crm_leads 
-            WHERE ${getFilter('')}
-            ${leadsInstanceFilter}
-            AND created_at::date BETWEEN ${startDate && endDate ? leadsDateCondition : 'CURRENT_DATE AND CURRENT_DATE'}
-            AND phone NOT LIKE '%@g.us'
-            AND origin != 'Simulação'
-        `, leadsParams);
-
-        // Attended Clients Params
-        // Same structure as msgsParams
-        let attendedParams = [...baseParams];
-        let attendedInstanceFilter = '';
-        if (targetInstance) {
-            attendedParams.push(targetInstance);
-            attendedInstanceFilter = ` AND LOWER(c.instance) = LOWER($${attendedParams.length})`;
-        }
-
-        let attendedDateCondition = "CURRENT_DATE";
-        if (startDate && endDate) {
-            attendedParams.push(String(startDate), String(endDate));
-            attendedDateCondition = `$${attendedParams.length - 1}::date AND $${attendedParams.length}::date`;
-        }
-
-        const attendedClientsRes = await pool.query(`
-             SELECT COUNT(DISTINCT m.conversation_id) 
-             FROM whatsapp_messages m
-             JOIN whatsapp_conversations c ON m.conversation_id = c.id
-             WHERE ${getFilter('c')}
-             ${attendedInstanceFilter}
-             AND (c.is_group = false OR c.is_group IS NULL) 
-             AND c.phone NOT LIKE '%@g.us'
-             AND m.direction = 'outbound' 
-             AND m.sent_at::date BETWEEN ${startDate && endDate ? attendedDateCondition : 'CURRENT_DATE AND CURRENT_DATE'}
-        `, attendedParams);
-
-        // Follow-ups summary
-        const followUpsStatRes = await pool.query(`
-            SELECT 
-                COUNT(*) FILTER (WHERE status = 'pending') as pending,
-                COUNT(*) FILTER (WHERE status = 'pending' AND scheduled_at < NOW()) as overdue
-            FROM crm_follow_ups
-            WHERE ${getFilter('')}
-        `, baseParams);
-
-        const recentFollowUpsRes = await pool.query(`
-            SELECT f.*, COALESCE(l.name, c.contact_name) as contact_name
-            FROM crm_follow_ups f
-            LEFT JOIN crm_leads l ON f.lead_id = l.id
-            LEFT JOIN whatsapp_conversations c ON f.conversation_id = c.id
-            WHERE ${getFilter('f')}
-            AND f.status = 'pending'
-            ORDER BY f.scheduled_at ASC
-            LIMIT 5
-        `, filterParams);
-
-        // 3. Realtime Activities
-        // 3. Realtime Activities
-        // Params management for Recent Activities
-        let recentParams = [...baseParams];
-        let recentInstanceFilter = '';
-        if (targetInstance) {
-            recentParams.push(targetInstance);
-            recentInstanceFilter = ` AND LOWER(m.instance_key) = LOWER($${recentParams.length})`;
-        }
-
-        const recentMsgsRes = await pool.query(`
-             SELECT m.content as text, m.sent_at, m.direction, c.phone, c.contact_name
-             FROM whatsapp_messages m
-             JOIN whatsapp_conversations c ON m.conversation_id = c.id
-             WHERE ${getFilter('c')}
-             ${recentInstanceFilter}
-             AND c.status = 'OPEN'
-             AND (c.is_group = false OR c.is_group IS NULL)
-             AND c.phone NOT LIKE '%@g.us'
-             ORDER BY m.sent_at DESC
-             LIMIT 5
-        `, recentParams);
-
-        const recentActivities = recentMsgsRes.rows.map(m => ({
+        const activities = recentMsgsRes.rows.map(m => ({
             type: m.direction === 'inbound' ? 'msg_in' : 'msg_out',
             user: m.contact_name || m.phone,
             text: m.text,
@@ -662,47 +638,53 @@ export const getCrmDashboardStats = async (req: Request, res: Response) => {
             status: m.direction === 'inbound' ? 'w_agent' : 'w_client'
         }));
 
-        // 4. WhatsApp Status Update
-        const whatsappStatus = await getEvolutionConnectionStateInternal(user, companyId);
+
+        // 6. FOLLOW-UPS LIST
+        const recentFollowUpsRes = await pool.query(`
+            SELECT f.*, COALESCE(l.name, c.contact_name) as contact_name
+            FROM crm_follow_ups f
+            LEFT JOIN crm_leads l ON f.lead_id = l.id
+            LEFT JOIN whatsapp_conversations c ON f.conversation_id = c.id
+            WHERE ${getFilter('f')}
+            AND f.status = 'pending'
+            AND (
+                c.id IS NULL OR 
+                c.instance = $${activeParams.length + 1} OR 
+                c.last_instance_key = $${activeParams.length + 1}
+            )
+            ORDER BY f.scheduled_at ASC
+            LIMIT 5
+        `, [...activeParams, activeInstanceKey]);
+
+
+        // 7. WhatsApp Status (Live Check Optional, but relying on DB status is faster for dashboard load)
+        // We have activeInstanceStatus from DB ("connected", etc.) which is good enough for Overview.
+        // For strict "Realtime", frontend can poll /instance/connectionState if needed, but DB status is preferred for speed.
 
         res.json({
             funnel: funnelData,
             overview: {
-                activeConversations: activeConvsRes.rows[0].count,
-                receivedMessages: msgsTodayRes.rows[0].count,
-                attendedClients: attendedClientsRes.rows[0].count,
-                newLeads: newLeadsRes.rows[0].count,
-                whatsappStatus: whatsappStatus,
-                followUpPending: followUpsStatRes.rows[0].pending,
-                followUpOverdue: followUpsStatRes.rows[0].overdue
+                activeConversations: activeConvsRes.rows[0]?.count || 0,
+                attendedClients: attendedRes.rows[0]?.count || 0,
+                receivedMessages: receivedMsgsRes.rows[0]?.count || 0,
+                sentMessages: sentMsgsRes.rows[0]?.count || 0,
+                newLeads: newLeadsRes.rows[0]?.count || 0,
+                followUpPending: followUpsStatRes.rows[0]?.pending || 0,
+                followUpOverdue: followUpsStatRes.rows[0]?.overdue || 0,
+
+                // Metadata for Frontend Badge
+                whatsappStatus: activeInstanceStatus,
+                activeInstancePhone: activeInstancePhone,
+                activeInstanceName: activeInstanceKey,
+                activeInstanceId: activeInstanceId
             },
-            activities: recentActivities,
+            activities: activities,
+            conversations: recentConvsRes.rows,
             followups: recentFollowUpsRes.rows
         });
 
     } catch (error: any) {
-        console.error('Error fetching dashboard stats, returning MOCK:', error);
-        // MOCK DATA FALLBACK
-        res.json({
-            funnel: [
-                { label: 'LEADS', count: 10, value: 'R$ 15000', color: 'border-blue-500', bg: 'bg-blue-50' },
-                { label: 'Negociação', count: 5, value: 'R$ 7500', color: 'border-orange-500', bg: 'bg-orange-50' },
-                { label: 'Fechado', count: 2, value: 'R$ 3000', color: 'border-green-500', bg: 'bg-green-50' }
-            ],
-            overview: {
-                activeConversations: 12,
-                receivedMessages: 45,
-                attendedClients: 8,
-                newLeads: 3,
-                whatsappStatus: `Error: ${error.message || 'Unknown'}`,
-                followUpPending: 2,
-                followUpOverdue: 1
-            },
-            activities: [
-                { type: 'msg_in', user: 'Cliente Exemplo', text: 'Olá, gostaria de saber mais.', time: '10:30', status: 'w_client' },
-                { type: 'msg_out', user: 'Atendente', text: 'Claro, como posso ajudar?', time: '10:31', status: 'w_agent' }
-            ],
-            followups: []
-        });
+        console.error('[CRITICAL] Dashboard error:', error);
+        res.status(500).json({ error: 'Erro ao carregar dados do dashboard', details: error.message });
     }
 };
