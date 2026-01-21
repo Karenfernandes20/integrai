@@ -418,15 +418,14 @@ export const getCrmDashboardStats = async (req: Request, res: Response) => {
 
         const { startDate, endDate } = req.query;
 
-        // 1. DETECÇÃO DA INSTÂNCIA ATIVA (REGRA MESTRA)
+        // 1. DETECÇÃO DA INSTÂNCIA ATIVA (ROBUSTA)
         let activeInstanceId: number | null = null;
         let activeInstanceKey: string | null = null;
         let activeInstancePhone: string | null = null;
         let activeInstanceStatus: string = 'disconnected';
 
         if (user.role === 'SUPERADMIN' && !req.query.companyId) {
-            // SuperAdmin Global Mode: Número oficial da Integrai (System Settings)
-            // Se não houver setting, tenta pegar da Company 1 (Admin) como fallback
+            // SuperAdmin Global Mode
             const settingsRes = await pool.query("SELECT value->>'instance_id' as id FROM system_settings WHERE key = 'integrai_official_instance'");
             if (settingsRes.rows.length > 0 && settingsRes.rows[0].id) {
                 activeInstanceId = parseInt(settingsRes.rows[0].id);
@@ -435,34 +434,36 @@ export const getCrmDashboardStats = async (req: Request, res: Response) => {
                 activeInstanceId = adminCompRes.rows[0]?.whatsapp_instance_id;
             }
         } else if (companyId) {
-            // Empresa Mode: Prioritize any CONNECTED instance
-            // 1. Try to find any instance that is actually connected/open for this company
-            // Usamos uma query direta na company_instances para evitar ambiguidade de colunas 'id'
-            console.log(`[Dashboard] Resolving instance for Company ID: ${companyId}`);
-
-            const connectedInstRes = await pool.query(
-                "SELECT id, status, instance_key FROM company_instances WHERE company_id = $1 AND LOWER(status) IN ('open', 'connected') ORDER BY updated_at DESC LIMIT 1",
+            // Busca TODAS as instâncias da empresa para decidir qual usar
+            const allInstancesRes = await pool.query(
+                "SELECT id, instance_key, phone, status FROM company_instances WHERE company_id = $1 ORDER BY updated_at DESC",
                 [companyId]
             );
 
-            if (connectedInstRes.rows.length > 0 && connectedInstRes.rows[0].id) {
-                // Found a live connected instance!
-                activeInstanceId = connectedInstRes.rows[0].id;
-                console.log(`[Dashboard] Found active connected instance ID: ${activeInstanceId}`);
-            } else {
-                // If none explicitly connected, fallback to the one assigned in companies table (even if offline, to show status)
-                const compRes = await pool.query("SELECT whatsapp_instance_id FROM companies WHERE id = $1", [companyId]);
-                activeInstanceId = compRes.rows[0]?.whatsapp_instance_id;
-                console.log(`[Dashboard] Fallback to company default instance ID: ${activeInstanceId}`);
-            }
+            if (allInstancesRes.rows.length > 0) {
+                const instances = allInstancesRes.rows;
 
-            // Fallback 2: If still null, try one marked as 'connecting' or just the most recent created one
-            if (!activeInstanceId) {
-                const anyInstRes = await pool.query(
-                    "SELECT id FROM company_instances WHERE company_id = $1 ORDER BY created_at DESC LIMIT 1",
-                    [companyId]
-                );
-                activeInstanceId = anyInstRes.rows[0]?.id || null;
+                // 1. Tenta achar uma CONECTADA (open/connected)
+                const connectedInst = instances.find(i => i.status && ['open', 'connected'].includes(i.status.toLowerCase()));
+
+                if (connectedInst) {
+                    activeInstanceId = connectedInst.id;
+                    console.log(`[Dashboard] Selected CONNECTED instance: ${connectedInst.instance_key} (ID: ${connectedInst.id})`);
+                } else {
+                    // 2. Se não, tenta achar uma CONECTANDO (connecting/qrcode)
+                    const connectingInst = instances.find(i => i.status && ['connecting', 'qrcode'].includes(i.status.toLowerCase()));
+
+                    if (connectingInst) {
+                        activeInstanceId = connectingInst.id;
+                        console.log(`[Dashboard] Selected CONNECTING instance: ${connectingInst.instance_key} (ID: ${connectingInst.id}) fallback`);
+                    } else {
+                        // 3. Fallback final: A mais recente (topo da lista ordenada por updated_at)
+                        activeInstanceId = instances[0].id;
+                        console.log(`[Dashboard] Selected RECENT instance: ${instances[0].instance_key} (ID: ${instances[0].id}) fallback (offline)`);
+                    }
+                }
+            } else {
+                console.warn(`[Dashboard] No instances found for Company ID ${companyId}`);
             }
         }
 
