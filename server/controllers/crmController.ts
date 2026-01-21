@@ -438,8 +438,10 @@ export const getCrmDashboardStats = async (req: Request, res: Response) => {
             // Empresa Mode: Prioritize any CONNECTED instance
             // 1. Try to find any instance that is actually connected/open for this company
             // Usamos uma query direta na company_instances para evitar ambiguidade de colunas 'id'
+            console.log(`[Dashboard] Resolving instance for Company ID: ${companyId}`);
+
             const connectedInstRes = await pool.query(
-                "SELECT id FROM company_instances WHERE company_id = $1 AND status IN ('open', 'connected') ORDER BY updated_at DESC LIMIT 1",
+                "SELECT id, status, instance_key FROM company_instances WHERE company_id = $1 AND LOWER(status) IN ('open', 'connected') ORDER BY updated_at DESC LIMIT 1",
                 [companyId]
             );
 
