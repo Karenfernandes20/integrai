@@ -471,23 +471,23 @@ export const getCrmDashboardStats = async (req: Request, res: Response) => {
                 // Fallback Legacy: Check companies table
                 const legacyRes = await pool.query("SELECT evolution_instance, evolution_apikey FROM companies WHERE id = $1", [companyId]);
                 if (legacyRes.rows.length > 0 && legacyRes.rows[0].evolution_instance) {
-                    // Create a virtual instance or proceed with null ID but using KEY for filtering if applicable
-                    // Actually, if we use legacy, activeInstanceId will be NULL, but we might want to fetch stats using instance KEY logic if possible.
-                    // But the rest of the queries depend on activeInstanceId for filters like "instance_id = $1".
-                    // If legacy, we probably need to MIGRATE or support key-based filtering. 
-                    // For now, let's Auto-Migrate/Create a company_instance entry if it's missing?
-                    // Or just return 200 OK with empty data so the dashboard loads (avoiding 403 Loop).
+                    console.log(`[Dashboard] Legacy instance found: ${legacyRes.rows[0].evolution_instance}. Allowing degraded access.`);
 
-                    console.log(`[Dashboard] Legacy instance found: ${legacyRes.rows[0].evolution_instance}. Providing degraded access.`);
-                    // We won't block 403, but we can't filter by ID easily without an ID.
+                    // Enable Hybrid Mode
+                    activeInstanceKey = legacyRes.rows[0].evolution_instance;
+                    activeInstancePhone = `${activeInstanceKey} (Legado)`;
+                    activeInstanceStatus = 'check_legacy';
+
+                    // We set ID to -1 to avoid NULL check blockers, BUT queries using ID strictly will return 0 (expected for new metrics)
+                    // Queries using KEY (like conversations) will work!
+                    activeInstanceId = -1;
                 }
             }
         }
 
-        // BLOQUEIO DE SEGURANÇA ADAPTATIVO
-        if (!activeInstanceId) {
-            console.warn(`[SECURITY] Dashboard access degraded — no modern instance ID resolved for user ${user.id}`);
-            // Return empty structure instead of 403 to prevent frontend loop
+        // BLOQUEIO DE SEGURANÇA FINAL
+        if (!activeInstanceId && !activeInstanceKey) {
+            console.warn(`[SECURITY] Dashboard access degraded — no instance resolved for user ${user.id}`);
             return res.json({
                 overview: {
                     activeConversations: 0,
@@ -495,8 +495,8 @@ export const getCrmDashboardStats = async (req: Request, res: Response) => {
                     receivedMessages: 0,
                     sentMessages: 0,
                     newLeads: 0,
-                    activeInstancePhone: "Legado/Nenhum",
-                    whatsappStatus: "check_legacy"
+                    activeInstancePhone: "Nenhuma Instância",
+                    whatsappStatus: "disconnected"
                 },
                 funnel: [],
                 priorities: [],
@@ -505,18 +505,16 @@ export const getCrmDashboardStats = async (req: Request, res: Response) => {
             });
         }
 
-        // Carrega metadados da instância ativa para exibição e uso como filtro de chave
-        const activeInstRes = await pool.query("SELECT * FROM company_instances WHERE id = $1", [activeInstanceId]);
-        const instanceData = activeInstRes.rows[0];
-        if (!instanceData) {
-            return res.status(403).json({
-                error: 'Instance Data Not Found',
-                message: "A instância configurada não foi encontrada no banco de dados."
-            });
+        // Se temos ID -1 (Legacy), não podemos buscar instanceData no banco novo, então pulamos
+        if (activeInstanceId !== -1) {
+            const activeInstRes = await pool.query("SELECT * FROM company_instances WHERE id = $1", [activeInstanceId]);
+            const instanceData = activeInstRes.rows[0];
+            if (instanceData) {
+                activeInstanceKey = instanceData.instance_key;
+                activeInstancePhone = instanceData.phone;
+                activeInstanceStatus = instanceData.status;
+            }
         }
-        activeInstanceKey = instanceData.instance_key;
-        activeInstancePhone = instanceData.phone;
-        activeInstanceStatus = instanceData.status;
 
 
         // Helper para filtros
