@@ -63,9 +63,10 @@ router.post('/users/:id/reset-password', authenticateToken, authorizeRole(['SUPE
 
 
 // Evolution routes
-import { getEvolutionQrCode, setEvolutionWebhook, getEvolutionWebhook, deleteEvolutionInstance, sendEvolutionMessage, getEvolutionConnectionState, getEvolutionContacts, createEvolutionContact, updateEvolutionContact, deleteEvolutionContact, editEvolutionMessage, syncEvolutionContacts, handleEvolutionWebhook, getEvolutionContactsLive, deleteEvolutionMessage, getEvolutionConfig, getEvolutionMedia, getEvolutionProfilePic, syncAllProfilePics, sendEvolutionMedia, refreshConversationMetadata, deleteMessage, searchEverything, sendEvolutionReaction } from './controllers/evolutionController';
+import { getEvolutionQrCode, setEvolutionWebhook, getEvolutionWebhook, deleteEvolutionInstance, sendEvolutionMessage, getEvolutionConnectionState, getEvolutionContacts, createEvolutionContact, updateEvolutionContact, deleteEvolutionContact, editEvolutionMessage, syncEvolutionContacts, handleEvolutionWebhook, getEvolutionContactsLive, deleteEvolutionMessage, getEvolutionConfig, getEvolutionMedia, getEvolutionProfilePic, syncAllProfilePics, sendEvolutionMedia, refreshConversationMetadata, deleteMessage, searchEverything, sendEvolutionReaction, getSystemWhatsappStatus } from './controllers/evolutionController';
 router.get('/evolution/search', authenticateToken, searchEverything);
 router.get('/evolution/status', authenticateToken, getEvolutionConnectionState);
+router.get('/system/whatsapp/status', authenticateToken, getSystemWhatsappStatus); // New Global Status
 router.get('/evolution/contacts', authenticateToken, getEvolutionContacts);
 router.post('/evolution/contacts', authenticateToken, createEvolutionContact);
 router.get('/evolution/contacts/live', authenticateToken, getEvolutionContactsLive);
