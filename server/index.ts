@@ -178,6 +178,13 @@ const startServer = async () => {
         await pool.query(`ALTER TABLE whatsapp_campaigns ADD COLUMN IF NOT EXISTS instance_id INTEGER REFERENCES company_instances(id) ON DELETE SET NULL;`);
         await pool.query(`ALTER TABLE whatsapp_campaigns ADD COLUMN IF NOT EXISTS instance_name TEXT;`);
         await pool.query(`ALTER TABLE company_instances ADD COLUMN IF NOT EXISTS phone TEXT;`);
+        await pool.query(`ALTER TABLE companies ADD COLUMN IF NOT EXISTS whatsapp_instance_id INTEGER REFERENCES company_instances(id) ON DELETE SET NULL;`);
+
+        // CRM Indexing for Performance
+        console.log("Creating CRM Dashboard Indexes...");
+        await pool.query(`CREATE INDEX IF NOT EXISTS idx_conversations_instance_status_date ON whatsapp_conversations(instance, status, created_at, closed_at);`);
+        await pool.query(`CREATE INDEX IF NOT EXISTS idx_messages_instance_date ON whatsapp_messages(instance_id, direction, sent_at);`);
+        await pool.query(`CREATE INDEX IF NOT EXISTS idx_followups_instance_date ON crm_follow_ups(company_id, status, scheduled_at);`);
 
         // Unification Migrations
         console.log("Running Unification migrations...");

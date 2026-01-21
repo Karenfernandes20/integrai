@@ -39,6 +39,13 @@ export const CrmDashboard = ({ company }: CrmDashboardProps) => {
                 const res = await fetch(url, {
                     headers: { "Authorization": `Bearer ${token}` }
                 });
+
+                if (res.status === 403) {
+                    const data = await res.json();
+                    setDashboardData({ accessBlocked: true, message: data.message });
+                    return;
+                }
+
                 if (res.ok) {
                     const data = await res.json();
                     setDashboardData(data);
@@ -46,16 +53,31 @@ export const CrmDashboard = ({ company }: CrmDashboardProps) => {
             } catch (e) {
                 console.error("Failed to fetch dashboard", e);
             } finally {
-                if (loading) setLoading(false);
+                setLoading(false);
             }
         };
 
         setLoading(true);
-        fetchDashboard().then(() => setLoading(false));
+        fetchDashboard();
 
-        const interval = setInterval(fetchDashboard, 10000); // Increased polling slightly to 10s
+        const interval = setInterval(fetchDashboard, 10000); // Polling every 10s
         return () => clearInterval(interval);
     }, [company.id, dateRange]);
+
+    if (dashboardData?.accessBlocked) {
+        return (
+            <div className="flex flex-col items-center justify-center min-h-[400px] space-y-4 p-8 bg-card rounded-lg border border-dashed border-red-200">
+                <div className="h-12 w-12 rounded-full bg-red-100 flex items-center justify-center">
+                    <RefreshCw className="h-6 w-6 text-red-600 animate-spin" />
+                </div>
+                <h2 className="text-xl font-bold text-center">Acesso ao Dashboard Bloqueado</h2>
+                <p className="text-muted-foreground text-center max-w-md">
+                    {dashboardData.message || "Conecte um número de WhatsApp via QR Code para visualizar os dados do dashboard."}
+                </p>
+                <Button onClick={() => window.location.href = '/conexao'}>Ir para Conexão</Button>
+            </div>
+        );
+    }
 
     return (
         <div className="space-y-6 animate-in fade-in duration-500">
@@ -64,9 +86,17 @@ export const CrmDashboard = ({ company }: CrmDashboardProps) => {
             <div className="flex flex-col md:flex-row gap-4 items-start md:items-center justify-between">
                 <div>
                     <h1 className="text-2xl font-bold tracking-tight">Dashboard CRM</h1>
-                    <p className="text-muted-foreground text-sm">
-                        Gestão completa de atendimento e vendas para <span className="font-semibold text-primary">{company.name}</span>
-                    </p>
+                    <div className="flex items-center gap-3 mt-1">
+                        <p className="text-muted-foreground text-sm">
+                            Gestão completa para <span className="font-semibold text-primary">{company.name}</span>
+                        </p>
+                        {dashboardData?.overview?.activeInstancePhone && (
+                            <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-primary/10 border border-primary/20 text-[10px] font-medium text-primary uppercase tracking-wider">
+                                <span className={`h-1.5 w-1.5 rounded-full ${dashboardData?.overview?.whatsappStatus === 'connected' ? 'bg-green-500' : 'bg-red-500'} animate-pulse`}></span>
+                                Instância ativa: {dashboardData?.overview?.activeInstancePhone}
+                            </div>
+                        )}
+                    </div>
                 </div>
 
                 <div className="flex flex-wrap items-center gap-2">
