@@ -636,6 +636,7 @@ export const getCrmDashboardStats = async (req: Request, res: Response) => {
              JOIN whatsapp_conversations c ON m.conversation_id = c.id
              WHERE ${getFilter('c')}
              ${recentInstanceFilter}
+             AND c.status = 'OPEN'
              AND (c.is_group = false OR c.is_group IS NULL)
              AND c.phone NOT LIKE '%@g.us'
              ORDER BY m.sent_at DESC

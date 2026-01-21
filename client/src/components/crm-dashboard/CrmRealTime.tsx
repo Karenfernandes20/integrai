@@ -9,8 +9,8 @@ export const CrmRealTime = ({ activities }: { activities?: any[] }) => {
         <Card className="h-full border-none shadow-sm">
             <CardHeader className="pb-3">
                 <div className="flex items-center justify-between">
-                    <CardTitle className="text-base font-semibold">Atividade em Tempo Real</CardTitle>
-                    <Badge variant="outline" className="text-[10px] animate-pulse text-green-600 bg-green-50 border-green-200"> ● Ao vivo</Badge>
+                    <CardTitle className="text-base font-semibold">Conversas Ativas</CardTitle>
+                    <Badge variant="outline" className="text-[10px] animate-pulse text-blue-600 bg-blue-50 border-blue-200"> ● Em atendimento</Badge>
                 </div>
             </CardHeader>
             <CardContent>
