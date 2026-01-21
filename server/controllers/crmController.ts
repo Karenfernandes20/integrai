@@ -437,18 +437,21 @@ export const getCrmDashboardStats = async (req: Request, res: Response) => {
         } else if (companyId) {
             // Empresa Mode: Prioritize any CONNECTED instance
             // 1. Try to find any instance that is actually connected/open for this company
+            // Usamos uma query direta na company_instances para evitar ambiguidade de colunas 'id'
             const connectedInstRes = await pool.query(
-                "SELECT id, whatsapp_instance_id FROM companies c LEFT JOIN company_instances ci ON ci.company_id = c.id WHERE c.id = $1 AND ci.status IN ('open', 'connected') ORDER BY ci.updated_at DESC LIMIT 1",
+                "SELECT id FROM company_instances WHERE company_id = $1 AND status IN ('open', 'connected') ORDER BY updated_at DESC LIMIT 1",
                 [companyId]
             );
 
             if (connectedInstRes.rows.length > 0 && connectedInstRes.rows[0].id) {
                 // Found a live connected instance!
                 activeInstanceId = connectedInstRes.rows[0].id;
+                console.log(`[Dashboard] Found active connected instance ID: ${activeInstanceId}`);
             } else {
                 // If none explicitly connected, fallback to the one assigned in companies table (even if offline, to show status)
                 const compRes = await pool.query("SELECT whatsapp_instance_id FROM companies WHERE id = $1", [companyId]);
                 activeInstanceId = compRes.rows[0]?.whatsapp_instance_id;
+                console.log(`[Dashboard] Fallback to company default instance ID: ${activeInstanceId}`);
             }
 
             // Fallback 2: If still null, try one marked as 'connecting' or just the most recent created one
