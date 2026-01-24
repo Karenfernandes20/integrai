@@ -88,6 +88,7 @@ export async function sendWhatsAppMessage({
 
         // === MEDIA FLOW (Multipart/Form-Data with Node Streams) ===
         if (mediaUrl) {
+            // targetUrl logic
             targetUrl = `${baseUrl}/message/sendMedia/${evolution_instance}`;
 
             const formData = new FormData();
@@ -98,37 +99,76 @@ export async function sendWhatsAppMessage({
             const safeMediaType = mediaType?.toLowerCase() || 'image';
             formData.append('mediatype', safeMediaType);
 
-            const isLocalUrl = mediaUrl.includes('localhost') || mediaUrl.includes('127.0.0.1') || mediaUrl.startsWith('http://192.') || mediaUrl.startsWith('http://10.');
+            // IMPROVED: Robust Local File Detection
+            // If the URL contains '/uploads/', we assume it is a local file served by this server.
+            // This avoids issues with NAT loopback, DNS resolution, or localhost binding differences.
+            const uploadsMarker = '/uploads/';
+            const hasUploads = mediaUrl.includes(uploadsMarker);
+
+            const isLocalUrl = hasUploads ||
+                mediaUrl.includes('localhost') ||
+                mediaUrl.includes('127.0.0.1') ||
+                mediaUrl.startsWith('http://192.') ||
+                mediaUrl.startsWith('http://10.');
+
             const isRelative = !mediaUrl.startsWith('http');
 
             let fileBlob: Blob;
             let fileName = 'file';
 
             if (isLocalUrl || isRelative) {
-                console.log(`[sendWhatsAppMessage] Local media detected. Reading from disk: ${mediaUrl}`);
+                console.log(`[sendWhatsAppMessage] Local media detected (Strategy: ${hasUploads ? 'UploadsDir' : 'LocalIP'}). Path: ${mediaUrl}`);
                 try {
                     // Extract filename
-                    const urlPath = mediaUrl.split('?')[0];
-                    fileName = path.basename(urlPath) || 'media_file';
+                    // If it has /uploads/, take the part after strict /uploads/ to be safe
+                    let cleanFileName = '';
+                    if (hasUploads) {
+                        const parts = mediaUrl.split(uploadsMarker);
+                        if (parts.length > 1) {
+                            // Take the last part and remove any query params
+                            cleanFileName = parts[parts.length - 1].split('?')[0];
+                        }
+                    }
+
+                    if (!cleanFileName) {
+                        const urlPath = mediaUrl.split('?')[0];
+                        cleanFileName = path.basename(urlPath) || 'media_file';
+                    }
+
+                    // Decode URI component in case filename has spaces/special chars
+                    try { cleanFileName = decodeURIComponent(cleanFileName); } catch (e) { }
+
+                    fileName = cleanFileName;
 
                     const ups = path.join(__dirname, '../uploads');
                     const possibleLocalPath = path.join(ups, fileName);
 
                     if (!fs.existsSync(possibleLocalPath)) {
-                        throw new Error(`File not found at ${possibleLocalPath}`);
+                        console.warn(`[sendWhatsAppMessage] File not found at expected path: ${possibleLocalPath}`);
+                        // Fallback: If not found locally (maybe improper path), try fetching it if it's a URL
+                        if (mediaUrl.startsWith('http')) {
+                            console.log(`[sendWhatsAppMessage] Fallback: Trying to fetch ${mediaUrl} via network...`);
+                            const mediaResp = await fetch(mediaUrl);
+                            if (!mediaResp.ok) throw new Error(`Failed to fetch media (Fallback): ${mediaResp.status}`);
+                            fileBlob = await mediaResp.blob();
+                        } else {
+                            throw new Error(`File not found at ${possibleLocalPath}`);
+                        }
+                    } else {
+                        // READ AS BUFFER -> BLOB (Node 18+ style)
+                        const buffer = fs.readFileSync(possibleLocalPath);
+                        const ext = path.extname(fileName).toLowerCase();
+                        let mime = 'application/octet-stream';
+                        if (['.jpg', '.jpeg'].includes(ext)) mime = 'image/jpeg';
+                        else if (ext === '.png') mime = 'image/png';
+                        else if (ext === '.webp') mime = 'image/webp';
+                        else if (ext === '.pdf') mime = 'application/pdf';
+                        else if (ext === '.mp4') mime = 'video/mp4';
+                        else if (ext === '.mp3') mime = 'audio/mpeg';
+
+                        fileBlob = new Blob([buffer], { type: mime });
+                        console.log(`[sendWhatsAppMessage] File loaded from disk: ${possibleLocalPath} (${buffer.length} bytes, ${mime})`);
                     }
-
-                    // READ AS BUFFER -> BLOB (Node 18+ style)
-                    // Evolution expects 'media' to be a file
-                    const buffer = fs.readFileSync(possibleLocalPath);
-                    const ext = path.extname(fileName).toLowerCase();
-                    let mime = 'application/octet-stream';
-                    if (['.jpg', '.jpeg'].includes(ext)) mime = 'image/jpeg';
-                    else if (ext === '.png') mime = 'image/png';
-                    else if (ext === '.webp') mime = 'image/webp';
-
-                    fileBlob = new Blob([buffer], { type: mime });
-                    console.log(`[sendWhatsAppMessage] File loaded: ${fileName} (${buffer.length} bytes, ${mime})`);
 
                 } catch (readErr: any) {
                     console.error(`[sendWhatsAppMessage] Failed to read local file:`, readErr);
