@@ -97,22 +97,31 @@ export const updateTag = async (req: Request, res: Response) => {
 };
 
 export const deleteTag = async (req: Request, res: Response) => {
+    const client = await pool?.connect();
+    if (!client) return res.status(500).json({ error: 'Database not configured' });
+
     try {
-        if (!pool) return res.status(500).json({ error: 'Database not configured' });
         const user = (req as any).user;
         const companyId = user.company_id;
         const { id } = req.params;
 
-        // Force delete from relation table first just in case cascade doesn't kick in instantly or for sanity
-        // Actually defined CASCADE but executed queries explicitly is safer? CASCADE is fine.
+        await client.query('BEGIN');
 
-        const result = await pool.query(`
+        // 1. Remove references in leads_tags
+        await client.query(`DELETE FROM leads_tags WHERE tag_id = $1`, [id]);
+
+        // 2. Remove references in conversations_tags
+        await client.query(`DELETE FROM conversations_tags WHERE tag_id = $1`, [id]);
+
+        // 3. Delete the tag itself
+        const result = await client.query(`
             DELETE FROM crm_tags 
             WHERE id = $1 AND company_id = $2
             RETURNING *
         `, [id, companyId]);
 
         if (result.rows.length === 0) {
+            await client.query('ROLLBACK');
             return res.status(404).json({ error: 'Tag not found' });
         }
 
@@ -128,10 +137,15 @@ export const deleteTag = async (req: Request, res: Response) => {
             details: `Deleted tag: ${deletedTag.name}`
         });
 
-        res.json({ message: 'Tag deleted successfully' });
+        await client.query('COMMIT');
+
+        res.json({ message: 'Tag deleted successfully', id: deletedTag.id });
     } catch (error) {
+        await client.query('ROLLBACK');
         console.error('Error deleting tag:', error);
         res.status(500).json({ error: 'Failed to delete tag' });
+    } finally {
+        client.release();
     }
 };
 const normalizePhone = (phone: string | null | undefined) => {
