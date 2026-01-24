@@ -1,326 +1,50 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { toast } from "sonner";
+import { io } from "socket.io-client"; // Import Socket.io
 import {
   DndContext,
-  DragOverlay,
-  closestCorners,
-  KeyboardSensor,
-  PointerSensor,
-  useSensor,
-  useSensors,
-  DragStartEvent,
-  DragOverEvent,
-  DragEndEvent,
-  defaultDropAnimationSideEffects,
-  DropAnimation,
+  // ... (rest of imports)
   useDroppable,
 } from "@dnd-kit/core";
-import {
-  arrayMove,
-  SortableContext,
-  sortableKeyboardCoordinates,
-  verticalListSortingStrategy,
-  useSortable,
-} from "@dnd-kit/sortable";
-import { CSS } from "@dnd-kit/utilities";
-import {
-  Pencil,
-  MessageSquare,
-  MapPin,
-  ClipboardList,
-  KanbanSquare,
-  Plus,
-  Trash2,
-  Save,
-  User,
-  Phone as PhoneIcon,
-  Mail,
-  DollarSign,
-  MessageCircle,
-  Clock,
-  ChevronRight,
-  ExternalLink,
-  CalendarCheck,
-  CalendarClock,
-  AlertCircle
-} from "lucide-react";
-import { FollowUpModal } from "../components/follow-up/FollowUpModal";
-import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
-import { Button } from "../components/ui/button";
-import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "../components/ui/dialog";
-import { Input } from "../components/ui/input";
-import { cn, getCityStateFromPhone } from "../lib/utils";
-import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription, SheetFooter } from "../components/ui/sheet";
-import { useNavigate } from "react-router-dom";
-import { Textarea } from "../components/ui/textarea";
-import { Badge } from "../components/ui/badge";
-import { Label } from "../components/ui/label";
-import { useAuth } from "../contexts/AuthContext";
-import RelationshipManager from "../components/RelationshipManager";
-import { TagManager } from "../components/TagManager";
-
-// Tipos
-type Lead = {
-  id: string; // Phone number or UUID
-  name: string;
-  phone: string;
-  email?: string;
-  city?: string;
-  state?: string;
-  origin?: string;
-  stage_id: number;
-  description?: string;
-  value?: number;
-  columnId?: string; // Mapeado de stage_id para lógica de frontend
-  follow_up_status?: 'pending' | 'overdue' | 'completed';
-  follow_up_date?: string;
-  instance_friendly_name?: string;
-  tags?: { id: number; name: string; color: string }[];
-};
-
-type Stage = {
-  id: number;
-  name: string;
-  position: number;
-  color?: string;
-};
-
-const pastelOptions = [
-  "bg-blue-500/10 border-blue-500/30 text-blue-700",      // Azul
-  "bg-emerald-500/10 border-emerald-500/30 text-emerald-700", // Verde
-  "bg-pink-500/10 border-pink-500/30 text-pink-700",     // Rosa
-  "bg-amber-500/10 border-amber-500/30 text-amber-700",   // Amarelo
-  "bg-purple-500/10 border-purple-500/30 text-purple-700", // Roxo
-  "bg-red-500/10 border-red-500/30 text-red-700",       // Vermelho
-  "bg-indigo-500/10 border-indigo-500/30 text-indigo-700", // Indigo
-  "bg-orange-500/10 border-orange-500/30 text-orange-700", // Laranja
-  "bg-cyan-500/10 border-cyan-500/30 text-cyan-700",     // Ciano
-  "bg-teal-500/10 border-teal-500/30 text-teal-700",     // Teal
-];
-
-// Componente Sortable Item (Card)
-function SortableLeadCard({ lead, onEdit, onChat, onFollowUp, onCall, onRemove }: {
-  lead: Lead;
-  onEdit: (l: Lead) => void;
-  onChat: (l: Lead) => void;
-  onFollowUp: (l: Lead) => void;
-  onCall: (l: Lead) => void;
-  onRemove: (l: Lead) => void;
-}) {
-  const {
-    attributes,
-    listeners,
-    setNodeRef,
-    transform,
-    transition,
-    isDragging,
-  } = useSortable({
-    id: lead.id,
-    data: {
-      type: "Lead",
-      lead,
-    },
-  });
-
-  const style = {
-    transform: CSS.Transform.toString(transform),
-    transition,
-  };
-
-  if (isDragging) {
-    return (
-      <div
-        ref={setNodeRef}
-        style={style}
-        className="opacity-50 bg-background border rounded-lg w-full border-primary/50 shadow-lg"
-      />
-    );
-  }
-
-  return (
-    <div
-      ref={setNodeRef}
-      style={style}
-      className="group relative cursor-grab rounded-md bg-background px-3 py-2 text-left shadow-sm transition-all hover:shadow-md border border-border/60 hover:border-primary/30"
-      {...attributes}
-      {...listeners}
-    >
-      <div className="flex items-start justify-between gap-1">
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-1 min-w-0 mb-[2px]">
-            <p className="text-[13px] font-bold text-foreground truncate leading-tight">{lead.name || lead.phone}</p>
-            {lead.instance_friendly_name && (
-              <Badge variant="outline" className="h-[18px] px-1.5 py-0.5 text-[8px] font-bold uppercase tracking-tighter text-muted-foreground border-muted-foreground/20 shrink-0">
-                {lead.instance_friendly_name}
-              </Badge>
-            )}
-          </div>
-          <div className="mb-1 -ml-0.5">
-            <TagManager entityId={lead.id} entityType="lead" maxVisible={2} readOnly={true} tags={lead.tags} />
-          </div>
-          <div className="flex items-center gap-1 overflow-hidden opacity-70 mb-0.5">
-            <MapPin className="h-3 w-3 text-muted-foreground flex-shrink-0" />
-            <p className="text-[12px] text-muted-foreground truncate leading-none">
-              {lead.city && lead.state
-                ? `${lead.city}/${lead.state}`
-                : (getCityStateFromPhone(lead.phone) || lead.phone)
-              }
-            </p>
-          </div>
-          {lead.value && (
-            <p className="mt-0 text-[12px] font-bold text-emerald-600 leading-none">
-              R$ {Number(lead.value).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-            </p>
-          )}
-        </div>
-
-        <div className="flex flex-col gap-0 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
-          <Button
-            size="icon"
-            variant="ghost"
-            className="h-5 w-5 hover:bg-primary/10 hover:text-primary rounded-md"
-            onPointerDown={(e) => e.stopPropagation()}
-            onClick={(e) => {
-              e.stopPropagation();
-              onChat(lead);
-            }}
-          >
-            <MessageSquare className="h-3 w-3" />
-          </Button>
-          <Button
-            size="icon"
-            variant="ghost"
-            className="h-5 w-5 hover:bg-primary/10 hover:text-primary rounded-md"
-            onPointerDown={(e) => e.stopPropagation()}
-            onClick={(e) => {
-              e.stopPropagation();
-              onCall(lead);
-            }}
-            title="Ligar"
-          >
-            <PhoneIcon className="h-3 w-3" />
-          </Button>
-          <Button
-            size="icon"
-            variant="ghost"
-            className="h-5 w-5 hover:bg-primary/10 hover:text-primary rounded-md"
-            onPointerDown={(e) => e.stopPropagation()}
-            onClick={(e) => {
-              e.stopPropagation();
-              onFollowUp(lead);
-            }}
-            title="Agendar Follow-up"
-          >
-            <CalendarCheck className="h-3 w-3" />
-          </Button>
-          <Button
-            size="icon"
-            variant="ghost"
-            className="h-5 w-5 hover:bg-primary/10 hover:text-primary rounded-md"
-            onPointerDown={(e) => e.stopPropagation()}
-            onClick={(e) => {
-              e.stopPropagation();
-              onEdit(lead);
-            }}
-          >
-            <Pencil className="h-3 w-3" />
-          </Button>
-          <Button
-            size="icon"
-            variant="ghost"
-            className="h-5 w-5 hover:bg-red-500/10 hover:text-red-500 rounded-md"
-            onPointerDown={(e) => e.stopPropagation()}
-            onClick={(e) => {
-              e.stopPropagation();
-              onRemove(lead);
-            }}
-            title="Remover (volta para Leads)"
-          >
-            <Trash2 className="h-3 w-3" />
-          </Button>
-        </div>
-      </div>
-
-      {(lead.follow_up_status || lead.description) && (
-        <div className="mt-0.5 space-y-0.5">
-          {lead.follow_up_status && (
-            <div className={cn(
-              "pt-0 border-t border-dashed flex gap-1 items-center border-t-0",
-              lead.follow_up_status === 'overdue' ? "text-red-600" : "text-blue-600"
-            )}>
-              {lead.follow_up_status === 'overdue' ? <AlertCircle className="h-3 w-3" /> : <CalendarClock className="h-3 w-3" />}
-              <span className="text-[12px] font-bold uppercase tracking-tight leading-none px-0.5">
-                Agenda: {lead.follow_up_date ? new Date(lead.follow_up_date).toLocaleDateString('pt-BR') : 'Pendente'}
-              </span>
-            </div>
-          )}
-
-          {lead.description && (
-            <div className={cn(
-              "flex gap-1 items-start opacity-80",
-              !lead.follow_up_status && "pt-0 border-t-0"
-            )}>
-              <ClipboardList className="h-3 w-3 text-amber-500 mt-0 flex-shrink-0" />
-              <p className="text-[11px] text-muted-foreground line-clamp-1 italic leading-tight">
-                {lead.description}
-              </p>
-            </div>
-          )}
-        </div>
-      )}
-    </div>
-  );
-}
-
-// Droppable Column Component
-function DroppableColumn({ id, children }: { id: string; children: React.ReactNode }) {
-  const { setNodeRef, isOver } = useDroppable({
-    id: id,
-    data: {
-      type: "Column",
-      stageId: id,
-    },
-  });
-
-  return (
-    <div
-      ref={setNodeRef}
-      className={cn(
-        "flex-1 transition-colors flex flex-col min-h-0",
-        isOver && "bg-primary/5"
-      )}
-    >
-      {children}
-    </div>
-  );
-}
-
+// ...
 const CrmPage = () => {
-  const { token } = useAuth();
+  const { token, user } = useAuth(); // Added user
   const navigate = useNavigate();
-  const [leads, setLeads] = useState<Lead[]>([]);
-  const [stages, setStages] = useState<Stage[]>([]);
-  const [activeDragId, setActiveDragId] = useState<string | null>(null);
-  const [isDialogOpen, setIsDialogOpen] = useState(false);
-  const [newStageName, setNewStageName] = useState("");
-  const [selectedColor, setSelectedColor] = useState("#93c5fd");
-  const [stageColors, setStageColors] = useState<Record<number, string>>({});
-
-  // Lead Editing State
-  const [isSheetOpen, setIsSheetOpen] = useState(false);
-  const [editingLead, setEditingLead] = useState<Lead | null>(null);
-  const [isSaving, setIsSaving] = useState(false);
-
-  // Follow-up State
-  const [isFollowUpModalOpen, setIsFollowUpModalOpen] = useState(false);
-  const [followUpInitialData, setFollowUpInitialData] = useState<any>(null);
-
-  const [isSyncing, setIsSyncing] = useState(false);
-  const [isAddLeadDialogOpen, setIsAddLeadDialogOpen] = useState(false);
-  const [contacts, setContacts] = useState<any[]>([]);
-  const [contactSearchTerm, setContactSearchTerm] = useState("");
+  // ...
   const [isLoadingContacts, setIsLoadingContacts] = useState(false);
   const [isLoadingData, setIsLoadingData] = useState(true);
+
+  // SOCKET INTEGRATION
+  useEffect(() => {
+    if (!user) return;
+
+    const socket = io({
+      transports: ["polling", "websocket"],
+    });
+
+    socket.on("connect", () => {
+      if (user.company_id) {
+        socket.emit("join:company", user.company_id);
+      }
+    });
+
+    socket.on("contact:update", (data: any) => {
+      console.log("[CRM] Contact updated:", data);
+      setLeads((prev) => prev.map((l) => {
+        const leadPhone = (l.phone || "").replace(/\D/g, "");
+        const updatePhone = (data.phone || "").replace(/\D/g, "");
+        if (leadPhone && updatePhone && leadPhone === updatePhone) {
+          return { ...l, name: data.name };
+        }
+        return l;
+      }));
+    });
+
+    return () => {
+      socket.disconnect();
+    };
+  }, [user]);
+  // ...
 
   useEffect(() => {
     fetchData();

@@ -1193,21 +1193,61 @@ export const createEvolutionContact = async (req: Request, res: Response) => {
       if (!pool) return res.status(500).json({ error: "Database not configured" });
 
       const user = (req as any).user;
-      const companyId = user?.company_id;
+      const companyId = user?.company_id || reqCompanyId;
 
-      // Insert into DB
-      await pool.query(`
+      // Insert into DB and RETURNING *
+      const insertRes = await pool.query(`
           INSERT INTO whatsapp_contacts (jid, phone, name, instance, updated_at, company_id)
           VALUES ($1, $2, $3, $4, NOW(), $5)
           ON CONFLICT (jid, company_id) 
           DO UPDATE SET name = EXCLUDED.name, updated_at = NOW(), phone = EXCLUDED.phone, instance = EXCLUDED.instance
+          RETURNING *
       `, [jid, cleanPhone, name, EVOLUTION_INSTANCE, companyId]);
 
+      const row = insertRes.rows[0];
+
+      // --- PROPAGATION LOGIC ---
+      // 1. Update Conversations
+      await pool.query(
+        'UPDATE whatsapp_conversations SET contact_name = $1 WHERE (phone = $2 OR external_id = $3) AND company_id = $4',
+        [name, cleanPhone, jid, companyId]
+      );
+
+      // 2. Update CRM Leads
+      await pool.query(
+        'UPDATE crm_leads SET name = $1 WHERE phone = $2 AND company_id = $3',
+        [name, cleanPhone, companyId]
+      );
+
+      // 3. Emit Socket Events
+      const io = req.app.get('io');
+      if (io && companyId) {
+        io.to(`company_${companyId}`).emit('contact:update', {
+          id: row.id,
+          phone: cleanPhone,
+          name: name,
+          jid: jid,
+          companyId: companyId
+        });
+
+        // Also force conversation update for relevant chats
+        const convRes = await pool.query(
+          'SELECT id FROM whatsapp_conversations WHERE (phone = $1 OR external_id = $2) AND company_id = $3',
+          [cleanPhone, jid, companyId]
+        );
+        for (const cRow of convRes.rows) {
+          io.to(`company_${companyId}`).emit('conversation:update', {
+            id: cRow.id,
+            contact_name: name
+          });
+        }
+      }
+
       return res.status(201).json({
-        id: jid,
-        name,
-        phone: cleanPhone,
-        jid
+        id: row.id, // Important: Return DB ID
+        name: row.name,
+        phone: row.phone,
+        jid: row.jid
       });
 
     } catch (error: any) {
@@ -1219,6 +1259,7 @@ export const createEvolutionContact = async (req: Request, res: Response) => {
     return res.status(500).json({ error: "Failed to create contact" });
   }
 };
+
 // ... (previous code)
 
 // Handle Evolution Webhooks
@@ -1492,12 +1533,59 @@ export const updateEvolutionContact = async (req: Request, res: Response) => {
 
     const resolvedCompanyId = user.role === 'SUPERADMIN' ? companyId : user.company_id;
 
-    await pool.query(
-      'UPDATE whatsapp_contacts SET name = $1 WHERE id = $2 AND company_id = $3',
+    // UPDATE with RETURNING to get phone and confirm update
+    const updateRes = await pool.query(
+      'UPDATE whatsapp_contacts SET name = $1 WHERE id = $2 AND company_id = $3 RETURNING *',
       [name, id, resolvedCompanyId]
     );
 
-    return res.json({ status: "updated", id, name });
+    if (updateRes.rows.length === 0) {
+      return res.status(404).json({ error: "Contact not found or access denied" });
+    }
+
+    const updatedContact = updateRes.rows[0];
+    const { phone, jid } = updatedContact;
+
+    // --- PROPAGATION LOGIC ---
+
+    // 1. Update Conversations (any conversation with this phone)
+    await pool.query(
+      'UPDATE whatsapp_conversations SET contact_name = $1 WHERE (phone = $2 OR external_id = $3) AND company_id = $4',
+      [name, phone, jid, resolvedCompanyId]
+    );
+
+    // 2. Update CRM Leads (any lead with this phone)
+    await pool.query(
+      'UPDATE crm_leads SET name = $1 WHERE phone = $2 AND company_id = $3',
+      [name, phone, resolvedCompanyId]
+    );
+
+    // 3. Emit Socket Events to refresh UI
+    const io = req.app.get('io');
+    if (io) {
+      // Emit contact update
+      io.to(`company_${resolvedCompanyId}`).emit('contact:update', {
+        id: updatedContact.id,
+        phone: phone,
+        name: name,
+        jid: jid,
+        companyId: resolvedCompanyId
+      });
+
+      // Also force conversation update so the chat list updates without full reload
+      const convRes = await pool.query(
+        'SELECT id FROM whatsapp_conversations WHERE (phone = $1 OR external_id = $2) AND company_id = $3',
+        [phone, jid, resolvedCompanyId]
+      );
+      for (const cRow of convRes.rows) {
+        io.to(`company_${resolvedCompanyId}`).emit('conversation:update', {
+          id: cRow.id,
+          contact_name: name
+        });
+      }
+    }
+
+    return res.json({ status: "updated", id, name, phone });
 
   } catch (error) {
     console.error("Error updating contact:", error);
