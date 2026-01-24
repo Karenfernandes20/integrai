@@ -245,9 +245,9 @@ export function TagManager({
                     key={tag.id}
                     className="flex items-center gap-1 rounded-sm px-1.5 py-0.5 text-[10px] font-medium border transition-colors shadow-sm"
                     style={{
-                        backgroundColor: tag.color ? `${tag.color}20` : '#cbd5e120',
+                        backgroundColor: tag.color ? `${tag.color}30` : '#cbd5e130',
                         borderColor: tag.color ? `${tag.color}60` : '#cbd5e160',
-                        color: 'inherit'
+                        color: tag.color || '#cbd5e1'
                     }}
                     id={`s-tag-${tag.id}`}
                 >

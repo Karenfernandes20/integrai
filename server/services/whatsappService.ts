@@ -86,110 +86,32 @@ export async function sendWhatsAppMessage({
         };
         let bodyPayload: any = null;
 
-        // === MEDIA FLOW (Multipart/Form-Data with Node Streams) ===
+        // === MEDIA FLOW (JSON Payload with Public URL) ===
         if (mediaUrl) {
-            // targetUrl logic
             targetUrl = `${baseUrl}/message/sendMedia/${evolution_instance}`;
 
-            const formData = new FormData();
-            formData.append('number', cleanPhone);
-            formData.append('caption', message || '');
+            // Resolve Local/Relative URLs to Public Internet URLs
+            let finalMediaUrl = mediaUrl;
+            const PUBLIC_URL = process.env.PUBLIC_URL || 'http://localhost:3000'; // User must configure this in .env
 
-            // Handling Valid Media Types
-            const safeMediaType = mediaType?.toLowerCase() || 'image';
-            formData.append('mediatype', safeMediaType);
-
-            // IMPROVED: Robust Local File Detection
-            // If the URL contains '/uploads/', we assume it is a local file served by this server.
-            // This avoids issues with NAT loopback, DNS resolution, or localhost binding differences.
-            const uploadsMarker = '/uploads/';
-            const hasUploads = mediaUrl.includes(uploadsMarker);
-
-            const isLocalUrl = hasUploads ||
-                mediaUrl.includes('localhost') ||
-                mediaUrl.includes('127.0.0.1') ||
-                mediaUrl.startsWith('http://192.') ||
-                mediaUrl.startsWith('http://10.');
-
-            const isRelative = !mediaUrl.startsWith('http');
-
-            let fileBlob: Blob;
-            let fileName = 'file';
-
-            if (isLocalUrl || isRelative) {
-                console.log(`[sendWhatsAppMessage] Local media detected (Strategy: ${hasUploads ? 'UploadsDir' : 'LocalIP'}). Path: ${mediaUrl}`);
-                try {
-                    // Extract filename
-                    // If it has /uploads/, take the part after strict /uploads/ to be safe
-                    let cleanFileName = '';
-                    if (hasUploads) {
-                        const parts = mediaUrl.split(uploadsMarker);
-                        if (parts.length > 1) {
-                            // Take the last part and remove any query params
-                            cleanFileName = parts[parts.length - 1].split('?')[0];
-                        }
-                    }
-
-                    if (!cleanFileName) {
-                        const urlPath = mediaUrl.split('?')[0];
-                        cleanFileName = path.basename(urlPath) || 'media_file';
-                    }
-
-                    // Decode URI component in case filename has spaces/special chars
-                    try { cleanFileName = decodeURIComponent(cleanFileName); } catch (e) { }
-
-                    fileName = cleanFileName;
-
-                    const ups = path.join(__dirname, '../uploads');
-                    const possibleLocalPath = path.join(ups, fileName);
-
-                    if (!fs.existsSync(possibleLocalPath)) {
-                        console.warn(`[sendWhatsAppMessage] File not found at expected path: ${possibleLocalPath}`);
-                        // Fallback: If not found locally (maybe improper path), try fetching it if it's a URL
-                        if (mediaUrl.startsWith('http')) {
-                            console.log(`[sendWhatsAppMessage] Fallback: Trying to fetch ${mediaUrl} via network...`);
-                            const mediaResp = await fetch(mediaUrl);
-                            if (!mediaResp.ok) throw new Error(`Failed to fetch media (Fallback): ${mediaResp.status}`);
-                            fileBlob = await mediaResp.blob();
-                        } else {
-                            throw new Error(`File not found at ${possibleLocalPath}`);
-                        }
-                    } else {
-                        // READ AS BUFFER -> BLOB (Node 18+ style)
-                        const buffer = fs.readFileSync(possibleLocalPath);
-                        const ext = path.extname(fileName).toLowerCase();
-                        let mime = 'application/octet-stream';
-                        if (['.jpg', '.jpeg'].includes(ext)) mime = 'image/jpeg';
-                        else if (ext === '.png') mime = 'image/png';
-                        else if (ext === '.webp') mime = 'image/webp';
-                        else if (ext === '.pdf') mime = 'application/pdf';
-                        else if (ext === '.mp4') mime = 'video/mp4';
-                        else if (ext === '.mp3') mime = 'audio/mpeg';
-
-                        fileBlob = new Blob([buffer], { type: mime });
-                        console.log(`[sendWhatsAppMessage] File loaded from disk: ${possibleLocalPath} (${buffer.length} bytes, ${mime})`);
-                    }
-
-                } catch (readErr: any) {
-                    console.error(`[sendWhatsAppMessage] Failed to read local file:`, readErr);
-                    return { success: false, error: `Erro ao ler arquivo local: ${readErr.message}` };
-                }
-            } else {
-                console.log(`[sendWhatsAppMessage] Remote media detected. Fetching: ${mediaUrl}`);
-                try {
-                    const mediaResp = await fetch(mediaUrl);
-                    if (!mediaResp.ok) throw new Error(`Failed to fetch media: ${mediaResp.status}`);
-                    fileBlob = await mediaResp.blob();
-                    fileName = path.basename(mediaUrl.split('?')[0]) || 'downloaded_media';
-                } catch (fetchErr: any) {
-                    console.error(`[sendWhatsAppMessage] Failed to download remote file:`, fetchErr);
-                    return { success: false, error: `Erro ao baixar mídia externa: ${fetchErr.message}` };
-                }
+            if (mediaUrl.startsWith('/') || mediaUrl.startsWith('uploads/') || !mediaUrl.startsWith('http')) {
+                const relative = mediaUrl.startsWith('/') ? mediaUrl : `/${mediaUrl}`;
+                // Strip double slashes if any (basic cleanup)
+                finalMediaUrl = `${PUBLIC_URL}${relative}`;
+                console.log(`[sendWhatsAppMessage] Resolving local media path to public URL: ${finalMediaUrl}`);
             }
 
-            // Append file to form data
-            formData.append('media', fileBlob, fileName);
-            bodyPayload = formData;
+            headers['Content-Type'] = 'application/json';
+
+            // STRICT USER PAYLOAD REQUIREMENT
+            // { "number": "{{phone}}", "mediaUrl": "{{public_file_url}}", "caption": "{{message_text}}" }
+            bodyPayload = JSON.stringify({
+                number: cleanPhone,
+                mediaUrl: finalMediaUrl,
+                caption: message || '',
+                mediatype: mediaType || 'image', // Adding for robustness
+                fileName: path.basename(finalMediaUrl.split('?')[0])
+            });
 
         } else {
             // === TEXT FLOW (JSON) ===

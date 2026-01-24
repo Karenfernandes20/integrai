@@ -913,7 +913,13 @@ export const getConversations = async (req: Request, res: Response) => {
             COALESCE(co.profile_pic_url, c.profile_pic_url) as profile_pic_url,
             co.push_name as contact_push_name,
             comp.name as company_name,
-            COALESCE(ci.name, c.last_instance_key, c.instance) as instance_friendly_name
+            COALESCE(ci.name, c.last_instance_key, c.instance) as instance_friendly_name,
+            COALESCE((
+                SELECT json_agg(json_build_object('id', t.id, 'name', t.name, 'color', t.color))
+                FROM conversations_tags ct
+                JOIN crm_tags t ON ct.tag_id = t.id
+                WHERE ct.conversation_id = c.id
+            ), '[]'::json) as tags
             FROM whatsapp_conversations c
             LEFT JOIN whatsapp_contacts co ON (c.external_id = co.jid AND c.company_id = co.company_id)
             LEFT JOIN companies comp ON c.company_id = comp.id

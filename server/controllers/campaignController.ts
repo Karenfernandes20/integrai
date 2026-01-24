@@ -513,7 +513,7 @@ async function processCampaign(campaignId: number, io?: any) {
                 const endMinutes = getMinutes(campaign.end_time || '23:59');
 
                 if (currentMinutes < startMinutes || currentMinutes > endMinutes) {
-                    console.log(`[Campaign ${campaignId}] Outside window. Waiting...`);
+                    console.log(`[Campaign ${campaignId}] Outside window (${brazilTimeStr}). Waiting...`);
                     break; // Stop for now, scheduler will re-run it when window opens
                 }
 
@@ -576,7 +576,9 @@ async function processCampaign(campaignId: number, io?: any) {
 
                 while (attempts < maxAttempts) {
                     attempts++;
-                    result = await sendWhatsAppMessage({
+
+                    // SAFETY TIMEOUT RACE to prevent hanging indefinitely
+                    const sendPromise = sendWhatsAppMessage({
                         companyId: campaign.company_id,
                         phone: contact.phone,
                         message,
@@ -588,7 +590,15 @@ async function processCampaign(campaignId: number, io?: any) {
                         campaignId: campaign.id
                     });
 
+                    // 45s hard timeout for the send operation
+                    const timeoutPromise = new Promise<{ success: boolean, error?: string }>((resolve) => {
+                        setTimeout(() => resolve({ success: false, error: 'TIMEOUT_ON_SEND_FUNCTION' }), 45000);
+                    });
+
+                    result = await Promise.race([sendPromise, timeoutPromise]);
+
                     if (result.success) break;
+                    console.warn(`[Campaign ${campaignId}] Attempt ${attempts} failed for ${contact.phone}: ${result.error}`);
                     if (attempts < maxAttempts) await new Promise(r => setTimeout(r, 2000));
                 }
 
@@ -620,6 +630,8 @@ async function processCampaign(campaignId: number, io?: any) {
 
             } catch (innerError: any) {
                 console.error(`[Campaign ${campaignId}] Inner loop error:`, innerError);
+                // Safety break to prevent hot loop if DB is dead
+                await new Promise(r => setTimeout(r, 5000));
             }
         }
 
