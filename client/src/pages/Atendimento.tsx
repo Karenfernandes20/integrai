@@ -1381,24 +1381,26 @@ const AtendimentoPage = () => {
     // Poll Evolution status
     const pollStatus = async () => {
       try {
-        // In real app, socket event 'connection.update' is better. For now polling.
-        const res = await fetch("/api/evolution/status", {
+        // Use the robust system status endpoint
+        const res = await fetch("/api/system/whatsapp/status", {
           headers: {
             "Authorization": `Bearer ${token}`
           }
         });
         if (res.ok) {
           const data = await res.json();
-          // data.instance.state or just state
-          const state = data?.instance?.state || data?.state || 'unknown';
-          setWhatsappStatus(state);
+          // Map system status to UI status
+          const status = data.status || 'disconnected';
+          setWhatsappStatus(status === 'connected' ? 'open' : (status === 'connecting' ? 'connecting' : 'close'));
         }
-      } catch (e) { }
+      } catch (e) {
+        setWhatsappStatus('unknown');
+      }
     };
     pollStatus();
     // Fetch contacts in background immediately after mount
     fetchEvolutionContacts();
-    const interval = setInterval(pollStatus, 30000); // Poll less frequently
+    const interval = setInterval(pollStatus, 30000);
     return () => clearInterval(interval);
 
   }, [token]);
@@ -2527,10 +2529,21 @@ const AtendimentoPage = () => {
         >
           {/* Header da Sidebar - WhatsApp Style */}
           <div className="h-[64px] bg-[#202C33] flex items-center justify-between px-4 shrink-0">
-            <div className="flex items-center gap-2">
-              <Avatar className="h-10 w-10">
-                <AvatarFallback className="bg-[#6a7175] text-white">EU</AvatarFallback>
-              </Avatar>
+            <div className="flex items-center gap-3">
+              <div className="relative">
+                <Avatar className="h-10 w-10">
+                  <AvatarFallback className="bg-[#6a7175] text-white">EU</AvatarFallback>
+                </Avatar>
+                {/* Connection Status Indicator */}
+                <div
+                  className={cn(
+                    "absolute bottom-0 right-0 w-3 h-3 rounded-full border-2 border-[#111B21] z-10",
+                    whatsappStatus === 'open' ? "bg-[#25D366]" :
+                      whatsappStatus === 'connecting' ? "bg-yellow-500 animate-pulse" : "bg-red-500"
+                  )}
+                  title={whatsappStatus === 'open' ? "Conectado" : whatsappStatus === 'connecting' ? "Conectando..." : "Desconectado"}
+                />
+              </div>
             </div>
 
             <div className="flex items-center gap-2">
@@ -3112,30 +3125,31 @@ const AtendimentoPage = () => {
 
                           {/* Origin label for outbound messages */}
                           {firstMsg.direction === 'outbound' && (
-                            <span className="text-[11px] font-medium text-[#8696A0] px-2 mb-0.5 uppercase tracking-wider flex items-center gap-1">
+                            <span className="text-[10px] font-bold text-[#8696A0] px-2 mb-0.5 uppercase tracking-widest flex items-center gap-1.5 opacity-80">
                               {/* System user (has user_id) */}
                               {firstMsg.user_id ? (
                                 <>
-                                  {String(firstMsg.user_id) === String(user?.id) ? (
-                                    <span className="w-1.5 h-1.5 bg-green-500 rounded-full" />
-                                  ) : (
-                                    <span className="w-1.5 h-1.5 bg-blue-500 rounded-full" />
-                                  )}
-                                  {firstMsg.agent_name || firstMsg.user_name || "Operador"}
+                                  <div className={cn(
+                                    "w-1.5 h-1.5 rounded-full shadow-[0_0_4px_rgba(37,211,102,0.4)]",
+                                    String(firstMsg.user_id) === String(user?.id) ? "bg-[#25D366]" : "bg-blue-400"
+                                  )} />
+                                  <span className={cn(String(firstMsg.user_id) === String(user?.id) ? "text-[#25D366]" : "text-blue-400")}>
+                                    {firstMsg.agent_name || firstMsg.user_name || "Operador"}
+                                  </span>
                                 </>
                               ) : (
                                 <>
                                   {/* WhatsApp Mobile/Web */}
                                   {(firstMsg as any).message_source === 'whatsapp_mobile' || (firstMsg as any).message_origin === 'whatsapp_mobile' ? (
                                     <>
-                                      <span className="w-1.5 h-1.5 bg-cyan-500 rounded-full" />
-                                      Celular
+                                      <div className="w-1.5 h-1.5 bg-cyan-400 rounded-full shadow-[0_0_4px_rgba(34,211,238,0.4)]" />
+                                      <span className="text-cyan-400">Celular</span>
                                     </>
                                   ) : (
                                     /* Evolution API / AI Agent / System */
                                     <>
-                                      <span className="w-1.5 h-1.5 bg-purple-500 rounded-full animate-pulse" />
-                                      {firstMsg.agent_name || "Sistema"}
+                                      <div className="w-1.5 h-1.5 bg-purple-400 rounded-full animate-pulse shadow-[0_0_4px_rgba(168,85,247,0.4)]" />
+                                      <span className="text-purple-400">{firstMsg.agent_name || "Sistema"}</span>
                                     </>
                                   )}
                                 </>

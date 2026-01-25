@@ -2206,17 +2206,6 @@ export const searchEverything = async (req: Request, res: Response) => {
  * GET /api/system/whatsapp/status
  * 
  * Regra de Ouro:
- * 1. Resolve a inst��ncia ativa (prioriza CONNECTED/OPEN no banco).
- * 2. Valida o status em tempo real na Evolution API.
- * 3. Atualiza o banco se houver diverg��ncia.
- * 4. Retorna o status FINAL para o frontend (Dashboard/QR).
- */
-
-/**
- * Endpoint GLOBAL UNIFICADO para Status do WhatsApp
- * GET /api/system/whatsapp/status
- * 
- * Regra de Ouro:
  * 1. Resolve a instância ativa (prioriza CONNECTED/OPEN no banco).
  * 2. Valida o status em tempo real na Evolution API.
  * 3. Atualiza o banco se houver divergência.
