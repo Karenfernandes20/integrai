@@ -558,18 +558,18 @@ const FinanceiroPage = () => {
                 </div>
                 <div className="flex flex-col">
                   <span className="text-[10px] font-bold text-amber-500 uppercase">Pendente</span>
-                  <span className="text-sm font-black text-amber-600">R$ {totals.pending.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}</span>
+                  <span className="text-sm font-black text-amber-600 whitespace-nowrap">R$ {totals.pending.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}</span>
                 </div>
                 <div className="flex flex-col">
                   <span className="text-[10px] font-bold text-red-500 uppercase">Vencido</span>
-                  <span className="text-sm font-black text-red-600">R$ {totals.overdue.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}</span>
+                  <span className="text-sm font-black text-red-600 whitespace-nowrap">R$ {totals.overdue.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}</span>
                 </div>
               </div>
             </TableCell>
             <TableCell className="text-right py-5 pr-6" colSpan={3}>
               <div className="flex flex-col items-end">
                 <span className="text-[10px] font-bold text-zinc-400 uppercase">Resumo Filtrado</span>
-                <span className="text-xl font-black text-zinc-900">
+                <span className="text-xl font-black text-zinc-900 whitespace-nowrap">
                   Total: R$ {totals.total.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
                 </span>
               </div>
@@ -1107,7 +1107,7 @@ const FinanceiroPage = () => {
             <CardDescription className="text-[10px] font-bold uppercase text-emerald-600 flex items-center gap-1">
               <ArrowUpRight className="h-3 w-3" /> Receitas
             </CardDescription>
-            <CardTitle className="text-xl font-black text-emerald-700">
+            <CardTitle className="text-xl font-black text-emerald-700 whitespace-nowrap">
               R$ {stats.revenues.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
             </CardTitle>
           </CardHeader>
@@ -1121,7 +1121,7 @@ const FinanceiroPage = () => {
             <CardDescription className="text-[10px] font-bold uppercase text-red-600 flex items-center gap-1">
               <ArrowDownRight className="h-3 w-3" /> Despesas
             </CardDescription>
-            <CardTitle className="text-xl font-black text-red-700">
+            <CardTitle className="text-xl font-black text-red-700 whitespace-nowrap">
               R$ {stats.expenses.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
             </CardTitle>
           </CardHeader>
@@ -1142,7 +1142,7 @@ const FinanceiroPage = () => {
               <Wallet className="h-3 w-3" /> Saldo
             </CardDescription>
             <CardTitle className={cn(
-              "text-xl font-black",
+              "text-xl font-black whitespace-nowrap",
               stats.balance >= 0 ? "text-blue-700" : "text-amber-700"
             )}>
               R$ {stats.balance.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
@@ -1158,7 +1158,7 @@ const FinanceiroPage = () => {
             <CardDescription className="text-[10px] font-bold uppercase text-zinc-500 flex items-center gap-1">
               A Receber
             </CardDescription>
-            <CardTitle className="text-xl font-black text-zinc-900">
+            <CardTitle className="text-xl font-black text-zinc-900 whitespace-nowrap">
               R$ {stats.receivables.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
             </CardTitle>
           </CardHeader>
@@ -1172,7 +1172,7 @@ const FinanceiroPage = () => {
             <CardDescription className="text-[10px] font-bold uppercase text-zinc-500 flex items-center gap-1">
               A Pagar
             </CardDescription>
-            <CardTitle className="text-xl font-black text-zinc-900">
+            <CardTitle className="text-xl font-black text-zinc-900 whitespace-nowrap">
               R$ {stats.payables.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
             </CardTitle>
           </CardHeader>
@@ -1186,7 +1186,7 @@ const FinanceiroPage = () => {
             <CardDescription className="text-[10px] font-bold uppercase text-red-700 flex items-center gap-1">
               <AlertCircle className="h-3 w-3 animate-pulse" /> Vencidos
             </CardDescription>
-            <CardTitle className="text-xl font-black text-red-800">
+            <CardTitle className="text-xl font-black text-red-800 whitespace-nowrap">
               R$ {stats.overdue.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
             </CardTitle>
           </CardHeader>
