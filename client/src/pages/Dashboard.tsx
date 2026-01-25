@@ -3,6 +3,7 @@ import { useSearchParams } from "react-router-dom";
 import { CrmDashboard } from "../components/crm-dashboard/CrmDashboard";
 import { TransportDashboard } from "../components/transport-dashboard/TransportDashboard";
 import { ClinicalDashboard } from "../components/clinical-dashboard/ClinicalDashboard";
+import { LavajatoDashboard } from "../components/lavajato-dashboard/LavajatoDashboard";
 
 import { useAuth } from "../contexts/AuthContext";
 
@@ -125,7 +126,14 @@ const DashboardPage = () => {
     );
   }
 
-  // --- 4. FALLBACK DEFAULT TO CLIENTES ---
+  // --- 4. LAVAJATO DASHBOARD ---
+  if (company?.category === 'lavajato') {
+    return (
+      <LavajatoDashboard company={company} />
+    );
+  }
+
+  // --- 5. FALLBACK DEFAULT TO CLIENTES ---
 
   if (!company) {
     return (

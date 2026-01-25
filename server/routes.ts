@@ -448,6 +448,20 @@ router.post('/billing/subscription', authenticateToken, authorizeRole(['ADMIN', 
 router.post('/billing/cancel', authenticateToken, authorizeRole(['ADMIN', 'SUPERADMIN']), cancelSubscription);
 router.get('/billing/invoices', authenticateToken, getInvoices);
 
+// Lavajato Routes
+import { getLavajatoStats, getLavajatoFunnel, getVehicles, createVehicle, getAppointments, createAppointment, getServiceOrders, createServiceOrder, getBoxes, getServices } from './controllers/lavajatoController';
+
+router.get('/lavajato/stats', authenticateToken, getLavajatoStats);
+router.get('/lavajato/funnel', authenticateToken, getLavajatoFunnel);
+router.get('/lavajato/vehicles', authenticateToken, getVehicles);
+router.post('/lavajato/vehicles', authenticateToken, createVehicle);
+router.get('/lavajato/appointments', authenticateToken, getAppointments);
+router.post('/lavajato/appointments', authenticateToken, createAppointment);
+router.get('/lavajato/service-orders', authenticateToken, getServiceOrders);
+router.post('/lavajato/service-orders', authenticateToken, createServiceOrder);
+router.get('/lavajato/boxes', authenticateToken, getBoxes);
+router.get('/lavajato/services', authenticateToken, getServices);
+
 router.get('/rides', (req, res) => res.json({ message: 'Rides endpoint' }));
 router.get('/whatsapp', (req, res) => res.json({ message: 'WhatsApp endpoint' }));
 

@@ -88,6 +88,12 @@ import TemplatesPage from "./pages/Templates";
 import RoadmapPage from "./pages/Roadmap";
 import ConversionReports from "./pages/ConversionReports";
 
+// Lavajato Pages
+import AgendaPage from "./pages/lavajato/Agenda";
+import VehiclesPage from "./pages/lavajato/Vehicles";
+import ServiceOrdersPage from "./pages/lavajato/ServiceOrders";
+import ServicesPage from "./pages/lavajato/Services";
+
 
 import { AuthProvider } from "./contexts/AuthContext";
 import AdminRoute from "./components/AdminRoute";
@@ -142,6 +148,12 @@ const App = () => (
                   <Route path="follow-up" element={<FollowUpPage />} />
                   <Route path="faq" element={<FaqPage />} />
                   <Route path="tags" element={<TagsPage />} />
+
+                  {/* Lavajato Specific Routes */}
+                  <Route path="agenda" element={<AgendaPage />} />
+                  <Route path="veiculos" element={<VehiclesPage />} />
+                  <Route path="os" element={<ServiceOrdersPage />} />
+                  <Route path="servicos" element={<ServicesPage />} />
 
                   {/* SuperAdmin Routes */}
                   <Route element={<AdminRoute roles={['SUPERADMIN', 'ADMIN']} />}>

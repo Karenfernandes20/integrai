@@ -115,6 +115,7 @@ import { createServer } from "http";
 import { Server } from "socket.io";
 import { runMigrations } from "./db/migrations";
 import { runFaqMigrations } from "./db/faqMigrations";
+import { runLavajatoMigrations } from "./db/lavajato_migrations";
 
 // Create HTTP server
 const httpServer = createServer(app);
@@ -154,6 +155,7 @@ const startServer = async () => {
   try {
     // SKIP MIGRATIONS FOR MOCK TESTING (To avoid crash on DB Connect Error)
     // await runMigrations();
+    await runLavajatoMigrations();
     console.log("Migrations check skipped for offline/mock mode.");
 
     // INITIALIZE SYSTEM MODE (Safe Check)

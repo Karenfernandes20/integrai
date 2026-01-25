@@ -33,6 +33,10 @@ import {
   LayoutTemplate,
   Map,
   Tags as TagsIcon,
+  Car,
+  Wrench,
+  ClipboardList,
+  TrendingUp,
 } from "lucide-react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext";
@@ -118,13 +122,6 @@ export function AppSidebar() {
     navItems.splice(10, 0, { label: "Roadmap", icon: Map, to: "/app/roadmap" });
   }
 
-  if (user?.role === 'SUPERADMIN' || user?.role === 'ADMIN') {
-    // Insert "Relatórios" before the last item (Configurações) if FAQ is before Configurações
-    // Or just push and ensure FAQ is moved.
-    // Let's simplify: push all, then find FAQ and move it to penultimate.
-    navItems.push({ label: "Relatórios", icon: FileText, to: "/app/relatorios" });
-  }
-
   // Ensure FAQ is penultimate (second to last)
   const faqIndex = navItems.findIndex(i => i.label === "Ajuda / FAQ");
   if (faqIndex > -1) {
@@ -132,8 +129,28 @@ export function AppSidebar() {
     navItems.splice(navItems.length - 1, 0, faqItem);
   }
 
+  // --- LAVAJATO CUSTOM NAVIGATION ---
+  const isLavajato = (user as any)?.company?.category === 'lavajato';
+
+  const lavajatoItems = [
+    { label: "Dashboard", icon: LayoutDashboard, to: "/app/dashboard" },
+    { label: "Agenda", icon: CalendarCheck, to: "/app/agenda" },
+    { label: "Atendimento", icon: MessageCircle, to: "/app/atendimento" },
+    { label: "Clientes", icon: Users, to: "/app/contatos" },
+    { label: "Veículos", icon: Car, to: "/app/veiculos" },
+    { label: "Serviços", icon: Wrench, to: "/app/servicos" },
+    { label: "Ordens de Serviço", icon: ClipboardList, to: "/app/os" },
+    { label: "Financeiro", icon: Wallet2, to: "/app/financeiro" },
+    { label: "Campanhas", icon: FileText, to: "/app/campanhas" },
+    { label: "Relatórios", icon: TrendingUp, to: "/app/relatorios" },
+    { label: "Equipe", icon: Users, to: "/app/usuarios" },
+    { label: "Configurações", icon: Settings, to: "/app/configuracoes" },
+  ];
+
+  const finalItems = isLavajato ? lavajatoItems : navItems;
+
   // Permission Logic
-  const filteredNavItems = navItems.filter(item => {
+  const filteredNavItems = finalItems.filter(item => {
     // Force hide SuperAdmin items for non-SuperAdmins
     const superAdminOnly = ["Clientes", "Tarefas", "Logs", "Alertas", "Saúde", "IA", "Auditoria", "Templates", "Roadmap"];
     if (user?.role !== 'SUPERADMIN' && superAdminOnly.includes(item.label)) return false;

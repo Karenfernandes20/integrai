@@ -122,7 +122,7 @@ export const login = async (req: Request, res: Response) => {
         // Fetch company details if applicable
         let companyDetails = null;
         if (user.company_id) {
-            const compRes = await pool.query('SELECT id, name, logo_url, plan_id, due_date FROM companies WHERE id = $1', [user.company_id]);
+            const compRes = await pool.query('SELECT id, name, logo_url, plan_id, due_date, category FROM companies WHERE id = $1', [user.company_id]);
             if (compRes.rows.length > 0) {
                 companyDetails = compRes.rows[0];
             }
