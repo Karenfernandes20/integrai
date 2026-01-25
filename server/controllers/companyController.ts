@@ -56,6 +56,7 @@ export const getCompany = async (req: Request, res: Response) => {
             SELECT 
                 id, name, cnpj, city, state, phone, logo_url, evolution_instance, evolution_apikey, created_at,
                 COALESCE(operation_type, 'clientes') as operation_type,
+                category,
                 primary_color, secondary_color, system_name, custom_domain,
                 plan_id, due_date
             FROM companies WHERE id = $1
@@ -88,7 +89,7 @@ export const getCompany = async (req: Request, res: Response) => {
 export const createCompany = async (req: Request, res: Response) => {
     try {
         if (!pool) return res.status(500).json({ error: 'Database not configured' });
-        const { name, cnpj, city, state, phone, evolution_instance, evolution_apikey, operation_type, plan_id, due_date, max_instances } = req.body;
+        const { name, cnpj, city, state, phone, evolution_instance, evolution_apikey, operation_type, category, plan_id, due_date, max_instances } = req.body;
 
         let logo_url = null;
         if (req.file) {
@@ -101,8 +102,8 @@ export const createCompany = async (req: Request, res: Response) => {
         const limitInstances = max_instances ? parseInt(max_instances) : 1;
 
         const result = await pool.query(
-            `INSERT INTO companies (name, cnpj, city, state, phone, logo_url, evolution_instance, evolution_apikey, operation_type, plan_id, due_date, max_instances) 
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12) 
+            `INSERT INTO companies (name, cnpj, city, state, phone, logo_url, evolution_instance, evolution_apikey, operation_type, category, plan_id, due_date, max_instances) 
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13) 
              RETURNING *`,
             [
                 name,
@@ -114,6 +115,7 @@ export const createCompany = async (req: Request, res: Response) => {
                 evolution_instance || null,
                 evolution_apikey || null,
                 operation_type || 'clientes',
+                category || 'generic',
                 plan_id || null,
                 due_date || null,
                 limitInstances
@@ -228,7 +230,7 @@ export const updateCompany = async (req: Request, res: Response) => {
         if (!pool) return res.status(500).json({ error: 'Configuração do banco de dados não encontrada.' });
 
         const { id } = req.params;
-        const { name, cnpj, city, state, phone, evolution_instance, evolution_apikey, operation_type, remove_logo,
+        const { name, cnpj, city, state, phone, evolution_instance, evolution_apikey, operation_type, category, remove_logo,
             primary_color, secondary_color, system_name, custom_domain, plan_id, due_date, max_instances,
             // Instagram
             // Instagram
@@ -335,7 +337,8 @@ export const updateCompany = async (req: Request, res: Response) => {
                 instagram_page_id = $21,
                 instagram_business_id = $22,
                 instagram_access_token = $23,
-                instagram_status = $24
+                instagram_status = $24,
+                category = COALESCE($25, category)
             WHERE id = $10 
             RETURNING *
         `;
@@ -366,7 +369,8 @@ export const updateCompany = async (req: Request, res: Response) => {
             instagram_page_id || null, // $21
             instagram_business_id || null, // $22
             finalAccessToken || null, // $23
-            instagramStatus // $24
+            instagramStatus, // $24
+            category || null // $25
         ];
 
 

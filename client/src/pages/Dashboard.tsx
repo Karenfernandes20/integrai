@@ -4,6 +4,7 @@ import { CrmDashboard } from "../components/crm-dashboard/CrmDashboard";
 import { TransportDashboard } from "../components/transport-dashboard/TransportDashboard";
 import { ClinicalDashboard } from "../components/clinical-dashboard/ClinicalDashboard";
 import { LavajatoDashboard } from "../components/lavajato-dashboard/LavajatoDashboard";
+import { RestaurantDashboard } from "../components/restaurant-dashboard/RestaurantDashboard";
 
 import { useAuth } from "../contexts/AuthContext";
 
@@ -133,7 +134,14 @@ const DashboardPage = () => {
     );
   }
 
-  // --- 5. FALLBACK DEFAULT TO CLIENTES ---
+  // --- 5. RESTAURANTE DASHBOARD ---
+  if (company?.category === 'restaurante') {
+    return (
+      <RestaurantDashboard company={company} />
+    );
+  }
+
+  // --- 6. FALLBACK DEFAULT TO CLIENTES ---
 
   if (!company) {
     return (

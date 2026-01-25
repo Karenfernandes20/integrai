@@ -94,6 +94,13 @@ import VehiclesPage from "./pages/lavajato/Vehicles";
 import ServiceOrdersPage from "./pages/lavajato/ServiceOrders";
 import ServicesPage from "./pages/lavajato/Services";
 
+// Restaurant Pages
+import PedidosPage from "./pages/restaurante/Pedidos";
+import MesasPage from "./pages/restaurante/Mesas";
+import CozinhaPage from "./pages/restaurante/Cozinha";
+import CardapioPage from "./pages/restaurante/Cardapio";
+import EntregasPage from "./pages/restaurante/Entregas";
+
 
 import { AuthProvider } from "./contexts/AuthContext";
 import AdminRoute from "./components/AdminRoute";
@@ -154,6 +161,13 @@ const App = () => (
                   <Route path="veiculos" element={<VehiclesPage />} />
                   <Route path="os" element={<ServiceOrdersPage />} />
                   <Route path="servicos" element={<ServicesPage />} />
+
+                  {/* Restaurant Specific Routes */}
+                  <Route path="pedidos" element={<PedidosPage />} />
+                  <Route path="mesas" element={<MesasPage />} />
+                  <Route path="cozinha" element={<CozinhaPage />} />
+                  <Route path="cardapio" element={<CardapioPage />} />
+                  <Route path="entregas" element={<EntregasPage />} />
 
                   {/* SuperAdmin Routes */}
                   <Route element={<AdminRoute roles={['SUPERADMIN', 'ADMIN']} />}>

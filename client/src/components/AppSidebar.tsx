@@ -37,6 +37,10 @@ import {
   Wrench,
   ClipboardList,
   TrendingUp,
+  ShoppingBag,
+  Coffee,
+  ChefHat,
+  Truck,
 } from "lucide-react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext";
@@ -131,6 +135,7 @@ export function AppSidebar() {
 
   // --- LAVAJATO CUSTOM NAVIGATION ---
   const isLavajato = (user as any)?.company?.category === 'lavajato';
+  const isRestaurante = (user as any)?.company?.category === 'restaurante';
 
   const lavajatoItems = [
     { label: "Dashboard", icon: LayoutDashboard, to: "/app/dashboard" },
@@ -147,7 +152,22 @@ export function AppSidebar() {
     { label: "Configurações", icon: Settings, to: "/app/configuracoes" },
   ];
 
-  const finalItems = isLavajato ? lavajatoItems : navItems;
+  const restauranteItems = [
+    { label: "Dashboard", icon: LayoutDashboard, to: "/app/dashboard" },
+    { label: "Pedidos", icon: ShoppingBag, to: "/app/pedidos" },
+    { label: "Mesas", icon: Coffee, to: "/app/mesas" },
+    { label: "Cozinha", icon: ChefHat, to: "/app/cozinha" },
+    { label: "Cardápio", icon: LayoutTemplate, to: "/app/cardapio" },
+    { label: "Clientes", icon: Users, to: "/app/contatos" },
+    { label: "Entregas", icon: Truck, to: "/app/entregas" },
+    { label: "Financeiro", icon: Wallet2, to: "/app/financeiro" },
+    { label: "Campanhas", icon: FileText, to: "/app/campanhas" },
+    { label: "Relatórios", icon: TrendingUp, to: "/app/relatorios" },
+    { label: "Equipe", icon: Users, to: "/app/usuarios" },
+    { label: "Configurações", icon: Settings, to: "/app/configuracoes" },
+  ];
+
+  const finalItems = isRestaurante ? restauranteItems : (isLavajato ? lavajatoItems : navItems);
 
   // Permission Logic
   const filteredNavItems = finalItems.filter(item => {

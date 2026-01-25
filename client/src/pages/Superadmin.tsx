@@ -58,7 +58,7 @@ const companySchema = z.object({
   city: z.string().optional(),
   state: z.string().optional(),
   phone: z.string().optional(),
-  operation_type: z.enum(["motoristas", "clientes", "pacientes"]).optional(),
+  operation_type: z.enum(["motoristas", "clientes", "pacientes", "lavajato", "restaurante"]).optional(),
 });
 
 interface Company {
@@ -72,6 +72,7 @@ interface Company {
   evolution_instance: string | null;
   evolution_apikey: string | null;
   operation_type: "motoristas" | "clientes" | "pacientes" | null;
+  category: "generic" | "lavajato" | "restaurante" | null;
   plan_id?: number;
   due_date?: string;
   max_instances?: number;
@@ -127,6 +128,7 @@ const SuperadminPage = () => {
     evolution_instance: "",
     evolution_apikey: "",
     operation_type: "clientes", // Default
+    category: "generic", // Default
     plan_id: "",
     due_date: "",
     max_instances: "1",
@@ -315,7 +317,12 @@ const SuperadminPage = () => {
   };
 
   const handleSelectChange = (value: string) => {
-    setFormValues((prev) => ({ ...prev, operation_type: value }));
+    setFormValues((prev) => ({
+      ...prev,
+      operation_type: value,
+      // Auto-set category if the operation type matches a specialized module
+      category: (value === 'lavajato' || value === 'restaurante') ? value : prev.category
+    }));
   };
 
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -336,6 +343,7 @@ const SuperadminPage = () => {
       evolution_instance: company.evolution_instance ?? "",
       evolution_apikey: company.evolution_apikey ?? "",
       operation_type: company.operation_type ?? "clientes",
+      category: company.category ?? "generic",
       plan_id: company.plan_id ? String(company.plan_id) : "",
       due_date: company.due_date ? new Date(company.due_date).toISOString().split('T')[0] : "",
       max_instances: company.max_instances ? String(company.max_instances) : "1",
@@ -418,6 +426,7 @@ const SuperadminPage = () => {
       evolution_instance: "",
       evolution_apikey: "",
       operation_type: "clientes",
+      category: "generic",
       plan_id: "",
       due_date: "",
       max_instances: "1",
@@ -470,6 +479,7 @@ const SuperadminPage = () => {
       if (parsed.data.state) formData.append("state", parsed.data.state);
       if (parsed.data.phone) formData.append("phone", parsed.data.phone);
       formData.append("operation_type", formValues.operation_type);
+      formData.append("category", formValues.category || "generic");
       if (formValues.plan_id) formData.append("plan_id", formValues.plan_id);
       if (formValues.due_date) formData.append("due_date", formValues.due_date);
       if (formValues.max_instances) formData.append("max_instances", formValues.max_instances);
@@ -969,10 +979,24 @@ const SuperadminPage = () => {
                     <Select value={formValues.operation_type} onValueChange={handleSelectChange}>
                       <SelectTrigger><SelectValue /></SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="clientes">Clientes</SelectItem>
-                        <SelectItem value="vendas">Vendas</SelectItem>
-                        <SelectItem value="suporte">Suporte</SelectItem>
-                        <SelectItem value="hibrido">Híbrido</SelectItem>
+                        <SelectItem value="clientes">Clientes / CRM Geral</SelectItem>
+                        <SelectItem value="motoristas">Motoristas / Mobilidade</SelectItem>
+                        <SelectItem value="pacientes">Pacientes / Saúde</SelectItem>
+                        <SelectItem value="lavajato">Módulo Lavajato</SelectItem>
+                        <SelectItem value="restaurante">Módulo Restaurante</SelectItem>
+                        <SelectItem value="suporte">Suporte Técnico</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <Label className="text-primary font-bold">Categoria de Empresa (Módulo)</Label>
+                    <Select value={formValues.category || "generic"} onValueChange={(v) => setFormValues(p => ({ ...p, category: v }))}>
+                      <SelectTrigger className="border-primary/50"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="generic">Geral / Genérica</SelectItem>
+                        <SelectItem value="lavajato">Módulo Lavajato</SelectItem>
+                        <SelectItem value="restaurante">Módulo Restaurante</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>

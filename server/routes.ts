@@ -462,6 +462,17 @@ router.post('/lavajato/service-orders', authenticateToken, createServiceOrder);
 router.get('/lavajato/boxes', authenticateToken, getBoxes);
 router.get('/lavajato/services', authenticateToken, getServices);
 
+// Restaurant Routes
+import { getRestaurantStats, getRestaurantFunnel, getTables, getMenu, getOrders, createOrder, getDeliveries } from './controllers/restaurantController';
+
+router.get('/restaurant/stats', authenticateToken, getRestaurantStats);
+router.get('/restaurant/funnel', authenticateToken, getRestaurantFunnel);
+router.get('/restaurant/tables', authenticateToken, getTables);
+router.get('/restaurant/menu', authenticateToken, getMenu);
+router.get('/restaurant/orders', authenticateToken, getOrders);
+router.post('/restaurant/orders', authenticateToken, createOrder);
+router.get('/restaurant/deliveries', authenticateToken, getDeliveries);
+
 router.get('/rides', (req, res) => res.json({ message: 'Rides endpoint' }));
 router.get('/whatsapp', (req, res) => res.json({ message: 'WhatsApp endpoint' }));
 
