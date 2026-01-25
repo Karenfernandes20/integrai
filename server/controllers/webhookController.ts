@@ -641,9 +641,10 @@ export const handleWebhook = async (req: Request, res: Response) => {
                             agent_name: existingMsg.agent_name || ((existingMsg.direction === 'outbound' && !existingMsg.user_id) ? (existingMsg.message_source === 'whatsapp_mobile' ? 'Celular' : 'Sistema') : null),
                             message_origin: (existingMsg.direction === 'outbound' && !existingMsg.user_id) ? (existingMsg.message_source === 'whatsapp_mobile' ? 'whatsapp_mobile' : 'evolution_api') : 'system'
                         };
-                        console.log(`[Webhook] Emitting duplicate message to rooms ${room}, ${instanceRoom} | Direction: ${existingMsg.direction}`);
+                        console.log(`[Webhook] Emitting duplicate message to rooms ${room}, ${instanceRoom}, global | Direction: ${existingMsg.direction}`);
                         io.to(room).emit('message:received', payload);
                         io.to(instanceRoom).emit('message:received', payload);
+                        io.to('global').emit('message:received', payload);
                     } else {
                         console.warn('[Webhook] Socket.io not available for duplicate message emission');
                     }
@@ -715,9 +716,10 @@ export const handleWebhook = async (req: Request, res: Response) => {
                         agent_name: (direction === 'outbound' && !insertedMsg.rows[0].user_id) ? (messageSource === 'whatsapp_mobile' ? 'WhatsApp' : (msg.agent_name || 'Sistema')) : null,
                         message_origin: (direction === 'outbound' && !insertedMsg.rows[0].user_id) ? (messageSource === 'whatsapp_mobile' ? 'whatsapp_mobile' : 'evolution_api') : 'system'
                     };
-                    console.log(`[Webhook] Emitting message to rooms ${room}, ${instanceRoom} | Conversation: ${conversationId} | Direction: ${direction}`);
+                    console.log(`[Webhook] Emitting message to rooms ${room}, ${instanceRoom}, global | Direction: ${insertedMsg.rows[0].direction}`);
                     io.to(room).emit('message:received', payload);
                     io.to(instanceRoom).emit('message:received', payload);
+                    io.to('global').emit('message:received', payload);
                 }
             }
 
@@ -935,20 +937,20 @@ export const getConversations = async (req: Request, res: Response) => {
             if (companyId) {
                 query += ` AND c.company_id = $1`;
                 params.push(companyId);
-            } else {
-                // User is Superadmin and didn't select a company. 
-                // Filter by 'integrai' instance as requested.
-                query += ` AND c.instance = 'integrai'`;
             }
+            // Superadmin without companyId now sees all companies/instances
         }
 
+        // Lenient filter for valid conversations
         query += ` AND (
             c.is_group = true 
-            OR (c.phone ~ '^[0-9]+$' AND LENGTH(c.phone) BETWEEN 10 AND 14)
+            OR c.phone IS NULL
+            OR (c.phone ~ '^[0-9+]+$' AND LENGTH(REGEXP_REPLACE(c.phone, '\\D', '', 'g')) BETWEEN 8 AND 15)
+            OR c.external_id IS NOT NULL
         )`;
 
-        // STRICT: Only show conversations that actually have messages
-        query += ` AND EXISTS (SELECT 1 FROM whatsapp_messages m WHERE m.conversation_id = c.id)`;
+        // Optional: Only show conversations with messages (but let's be safe and allow all for now)
+        // query += ` AND EXISTS (SELECT 1 FROM whatsapp_messages m WHERE m.conversation_id = c.id)`;
 
         query += ` ORDER BY c.last_message_at DESC NULLS LAST`;
 
@@ -1023,10 +1025,9 @@ export const getMessages = async (req: Request, res: Response) => {
             const msgCompanyId = check.rows[0].company_id;
             const instance = check.rows[0].instance;
 
-            // Superadmin without company context can see everything
-            // Regular user/Admin must match company_id
-            if (user.role !== 'SUPERADMIN' || companyId) {
-                if (msgCompanyId && companyId && msgCompanyId !== companyId) {
+            // Permission Check: Superadmin sees everything. Others must match companyId.
+            if (user.role !== 'SUPERADMIN') {
+                if (!companyId || (msgCompanyId && msgCompanyId !== companyId)) {
                     console.warn(`[getMessages] Permission denied for conversation ${conversationId}. MsgCompany: ${msgCompanyId}, UserCompany: ${companyId}`);
                     return res.status(403).json({ error: 'Você não tem permissão para acessar estas mensagens.' });
                 }
@@ -1061,7 +1062,7 @@ export const getMessages = async (req: Request, res: Response) => {
                 LEFT JOIN company_instances ci ON m.instance_id = ci.id
                 WHERE m.conversation_id = $1 
                 ORDER BY m.sent_at ASC`,
-                [conversationId, companyId]
+                [conversationId, msgCompanyId]
             );
 
             console.log(`[getMessages] Success. Found ${result.rows.length} messages. Resetting unread count.`);

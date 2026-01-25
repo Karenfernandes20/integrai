@@ -576,7 +576,7 @@ const AtendimentoPage = () => {
 
         // Safety Filter: Reject invalid phone numbers (Ghost Cards)
         const numericPhone = phone.replace(/\D/g, '');
-        if (!isGroup && (numericPhone.length < 10 || numericPhone.length > 14)) {
+        if (!isGroup && numericPhone !== '' && (numericPhone.length < 8 || numericPhone.length > 15)) {
           // console.warn('Hiding invalid conversation card:', c.phone);
           return false;
         }
@@ -1044,9 +1044,9 @@ const AtendimentoPage = () => {
           socket.emit("join:company", selectedCompanyFilter);
           console.log(`[Socket] Superadmin joining room company_${selectedCompanyFilter}`);
         } else {
-          // Default: join the room for the 'integrai' instance
-          socket.emit("join:company", "instance_integrai");
-          console.log(`[Socket] Superadmin joining room instance_integrai`);
+          // Join global room to see all messages from all instances/companies
+          socket.emit("join:company", "global");
+          console.log(`[Socket] Superadmin joining GLOBAL room`);
         }
       } else if (user?.company_id) {
         socket.emit("join:company", user.company_id);
