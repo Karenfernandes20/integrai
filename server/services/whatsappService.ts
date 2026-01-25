@@ -86,32 +86,98 @@ export async function sendWhatsAppMessage({
         };
         let bodyPayload: any = null;
 
-        // === MEDIA FLOW (JSON Payload with Public URL) ===
+        // === MEDIA FLOW (Direct Base64 - Style WhatsApp Web) ===
         if (mediaUrl) {
             targetUrl = `${baseUrl}/message/sendMedia/${evolution_instance}`;
-
-            // Resolve Local/Relative URLs to Public Internet URLs
-            let finalMediaUrl = mediaUrl;
-            const PUBLIC_URL = process.env.PUBLIC_URL || 'http://localhost:3000'; // User must configure this in .env
-
-            if (mediaUrl.startsWith('/') || mediaUrl.startsWith('uploads/') || !mediaUrl.startsWith('http')) {
-                const relative = mediaUrl.startsWith('/') ? mediaUrl : `/${mediaUrl}`;
-                // Strip double slashes if any (basic cleanup)
-                finalMediaUrl = `${PUBLIC_URL}${relative}`;
-                console.log(`[sendWhatsAppMessage] Resolving local media path to public URL: ${finalMediaUrl}`);
-            }
-
             headers['Content-Type'] = 'application/json';
 
-            // STRICT USER PAYLOAD REQUIREMENT
-            // { "number": "{{phone}}", "mediaUrl": "{{public_file_url}}", "caption": "{{message_text}}" }
+            console.log(`[sendWhatsAppMessage] Processing media: ${mediaUrl}`);
+
+            let base64Data = '';
+            let fileName = 'file';
+            let mimeType = 'image/jpeg';
+
+            // 1. Resolve Path and Read File
+            const uploadsMarker = '/uploads/';
+            const hasUploads = mediaUrl.includes(uploadsMarker);
+            const isRelative = !mediaUrl.startsWith('http');
+            const isLocal = hasUploads || isRelative || mediaUrl.includes('localhost') || mediaUrl.includes('127.0.0.1');
+
+            if (isLocal) {
+                try {
+                    // Extract filename from path or URL
+                    let cleanFileName = '';
+                    if (hasUploads) {
+                        cleanFileName = mediaUrl.split(uploadsMarker).pop()?.split('?')[0] || '';
+                    } else if (isRelative) {
+                        cleanFileName = path.basename(mediaUrl.split('?')[0]);
+                    } else {
+                        cleanFileName = path.basename(new URL(mediaUrl).pathname);
+                    }
+
+                    try { cleanFileName = decodeURIComponent(cleanFileName); } catch (e) { }
+                    fileName = cleanFileName || 'media_file';
+
+                    // Construct Absolute System Path
+                    const uploadsDir = path.join(__dirname, '../uploads');
+                    const absolutePath = path.isAbsolute(fileName) ? fileName : path.join(uploadsDir, fileName);
+
+                    if (!fs.existsSync(absolutePath)) {
+                        throw new Error(`Arquivo não encontrado no disco: ${absolutePath}`);
+                    }
+
+                    // READ BINARY -> BASE64
+                    const buffer = fs.readFileSync(absolutePath);
+                    base64Data = buffer.toString('base64');
+
+                    // Determine MIME
+                    const ext = path.extname(fileName).toLowerCase();
+                    const mimeMap: Record<string, string> = {
+                        '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png', '.webp': 'image/webp',
+                        '.pdf': 'application/pdf', '.mp4': 'video/mp4', '.mp3': 'audio/mpeg', '.ogg': 'audio/ogg'
+                    };
+                    mimeType = mimeMap[ext] || 'application/octet-stream';
+
+                    console.log(`[sendWhatsAppMessage] Local file loaded: ${fileName} (${buffer.length} bytes)`);
+                } catch (err: any) {
+                    console.error(`[sendWhatsAppMessage] Local read error:`, err);
+                    return { success: false, error: `Mídia inválida ou inexistente: ${err.message}` };
+                }
+            } else {
+                // REMOTE MEDIA -> FETCH AND CONVERT TO BASE64
+                // This ensures Evolution doesn't need to reach back to us if it's on a different network
+                try {
+                    const controller = new AbortController();
+                    const timeoutId = setTimeout(() => controller.abort(), 15000); // 15s download timeout
+
+                    const remoteResp = await fetch(mediaUrl, { signal: controller.signal });
+                    clearTimeout(timeoutId);
+
+                    if (!remoteResp.ok) throw new Error(`HTTP ${remoteResp.status}`);
+
+                    const buffer = Buffer.from(await remoteResp.arrayBuffer());
+                    base64Data = buffer.toString('base64');
+                    fileName = path.basename(new URL(mediaUrl).pathname) || 'remote_file';
+                    mimeType = remoteResp.headers.get('content-type') || 'application/octet-stream';
+
+                    console.log(`[sendWhatsAppMessage] Remote file downloaded and encoded: ${fileName}`);
+                } catch (err: any) {
+                    console.error(`[sendWhatsAppMessage] Remote fetch error:`, err);
+                    return { success: false, error: `Erro ao baixar mídia externa: ${err.message}` };
+                }
+            }
+
+            // 2. CONSTRUCT PAYLOAD
             bodyPayload = JSON.stringify({
                 number: cleanPhone,
-                mediaUrl: finalMediaUrl,
+                media: base64Data,
+                fileName: fileName,
                 caption: message || '',
-                mediatype: mediaType || 'image', // Adding for robustness
-                fileName: path.basename(finalMediaUrl.split('?')[0])
+                mediatype: mediaType || mimeType.split('/')[0] || 'image'
             });
+
+            // Cleanup base64 from memory reference as soon as possible
+            base64Data = '';
 
         } else {
             // === TEXT FLOW (JSON) ===

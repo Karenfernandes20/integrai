@@ -9,20 +9,46 @@ import { systemMode } from '../systemState';
 import { checkLimit, incrementUsage } from '../services/limitService';
 import { sendWhatsAppMessage } from '../services/whatsappService';
 
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
 // Helper to validate Media URL
 async function validateMediaUrl(url: string, type: string): Promise<{ valid: boolean; error?: string }> {
     if (!url) return { valid: true }; // No media is valid
 
-    // 1. Check if it's localhost (we assume server can access its own uploads)
-    if (url.includes('localhost') || url.includes('127.0.0.1')) {
-        // Optional: Check if file exists on disk if it matches upload path pattern
-        return { valid: true };
+    const uploadsMarker = '/uploads/';
+    const hasUploads = url.includes(uploadsMarker);
+    const isLocal = hasUploads || !url.startsWith('http');
+
+    if (isLocal) {
+        try {
+            const fileName = hasUploads ? url.split(uploadsMarker).pop()?.split('?')[0] : path.basename(url.split('?')[0]);
+            if (!fileName) return { valid: false, error: 'Nome de arquivo inválido' };
+
+            const uploadsDir = path.join(__dirname, '../uploads');
+            const absolutePath = path.join(uploadsDir, decodeURIComponent(fileName));
+
+            if (!fs.existsSync(absolutePath)) {
+                return { valid: false, error: `Arquivo não encontrado no servidor: ${fileName}` };
+            }
+
+            // Check size (User requirement 4)
+            const stats = fs.statSync(absolutePath);
+            const sizeMB = stats.size / (1024 * 1024);
+            if (sizeMB > 16) { // Evolution-API usually limits around 16-20MB
+                return { valid: false, error: `Mídia muito grande (${sizeMB.toFixed(1)}MB). Limite: 16MB` };
+            }
+
+            return { valid: true };
+        } catch (e: any) {
+            return { valid: false, error: `Erro ao validar arquivo local: ${e.message}` };
+        }
     }
 
-    // 2. Head Request to check availability
+    // REMOTE URL
     try {
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 5000); // 5s timeout
+        const timeoutId = setTimeout(() => controller.abort(), 8000); // 8s timeout
 
         const res = await fetch(url, {
             method: 'HEAD',
@@ -31,17 +57,20 @@ async function validateMediaUrl(url: string, type: string): Promise<{ valid: boo
         clearTimeout(timeoutId);
 
         if (!res.ok) {
-            return { valid: false, error: `URL de mídia inacessível (Status ${res.status})` };
+            return { valid: false, error: `URL de mídia remota inacessível (Status ${res.status})` };
         }
 
         const contentType = res.headers.get('content-type');
         if (contentType && type === 'image' && !contentType.startsWith('image/')) {
             return { valid: false, error: `URL não parece ser uma imagem (Tipo: ${contentType})` };
         }
+        if (contentType && type === 'video' && !contentType.startsWith('video/')) {
+            return { valid: false, error: `URL não parece ser um vídeo (Tipo: ${contentType})` };
+        }
 
         return { valid: true };
     } catch (e: any) {
-        return { valid: false, error: `Erro ao acessar URL de mídia: ${e.message}` };
+        return { valid: false, error: `Erro ao acessar URL de mídia remota: ${e.message}` };
     }
 }
 
@@ -590,9 +619,9 @@ async function processCampaign(campaignId: number, io?: any) {
                         campaignId: campaign.id
                     });
 
-                    // 45s hard timeout for the send operation
+                    // 20s hard timeout for the send operation
                     const timeoutPromise = new Promise<{ success: boolean, error?: string }>((resolve) => {
-                        setTimeout(() => resolve({ success: false, error: 'TIMEOUT_ON_SEND_FUNCTION' }), 45000);
+                        setTimeout(() => resolve({ success: false, error: 'TIMEOUT_ON_SEND_FUNCTION' }), 20000);
                     });
 
                     result = await Promise.race([sendPromise, timeoutPromise]);
@@ -613,10 +642,11 @@ async function processCampaign(campaignId: number, io?: any) {
                         [campaignId]
                     );
                 } else {
+                    const status = result.error === 'TIMEOUT_ON_SEND_FUNCTION' ? 'failed_timeout' : 'failed';
                     const errorMsg = (result.error || 'Failed').substring(0, 255);
                     await lockClient.query(
-                        `UPDATE whatsapp_campaign_contacts SET status = 'failed', error_message = $1 WHERE id = $2`,
-                        [errorMsg, contact.id]
+                        `UPDATE whatsapp_campaign_contacts SET status = $1, error_message = $2 WHERE id = $3`,
+                        [status, errorMsg, contact.id]
                     );
                     await lockClient.query(
                         `UPDATE whatsapp_campaigns SET failed_count = failed_count + 1 WHERE id = $1`,
@@ -656,23 +686,34 @@ export const checkAndStartScheduledCampaigns = async (io?: any) => {
             return;
         }
 
-        // Find due campaigns OR running campaigns that are not being processed (interrupted)
-        let result = null;
-        try {
-            result = await pool.query(
-                `SELECT wc.id, wc.name, wc.status, wc.instance_id, ci.status as instance_status 
-                 FROM whatsapp_campaigns wc
-                 LEFT JOIN company_instances ci ON wc.instance_id = ci.id
-                 WHERE (wc.status = 'scheduled' AND (wc.scheduled_at <= NOW() OR wc.scheduled_at IS NULL))
-                    OR (wc.status = 'running')`
-            );
-        } catch (queryErr) {
-            console.error("[Scheduler] Error querying campaigns:", queryErr);
-            return;
-        }
+        // 1. AUTO-EXPIRE PENDING CONTACTS IN COMPLETED OR EXPIRED WINDOW CAMPAIGNS
+        const now = new Date();
+        const brazilTimeStr = now.toLocaleTimeString('pt-BR', {
+            timeZone: 'America/Sao_Paulo',
+            hour: '2-digit', minute: '2-digit', hour12: false
+        });
 
-        if (!result) return;
+        // Mark as expired if the end_time for TODAY has long passed (safety margin 30m)
+        // This is a simplified approach: if current time > campaign.end_time and it was meant to run
+        await pool.query(`
+            UPDATE whatsapp_campaign_contacts
+            SET status = 'expired', updated_at = NOW()
+            WHERE status = 'pending' 
+            AND campaign_id IN (
+                SELECT id FROM whatsapp_campaigns 
+                WHERE status IN ('running', 'scheduled') 
+                AND end_time < $1
+            )
+        `, [brazilTimeStr]);
 
+        // 2. Find due campaigns OR running campaigns that are not being processed (interrupted)
+        let result = await pool.query(
+            `SELECT wc.id, wc.name, wc.status, wc.instance_id, ci.status as instance_status 
+                FROM whatsapp_campaigns wc
+                LEFT JOIN company_instances ci ON wc.instance_id = ci.id
+                WHERE (wc.status = 'scheduled' AND (wc.scheduled_at <= NOW() OR wc.scheduled_at IS NULL))
+                OR (wc.status = 'running')`
+        );
 
         for (const row of result.rows) {
             // If it was scheduled, mark as running first
