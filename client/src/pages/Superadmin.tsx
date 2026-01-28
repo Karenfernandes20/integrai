@@ -709,7 +709,7 @@ const SuperadminPage = () => {
         </header>
 
         <div className="flex flex-col lg:flex-row gap-8 items-start">
-          <section className="flex-1 w-full space-y-6">
+          <section className="w-full lg:w-[480px] space-y-6 shrink-0">
             {/* COMPANIES LIST */}
             <Card className="border border-primary-soft/70 bg-card/95 shadow-strong">
               <CardHeader className="flex flex-row items-center justify-between">
@@ -730,18 +730,18 @@ const SuperadminPage = () => {
                     {companies.map((company) => (
                       <div
                         key={company.id}
-                        className="flex flex-col sm:flex-row sm:items-center justify-between p-6 rounded-xl border bg-white shadow-sm hover:shadow-md hover:border-primary/20 transition-all duration-200 gap-6"
+                        className="flex flex-col sm:flex-row sm:items-center justify-between p-4 rounded-xl border bg-white shadow-sm hover:shadow-md hover:border-primary/20 transition-all duration-200 gap-4"
                       >
-                        <div className="flex items-center gap-5 min-w-0">
+                        <div className="flex items-center gap-4 min-w-0">
                           {company.logo_url ? (
-                            <img src={company.logo_url} alt={company.name} className="h-16 w-16 rounded-xl object-cover border shadow-sm" />
+                            <img src={company.logo_url} alt={company.name} className="h-12 w-12 rounded-lg object-cover border shadow-sm" />
                           ) : (
-                            <div className="h-16 w-16 rounded-xl bg-primary/10 flex items-center justify-center text-primary font-bold text-xl border border-primary/20">
+                            <div className="h-12 w-12 rounded-lg bg-primary/10 flex items-center justify-center text-primary font-bold text-lg border border-primary/20">
                               {company.name.substring(0, 2).toUpperCase()}
                             </div>
                           )}
-                          <div className="space-y-1 min-w-0">
-                            <h3 className="font-bold text-slate-800 text-xl tracking-wide truncate">{company.name}</h3>
+                          <div className="space-y-0.5 min-w-0">
+                            <h3 className="font-bold text-slate-800 text-lg tracking-wide truncate">{company.name}</h3>
                             <div className="flex flex-wrap gap-3 text-sm text-slate-500 items-center">
                               <span className="bg-slate-100 px-2 py-0.5 rounded text-xs font-mono">ID: {company.id}</span>
                               {company.city && <span>{company.city}/{company.state}</span>}
@@ -899,7 +899,7 @@ const SuperadminPage = () => {
             </Card>
           </section>
 
-          <section className="w-full max-w-md space-y-6">
+          <section className="flex-1 w-full space-y-6">
             {/* MODOS OPERACIONAIS */}
             <Card className="border border-primary-soft/70 bg-card/95 shadow-strong">
               <CardHeader>
@@ -909,7 +909,7 @@ const SuperadminPage = () => {
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
-                <div className="grid grid-cols-2 gap-2">
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                   <Button
                     variant={currentMode === "normal" ? "default" : "outline"}
                     className={cn("h-16 flex-col gap-1", currentMode === "normal" && "border-2 border-primary")}
@@ -956,58 +956,65 @@ const SuperadminPage = () => {
               <CardHeader><CardTitle>{editingCompany ? 'Editar Empresa' : 'Novo Cliente'}</CardTitle></CardHeader>
               <CardContent>
                 <form className="space-y-3" onSubmit={handleSubmit}>
-                  <div className="space-y-1.5">
-                    <Label>Nome da Empresa</Label>
-                    <Input name="name" value={formValues.name} onChange={handleChange} required placeholder="Nome Fantasia" />
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                    <div className="space-y-1.5">
+                      <Label>Nome da Empresa</Label>
+                      <Input name="name" value={formValues.name} onChange={handleChange} required placeholder="Nome Fantasia" />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label>CNPJ</Label>
+                      <Input name="cnpj" value={formValues.cnpj} onChange={handleChange} placeholder="00.000.000/0000-00" />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label>Telefone</Label>
+                      <Input name="phone" value={formValues.phone} onChange={handleChange} placeholder="(XX) XXXXX-XXXX" />
+                    </div>
                   </div>
-                  <div className="space-y-1.5">
-                    <Label>CNPJ</Label>
-                    <Input name="cnpj" value={formValues.cnpj} onChange={handleChange} placeholder="00.000.000/0000-00" />
-                  </div>
-                  <div className="grid grid-cols-2 gap-2">
+
+                  <div className="grid grid-cols-2 gap-3">
                     <div className="space-y-1.5"><Label>Cidade</Label><Input name="city" value={formValues.city} onChange={handleChange} /></div>
                     <div className="space-y-1.5"><Label>UF</Label><Input name="state" value={formValues.state} onChange={handleChange} maxLength={2} /></div>
                   </div>
-                  <div className="space-y-1.5">
-                    <Label>Telefone</Label>
-                    <Input name="phone" value={formValues.phone} onChange={handleChange} placeholder="(XX) XXXXX-XXXX" />
-                  </div>
 
                   <Separator className="my-2" />
-                  <div className="space-y-1.5">
-                    <Label>Tipo de Operação</Label>
-                    <Select value={formValues.operation_type} onValueChange={handleSelectChange}>
-                      <SelectTrigger><SelectValue /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="clientes">Clientes / CRM Geral</SelectItem>
-                        <SelectItem value="motoristas">Motoristas / Mobilidade</SelectItem>
-                        <SelectItem value="pacientes">Pacientes / Saúde</SelectItem>
-                        <SelectItem value="lavajato">Módulo Lavajato</SelectItem>
-                        <SelectItem value="restaurante">Módulo Restaurante</SelectItem>
-                        <SelectItem value="suporte">Suporte Técnico</SelectItem>
-                      </SelectContent>
-                    </Select>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    <div className="space-y-1.5">
+                      <Label>Tipo de Operação</Label>
+                      <Select value={formValues.operation_type} onValueChange={handleSelectChange}>
+                        <SelectTrigger><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="clientes">Clientes / CRM Geral</SelectItem>
+                          <SelectItem value="motoristas">Motoristas / Mobilidade</SelectItem>
+                          <SelectItem value="pacientes">Pacientes / Saúde</SelectItem>
+                          <SelectItem value="lavajato">Módulo Lavajato</SelectItem>
+                          <SelectItem value="restaurante">Módulo Restaurante</SelectItem>
+                          <SelectItem value="suporte">Suporte Técnico</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <Label className="text-primary font-bold">Categoria de Empresa (Módulo)</Label>
+                      <Select value={formValues.category || "generic"} onValueChange={(v) => setFormValues(p => ({ ...p, category: v }))}>
+                        <SelectTrigger className="border-primary/50"><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="generic">Geral / Genérica</SelectItem>
+                          <SelectItem value="lavajato">Módulo Lavajato</SelectItem>
+                          <SelectItem value="restaurante">Módulo Restaurante</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
                   </div>
 
-                  <div className="space-y-1.5">
-                    <Label className="text-primary font-bold">Categoria de Empresa (Módulo)</Label>
-                    <Select value={formValues.category || "generic"} onValueChange={(v) => setFormValues(p => ({ ...p, category: v }))}>
-                      <SelectTrigger className="border-primary/50"><SelectValue /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="generic">Geral / Genérica</SelectItem>
-                        <SelectItem value="lavajato">Módulo Lavajato</SelectItem>
-                        <SelectItem value="restaurante">Módulo Restaurante</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-
-                  <div className="space-y-1.5">
-                    <Label>Nome da Instância (Evolution)</Label>
-                    <Input name="evolution_instance" value={formValues.evolution_instance} onChange={handleChange} />
-                  </div>
-                  <div className="space-y-1.5">
-                    <Label>API Key</Label>
-                    <Input name="evolution_apikey" type="password" value={formValues.evolution_apikey} onChange={handleChange} />
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    <div className="space-y-1.5">
+                      <Label>Nome da Instância (Evolution)</Label>
+                      <Input name="evolution_instance" value={formValues.evolution_instance} onChange={handleChange} />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label>API Key</Label>
+                      <Input name="evolution_apikey" type="password" value={formValues.evolution_apikey} onChange={handleChange} />
+                    </div>
                   </div>
 
                   <Separator className="my-2" />
@@ -1029,26 +1036,28 @@ const SuperadminPage = () => {
                   )}
 
                   <Separator className="my-2" />
-                  <div className="space-y-1.5">
-                    <Label>Plano</Label>
-                    <Select value={formValues.plan_id ? String(formValues.plan_id) : ""} onValueChange={(val) => setFormValues(prev => ({ ...prev, plan_id: val }))}>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Selecione" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {plans.map((p) => (
-                          <SelectItem key={p.id} value={String(p.id)}>{p.name}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="space-y-1.5">
-                    <Label>Vencimento</Label>
-                    <Input type="date" value={formValues.due_date} onChange={(e) => setFormValues(prev => ({ ...prev, due_date: e.target.value }))} />
-                  </div>
-                  <div className="space-y-1.5">
-                    <Label>Máximo de Instâncias</Label>
-                    <Input type="number" min="1" value={formValues.max_instances} onChange={(e) => setFormValues(prev => ({ ...prev, max_instances: e.target.value }))} />
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                    <div className="space-y-1.5">
+                      <Label>Plano</Label>
+                      <Select value={formValues.plan_id ? String(formValues.plan_id) : ""} onValueChange={(val) => setFormValues(prev => ({ ...prev, plan_id: val }))}>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Selecione" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {plans.map((p) => (
+                            <SelectItem key={p.id} value={String(p.id)}>{p.name}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label>Vencimento</Label>
+                      <Input type="date" value={formValues.due_date} onChange={(e) => setFormValues(prev => ({ ...prev, due_date: e.target.value }))} />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label>Máximo de Instâncias</Label>
+                      <Input type="number" min="1" value={formValues.max_instances} onChange={(e) => setFormValues(prev => ({ ...prev, max_instances: e.target.value }))} />
+                    </div>
                   </div>
 
                   <div className="space-y-1.5">
