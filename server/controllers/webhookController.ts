@@ -883,11 +883,13 @@ export const handleWebhook = async (req: Request, res: Response) => {
 
         } catch (err: any) {
             console.error('[Webhook Main Error]:', err);
+            // Structural errors or unrecognized payloads shouldn't necessarily be "Critical Failures"
+            // We use 'warning' to avoid spamming the Superadmin alert panel if it's a transient or structural mismatch
             await logEvent({
                 eventType: 'webhook_error',
                 origin: 'webhook',
-                status: 'error',
-                message: `Falha crítica no processamento do Webhook: ${err.message}`,
+                status: 'warning',
+                message: `Webhook: Falha estrutural no processamento (não-interrompível): ${err.message}`,
                 details: { error: err.stack, body: req.body }
             });
         }

@@ -51,13 +51,20 @@ export const logEvent = async (data: LogData) => {
 
         const logId = result.rows[0]?.id;
 
-        // Auto-create alert if it's an error
+        // Auto-create alert if it's an error and no similar unread alert exists
         if (status === 'error') {
-            await pool.query(
-                `INSERT INTO admin_alerts (type, description, log_id)
-                 VALUES ($1, $2, $3)`,
-                [eventType, message, logId]
+            const existingAlert = await pool.query(
+                `SELECT id FROM admin_alerts WHERE type = $1 AND description = $2 AND is_read = FALSE LIMIT 1`,
+                [eventType, message]
             );
+
+            if (existingAlert.rows.length === 0) {
+                await pool.query(
+                    `INSERT INTO admin_alerts (type, description, log_id)
+                     VALUES ($1, $2, $3)`,
+                    [eventType, message, logId]
+                );
+            }
 
             // Trigger Workflow Engine
             triggerWorkflow('error_detected', {
