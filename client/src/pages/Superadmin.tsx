@@ -732,7 +732,7 @@ const SuperadminPage = () => {
                         key={company.id}
                         className="flex flex-col sm:flex-row sm:items-center justify-between p-6 rounded-xl border bg-white shadow-sm hover:shadow-md hover:border-primary/20 transition-all duration-200 gap-6"
                       >
-                        <div className="flex items-center gap-5">
+                        <div className="flex items-center gap-5 min-w-0">
                           {company.logo_url ? (
                             <img src={company.logo_url} alt={company.name} className="h-16 w-16 rounded-xl object-cover border shadow-sm" />
                           ) : (
@@ -740,8 +740,8 @@ const SuperadminPage = () => {
                               {company.name.substring(0, 2).toUpperCase()}
                             </div>
                           )}
-                          <div className="space-y-1">
-                            <h3 className="font-bold text-slate-800 text-xl tracking-wide">{company.name}</h3>
+                          <div className="space-y-1 min-w-0">
+                            <h3 className="font-bold text-slate-800 text-xl tracking-wide truncate">{company.name}</h3>
                             <div className="flex flex-wrap gap-3 text-sm text-slate-500 items-center">
                               <span className="bg-slate-100 px-2 py-0.5 rounded text-xs font-mono">ID: {company.id}</span>
                               {company.city && <span>{company.city}/{company.state}</span>}
@@ -764,7 +764,7 @@ const SuperadminPage = () => {
                             </DialogTrigger>
                             <DialogContent className="max-w-3xl max-h-[85vh] overflow-auto">
                               <DialogHeader>
-                                <DialogTitle>Usuários - {company.name}</DialogTitle>
+                                <DialogTitle className="truncate">Usuários - {company.name}</DialogTitle>
                                 <DialogDescription>Gerencie o acesso a esta empresa.</DialogDescription>
                               </DialogHeader>
                               <div className="space-y-6 pt-4">
@@ -828,7 +828,7 @@ const SuperadminPage = () => {
                             </AlertDialogTrigger>
                             <AlertDialogContent>
                               <AlertDialogHeader>
-                                <AlertDialogTitle>Excluir {company.name}?</AlertDialogTitle>
+                                <AlertDialogTitle className="truncate">Excluir {company.name}?</AlertDialogTitle>
                                 <AlertDialogDescription>Esta ação é irreversível.</AlertDialogDescription>
                               </AlertDialogHeader>
                               <AlertDialogFooter>
