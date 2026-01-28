@@ -319,9 +319,7 @@ const SuperadminPage = () => {
   const handleSelectChange = (value: string) => {
     setFormValues((prev) => ({
       ...prev,
-      operation_type: value,
-      // Auto-set category if the operation type matches a specialized module
-      category: (value === 'lavajato' || value === 'restaurante') ? value : prev.category
+      operation_type: value
     }));
   };
 
@@ -978,7 +976,7 @@ const SuperadminPage = () => {
                   </div>
 
                   <Separator className="my-2" />
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <div className="grid grid-cols-1 gap-3">
                     <div className="space-y-1.5">
                       <Label>Tipo de Operação</Label>
                       <Select value={formValues.operation_type} onValueChange={handleSelectChange}>
@@ -987,21 +985,6 @@ const SuperadminPage = () => {
                           <SelectItem value="clientes">Clientes / CRM Geral</SelectItem>
                           <SelectItem value="motoristas">Motoristas / Mobilidade</SelectItem>
                           <SelectItem value="pacientes">Pacientes / Saúde</SelectItem>
-                          <SelectItem value="lavajato">Módulo Lavajato</SelectItem>
-                          <SelectItem value="restaurante">Módulo Restaurante</SelectItem>
-                          <SelectItem value="suporte">Suporte Técnico</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-
-                    <div className="space-y-1.5">
-                      <Label className="text-primary font-bold">Categoria de Empresa (Módulo)</Label>
-                      <Select value={formValues.category || "generic"} onValueChange={(v) => setFormValues(p => ({ ...p, category: v }))}>
-                        <SelectTrigger className="border-primary/50"><SelectValue /></SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="generic">Geral / Genérica</SelectItem>
-                          <SelectItem value="lavajato">Módulo Lavajato</SelectItem>
-                          <SelectItem value="restaurante">Módulo Restaurante</SelectItem>
                         </SelectContent>
                       </Select>
                     </div>
