@@ -24,7 +24,7 @@ if (!databaseUrl) {
         const isLocal = url.hostname === 'localhost' || url.hostname === '127.0.0.1';
         poolConfig = {
             user: url.username,
-            password: url.password,
+            password: decodeURIComponent(url.password),
             host: url.hostname,
             port: parseInt(url.port || '5432'),
             database: url.pathname.slice(1), // remove leading slash

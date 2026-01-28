@@ -25,6 +25,8 @@ const CrmPage = () => {
     socket.on("connect", () => {
       if (user.company_id) {
         socket.emit("join:company", user.company_id);
+      } else if (user.role === 'SUPERADMIN') {
+        socket.emit("join:company", 1);
       }
     });
 

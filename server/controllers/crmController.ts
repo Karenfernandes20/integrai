@@ -126,9 +126,15 @@ export const getStages = async (req: Request, res: Response) => {
         let companyId = user?.company_id;
 
         // SuperAdmin fallback: Use company ID 1 if no company_id is set
-        if (!companyId && user?.role === 'SUPERADMIN') {
-            companyId = 1;
-            console.log('[CRM] Superadmin accessing CRM with default company ID 1');
+        // SuperAdmin fallback: Use company ID 1 if no company_id is set, BUT allow query override
+        if (user?.role === 'SUPERADMIN') {
+            if (req.query.companyId) {
+                companyId = Number(req.query.companyId);
+                console.log(`[CRM] Superadmin accessing CRM for Company ID ${companyId}`);
+            } else if (!companyId) {
+                companyId = 1;
+                console.log('[CRM] Superadmin accessing CRM with default company ID 1');
+            }
         }
 
         if (!companyId) {
@@ -180,9 +186,15 @@ export const getLeads = async (req: Request, res: Response) => {
         let companyId = user?.company_id;
 
         // SuperAdmin fallback: Use company ID 1 if no company_id is set
-        if (!companyId && user?.role === 'SUPERADMIN') {
-            companyId = 1;
-            console.log('[CRM] Superadmin accessing leads with default company ID 1');
+        // SuperAdmin fallback: Use company ID 1 if no company_id is set, BUT allow query override
+        if (user?.role === 'SUPERADMIN') {
+            if (req.query.companyId) {
+                companyId = Number(req.query.companyId);
+                console.log(`[CRM] Superadmin accessing leads for Company ID ${companyId}`);
+            } else if (!companyId) {
+                companyId = 1;
+                console.log('[CRM] Superadmin accessing leads with default company ID 1');
+            }
         }
 
         let query = `
