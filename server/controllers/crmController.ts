@@ -123,7 +123,13 @@ export const getStages = async (req: Request, res: Response) => {
         if (!pool) throw new Error('DB not configured');
 
         const user = (req as any).user;
-        const companyId = user?.company_id;
+        let companyId = user?.company_id;
+
+        // SuperAdmin fallback: Use company ID 1 if no company_id is set
+        if (!companyId && user?.role === 'SUPERADMIN') {
+            companyId = 1;
+            console.log('[CRM] Superadmin accessing CRM with default company ID 1');
+        }
 
         if (!companyId) {
             return res.status(400).json({ error: 'Company ID is required' });
@@ -171,7 +177,13 @@ export const getLeads = async (req: Request, res: Response) => {
         if (!pool) throw new Error('DB not configured');
 
         const user = (req as any).user;
-        const companyId = user?.company_id;
+        let companyId = user?.company_id;
+
+        // SuperAdmin fallback: Use company ID 1 if no company_id is set
+        if (!companyId && user?.role === 'SUPERADMIN') {
+            companyId = 1;
+            console.log('[CRM] Superadmin accessing leads with default company ID 1');
+        }
 
         let query = `
             SELECT l.*, s.name as stage_name, s.position as stage_position,
@@ -213,7 +225,7 @@ export const getLeads = async (req: Request, res: Response) => {
             query += ` AND l.company_id = $1`;
             params.push(companyId);
         }
-        // SuperAdmin without company_id: show ALL leads (no filter)
+        // SuperAdmin without company_id (now defaults to 1): show company 1 leads
 
         query += ` ORDER BY l.updated_at DESC`;
 
@@ -314,7 +326,13 @@ export const createStage = async (req: Request, res: Response) => {
 
         const { name, color } = req.body;
         const user = (req as any).user;
-        const companyId = user?.company_id;
+        let companyId = user?.company_id;
+
+        // SuperAdmin fallback: Use company ID 1 if no company_id is set
+        if (!companyId && user?.role === 'SUPERADMIN') {
+            companyId = 1;
+            console.log('[CRM] Superadmin creating stage for default company ID 1');
+        }
 
         if (!companyId) {
             return res.status(400).json({ error: 'Company ID is required' });
@@ -348,8 +366,13 @@ export const deleteStage = async (req: Request, res: Response) => {
         if (!pool) return res.status(500).json({ error: 'Database not configured' });
         const { id } = req.params;
         const user = (req as any).user;
-        const companyId = user?.company_id;
+        let companyId = user?.company_id;
         const isSuperAdmin = user?.role === 'SUPERADMIN';
+
+        // SuperAdmin fallback: Use company ID 1 if no company_id is set
+        if (!companyId && isSuperAdmin) {
+            companyId = 1;
+        }
 
         // 1. Check if stage exists and get details
         const stageRes = await pool.query('SELECT * FROM crm_stages WHERE id = $1', [id]);
