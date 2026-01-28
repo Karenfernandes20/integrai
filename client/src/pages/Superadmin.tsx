@@ -709,7 +709,7 @@ const SuperadminPage = () => {
         </header>
 
         <div className="flex flex-col lg:flex-row gap-8 items-start">
-          <section className="w-full lg:w-[480px] space-y-6 shrink-0">
+          <section className="w-full lg:w-[320px] space-y-6 shrink-0">
             {/* COMPANIES LIST */}
             <Card className="border border-primary-soft/70 bg-card/95 shadow-strong">
               <CardHeader className="flex flex-row items-center justify-between">
@@ -730,113 +730,114 @@ const SuperadminPage = () => {
                     {companies.map((company) => (
                       <div
                         key={company.id}
-                        className="flex flex-col sm:flex-row sm:items-center justify-between p-4 rounded-xl border bg-white shadow-sm hover:shadow-md hover:border-primary/20 transition-all duration-200 gap-4"
+                        className="flex flex-col p-3 rounded-xl border bg-white shadow-sm hover:shadow-md hover:border-primary/20 transition-all duration-200 gap-3"
                       >
-                        <div className="flex items-center gap-4 min-w-0">
+                        <div className="flex items-start gap-3 min-w-0">
                           {company.logo_url ? (
-                            <img src={company.logo_url} alt={company.name} className="h-12 w-12 rounded-lg object-cover border shadow-sm" />
+                            <img src={company.logo_url} alt={company.name} className="h-10 w-10 rounded-lg object-cover border shadow-sm shrink-0" />
                           ) : (
-                            <div className="h-12 w-12 rounded-lg bg-primary/10 flex items-center justify-center text-primary font-bold text-lg border border-primary/20 whitespace-nowrap shrink-0">
+                            <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center text-primary font-bold text-sm border border-primary/20 whitespace-nowrap shrink-0">
                               {company.name.substring(0, 2).toUpperCase()}
                             </div>
                           )}
-                          <div className="space-y-0.5 min-w-0">
-                            <h3 className="font-bold text-slate-800 text-lg tracking-wide truncate">{company.name}</h3>
-                            <div className="flex flex-wrap gap-3 text-sm text-slate-500 items-center">
-                              <span className="bg-slate-100 px-2 py-0.5 rounded text-xs font-mono">ID: {company.id}</span>
-                              {company.city && <span>{company.city}/{company.state}</span>}
-                              {company.phone && <span>{company.phone}</span>}
+                          <div className="space-y-0.5 min-w-0 flex-1">
+                            <h3 className="font-bold text-slate-800 text-sm tracking-wide leading-tight">{company.name}</h3>
+                            <div className="flex flex-wrap gap-2 text-xs text-slate-500 items-center">
+                              <span className="bg-slate-100 px-1 py-0.5 rounded font-mono">ID: {company.id}</span>
+                              {company.city && <span>{company.city}</span>}
                             </div>
-                            {company.due_date && (
-                              <div className={cn("text-xs font-medium mt-1 inline-block px-2 py-0.5 rounded", new Date(company.due_date) < new Date() ? "bg-red-100 text-red-700" : "bg-green-100 text-green-700")}>
-                                Vence: {new Date(company.due_date).toLocaleDateString()}
-                              </div>
-                            )}
                           </div>
                         </div>
-                        <div className="flex items-center gap-2 self-end sm:self-center">
-                          <Button size="sm" variant="outline" onClick={() => handleOpenDashboard(company)}>Dashboard</Button>
-
-                          {/* USERS DIALOG */}
-                          <Dialog>
-                            <DialogTrigger asChild>
-                              <Button size="icon" variant="ghost" onClick={() => handleManageUsers(company)} title="Gerenciar Usuários"><Users className="w-4 h-4" /></Button>
-                            </DialogTrigger>
-                            <DialogContent className="max-w-3xl max-h-[85vh] overflow-auto">
-                              <DialogHeader>
-                                <DialogTitle className="truncate">Usuários - {company.name}</DialogTitle>
-                                <DialogDescription>Gerencie o acesso a esta empresa.</DialogDescription>
-                              </DialogHeader>
-                              <div className="space-y-6 pt-4">
-                                <div className="space-y-2">
-                                  <h3 className="font-medium text-sm">Usuários Existentes</h3>
-                                  {loadingUsers ? <p className="text-xs">Carregando...</p> : companyUsers.length === 0 ? <p className="text-xs text-muted-foreground">Nenhum usuário.</p> : (
-                                    <div className="grid gap-2">
-                                      {companyUsers.map(u => (
-                                        <div key={u.id} className="flex justify-between items-center p-2 border rounded bg-muted/20">
-                                          <div className="text-sm">
-                                            <div className="font-medium">{u.full_name}</div>
-                                            <div className="text-xs text-muted-foreground">{u.email} ({u.role})</div>
+                        <div className="flex items-center justify-between gap-1 mt-1 border-t pt-2">
+                          <Button size="xs" variant="outline" className="h-7 text-[10px] px-2" onClick={() => handleOpenDashboard(company)}>Dashboard</Button>
+                          <div className="flex items-center gap-1">
+                            {/* USERS DIALOG */}
+                            <Dialog>
+                              <DialogTrigger asChild>
+                                <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => handleManageUsers(company)} title="Gerenciar Usuários">
+                                  <Users className="w-3 h-3" />
+                                </Button>
+                              </DialogTrigger>
+                              <DialogContent className="max-w-3xl max-h-[85vh] overflow-auto">
+                                <DialogHeader>
+                                  <DialogTitle className="truncate">Usuários - {company.name}</DialogTitle>
+                                  <DialogDescription>Gerencie o acesso a esta empresa.</DialogDescription>
+                                </DialogHeader>
+                                <div className="space-y-6 pt-4">
+                                  <div className="space-y-2">
+                                    <h3 className="font-medium text-sm">Usuários Existentes</h3>
+                                    {loadingUsers ? <p className="text-xs">Carregando...</p> : companyUsers.length === 0 ? <p className="text-xs text-muted-foreground">Nenhum usuário.</p> : (
+                                      <div className="grid gap-2">
+                                        {companyUsers.map(u => (
+                                          <div key={u.id} className="flex justify-between items-center p-2 border rounded bg-muted/20">
+                                            <div className="text-sm">
+                                              <div className="font-medium">{u.full_name}</div>
+                                              <div className="text-xs text-muted-foreground">{u.email} ({u.role})</div>
+                                            </div>
+                                            <div className="flex gap-1">
+                                              <Dialog>
+                                                <DialogTrigger asChild>
+                                                  <Button size="icon" variant="ghost" className="h-7 w-7"><KeyRound className="w-3 h-3" /></Button>
+                                                </DialogTrigger>
+                                                <DialogContent>
+                                                  <DialogHeader><DialogTitle>Resetar Senha</DialogTitle></DialogHeader>
+                                                  <div className="flex gap-2 pt-4">
+                                                    <Input
+                                                      type="password"
+                                                      placeholder="Nova Senha"
+                                                      value={resetPasswords[u.id] || ''}
+                                                      onChange={e => handlePasswordChange(u.id, e.target.value)}
+                                                    />
+                                                    <Button onClick={() => submitPasswordReset(u.id)}>Salvar</Button>
+                                                  </div>
+                                                </DialogContent>
+                                              </Dialog>
+                                              <Button size="icon" variant="ghost" className="h-7 w-7 text-destructive" onClick={() => handleDeleteUser(u.id)}><Trash2 className="w-3 h-3" /></Button>
+                                            </div>
                                           </div>
-                                          <div className="flex gap-1">
-                                            <Dialog>
-                                              <DialogTrigger asChild>
-                                                <Button size="icon" variant="ghost" className="h-7 w-7"><KeyRound className="w-3 h-3" /></Button>
-                                              </DialogTrigger>
-                                              <DialogContent>
-                                                <DialogHeader><DialogTitle>Resetar Senha</DialogTitle></DialogHeader>
-                                                <div className="flex gap-2 pt-4">
-                                                  <Input
-                                                    type="password"
-                                                    placeholder="Nova Senha"
-                                                    value={resetPasswords[u.id] || ''}
-                                                    onChange={e => handlePasswordChange(u.id, e.target.value)}
-                                                  />
-                                                  <Button onClick={() => submitPasswordReset(u.id)}>Salvar</Button>
-                                                </div>
-                                              </DialogContent>
-                                            </Dialog>
-                                            <Button size="icon" variant="ghost" className="h-7 w-7 text-destructive" onClick={() => handleDeleteUser(u.id)}><Trash2 className="w-3 h-3" /></Button>
-                                          </div>
-                                        </div>
-                                      ))}
+                                        ))}
+                                      </div>
+                                    )}
+                                  </div>
+                                  <Separator />
+                                  <div className="space-y-3">
+                                    <h3 className="font-medium text-sm">Adicionar Usuário</h3>
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                      <Input placeholder="Nome" value={newUser.full_name} onChange={e => setNewUser({ ...newUser, full_name: e.target.value })} className="h-8 text-xs" />
+                                      <Input placeholder="Email" value={newUser.email} onChange={e => setNewUser({ ...newUser, email: e.target.value })} className="h-8 text-xs" />
+                                      <Input placeholder="Senha" type="password" value={newUser.password} onChange={e => setNewUser({ ...newUser, password: e.target.value })} className="h-8 text-xs" />
+                                      <Input placeholder="Telefone" value={newUser.phone} onChange={e => setNewUser({ ...newUser, phone: e.target.value })} className="h-8 text-xs" />
                                     </div>
-                                  )}
-                                </div>
-                                <Separator />
-                                <div className="space-y-3">
-                                  <h3 className="font-medium text-sm">Adicionar Usuário</h3>
-                                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                                    <Input placeholder="Nome" value={newUser.full_name} onChange={e => setNewUser({ ...newUser, full_name: e.target.value })} className="h-8 text-xs" />
-                                    <Input placeholder="Email" value={newUser.email} onChange={e => setNewUser({ ...newUser, email: e.target.value })} className="h-8 text-xs" />
-                                    <Input placeholder="Senha" type="password" value={newUser.password} onChange={e => setNewUser({ ...newUser, password: e.target.value })} className="h-8 text-xs" />
-                                    <Input placeholder="Telefone" value={newUser.phone} onChange={e => setNewUser({ ...newUser, phone: e.target.value })} className="h-8 text-xs" />
-                                  </div>
-                                  <div className="flex justify-end">
-                                    <Button size="sm" onClick={handleCreateUser} disabled={creatingUser}>{creatingUser ? 'Adicionando...' : 'Adicionar'}</Button>
+                                    <div className="flex justify-end">
+                                      <Button size="sm" onClick={handleCreateUser} disabled={creatingUser}>{creatingUser ? 'Adicionando...' : 'Adicionar'}</Button>
+                                    </div>
                                   </div>
                                 </div>
-                              </div>
-                            </DialogContent>
-                          </Dialog>
+                              </DialogContent>
+                            </Dialog>
 
-                          <Button size="icon" variant="ghost" onClick={() => handleEdit(company)} title="Editar Empresa"><Pencil className="w-4 h-4" /></Button>
+                            <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => handleEdit(company)} title="Editar Empresa">
+                              <Pencil className="w-3 h-3" />
+                            </Button>
 
-                          <AlertDialog>
-                            <AlertDialogTrigger asChild>
-                              <Button size="icon" variant="ghost" className="text-destructive" title="Excluir Empresa"><Trash2 className="w-4 h-4" /></Button>
-                            </AlertDialogTrigger>
-                            <AlertDialogContent>
-                              <AlertDialogHeader>
-                                <AlertDialogTitle className="truncate">Excluir {company.name}?</AlertDialogTitle>
-                                <AlertDialogDescription>Esta ação é irreversível.</AlertDialogDescription>
-                              </AlertDialogHeader>
-                              <AlertDialogFooter>
-                                <AlertDialogCancel>Cancelar</AlertDialogCancel>
-                                <AlertDialogAction className="bg-destructive" onClick={() => handleDelete(company)}>Excluir</AlertDialogAction>
-                              </AlertDialogFooter>
-                            </AlertDialogContent>
-                          </AlertDialog>
+                            <AlertDialog>
+                              <AlertDialogTrigger asChild>
+                                <Button size="icon" variant="ghost" className="text-destructive h-7 w-7" title="Excluir Empresa">
+                                  <Trash2 className="w-3 h-3" />
+                                </Button>
+                              </AlertDialogTrigger>
+                              <AlertDialogContent>
+                                <AlertDialogHeader>
+                                  <AlertDialogTitle className="truncate">Excluir {company.name}?</AlertDialogTitle>
+                                  <AlertDialogDescription>Esta ação é irreversível.</AlertDialogDescription>
+                                </AlertDialogHeader>
+                                <AlertDialogFooter>
+                                  <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                                  <AlertDialogAction className="bg-destructive" onClick={() => handleDelete(company)}>Excluir</AlertDialogAction>
+                                </AlertDialogFooter>
+                              </AlertDialogContent>
+                            </AlertDialog>
+                          </div>
                         </div>
                       </div>
                     ))}
