@@ -736,7 +736,7 @@ const SuperadminPage = () => {
                           {company.logo_url ? (
                             <img src={company.logo_url} alt={company.name} className="h-12 w-12 rounded-lg object-cover border shadow-sm" />
                           ) : (
-                            <div className="h-12 w-12 rounded-lg bg-primary/10 flex items-center justify-center text-primary font-bold text-lg border border-primary/20">
+                            <div className="h-12 w-12 rounded-lg bg-primary/10 flex items-center justify-center text-primary font-bold text-lg border border-primary/20 whitespace-nowrap shrink-0">
                               {company.name.substring(0, 2).toUpperCase()}
                             </div>
                           )}
