@@ -1,12 +1,121 @@
 import { useState, useEffect, useRef } from "react";
+import { useNavigate } from "react-router-dom";
+import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
-import { io } from "socket.io-client"; // Import Socket.io
+import { io } from "socket.io-client";
 import {
   DndContext,
-  // ... (rest of imports)
+  closestCorners,
+  useSensor,
+  useSensors,
+  PointerSensor,
+  KeyboardSensor,
+  DragOverlay,
+  defaultDropAnimationSideEffects,
+  DropAnimation,
+  DragStartEvent,
+  DragOverEvent,
+  DragEndEvent,
   useDroppable,
 } from "@dnd-kit/core";
-// ...
+import {
+  arrayMove,
+  SortableContext,
+  sortableKeyboardCoordinates,
+  verticalListSortingStrategy,
+  useSortable,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
+import { Plus, Trash2, MessageCircle, Save, Phone, Calendar, MoreHorizontal } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription, SheetFooter } from "@/components/ui/sheet";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
+import { Textarea } from "@/components/ui/textarea";
+import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { cn } from "@/lib/utils";
+import { TagManager } from "@/components/TagManager";
+import { RelationshipManager } from "@/components/RelationshipManager";
+import { FollowUpModal } from "@/components/follow-up/FollowUpModal";
+
+interface Lead {
+  id: string;
+  name: string;
+  phone: string;
+  stage_id: number;
+  columnId: string;
+  value?: number;
+  origin?: string;
+  description?: string;
+}
+
+const DroppableColumn = ({ id, children }: { id: string; children: React.ReactNode }) => {
+  const { setNodeRef } = useDroppable({ id });
+  return (
+    <div ref={setNodeRef} className="flex-1 flex flex-col h-full overflow-hidden">
+      {children}
+    </div>
+  );
+};
+
+const SortableLeadCard = ({ lead, onEdit, onChat, onFollowUp, onCall, onRemove }: any) => {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({
+    id: lead.id,
+    data: {
+      type: "Lead",
+      lead,
+    },
+  });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+  };
+
+  return (
+    <div ref={setNodeRef} style={style} {...attributes} {...listeners}>
+      <Card className="p-3 cursor-grab active:cursor-grabbing hover:shadow-md transition-shadow mb-2 border-l-4 border-l-primary/40 bg-white dark:bg-slate-900 group relative">
+        <div className="flex justify-between items-start mb-2">
+          <div onClick={(e) => { e.stopPropagation(); onEdit(lead); }} className="cursor-pointer">
+            <p className="font-semibold text-sm line-clamp-1">{lead.name}</p>
+            <p className="text-xs text-muted-foreground">{lead.phone}</p>
+          </div>
+          <div className="opacity-0 group-hover:opacity-100 transition-opacity flex gap-1">
+            <Button variant="ghost" size="icon" className="h-6 w-6" onClick={(e) => { e.stopPropagation(); onRemove(lead); }}><Trash2 className="h-3 w-3 text-red-400" /></Button>
+          </div>
+        </div>
+
+        {lead.value && (
+          <Badge variant="outline" className="mb-2 text-[10px] bg-emerald-50 text-emerald-700 border-emerald-200">
+            R$ {lead.value.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+          </Badge>
+        )}
+
+        <div className="flex gap-1 mt-1">
+          <Button size="icon" variant="ghost" className="h-6 w-6" onClick={(e) => { e.stopPropagation(); onChat(lead); }} title="Whatsapp">
+            <MessageCircle className="h-3.5 w-3.5 text-slate-500 hover:text-green-600" />
+          </Button>
+          <Button size="icon" variant="ghost" className="h-6 w-6" onClick={(e) => { e.stopPropagation(); onFollowUp(lead); }} title="Agendar Follow-up">
+            <Calendar className="h-3.5 w-3.5 text-slate-500 hover:text-blue-600" />
+          </Button>
+          <Button size="icon" variant="ghost" className="h-6 w-6" onClick={(e) => { e.stopPropagation(); onCall(lead); }} title="Ligar">
+            <Phone className="h-3.5 w-3.5 text-slate-500 hover:text-indigo-600" />
+          </Button>
+        </div>
+      </Card>
+    </div>
+  );
+};
 const CrmPage = () => {
   const { token, user } = useAuth(); // Added user
   const navigate = useNavigate();
