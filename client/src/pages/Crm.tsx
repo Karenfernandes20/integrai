@@ -37,7 +37,7 @@ import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { TagManager } from "@/components/TagManager";
-import { RelationshipManager } from "@/components/RelationshipManager";
+import RelationshipManager from "@/components/RelationshipManager";
 import { FollowUpModal } from "@/components/follow-up/FollowUpModal";
 
 interface Lead {
