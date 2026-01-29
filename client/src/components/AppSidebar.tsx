@@ -194,7 +194,7 @@ export function AppSidebar() {
     const superAdminOnly = ["Clientes", "Tarefas", "Logs", "Alertas", "Saúde", "IA", "Auditoria", "Templates", "Roadmap"];
     if (user?.role !== 'SUPERADMIN' && superAdminOnly.includes(item.label)) return false;
 
-    if (user?.role === 'SUPERADMIN') return true;
+    if (user?.role === 'SUPERADMIN' || user?.role === 'ADMIN') return true;
 
     // Legacy support: if no permissions array, show all (or assume migrated to [])
     // Ideally we assume [] means nothing, but for safety let's check if undefined
