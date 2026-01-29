@@ -174,7 +174,7 @@ export function AppSidebar() {
   const lojaItems = [
     { label: "Dashboard", icon: LayoutDashboard, to: "/app/dashboard" },
     { label: "Vendas", icon: ShoppingBag, to: "/app/loja/vendas" },
-    { label: "Clientes", icon: Users, to: "/app/contatos" },
+    { label: "Contatos", icon: Users, to: "/app/contatos" },
     { label: "Estoque", icon: Package, to: "/app/loja/estoque" },
     { label: "Financeiro", icon: Wallet2, to: "/app/financeiro" },
     { label: "Fornecedores", icon: Truck, to: "/app/loja/fornecedores" },
@@ -218,6 +218,12 @@ export function AppSidebar() {
       case "QR Code": requiredPerm = "configuracoes"; break;
       case "Templates": requiredPerm = "configuracoes"; break;
       case "Roadmap": requiredPerm = "configuracoes"; break;
+      // Shop Module Permissions - Map to closest existing perms for now
+      case "Vendas": requiredPerm = "crm"; break; // Vendas uses CRM logic/access
+      case "Estoque": requiredPerm = "financeiro"; break; // Stock usually related to finance or just allow for now
+      case "Fornecedores": requiredPerm = "financeiro"; break;
+      case "Metas & Equipe": requiredPerm = "relatorios"; break;
+      case "IA Vendas": requiredPerm = "crm"; break;
       default: return true;
     }
 
