@@ -122,6 +122,21 @@ const CrmPage = () => {
   // ...
   const [isLoadingContacts, setIsLoadingContacts] = useState(false);
   const [isLoadingData, setIsLoadingData] = useState(true);
+  const [leads, setLeads] = useState<Lead[]>([]);
+  const [stages, setStages] = useState<any[]>([]);
+  const [activeDragId, setActiveDragId] = useState<string | null>(null);
+  const [isSheetOpen, setIsSheetOpen] = useState(false);
+  const [editingLead, setEditingLead] = useState<Lead | null>(null);
+  const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [newStageName, setNewStageName] = useState("");
+  const [selectedColor, setSelectedColor] = useState("#93c5fd");
+  const [isAddLeadDialogOpen, setIsAddLeadDialogOpen] = useState(false);
+  const [contactSearchTerm, setContactSearchTerm] = useState("");
+  const [contacts, setContacts] = useState<any[]>([]);
+  const [isFollowUpModalOpen, setIsFollowUpModalOpen] = useState(false);
+  const [followUpInitialData, setFollowUpInitialData] = useState<any>(null);
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
 
   // SOCKET INTEGRATION
   useEffect(() => {
