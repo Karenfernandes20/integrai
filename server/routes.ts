@@ -476,4 +476,31 @@ router.get('/restaurant/deliveries', authenticateToken, getDeliveries);
 router.get('/rides', (req, res) => res.json({ message: 'Rides endpoint' }));
 router.get('/whatsapp', (req, res) => res.json({ message: 'WhatsApp endpoint' }));
 
+
+// Shop Routes
+import {
+  getShopDashboard,
+  getSales,
+  createSale,
+  getInventory,
+  createInventoryItem,
+  updateInventoryItem,
+  getSuppliers,
+  createSupplier,
+  getPayments,
+  getReceivables
+} from './controllers/shopController';
+import { validateCompanyAndInstance } from './middleware/validateCompanyAndInstance';
+
+router.get('/shop/dashboard', authenticateToken, validateCompanyAndInstance, getShopDashboard);
+router.get('/shop/sales', authenticateToken, validateCompanyAndInstance, getSales);
+router.post('/shop/sales', authenticateToken, validateCompanyAndInstance, createSale);
+router.get('/shop/inventory', authenticateToken, validateCompanyAndInstance, getInventory);
+router.post('/shop/inventory', authenticateToken, authorizePermission(MODULES.CRM, ACTIONS.WRITE), validateCompanyAndInstance, createInventoryItem);
+router.put('/shop/inventory/:id', authenticateToken, authorizePermission(MODULES.CRM, ACTIONS.WRITE), validateCompanyAndInstance, updateInventoryItem);
+router.get('/shop/suppliers', authenticateToken, validateCompanyAndInstance, getSuppliers);
+router.post('/shop/suppliers', authenticateToken, validateCompanyAndInstance, createSupplier);
+router.get('/shop/payments', authenticateToken, validateCompanyAndInstance, getPayments);
+router.get('/shop/receivables', authenticateToken, validateCompanyAndInstance, getReceivables);
+
 export default router;

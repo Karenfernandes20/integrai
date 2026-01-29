@@ -6,5 +6,5 @@ export interface CompanySummary {
     state: string | null;
     logo_url: string | null;
     operation_type?: 'motoristas' | 'clientes' | 'pacientes' | 'lavajato' | 'restaurante';
-    category?: 'generic' | 'lavajato' | 'restaurante';
+    category?: 'generic' | 'lavajato' | 'restaurante' | 'loja';
 }

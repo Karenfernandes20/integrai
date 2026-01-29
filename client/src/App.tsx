@@ -101,6 +101,12 @@ import CozinhaPage from "./pages/restaurante/Cozinha";
 import CardapioPage from "./pages/restaurante/Cardapio";
 import EntregasPage from "./pages/restaurante/Entregas";
 
+// Loja Pages
+import VendasLojaPage from "./pages/loja/Vendas";
+import EstoquePage from "./pages/loja/Estoque";
+import FornecedoresPage from "./pages/loja/Fornecedores";
+import MetasPage from "./pages/loja/Metas";
+
 
 import { AuthProvider } from "./contexts/AuthContext";
 import AdminRoute from "./components/AdminRoute";
@@ -168,6 +174,12 @@ const App = () => (
                   <Route path="cozinha" element={<CozinhaPage />} />
                   <Route path="cardapio" element={<CardapioPage />} />
                   <Route path="entregas" element={<EntregasPage />} />
+
+                  {/* Loja Specific Routes */}
+                  <Route path="loja/vendas" element={<VendasLojaPage />} />
+                  <Route path="loja/estoque" element={<EstoquePage />} />
+                  <Route path="loja/fornecedores" element={<FornecedoresPage />} />
+                  <Route path="loja/metas" element={<MetasPage />} />
 
                   {/* SuperAdmin Routes */}
                   <Route element={<AdminRoute roles={['SUPERADMIN', 'ADMIN']} />}>

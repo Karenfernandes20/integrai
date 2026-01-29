@@ -5,6 +5,7 @@ import { TransportDashboard } from "../components/transport-dashboard/TransportD
 import { ClinicalDashboard } from "../components/clinical-dashboard/ClinicalDashboard";
 import { LavajatoDashboard } from "../components/lavajato-dashboard/LavajatoDashboard";
 import { RestaurantDashboard } from "../components/restaurant-dashboard/RestaurantDashboard";
+import { ShopDashboard } from "../components/shop-dashboard/ShopDashboard";
 
 import { useAuth } from "../contexts/AuthContext";
 
@@ -139,6 +140,11 @@ const DashboardPage = () => {
     return (
       <RestaurantDashboard company={company} />
     );
+  }
+
+  // --- 6. SHOP / LOJA DASHBOARD ---
+  if (company?.operation_type === 'loja' || company?.category === 'loja') {
+    return <ShopDashboard company={company} />;
   }
 
   // --- 6. FALLBACK DEFAULT TO CLIENTES ---

@@ -61,3 +61,7 @@ export const getCityStateFromPhone = (phone: string | undefined): string | null 
 
   return dddMap[ddd] || null;
 };
+
+export const formatCurrency = (value: number) => {
+  return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value);
+};

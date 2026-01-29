@@ -41,6 +41,8 @@ import {
   Coffee,
   ChefHat,
   Truck,
+  Package,
+  Target,
 } from "lucide-react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext";
@@ -167,7 +169,24 @@ export function AppSidebar() {
     { label: "Configurações", icon: Settings, to: "/app/configuracoes" },
   ];
 
-  const finalItems = isRestaurante ? restauranteItems : (isLavajato ? lavajatoItems : navItems);
+  const isLoja = (user as any)?.company?.category === 'loja' || (user as any)?.company?.operation_type === 'loja';
+
+  const lojaItems = [
+    { label: "Dashboard", icon: LayoutDashboard, to: "/app/dashboard" },
+    { label: "Vendas", icon: ShoppingBag, to: "/app/loja/vendas" },
+    { label: "Clientes", icon: Users, to: "/app/contatos" },
+    { label: "Estoque", icon: Package, to: "/app/loja/estoque" },
+    { label: "Financeiro", icon: Wallet2, to: "/app/financeiro" },
+    { label: "Fornecedores", icon: Truck, to: "/app/loja/fornecedores" },
+    { label: "Campanhas", icon: FileText, to: "/app/campanhas" },
+    { label: "Atendimento", icon: MessageCircle, to: "/app/atendimento" },
+    { label: "Relatórios", icon: TrendingUp, to: "/app/relatorios" },
+    { label: "Metas & Equipe", icon: Target, to: "/app/loja/metas" },
+    { label: "IA Vendas", icon: Bot, to: "/app/ia" },
+    { label: "Configurações", icon: Settings, to: "/app/configuracoes" },
+  ];
+
+  const finalItems = isRestaurante ? restauranteItems : (isLavajato ? lavajatoItems : (isLoja ? lojaItems : navItems));
 
   // Permission Logic
   const filteredNavItems = finalItems.filter(item => {
