@@ -58,7 +58,7 @@ const companySchema = z.object({
   city: z.string().optional(),
   state: z.string().optional(),
   phone: z.string().optional(),
-  operation_type: z.enum(["motoristas", "clientes", "pacientes", "lavajato", "restaurante"]).optional(),
+  operation_type: z.enum(["motoristas", "clientes", "pacientes", "lavajato", "restaurante", "loja"]).optional(),
 });
 
 interface Company {
@@ -71,8 +71,8 @@ interface Company {
   logo_url: string | null;
   evolution_instance: string | null;
   evolution_apikey: string | null;
-  operation_type: "motoristas" | "clientes" | "pacientes" | null;
-  category: "generic" | "lavajato" | "restaurante" | null;
+  operation_type: "motoristas" | "clientes" | "pacientes" | "lavajato" | "restaurante" | "loja" | null;
+  category: "generic" | "lavajato" | "restaurante" | "loja" | null;
   plan_id?: number;
   due_date?: string;
   max_instances?: number;
@@ -985,6 +985,9 @@ const SuperadminPage = () => {
                           <SelectItem value="clientes">Clientes / CRM Geral</SelectItem>
                           <SelectItem value="motoristas">Motoristas / Mobilidade</SelectItem>
                           <SelectItem value="pacientes">Pacientes / Saúde</SelectItem>
+                          <SelectItem value="loja">Loja / Varejo</SelectItem>
+                          <SelectItem value="lavajato">Lava Jato</SelectItem>
+                          <SelectItem value="restaurante">Restaurante</SelectItem>
                         </SelectContent>
                       </Select>
                     </div>
