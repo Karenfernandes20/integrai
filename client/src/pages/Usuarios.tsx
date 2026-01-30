@@ -24,6 +24,7 @@ const UsuariosPage = () => {
     user_type: "passenger" | "driver" | "system";
     role: "ADMIN" | "USUARIO";
     password?: string;
+    permissions?: string[];
   }>({
     full_name: "",
     email: "",
@@ -31,6 +32,7 @@ const UsuariosPage = () => {
     user_type: "system",
     role: "USUARIO",
     password: "",
+    permissions: ['dashboard', 'atendimentos', 'crm', 'financeiro', 'configuracoes', 'relatorios'] // Default all for UX
   });
 
   const { data: users = [], isLoading, error } = useQuery<User[]>({
@@ -42,7 +44,7 @@ const UsuariosPage = () => {
     mutationFn: userService.createUser,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["users"] });
-      setNewUser({ full_name: "", email: "", phone: "", user_type: "system", role: "USUARIO", password: "" });
+      setNewUser({ full_name: "", email: "", phone: "", user_type: "system", role: "USUARIO", password: "", permissions: ['dashboard', 'atendimentos', 'crm', 'financeiro', 'configuracoes', 'relatorios'] });
     },
   });
 
@@ -74,6 +76,9 @@ const UsuariosPage = () => {
       payload.role = newUser.role;
       payload.user_type = null;
       payload.password = newUser.password || '123456';
+      if (newUser.role === 'USUARIO') {
+        payload.permissions = newUser.permissions;
+      }
     } else {
       payload.user_type = newUser.user_type;
       payload.role = 'USUARIO';
@@ -232,8 +237,8 @@ const UsuariosPage = () => {
                       onChange={(e) => setNewUser((u) => ({ ...u, role: e.target.value as any }))}
                       className="w-full h-9 rounded-md border bg-background px-3 text-xs"
                     >
-                      <option value="USUARIO">Colaborador (Padrão)</option>
-                      <option value="ADMIN">Administrador</option>
+                      <option value="USUARIO">Colaborador (Personalizado)</option>
+                      <option value="ADMIN">Administrador (Acesso Total)</option>
                     </select>
                   </div>
                   <div className="space-y-1.5">
@@ -246,6 +251,41 @@ const UsuariosPage = () => {
                       className="h-9 text-xs"
                     />
                   </div>
+
+                  {/* PERMISSIONS SELECTOR */}
+                  {newUser.role === 'USUARIO' && (
+                    <div className="space-y-2 pt-2 border-t">
+                      <label className="text-[11px] font-bold uppercase text-muted-foreground">Permissões de Acesso</label>
+                      <div className="grid grid-cols-2 gap-2">
+                        {[
+                          { id: 'dashboard', label: 'Dashboard' },
+                          { id: 'atendimentos', label: 'Atendimento' },
+                          { id: 'crm', label: 'CRM / Vendas' },
+                          { id: 'financeiro', label: 'Financeiro' },
+                          { id: 'relatorios', label: 'Relatórios' },
+                          { id: 'configuracoes', label: 'Configurações' }
+                        ].map(perm => (
+                          <div key={perm.id} className="flex items-center space-x-2">
+                            <input
+                              type="checkbox"
+                              id={`perm-${perm.id}`}
+                              className="h-3.5 w-3.5 rounded border-gray-300 text-primary focus:ring-primary"
+                              checked={newUser.permissions?.includes(perm.id)}
+                              onChange={(e) => {
+                                const current = newUser.permissions || [];
+                                if (e.target.checked) {
+                                  setNewUser(u => ({ ...u, permissions: [...current, perm.id] }));
+                                } else {
+                                  setNewUser(u => ({ ...u, permissions: current.filter(p => p !== perm.id) }));
+                                }
+                              }}
+                            />
+                            <label htmlFor={`perm-${perm.id}`} className="text-xs">{perm.label}</label>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </>
               )}
 
