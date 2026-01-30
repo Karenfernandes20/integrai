@@ -74,6 +74,7 @@ const LOJA_MENU: MenuItem[] = [
     { label: "Campanhas", icon: FileText, to: "/app/campanhas", requiredPermission: "atendimentos" },
     { label: "Relatórios", icon: TrendingUp, to: "/app/relatorios", requiredPermission: "relatorios" },
     { label: "Metas & Equipe", icon: Target, to: "/app/loja/metas", requiredPermission: "relatorios" },
+    { label: "QR Code", icon: QrCode, to: "/app/qr-code", requiredPermission: "configuracoes" },
     { label: "IA Vendas", icon: Bot, to: "/app/ia", requiredPermission: "crm" },
     { label: "Configurações", icon: Settings, to: "/app/configuracoes", requiredPermission: "configuracoes" },
 ];
