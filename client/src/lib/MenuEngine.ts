@@ -43,8 +43,8 @@ export interface MenuItem {
 }
 
 const COMMON_ITEMS: MenuItem[] = [
-    { label: "Dashboard", icon: LayoutDashboard, to: "/app/dashboard", requiredPermission: "dashboard" },
     { label: "Atendimento", icon: MessageCircle, to: "/app/atendimento", requiredPermission: "atendimentos" },
+    { label: "Dashboard", icon: LayoutDashboard, to: "/app/dashboard", requiredPermission: "dashboard" },
 ];
 
 const GENERIC_MENU: MenuItem[] = [
@@ -64,6 +64,7 @@ const GENERIC_MENU: MenuItem[] = [
 ];
 
 const LOJA_MENU: MenuItem[] = [
+    { label: "Atendimento", icon: MessageCircle, to: "/app/atendimento", requiredPermission: "atendimentos" },
     { label: "Dashboard", icon: LayoutDashboard, to: "/app/dashboard", requiredPermission: "dashboard" },
     { label: "Vendas", icon: ShoppingBag, to: "/app/loja/vendas", requiredPermission: "crm" },
     { label: "Clientes", icon: Users, to: "/app/contatos", requiredPermission: "atendimentos" }, // "Clientes" maps to Contatos
@@ -71,7 +72,6 @@ const LOJA_MENU: MenuItem[] = [
     { label: "Financeiro", icon: Wallet2, to: "/app/financeiro", requiredPermission: "financeiro" },
     { label: "Fornecedores", icon: Truck, to: "/app/loja/fornecedores", requiredPermission: "financeiro" },
     { label: "Campanhas", icon: FileText, to: "/app/campanhas", requiredPermission: "atendimentos" },
-    { label: "Atendimento", icon: MessageCircle, to: "/app/atendimento", requiredPermission: "atendimentos" },
     { label: "Relatórios", icon: TrendingUp, to: "/app/relatorios", requiredPermission: "relatorios" },
     { label: "Metas & Equipe", icon: Target, to: "/app/loja/metas", requiredPermission: "relatorios" },
     { label: "IA Vendas", icon: Bot, to: "/app/ia", requiredPermission: "crm" },
@@ -79,6 +79,7 @@ const LOJA_MENU: MenuItem[] = [
 ];
 
 const RESTAURANTE_MENU: MenuItem[] = [
+    { label: "Atendimento", icon: MessageCircle, to: "/app/atendimento", requiredPermission: "atendimentos" },
     { label: "Dashboard", icon: LayoutDashboard, to: "/app/dashboard", requiredPermission: "dashboard" },
     { label: "Pedidos", icon: ShoppingBag, to: "/app/pedidos", requiredPermission: "crm" },
     { label: "Mesas", icon: Coffee, to: "/app/mesas", requiredPermission: "crm" },
@@ -94,9 +95,9 @@ const RESTAURANTE_MENU: MenuItem[] = [
 ];
 
 const LAVAJATO_MENU: MenuItem[] = [
+    { label: "Atendimento", icon: MessageCircle, to: "/app/atendimento", requiredPermission: "atendimentos" },
     { label: "Dashboard", icon: LayoutDashboard, to: "/app/dashboard", requiredPermission: "dashboard" },
     { label: "Agenda", icon: CalendarCheck, to: "/app/agenda", requiredPermission: "crm" },
-    { label: "Atendimento", icon: MessageCircle, to: "/app/atendimento", requiredPermission: "atendimentos" },
     { label: "Clientes", icon: Users, to: "/app/contatos", requiredPermission: "atendimentos" },
     { label: "Veículos", icon: Car, to: "/app/veiculos", requiredPermission: "crm" },
     { label: "Serviços", icon: Wrench, to: "/app/servicos", requiredPermission: "configuracoes" },
