@@ -114,7 +114,7 @@ export const getSales = async (req: RequestWithInstance, res: Response) => {
         `, [company_id, instance_id, limit, offset]);
 
         res.json(result.rows);
-    } catch (error) {
+    } catch (error: any) {
         res.status(500).json({ error: error.message });
     }
 };
@@ -196,52 +196,99 @@ export const createSale = async (req: RequestWithInstance, res: Response) => {
 
 // --- INVENTORY ---
 
+// --- INVENTORY ---
+
 export const getInventory = async (req: RequestWithInstance, res: Response) => {
     try {
         const { company_id } = req.user;
         const instance_id = req.instanceId;
-        const { search } = req.query;
+        const { search, limit = 100, offset = 0 } = req.query;
 
-        let query = `SELECT * FROM inventory WHERE company_id = $1 AND instance_id = $2 AND status = 'active'`;
+        let query = `SELECT i.*, s.name as supplier_name FROM inventory i LEFT JOIN suppliers s ON i.supplier_id = s.id WHERE i.company_id = $1 AND i.instance_id = $2 AND i.status != 'deleted'`;
         const params: any[] = [company_id, instance_id];
 
         if (search) {
-            query += ` AND (name ILIKE $3 OR sku ILIKE $3 OR category ILIKE $3)`;
+            query += ` AND (i.name ILIKE $3 OR i.sku ILIKE $3 OR i.category ILIKE $3 OR i.barcode ILIKE $3)`;
             params.push(`%${search}%`);
         }
 
-        query += ` ORDER BY name ASC`;
+        query += ` ORDER BY i.name ASC LIMIT $${params.length + 1} OFFSET $${params.length + 2}`;
+        params.push(limit, offset);
 
         const result = await pool!.query(query, params);
         res.json(result.rows);
-    } catch (error) {
+    } catch (error: any) {
         res.status(500).json({ error: error.message });
     }
 };
 
 export const createInventoryItem = async (req: RequestWithInstance, res: Response) => {
+    const client = await pool!.connect();
     try {
-        const { company_id } = req.user;
+        await client.query('BEGIN');
+        const { company_id, id: user_id } = req.user;
         const instance_id = req.instanceId;
-        const { name, sku, category, cost_price, sale_price, quantity, min_quantity, supplier_id } = req.body;
+        const {
+            name,
+            sku,
+            category,
+            cost_price,
+            sale_price,
+            quantity,
+            min_quantity,
+            supplier_id,
+            barcode,
+            description,
+            unit,
+            location,
+            image_url,
+            status,
+            channels
+        } = req.body;
 
-        const result = await pool!.query(`
-            INSERT INTO inventory (company_id, instance_id, name, sku, category, cost_price, sale_price, quantity, min_quantity, supplier_id)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+        // Auto-generate SKU if missing (simple timestamp based)
+        const finalSku = sku || `SKU-${Date.now()}`;
+
+        // Calculate margin
+        const cost = Number(cost_price) || 0;
+        const sale = Number(sale_price) || 0;
+        const margin = sale > 0 ? ((sale - cost) / sale) * 100 : 0;
+
+        const result = await client.query(`
+            INSERT INTO inventory (
+                company_id, instance_id, name, sku, barcode, category, description,
+                cost_price, sale_price, margin, quantity, min_quantity, location, unit,
+                supplier_id, image_url, status
+            )
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
             RETURNING *
-        `, [company_id, instance_id, name, sku, category, cost_price, sale_price, quantity, min_quantity, supplier_id]);
+        `, [
+            company_id, instance_id, name, finalSku, barcode, category, description,
+            cost, sale, margin.toFixed(2), quantity || 0, min_quantity || 0,
+            location, unit || 'un', supplier_id, image_url, status || 'active'
+        ]);
+
+        const newItem = result.rows[0];
 
         // Log initial movement if quantity > 0
         if (Number(quantity) > 0) {
-            await pool!.query(`
+            await client.query(`
                 INSERT INTO inventory_movements (company_id, instance_id, inventory_id, type, quantity, reason, user_id)
-                VALUES ($1, $2, $3, 'in', $4, 'Estoque Inicial', $5)
-             `, [company_id, instance_id, result.rows[0].id, quantity, req.user.id]);
+                VALUES ($1, $2, $3, 'in', $4, 'Entrada Inicial (Cadastro)', $5)
+            `, [company_id, instance_id, newItem.id, quantity, user_id]);
         }
 
-        res.status(201).json(result.rows[0]);
-    } catch (error) {
+        // Handle Channels (Mock logic for now as requested tables don't specify channel storage yet, usually many-to-many)
+        // Ignoring specialized channel logic for now per schema constraint, but assumed enabled.
+
+        await client.query('COMMIT');
+        res.status(201).json(newItem);
+    } catch (error: any) {
+        await client.query('ROLLBACK');
+        console.error("Create Product Error:", error);
         res.status(500).json({ error: error.message });
+    } finally {
+        client.release();
     }
 };
 
@@ -261,7 +308,7 @@ export const updateInventoryItem = async (req: RequestWithInstance, res: Respons
          `, [name, sale_price, min_quantity, id, company_id]);
 
         res.json(result.rows[0]);
-    } catch (error) {
+    } catch (error: any) {
         res.status(500).json({ error: error.message });
     }
 };
