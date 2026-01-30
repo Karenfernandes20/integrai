@@ -118,6 +118,7 @@ import { runFaqMigrations } from "./db/faqMigrations";
 import { runLavajatoMigrations } from "./db/lavajato_migrations";
 import { runRestaurantMigrations } from "./db/restaurant_migrations";
 import { runShopMigrations } from "./db/shop_migrations";
+import { runOperationalProfileMigration } from "./db/migrations/add_operational_profile";
 
 // Create HTTP server
 const httpServer = createServer(app);
@@ -160,6 +161,7 @@ const startServer = async () => {
     await runLavajatoMigrations();
     await runRestaurantMigrations();
     await runShopMigrations();
+    await runOperationalProfileMigration();
     console.log("Migrations check skipped for offline/mock mode.");
 
     // INITIALIZE SYSTEM MODE (Safe Check)

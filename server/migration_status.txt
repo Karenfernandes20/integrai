@@ -1,0 +1,6 @@
+Checking column...
+Fatal Error: password authentication failed for user "postgres"
+error: password authentication failed for user "postgres"
+    at C:\Users\Usuario\Desktop\KAREN\Pessoal\Integrai Site\integrai\server\node_modules\pg-pool\index.js:45:11
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+    at async main (C:\Users\Usuario\Desktop\KAREN\Pessoal\Integrai Site\integrai\server\debug_migration_status.ts:10:21)

@@ -12,7 +12,8 @@ import { SubscriptionBanner } from "../components/SubscriptionBanner";
 import { useSubscriptionBanner } from "../hooks/useSubscriptionBanner";
 import { UpgradeModal } from "../components/UpgradeModal";
 import { ThemeToggle } from "../components/ThemeToggle";
-
+import { Badge } from "../components/ui/badge";
+import { getOperationalProfile } from "../lib/profileUtils"; // Added logic
 
 const SECTION_TITLES: Record<string, string> = {
   "/app/dashboard": "Dashboard",
@@ -83,6 +84,10 @@ export const AdminLayout = () => {
 
   const isAtendimento = location.pathname.startsWith("/app/atendimento");
 
+  // Calculate Profile
+  const profile = getOperationalProfile(user?.company);
+  const showProfileBadge = profile && profile !== 'GENERIC';
+
   return (
     <SidebarProvider>
       <div className={cn("w-full bg-background flex flex-col", isAtendimento ? "h-[100dvh] overflow-hidden" : "min-h-screen")}>
@@ -98,7 +103,14 @@ export const AdminLayout = () => {
               <div className="flex items-center gap-3">
                 <SidebarTrigger className="mr-1" />
                 <div>
-                  <h1 className="text-lg font-semibold tracking-tight">{title}</h1>
+                  <div className="flex items-center gap-2">
+                    <h1 className="text-lg font-semibold tracking-tight">{title}</h1>
+                    {showProfileBadge && (
+                      <Badge variant="outline" className="bg-primary/5 border-primary/20 text-primary text-[10px] px-2 h-5">
+                        Modo {profile} Ativo
+                      </Badge>
+                    )}
+                  </div>
                   <p className="text-xs text-muted-foreground">Sistema de Gestão Inteligente</p>
                 </div>
               </div>
@@ -149,7 +161,6 @@ export const AdminLayout = () => {
                 <Button variant="ghost" size="icon" onClick={handleLogout} title="Sair">
                   <LogOut className="h-4 w-4" />
                 </Button>
-                {/* <div className="pointer-events-none absolute -right-10 top-1/2 hidden h-16 w-16 -translate-y-1/2 rounded-full bg-accent/40 blur-2xl md:block" /> */}
               </div>
             </header>
 

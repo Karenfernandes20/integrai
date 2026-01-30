@@ -1,4 +1,5 @@
 import { NavLink } from "./NavLink";
+import { getMenuByProfile, SUPERADMIN_ITEMS } from "../lib/MenuEngine";
 import {
   Sidebar,
   SidebarContent,
@@ -49,33 +50,16 @@ import { useAuth } from "../contexts/AuthContext";
 import { useState, useEffect } from "react";
 import { EditProfileModal } from "./EditProfileModal";
 
-const items = [
-  { label: "Dashboard", icon: LayoutDashboard, to: "/app/dashboard" },
-  { label: "Atendimento", icon: MessageCircle, to: "/app/atendimento" },
-  { label: "Grupos", icon: Users, to: "/app/grupos" },
-  { label: "Campanhas", icon: FileText, to: "/app/campanhas" },
-  { label: "Follow-up", icon: CalendarCheck, to: "/app/follow-up" },
-  { label: "Contatos", icon: Users, to: "/app/contatos" },
-  { label: "CRM", icon: KanbanSquare, to: "/app/crm" },
-  { label: "Tags", icon: TagsIcon, to: "/app/tags" },
-  { label: "Financeiro", icon: Wallet2, to: "/app/financeiro" },
-  { label: "Usuários", icon: Users, to: "/app/usuarios" },
-  { label: "Cidades", icon: MapPin, to: "/app/cidades" },
-  { label: "QR Code", icon: QrCode, to: "/app/qr-code" },
-  { label: "Ajuda / FAQ", icon: HelpCircle, to: "/app/faq" },
-  { label: "Configurações", icon: Settings, to: "/app/configuracoes" },
-];
+const items: any[] = []; // Placeholder to avoid breaking if referenced elsewhere, but unused now.
 
 export function AppSidebar() {
   const location = useLocation();
   const navigate = useNavigate();
-  const { user, logout } = useAuth();
+  const { user, token, logout } = useAuth(); // Destructure token here
   const [isEditProfileOpen, setIsEditProfileOpen] = useState(false);
   const [taskCount, setTaskCount] = useState(0);
   const [alertCount, setAlertCount] = useState(0);
   const currentPath = location.pathname;
-
-  const { token } = useAuth();
 
   useEffect(() => {
     if (user?.role === 'SUPERADMIN' && token) {
@@ -114,120 +98,55 @@ export function AppSidebar() {
     }
   };
 
-  const navItems = [...items];
+  // --- DYNAMIC MENU ENGINE ---
+  // Determine Profile
+  let profile = (user as any)?.company?.operational_profile;
+  if (!profile) {
+    if ((user as any)?.company?.category === 'loja' || (user as any)?.company?.operation_type === 'loja') profile = 'LOJA';
+    else if ((user as any)?.company?.category === 'lavajato') profile = 'LAVAJATO';
+    else if ((user as any)?.company?.category === 'restaurante') profile = 'RESTAURANTE';
+    else if ((user as any)?.company?.operation_type === 'motoristas' || (user as any)?.company?.category === 'transporte') profile = 'TRANSPORTE';
+    else if ((user as any)?.company?.operation_type === 'pacientes' || (user as any)?.company?.category === 'clinica') profile = 'CLINICA';
+    else profile = 'GENERIC';
+  }
+
+  // Get Base Items
+  let navItems = getMenuByProfile(profile);
+
+  // Inject Superadmin Items if applicable
   if (user?.role === 'SUPERADMIN') {
-    navItems.splice(1, 0, { label: "Clientes", icon: Building2, to: "/app/empresas" });
-    navItems.splice(2, 0, { label: "Tarefas", icon: CheckSquare, to: "/app/tarefas" });
-    navItems.splice(3, 0, { label: "Logs", icon: Terminal, to: "/app/logs" });
-    navItems.splice(4, 0, { label: "Alertas", icon: Bell, to: "/app/alertas" });
-    navItems.splice(5, 0, { label: "Saúde", icon: Activity, to: "/app/saude" });
-    navItems.splice(6, 0, { label: "IA", icon: Bot, to: "/app/ia" });
-    navItems.splice(7, 0, { label: "Auditoria", icon: Fingerprint, to: "/app/auditoria" });
-    // navItems.splice(8, 0, { label: "Workflows", icon: GitBranch, to: "/app/workflows" }); // REMOVED
-    navItems.splice(9, 0, { label: "Templates", icon: LayoutTemplate, to: "/app/templates" });
-    navItems.splice(10, 0, { label: "Roadmap", icon: Map, to: "/app/roadmap" });
+    // If superadmin, we should append the specific tools
+    // But Superadmin might also want to see the "Company Content" logic.
+    // Usually Superadmin sees "GENERIC" unless impersonating, but let's stick to the engine.
+    navItems = [...navItems, ...SUPERADMIN_ITEMS];
   }
 
-  // Ensure FAQ is penultimate (second to last)
+  // Ensure FAQ is penultimate (second to last) if it exists, logic from before
   const faqIndex = navItems.findIndex(i => i.label === "Ajuda / FAQ");
-  if (faqIndex > -1) {
+  if (faqIndex > -1 && faqIndex < navItems.length - 1) {
     const [faqItem] = navItems.splice(faqIndex, 1);
-    navItems.splice(navItems.length - 1, 0, faqItem);
+    navItems.splice(navItems.length - 1, 0, faqItem); // Put before last? Or just put at end if not superadmin?
+    // User logic was "Splice penultimate".
+    // If we have SUPERADMIN items appended, FAQ might get pushed up.
+    // Let's keep simpler logic for now: FAQ usually ends up near bottom or just leave as is.
   }
-
-  // --- LAVAJATO CUSTOM NAVIGATION ---
-  const isLavajato = (user as any)?.company?.category === 'lavajato';
-  const isRestaurante = (user as any)?.company?.category === 'restaurante';
-
-  const lavajatoItems = [
-    { label: "Dashboard", icon: LayoutDashboard, to: "/app/dashboard" },
-    { label: "Agenda", icon: CalendarCheck, to: "/app/agenda" },
-    { label: "Atendimento", icon: MessageCircle, to: "/app/atendimento" },
-    { label: "Clientes", icon: Users, to: "/app/contatos" },
-    { label: "Veículos", icon: Car, to: "/app/veiculos" },
-    { label: "Serviços", icon: Wrench, to: "/app/servicos" },
-    { label: "Ordens de Serviço", icon: ClipboardList, to: "/app/os" },
-    { label: "Financeiro", icon: Wallet2, to: "/app/financeiro" },
-    { label: "Campanhas", icon: FileText, to: "/app/campanhas" },
-    { label: "Relatórios", icon: TrendingUp, to: "/app/relatorios" },
-    { label: "Equipe", icon: Users, to: "/app/usuarios" },
-    { label: "Configurações", icon: Settings, to: "/app/configuracoes" },
-  ];
-
-  const restauranteItems = [
-    { label: "Dashboard", icon: LayoutDashboard, to: "/app/dashboard" },
-    { label: "Pedidos", icon: ShoppingBag, to: "/app/pedidos" },
-    { label: "Mesas", icon: Coffee, to: "/app/mesas" },
-    { label: "Cozinha", icon: ChefHat, to: "/app/cozinha" },
-    { label: "Cardápio", icon: LayoutTemplate, to: "/app/cardapio" },
-    { label: "Clientes", icon: Users, to: "/app/contatos" },
-    { label: "Entregas", icon: Truck, to: "/app/entregas" },
-    { label: "Financeiro", icon: Wallet2, to: "/app/financeiro" },
-    { label: "Campanhas", icon: FileText, to: "/app/campanhas" },
-    { label: "Relatórios", icon: TrendingUp, to: "/app/relatorios" },
-    { label: "Equipe", icon: Users, to: "/app/usuarios" },
-    { label: "Configurações", icon: Settings, to: "/app/configuracoes" },
-  ];
-
-  const isLoja = (user as any)?.company?.category === 'loja' || (user as any)?.company?.operation_type === 'loja';
-
-  const lojaItems = [
-    { label: "Dashboard", icon: LayoutDashboard, to: "/app/dashboard" },
-    { label: "Vendas", icon: ShoppingBag, to: "/app/loja/vendas" },
-    { label: "Contatos", icon: Users, to: "/app/contatos" },
-    { label: "Estoque", icon: Package, to: "/app/loja/estoque" },
-    { label: "Financeiro", icon: Wallet2, to: "/app/financeiro" },
-    { label: "Fornecedores", icon: Truck, to: "/app/loja/fornecedores" },
-    { label: "Campanhas", icon: FileText, to: "/app/campanhas" },
-    { label: "Atendimento", icon: MessageCircle, to: "/app/atendimento" },
-    { label: "Relatórios", icon: TrendingUp, to: "/app/relatorios" },
-    { label: "Metas & Equipe", icon: Target, to: "/app/loja/metas" },
-    { label: "IA Vendas", icon: Bot, to: "/app/ia" },
-    { label: "Configurações", icon: Settings, to: "/app/configuracoes" },
-  ];
-
-  const finalItems = isRestaurante ? restauranteItems : (isLavajato ? lavajatoItems : (isLoja ? lojaItems : navItems));
 
   // Permission Logic
-  const filteredNavItems = finalItems.filter(item => {
-    // Force hide SuperAdmin items for non-SuperAdmins
-    const superAdminOnly = ["Clientes", "Tarefas", "Logs", "Alertas", "Saúde", "IA", "Auditoria", "Templates", "Roadmap"];
-    if (user?.role !== 'SUPERADMIN' && superAdminOnly.includes(item.label)) return false;
+  const filteredNavItems = navItems.filter(item => {
+    // 1. SuperAdmin Only Check
+    if (item.superAdminOnly && user?.role !== 'SUPERADMIN') return false;
 
+    // 2. Grant Everything to Admin/Superadmin
     if (user?.role === 'SUPERADMIN' || user?.role === 'ADMIN') return true;
 
-    // Legacy support: if no permissions array, show all (or assume migrated to [])
-    // Ideally we assume [] means nothing, but for safety let's check if undefined
-    if (user?.permissions === undefined) return true;
+    // 3. Permission Check
+    // If no permission requirements, show it
+    if (!item.requiredPermission) return true;
 
-    let requiredPerm = "";
-    switch (item.label) {
-      case "Dashboard": requiredPerm = "dashboard"; break;
-      case "Atendimento": requiredPerm = "atendimentos"; break;
-      case "Grupos": requiredPerm = "atendimentos"; break;
-      case "Campanhas": requiredPerm = "atendimentos"; break;
-      case "Follow-up": requiredPerm = "atendimentos"; break;
-      case "Contatos": requiredPerm = "atendimentos"; break;
-      case "CRM": requiredPerm = "crm"; break;
-      case "Tags": requiredPerm = "crm"; break;
-      case "Financeiro": requiredPerm = "financeiro"; break;
-      case "Relatórios": requiredPerm = "relatorios"; break; // Explicit permission
-      case "Configurações": requiredPerm = "configuracoes"; break;
-      case "Usuários": requiredPerm = "configuracoes"; break;
-      case "Cidades": requiredPerm = "configuracoes"; break;
-      case "QR Code": requiredPerm = "configuracoes"; break;
-      case "Templates": requiredPerm = "configuracoes"; break;
-      case "Roadmap": requiredPerm = "configuracoes"; break;
-      // Shop Module Permissions - Map to closest existing perms for now
-      case "Vendas": requiredPerm = "crm"; break; // Vendas uses CRM logic/access
-      case "Estoque": requiredPerm = "financeiro"; break; // Stock usually related to finance or just allow for now
-      case "Fornecedores": requiredPerm = "financeiro"; break;
-      case "Metas & Equipe": requiredPerm = "relatorios"; break;
-      case "IA Vendas": requiredPerm = "crm"; break;
-      default: return true;
-    }
+    // If user has no permissions array (and not admin), hide restricted
+    if (!user?.permissions) return false;
 
-    return user.permissions.includes(requiredPerm);
+    return user.permissions.includes(item.requiredPermission);
   });
 
 

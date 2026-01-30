@@ -115,6 +115,7 @@ import SuperAdminLoginPage from "./pages/SuperAdminLogin";
 import SignupPage from "./pages/Signup";
 import OnboardingPage from "./pages/Onboarding";
 import LegalPage from "./pages/LegalPage";
+import { RouteGuard } from "./components/RouteGuard";
 const queryClient = new QueryClient();
 
 import { ThemeProvider } from "next-themes";
@@ -163,23 +164,29 @@ const App = () => (
                   <Route path="tags" element={<TagsPage />} />
 
                   {/* Lavajato Specific Routes */}
-                  <Route path="agenda" element={<AgendaPage />} />
-                  <Route path="veiculos" element={<VehiclesPage />} />
-                  <Route path="os" element={<ServiceOrdersPage />} />
-                  <Route path="servicos" element={<ServicesPage />} />
+                  <Route element={<RouteGuard requiredProfile="LAVAJATO" />}>
+                    <Route path="agenda" element={<AgendaPage />} />
+                    <Route path="veiculos" element={<VehiclesPage />} />
+                    <Route path="os" element={<ServiceOrdersPage />} />
+                    <Route path="servicos" element={<ServicesPage />} />
+                  </Route>
 
                   {/* Restaurant Specific Routes */}
-                  <Route path="pedidos" element={<PedidosPage />} />
-                  <Route path="mesas" element={<MesasPage />} />
-                  <Route path="cozinha" element={<CozinhaPage />} />
-                  <Route path="cardapio" element={<CardapioPage />} />
-                  <Route path="entregas" element={<EntregasPage />} />
+                  <Route element={<RouteGuard requiredProfile="RESTAURANTE" />}>
+                    <Route path="pedidos" element={<PedidosPage />} />
+                    <Route path="mesas" element={<MesasPage />} />
+                    <Route path="cozinha" element={<CozinhaPage />} />
+                    <Route path="cardapio" element={<CardapioPage />} />
+                    <Route path="entregas" element={<EntregasPage />} />
+                  </Route>
 
                   {/* Loja Specific Routes */}
-                  <Route path="loja/vendas" element={<VendasLojaPage />} />
-                  <Route path="loja/estoque" element={<EstoquePage />} />
-                  <Route path="loja/fornecedores" element={<FornecedoresPage />} />
-                  <Route path="loja/metas" element={<MetasPage />} />
+                  <Route element={<RouteGuard requiredProfile="LOJA" />}>
+                    <Route path="loja/vendas" element={<VendasLojaPage />} />
+                    <Route path="loja/estoque" element={<EstoquePage />} />
+                    <Route path="loja/fornecedores" element={<FornecedoresPage />} />
+                    <Route path="loja/metas" element={<MetasPage />} />
+                  </Route>
 
                   {/* SuperAdmin Routes */}
                   <Route element={<AdminRoute roles={['SUPERADMIN', 'ADMIN']} />}>

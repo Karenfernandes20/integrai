@@ -1,4 +1,5 @@
 import { createContext, useContext, useState, useEffect, ReactNode } from "react";
+import { CompanySummary } from "../types";
 
 interface User {
     id: number | string; // Supporting 'superadmin-fixed' string IDs
@@ -9,13 +10,7 @@ interface User {
     email_validated: boolean;
     user_type: string;
     company_id?: number;
-    company?: {
-        id: number;
-        name: string;
-        logo_url: string;
-        plan_id?: number;
-        due_date?: string;
-    };
+    company?: CompanySummary;
     profile_pic_url?: string;
     permissions?: string[];
 }

@@ -30,27 +30,45 @@ export const authenticateToken = async (req: Request, res: Response, next: NextF
         const verified = jwt.verify(token, JWT_SECRET) as any;
         req.user = verified;
 
-        // Subscription Check (Block Writes if Overdue/Cancelled)
-        if (req.user && req.user.company_id && req.method !== 'GET' && req.method !== 'OPTIONS') {
+        if (req.user && req.user.company_id) {
+            // 1. Fetch Company Profile
             try {
-                const result = await pool?.query("SELECT status FROM subscriptions WHERE company_id = $1", [req.user.company_id]);
-                if (result && result.rows.length > 0) {
-                    const status = result.rows[0].status;
-                    // Allow 'trialing' and 'active'. Block 'past_due' and 'cancelled'.
-                    if (status === 'past_due' || status === 'cancelled') {
-                        // Allow access to billing routes even if blocked
-                        if (!req.path.includes('/billing')) {
-                            return res.status(402).json({
-                                error: 'Subscription Suspended',
-                                message: 'Sua assinatura está pendente ou cancelada. Apenas modo leitura permitido.',
-                                code: 'SUBSCRIPTION_REQUIRED'
-                            });
+                const profileRes = await pool?.query("SELECT operational_profile FROM companies WHERE id = $1", [req.user.company_id]);
+                const profile = profileRes?.rows[0]?.operational_profile || 'GENERIC';
+
+                // 2. Validate Profile Access
+                const path = req.path.toLowerCase();
+
+                if (path.includes('/shop/') && profile !== 'LOJA') {
+                    return res.status(403).json({ error: 'Forbidden', message: 'Acesso restrito a perfil LOJA.' });
+                }
+                if (path.includes('/lavajato/') && profile !== 'LAVAJATO') {
+                    return res.status(403).json({ error: 'Forbidden', message: 'Acesso restrito a perfil LAVAJATO.' });
+                }
+                if (path.includes('/restaurant/') && profile !== 'RESTAURANTE') {
+                    return res.status(403).json({ error: 'Forbidden', message: 'Acesso restrito a perfil RESTAURANTE.' });
+                }
+            } catch (e) { console.error("Profile check error", e); }
+
+            // 3. Subscription Check (Block Writes if Overdue/Cancelled)
+            if (req.method !== 'GET' && req.method !== 'OPTIONS') {
+                try {
+                    const result = await pool?.query("SELECT status FROM subscriptions WHERE company_id = $1", [req.user.company_id]);
+                    if (result && result.rows.length > 0) {
+                        const status = result.rows[0].status;
+                        if (status === 'past_due' || status === 'cancelled') {
+                            if (!req.path.includes('/billing')) {
+                                return res.status(402).json({
+                                    error: 'Subscription Suspended',
+                                    message: 'Sua assinatura está pendente ou cancelada. Apenas modo leitura permitido.',
+                                    code: 'SUBSCRIPTION_REQUIRED'
+                                });
+                            }
                         }
                     }
+                } catch (e) {
+                    console.error("Auth Sub Check Error:", e);
                 }
-            } catch (e) {
-                console.error("Auth Sub Check Error:", e);
-                // Fail open to avoid blocking on DB error, or fail closed? Fail open for now.
             }
         }
 
