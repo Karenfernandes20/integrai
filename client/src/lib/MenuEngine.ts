@@ -49,6 +49,7 @@ const COMMON_ITEMS: MenuItem[] = [
 
 const GENERIC_MENU: MenuItem[] = [
     ...COMMON_ITEMS,
+    { label: "Agenda", icon: CalendarCheck, to: "/app/agenda", requiredPermission: "crm" },
     { label: "Grupos", icon: Users, to: "/app/grupos", requiredPermission: "atendimentos" },
     { label: "Campanhas", icon: FileText, to: "/app/campanhas", requiredPermission: "atendimentos" },
     { label: "Follow-up", icon: CalendarCheck, to: "/app/follow-up", requiredPermission: "atendimentos" },

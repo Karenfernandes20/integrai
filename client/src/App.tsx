@@ -89,7 +89,7 @@ import RoadmapPage from "./pages/Roadmap";
 import ConversionReports from "./pages/ConversionReports";
 
 // Lavajato Pages
-import AgendaPage from "./pages/lavajato/Agenda";
+import AgendaWrapper from "./pages/AgendaWrapper";
 import VehiclesPage from "./pages/lavajato/Vehicles";
 import ServiceOrdersPage from "./pages/lavajato/ServiceOrders";
 import ServicesPage from "./pages/lavajato/Services";
@@ -153,6 +153,7 @@ const App = () => (
                   <Route path="grupos" element={<GruposPage />} />
                   <Route path="campanhas" element={<CampanhasPage />} />
                   <Route path="crm" element={<CrmPage />} />
+                  <Route path="agenda" element={<AgendaWrapper />} />
                   <Route path="financeiro" element={<FinanceiroPage />} />
                   <Route path="usuarios" element={<UsuariosPage />} />
                   <Route path="cidades" element={<CidadesPage />} />
@@ -165,7 +166,7 @@ const App = () => (
 
                   {/* Lavajato Specific Routes */}
                   <Route element={<RouteGuard requiredProfile="LAVAJATO" />}>
-                    <Route path="agenda" element={<AgendaPage />} />
+                    {/* Agenda is now handled by AgendaWrapper at root level */}
                     <Route path="veiculos" element={<VehiclesPage />} />
                     <Route path="os" element={<ServiceOrdersPage />} />
                     <Route path="servicos" element={<ServicesPage />} />
