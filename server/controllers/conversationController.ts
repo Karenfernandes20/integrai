@@ -12,7 +12,7 @@ const auditLog = async (conversationId: number, userId: number, action: string, 
         if (!pool) return;
         await pool.query(
             `INSERT INTO whatsapp_audit_logs (conversation_id, user_id, action, details, created_at) VALUES ($1, $2, $3, $4, NOW())`,
-            [conversationId, userId, action, JSON.stringify(details)]
+            [conversationId, userId, action, details ? JSON.stringify(details) : null]
         );
     } catch (e) {
         console.error("Audit Log Error:", e);

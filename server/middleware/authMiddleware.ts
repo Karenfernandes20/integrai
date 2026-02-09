@@ -1,7 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
 import { pool } from '../db';
-import { ROLES, ACTIONS } from '../config/roles';
+import { ROLES } from '../config/roles';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'your_jwt_secret_key_change_in_production';
 
@@ -14,7 +14,7 @@ declare global {
                 email: string;
                 role: string;
                 company_id?: number;
-                permissions?: Record<string, string[]>;
+                permissions?: string[] | Record<string, string[]>;
             };
         }
     }
@@ -31,26 +31,16 @@ export const authenticateToken = async (req: Request, res: Response, next: NextF
         req.user = verified;
 
         if (req.user && req.user.company_id) {
-            // 1. Fetch Company Profile
+            // 1. Fetch Company Profile (for sidebar/ui logic)
+            // Note: RBAC is now user-based, but we keep profile for feature gating logic if needed.
             try {
                 const profileRes = await pool?.query("SELECT operational_profile FROM companies WHERE id = $1", [req.user.company_id]);
                 const profile = profileRes?.rows[0]?.operational_profile || 'GENERIC';
-
-                // 2. Validate Profile Access
-                const path = req.path.toLowerCase();
-
-                if (path.includes('/shop/') && profile !== 'LOJA') {
-                    return res.status(403).json({ error: 'Forbidden', message: 'Acesso restrito a perfil LOJA.' });
-                }
-                if (path.includes('/lavajato/') && profile !== 'LAVAJATO') {
-                    return res.status(403).json({ error: 'Forbidden', message: 'Acesso restrito a perfil LAVAJATO.' });
-                }
-                if (path.includes('/restaurant/') && profile !== 'RESTAURANTE') {
-                    return res.status(403).json({ error: 'Forbidden', message: 'Acesso restrito a perfil RESTAURANTE.' });
-                }
+                (req as any).operational_profile = profile;
             } catch (e) { console.error("Profile check error", e); }
 
-            // 3. Subscription Check (Block Writes if Overdue/Cancelled)
+            // 2. Subscription Check (Block Writes if Overdue/Cancelled)
+            // Keep this for financial security
             if (req.method !== 'GET' && req.method !== 'OPTIONS') {
                 try {
                     const result = await pool?.query("SELECT status FROM subscriptions WHERE company_id = $1", [req.user.company_id]);
@@ -93,7 +83,7 @@ export const authorizeRole = (roles: string[]) => {
     };
 };
 
-export const authorizePermission = (module: string, action: string) => {
+export const authorizePermission = (permissionKey: string) => {
     return (req: Request, res: Response, next: NextFunction) => {
         const user = req.user;
         if (!user) return res.status(401).json({ error: 'Unauthorized' });
@@ -105,13 +95,25 @@ export const authorizePermission = (module: string, action: string) => {
         if (user.role === ROLES.ADMIN) return next();
 
         // 3. Check Granular Permissions
-        const userPerms = user.permissions || {};
-        const modulePerms = userPerms[module];
+        const userPerms = user.permissions;
 
-        if (!modulePerms || !modulePerms.includes(action)) {
-            return res.status(403).json({ error: `Forbidden: Missing access to ${module}.${action}` });
+        if (Array.isArray(userPerms)) {
+            // New flat structure (e.g. ['finance.view', 'crm.attend'])
+            if (userPerms.includes(permissionKey)) return next();
+        } else if (userPerms && typeof userPerms === 'object') {
+            // Old module-based structure (e.g. { 'crm': ['read', 'write'] })
+            const [module, action] = permissionKey.split('.');
+            const modulePerms = (userPerms as any)[module];
+            // Map actions if needed: 'view' -> 'read', 'edit' -> 'write' etc. 
+            // For now, support literal matches.
+            const mappedActions = [action];
+            if (action === 'view') mappedActions.push('read');
+            if (action === 'edit' || action === 'create') mappedActions.push('write');
+
+            if (modulePerms && mappedActions.some(a => modulePerms.includes(a))) return next();
         }
 
-        next();
+        return res.status(403).json({ error: `Forbidden: Missing access to ${permissionKey}` });
     };
 };
+

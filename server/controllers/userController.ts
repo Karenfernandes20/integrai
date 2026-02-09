@@ -3,7 +3,7 @@ import { pool } from "../db";
 import bcrypt from 'bcryptjs';
 import { logAudit } from '../auditLogger';
 import { checkLimit } from '../services/limitService';
-import { ROLES, DEFAULT_PERMISSIONS } from '../config/roles';
+import { ROLES, DEFAULT_ROLE_PERMISSIONS } from '../config/roles';
 
 export const getUsers = async (req: Request, res: Response) => {
   try {
@@ -79,8 +79,8 @@ export const createUser = async (req: Request, res: Response) => {
     hash = await bcrypt.hash(passToHash, salt);
 
     // Default Role
-    const assignedRole = role || ROLES.VIEWER;
-    const assignedPermissions = permissions || DEFAULT_PERMISSIONS[assignedRole] || [];
+    const assignedRole = role || ROLES.USER;
+    const assignedPermissions = permissions || DEFAULT_ROLE_PERMISSIONS[assignedRole as keyof typeof DEFAULT_ROLE_PERMISSIONS] || [];
 
     const result = await pool.query(
       'INSERT INTO app_users (full_name, email, phone, user_type, city_id, state, company_id, password_hash, role, permissions) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING *',
@@ -141,7 +141,7 @@ export const updateUser = async (req: Request, res: Response) => {
              permissions = COALESCE($9, permissions)
          WHERE id = $10
          RETURNING *`,
-      [full_name, email, phone, user_type, city_id, state, role, is_active, permissions ? JSON.stringify(permissions) : (role ? JSON.stringify(DEFAULT_PERMISSIONS[role]) : null), id]
+      [full_name, email, phone, user_type, city_id, state, role, is_active, permissions ? JSON.stringify(permissions) : (role ? JSON.stringify(DEFAULT_ROLE_PERMISSIONS[role as keyof typeof DEFAULT_ROLE_PERMISSIONS]) : null), id]
     );
 
     const updatedUser = result.rows[0];
@@ -186,36 +186,39 @@ export const deleteUser = async (req: Request, res: Response) => {
       await client.query('BEGIN');
 
       // 1. Unlink or Delete Dependencies
-      // Set user_id to NULL for messages sent by this user (preserve history)
+      // Essential/Common
       await client.query('UPDATE whatsapp_messages SET user_id = NULL WHERE user_id = $1', [id]);
-
-      // Set user_id to NULL for conversations assigned to this user
       await client.query('UPDATE whatsapp_conversations SET user_id = NULL WHERE user_id = $1', [id]);
-
-      // Set user_id to NULL for campaigns created by this user
       await client.query('UPDATE whatsapp_campaigns SET user_id = NULL WHERE user_id = $1', [id]);
-
-      // Unlink Audit Logs
       await client.query('UPDATE whatsapp_audit_logs SET user_id = NULL WHERE user_id = $1', [id]);
+      await client.query('UPDATE audit_logs SET user_id = NULL WHERE user_id = $1', [id]);
 
-      // Unlink Rides (Passenger or Driver)
-      await client.query('UPDATE rides SET passenger_id = NULL WHERE passenger_id = $1', [id]);
-      await client.query('UPDATE rides SET driver_id = NULL WHERE driver_id = $1', [id]);
-
-      // Unlink Follow Ups
+      // CRM & Tasks
       await client.query('UPDATE crm_follow_ups SET user_id = NULL WHERE user_id = $1', [id]);
-
-      // Unlink Admin Tasks
+      await client.query('UPDATE crm_appointments SET responsible_id = NULL WHERE responsible_id = $1', [id]);
+      await client.query('UPDATE crm_professionals SET user_id = NULL WHERE user_id = $1', [id]);
       await client.query('UPDATE admin_tasks SET responsible_id = NULL WHERE responsible_id = $1', [id]);
       await client.query('UPDATE admin_tasks SET created_by = NULL WHERE created_by = $1', [id]);
       await client.query('UPDATE admin_task_history SET user_id = NULL WHERE user_id = $1', [id]);
-
-      // Unlink Roadmap & Comments
       await client.query('UPDATE roadmap_items SET created_by = NULL WHERE created_by = $1', [id]);
       await client.query('UPDATE roadmap_comments SET user_id = NULL WHERE user_id = $1', [id]);
+      await client.query('UPDATE faq_questions SET user_id = NULL WHERE user_id = $1', [id]);
 
-      // Unlink Entity Links
+      // System & Settings
+      await client.query('UPDATE system_workflows SET created_by = NULL WHERE created_by = $1', [id]);
+      await client.query('UPDATE global_templates SET created_by = NULL WHERE created_by = $1', [id]);
+      await client.query('UPDATE system_settings SET updated_by = NULL WHERE updated_by = $1', [id]);
+      await client.query('UPDATE legal_pages SET last_updated_by = NULL WHERE last_updated_by = $1', [id]);
       await client.query('UPDATE entity_links SET created_by = NULL WHERE created_by = $1', [id]);
+
+      // Module Specific (Lavajato, Restaurant, Loja)
+      await client.query('UPDATE lavajato_appointments SET staff_id = NULL WHERE staff_id = $1', [id]);
+      await client.query('UPDATE lavajato_service_orders SET staff_id = NULL WHERE staff_id = $1', [id]);
+      await client.query('UPDATE restaurant_orders SET user_id = NULL WHERE user_id = $1', [id]);
+      await client.query('UPDATE restaurant_deliveries SET delivery_staff_id = NULL WHERE delivery_staff_id = $1', [id]);
+      await client.query('UPDATE inventory_movements SET user_id = NULL WHERE user_id = $1', [id]);
+      await client.query('UPDATE sales SET user_id = NULL WHERE user_id = $1', [id]);
+      await client.query('UPDATE goals SET user_id = NULL WHERE user_id = $1', [id]);
 
       // 2. Delete the user
       const result = await client.query('DELETE FROM app_users WHERE id = $1 RETURNING *', [id]);
@@ -315,7 +318,7 @@ export const updateProfile = async (req: Request, res: Response) => {
     const companyId = (req as any).user?.company_id;
     if (!id) return res.status(401).json({ error: 'Unauthorized' });
 
-    const { full_name, email, phone, password, remove_logo } = req.body;
+    const { full_name, email, phone, password, remove_logo, theme } = req.body;
     const logoFile = req.file;
 
     let password_hash = null;
@@ -330,10 +333,11 @@ export const updateProfile = async (req: Request, res: Response) => {
           SET full_name = COALESCE($1, full_name), 
               email = COALESCE($2, email), 
               phone = COALESCE($3, phone),
-              password_hash = COALESCE($4, password_hash)
+              password_hash = COALESCE($4, password_hash),
+              theme = COALESCE($6, theme)
           WHERE id = $5
-          RETURNING id, full_name, email, phone, role, company_id, user_type`,
-      [full_name, email, phone, password_hash, id]
+          RETURNING id, full_name, email, phone, role, company_id, user_type, theme, profile_pic_url`,
+      [full_name, email, phone, password_hash, id, theme]
     );
 
     if (result.rowCount === 0) {

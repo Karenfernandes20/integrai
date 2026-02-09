@@ -804,3 +804,53 @@ export const getCrmDashboardStats = async (req: Request, res: Response) => {
         res.status(500).json({ error: 'Erro ao carregar dados do dashboard', details: error.message });
     }
 };
+
+export const createLead = async (req: Request, res: Response) => {
+    try {
+        if (!pool) return res.status(500).json({ error: 'Database not configured' });
+
+        const { name, email, phone, stage_id, description, value, origin } = req.body;
+        const user = (req as any).user;
+        let companyId = user?.company_id;
+
+        // SuperAdmin fallback
+        if (user?.role === 'SUPERADMIN' && !companyId) {
+            companyId = 1;
+        }
+
+        if (!companyId) return res.status(400).json({ error: 'Company ID required' });
+        if (!name) return res.status(400).json({ error: 'Name is required' });
+
+        // Default to LEADS stage if not provided
+        let targetStageId = stage_id;
+        if (!targetStageId) {
+            const stageRes = await pool.query(
+                "SELECT id FROM crm_stages WHERE company_id = $1 AND UPPER(name) = 'LEADS' LIMIT 1",
+                [companyId]
+            );
+            if (stageRes.rows.length > 0) {
+                targetStageId = stageRes.rows[0].id;
+            } else {
+                // Fallback to first stage
+                const firstStage = await pool.query(
+                    "SELECT id FROM crm_stages WHERE company_id = $1 ORDER BY position ASC LIMIT 1",
+                    [companyId]
+                );
+                if (firstStage.rows.length > 0) targetStageId = firstStage.rows[0].id;
+            }
+        }
+
+        const result = await pool.query(
+            `INSERT INTO crm_leads 
+             (name, email, phone, stage_id, description, value, origin, company_id, created_at, updated_at)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW(), NOW())
+             RETURNING *`,
+            [name, email || null, phone || null, targetStageId, description || '', value || 0, origin || 'Manual', companyId]
+        );
+
+        res.status(201).json(result.rows[0]);
+    } catch (error) {
+        console.error('Error creating lead:', error);
+        res.status(500).json({ error: 'Failed to create lead' });
+    }
+};

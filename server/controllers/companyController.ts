@@ -102,8 +102,8 @@ export const createCompany = async (req: Request, res: Response) => {
         const limitInstances = max_instances ? parseInt(max_instances) : 1;
 
         const result = await pool.query(
-            `INSERT INTO companies (name, cnpj, city, state, phone, logo_url, evolution_instance, evolution_apikey, operation_type, category, plan_id, due_date, max_instances) 
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13) 
+            `INSERT INTO companies (name, cnpj, city, state, phone, logo_url, evolution_instance, evolution_apikey, operation_type, operational_profile, category, plan_id, due_date, max_instances) 
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14) 
              RETURNING *`,
             [
                 name,
@@ -115,6 +115,11 @@ export const createCompany = async (req: Request, res: Response) => {
                 evolution_instance || null,
                 evolution_apikey || null,
                 operation_type || 'clientes',
+                (operation_type === 'pacientes' || category === 'clinica') ? 'CLINICA' :
+                    (operation_type === 'loja' || category === 'loja') ? 'LOJA' :
+                        (operation_type === 'restaurante' || category === 'restaurante') ? 'RESTAURANTE' :
+                            (operation_type === 'lavajato' || category === 'lavajato') ? 'LAVAJATO' :
+                                (operation_type === 'motoristas' || category === 'transporte') ? 'TRANSPORTE' : 'GENERIC',
                 category || 'generic',
                 plan_id || null,
                 due_date || null,
@@ -140,20 +145,44 @@ export const createCompany = async (req: Request, res: Response) => {
 
         // --- SEED INSTANCES ---
         try {
-            for (let i = 1; i <= limitInstances; i++) {
-                // If i=1 and we have legacy params, use them
-                const isFirst = i === 1;
-                const seedName = `Instância ${i}`;
-                const seedKey = (isFirst && evolution_instance) ? evolution_instance : `integrai_${newCompany.id}_${i}`;
-                const seedApiKey = (isFirst && evolution_apikey) ? evolution_apikey : null;
+            let instanceDefs = [];
 
-                await pool.query(`
-                    INSERT INTO company_instances (company_id, name, instance_key, api_key, status)
-                    VALUES ($1, $2, $3, $4, 'disconnected')
-                    ON CONFLICT DO NOTHING
-                `, [newCompany.id, seedName, seedKey, seedApiKey]);
+            if (req.body.instanceDefinitions) {
+                try {
+                    instanceDefs = typeof req.body.instanceDefinitions === 'string'
+                        ? JSON.parse(req.body.instanceDefinitions)
+                        : req.body.instanceDefinitions;
+                } catch (e) {
+                    console.error('Failed to parse instanceDefinitions', e);
+                }
             }
-            console.log(`[Company ${newCompany.id}] Seeded ${limitInstances} instances.`);
+
+            if (instanceDefs && instanceDefs.length > 0) {
+                // Use provided definitions
+                for (const def of instanceDefs) {
+                    await pool.query(`
+                        INSERT INTO company_instances (company_id, name, instance_key, api_key, status)
+                        VALUES ($1, $2, $3, $4, 'disconnected')
+                        ON CONFLICT DO NOTHING
+                    `, [newCompany.id, def.name, def.instance_key, def.api_key || null]);
+                }
+                console.log(`[Company ${newCompany.id}] Seeded ${instanceDefs.length} instances from definitions.`);
+            } else {
+                // Fallback to auto-generation
+                for (let i = 1; i <= limitInstances; i++) {
+                    const isFirst = i === 1;
+                    const seedName = `Instância ${i}`;
+                    const seedKey = (isFirst && evolution_instance) ? evolution_instance : `integrai_${newCompany.id}_${i}`;
+                    const seedApiKey = (isFirst && evolution_apikey) ? evolution_apikey : null;
+
+                    await pool.query(`
+                        INSERT INTO company_instances (company_id, name, instance_key, api_key, status)
+                        VALUES ($1, $2, $3, $4, 'disconnected')
+                        ON CONFLICT DO NOTHING
+                    `, [newCompany.id, seedName, seedKey, seedApiKey]);
+                }
+                console.log(`[Company ${newCompany.id}] Seeded ${limitInstances} instances (auto-generated).`);
+            }
         } catch (instErr) {
             console.error(`[Company ${newCompany.id}] Failed to seed instances:`, instErr);
         }
@@ -338,12 +367,19 @@ export const updateCompany = async (req: Request, res: Response) => {
                 instagram_business_id = $22,
                 instagram_access_token = $23,
                 instagram_status = $24,
-                category = COALESCE($25, category)
+                category = COALESCE($25, category),
+                operational_profile = $26
             WHERE id = $10 
             RETURNING *
         `;
 
         const newMax = max_instances ? parseInt(max_instances) : 1;
+        const opTy = operation_type || 'clientes';
+        const opProf = (opTy === 'pacientes' || category === 'clinica') ? 'CLINICA' :
+            (opTy === 'loja' || category === 'loja') ? 'LOJA' :
+                (opTy === 'restaurante' || category === 'restaurante') ? 'RESTAURANTE' :
+                    (opTy === 'lavajato' || category === 'lavajato') ? 'LAVAJATO' :
+                        (opTy === 'motoristas' || category === 'transporte') ? 'TRANSPORTE' : 'GENERIC';
 
         const values = [
             name,
@@ -370,7 +406,8 @@ export const updateCompany = async (req: Request, res: Response) => {
             instagram_business_id || null, // $22
             finalAccessToken || null, // $23
             instagramStatus, // $24
-            category || null // $25
+            category || null, // $25
+            opProf // $26
         ];
 
 
@@ -436,6 +473,8 @@ export const updateCompany = async (req: Request, res: Response) => {
             console.error(`[Update Company ${id}] Failed to sync instances:`, instErr);
         }
 
+
+
         const result = await pool.query(query, values);
 
         if (result.rowCount === 0) {
@@ -490,143 +529,103 @@ export const deleteCompany = async (req: Request, res: Response) => {
         if (!pool) return res.status(500).json({ error: 'Database not configured' });
         const { id } = req.params;
 
-        // Perform deletion in a transaction to ensure integrity
         const client = await pool.connect();
         try {
             await client.query('BEGIN');
 
             console.log(`[Delete Company ${id}] Starting full cleanup...`);
 
-            // 0. Get User IDs for deep cleanup
+            // 0. Get User IDs and other related IDs
             const userRes = await client.query('SELECT id FROM app_users WHERE company_id = $1', [id]);
             const userIds = userRes.rows.map(r => r.id);
 
-            // 1. Delete WhatsApp Audit Logs
-            // Linked to company conversations OR company users
-            await client.query(`
-                DELETE FROM whatsapp_audit_logs 
-                WHERE conversation_id IN (SELECT id FROM whatsapp_conversations WHERE company_id = $1)
-                OR user_id = ANY($2::int[])
-            `, [id, userIds]);
-
-            // 2. Delete Campaign Contacts (via Campaign association)
-            await client.query(`
-                DELETE FROM whatsapp_campaign_contacts 
-                WHERE campaign_id IN (SELECT id FROM whatsapp_campaigns WHERE company_id = $1)
-            `, [id]);
-
-            // 3. Delete Campaigns
-            await client.query('DELETE FROM whatsapp_campaigns WHERE company_id = $1', [id]);
-
-            // 4. Delete CRM Follow Ups
-            await client.query('DELETE FROM crm_follow_ups WHERE company_id = $1', [id]);
-
-            // 5. Delete Leads
-            await client.query('DELETE FROM crm_leads WHERE company_id = $1', [id]);
-
-            // 5.1 Delete CRM Stages (if company specific)
-            try {
-                // Check if column exists first or just try delete if we know schema
-                // Safe approach: try delete
-                await client.query('DELETE FROM crm_stages WHERE company_id = $1', [id]);
-            } catch (e) { }
-
-            // 5.2 Delete CRM Tags
-            try {
-                await client.query('DELETE FROM crm_tags WHERE company_id = $1', [id]);
-            } catch (e) { }
-
-            // 6. Delete Messages (linked to conversations)
-            await client.query(`
-                DELETE FROM whatsapp_messages 
-                WHERE conversation_id IN (SELECT id FROM whatsapp_conversations WHERE company_id = $1)
-            `, [id]);
-
-            // 7. Delete Conversations
+            // 1. WhatsApp & Campaigns
+            await client.query('DELETE FROM whatsapp_audit_logs WHERE user_id = ANY($1::int[]) OR conversation_id IN (SELECT id FROM whatsapp_conversations WHERE company_id = $2)', [userIds, id]);
+            await client.query('DELETE FROM whatsapp_campaign_contacts WHERE campaign_id IN (SELECT id FROM whatsapp_campaigns WHERE company_id = $1)', [id]);
+            await client.query('DELETE FROM whatsapp_messages WHERE conversation_id IN (SELECT id FROM whatsapp_conversations WHERE company_id = $1)', [id]);
             await client.query('DELETE FROM whatsapp_conversations WHERE company_id = $1', [id]);
-
-            // 8. Delete WhatsApp Contacts associated with the company
+            await client.query('DELETE FROM whatsapp_campaigns WHERE company_id = $1', [id]);
             await client.query('DELETE FROM whatsapp_contacts WHERE company_id = $1', [id]);
+            await client.query('DELETE FROM company_instances WHERE company_id = $1', [id]);
 
-            // 9. Delete Financial Transactions
-            try {
-                await client.query('DELETE FROM financial_transactions WHERE company_id = $1', [id]);
-            } catch (e) { }
+            // 2. CRM
+            await client.query('DELETE FROM crm_follow_ups WHERE company_id = $1', [id]);
+            await client.query('DELETE FROM crm_appointments WHERE company_id = $1', [id]);
+            await client.query('DELETE FROM crm_lead_tags WHERE lead_id IN (SELECT id FROM crm_leads WHERE company_id = $1)', [id]);
+            await client.query('DELETE FROM crm_tags WHERE company_id = $1', [id]);
 
-            // 9.1 Delete Financial Categories & Cost Centers
-            try {
-                await client.query('DELETE FROM financial_categories WHERE company_id = $1', [id]);
-                await client.query('DELETE FROM financial_cost_centers WHERE company_id = $1', [id]);
-            } catch (e) { }
+            // CRM Professional & Insurance Config
+            await client.query('DELETE FROM crm_professional_insurance_config WHERE professional_id IN (SELECT id FROM crm_professionals WHERE company_id = $1)', [id]);
+            await client.query('DELETE FROM crm_professionals WHERE company_id = $1', [id]);
+            await client.query('DELETE FROM crm_insurance_plans WHERE company_id = $1', [id]);
 
+            // Lavajato Dependencies
+            await client.query('DELETE FROM lavajato_service_orders WHERE company_id = $1', [id]);
+            await client.query('DELETE FROM lavajato_appointments WHERE company_id = $1', [id]);
+            await client.query('DELETE FROM lavajato_client_subscriptions WHERE client_id IN (SELECT id FROM crm_leads WHERE company_id = $1)', [id]);
+            await client.query('DELETE FROM lavajato_vehicles WHERE client_id IN (SELECT id FROM crm_leads WHERE company_id = $1)', [id]);
 
-            // 10. Admin Tasks & Alerts
+            await client.query('DELETE FROM crm_leads WHERE company_id = $1', [id]);
+            await client.query('DELETE FROM crm_stages WHERE company_id = $1', [id]);
+
+            // 3. Finance & Inventory
+            await client.query('DELETE FROM receivables WHERE company_id = $1', [id]);
+            await client.query('DELETE FROM payments WHERE company_id = $1', [id]);
+            await client.query('DELETE FROM sale_items WHERE sale_id IN (SELECT id FROM sales WHERE company_id = $1)', [id]);
+            await client.query('DELETE FROM sales WHERE company_id = $1', [id]);
+            await client.query('DELETE FROM inventory_movements WHERE company_id = $1', [id]);
+            await client.query('DELETE FROM inventory WHERE company_id = $1', [id]);
+            await client.query('DELETE FROM suppliers WHERE company_id = $1', [id]);
+
+            await client.query('DELETE FROM financial_transactions WHERE company_id = $1', [id]);
+            await client.query('DELETE FROM financial_categories WHERE company_id = $1', [id]);
+            await client.query('DELETE FROM financial_cost_centers WHERE company_id = $1', [id]);
+
+            // 4. Restaurant
+            await client.query('DELETE FROM restaurant_order_items WHERE order_id IN (SELECT id FROM restaurant_orders WHERE company_id = $1)', [id]);
+            await client.query('DELETE FROM restaurant_deliveries WHERE order_id IN (SELECT id FROM restaurant_orders WHERE company_id = $1)', [id]);
+            await client.query('DELETE FROM restaurant_orders WHERE company_id = $1', [id]);
+            await client.query('DELETE FROM restaurant_menu_items WHERE company_id = $1', [id]);
+            await client.query('DELETE FROM restaurant_menu_categories WHERE company_id = $1', [id]);
+            await client.query('DELETE FROM restaurant_tables WHERE company_id = $1', [id]);
+
+            // 5. Tasks, Roadmap & System
+            await client.query('DELETE FROM admin_task_history WHERE task_id IN (SELECT id FROM admin_tasks WHERE company_id = $1)', [id]);
             await client.query('DELETE FROM admin_tasks WHERE company_id = $1', [id]);
+            await client.query('DELETE FROM roadmap_comments WHERE roadmap_item_id IN (SELECT id FROM roadmap_items WHERE company_id = $1)', [id]);
+            await client.query('DELETE FROM roadmap_items WHERE company_id = $1', [id]);
+            await client.query('DELETE FROM entity_links WHERE source_id IN (SELECT id::text FROM roadmap_items WHERE company_id = $1)', [id]);
 
-            // 10.1 Delete System Workflows
-            try {
-                await client.query('DELETE FROM system_workflows WHERE company_id = $1', [id]);
-            } catch (e) { }
+            await client.query('DELETE FROM workflow_executions WHERE workflow_id IN (SELECT id FROM system_workflows WHERE company_id = $1)', [id]);
+            await client.query('DELETE FROM system_workflows WHERE company_id = $1', [id]);
+            await client.query('DELETE FROM global_templates WHERE company_id = $1', [id]);
+            await client.query('DELETE FROM ai_agents WHERE company_id = $1', [id]);
+            await client.query('DELETE FROM faq_questions WHERE company_id = $1', [id]);
+            await client.query('DELETE FROM audit_logs WHERE company_id = $1', [id]);
+            await client.query('DELETE FROM system_logs WHERE company_id = $1', [id]);
+            await client.query('DELETE FROM goals WHERE company_id = $1', [id]);
 
-            // 10.2 Delete Templates
-            try {
-                await client.query('DELETE FROM global_templates WHERE company_id = $1', [id]);
-            } catch (e) { }
+            // 6. Subscription & Usage
+            await client.query('DELETE FROM invoices WHERE company_id = $1', [id]);
+            await client.query('DELETE FROM subscriptions WHERE company_id = $1', [id]);
+            await client.query('DELETE FROM company_usage WHERE company_id = $1', [id]);
 
-            // 10.3 Delete Roadmap Items
-            try {
-                await client.query('DELETE FROM roadmap_comments WHERE roadmap_item_id IN (SELECT id FROM roadmap_items WHERE company_id = $1)', [id]);
-                await client.query('DELETE FROM roadmap_items WHERE company_id = $1', [id]);
-            } catch (e) { }
-
-            // 10.4 Delete AI Agents (Cascade usually covers this but safe to maximize)
-            try {
-                await client.query('DELETE FROM ai_agents WHERE company_id = $1', [id]);
-            } catch (e) { }
-
-            // 10.5 Delete Company Usage & Subscriptions (Cascade usually covers this)
-            try {
-                await client.query('DELETE FROM company_usage WHERE company_id = $1', [id]);
-                await client.query('DELETE FROM invoices WHERE company_id = $1', [id]);
-                await client.query('DELETE FROM subscriptions WHERE company_id = $1', [id]);
-            } catch (e) { }
-
-            // 10.6 Delete System Logs (Multi-tenant)
-            try {
-                await client.query('DELETE FROM system_logs WHERE company_id = $1', [id]);
-            } catch (e) { }
-
-            // 10.7 Delete Audit Logs (Universal)
-            try {
-                await client.query('DELETE FROM audit_logs WHERE company_id = $1', [id]);
-            } catch (e) { }
-
-            // Clean Entity Links related to this company's users or entities (Best Effort)
-            try {
-                // Delete links created by company users
-                await client.query('DELETE FROM entity_links WHERE created_by IN (SELECT id FROM app_users WHERE company_id = $1)', [id]);
-            } catch (e) { }
-
-
-            // Skip rides deletion - not used in CRM-only databases
-            console.log(`[Delete Company ${id}] Skipping rides deletion (CRM database)`);
-
-
-            // 11. Delete associated users
+            // 7. Users
             await client.query('DELETE FROM app_users WHERE company_id = $1', [id]);
 
-            // 12. Delete the company
+            // 8. The Company itself
             const result = await client.query('DELETE FROM companies WHERE id = $1 RETURNING *', [id]);
 
             await client.query('COMMIT');
             console.log(`[Delete Company ${id}] Completed successfully.`);
 
-            if (result.rowCount === 0) return res.status(404).json({ error: 'Company not found' });
+            if (result.rowCount === 0) {
+                return res.status(404).json({ error: 'Company not found' });
+            }
 
             const deletedCompany = result.rows[0];
             const user = (req as any).user;
 
-            // Audit Log
             await logAudit({
                 userId: user.id,
                 companyId: user.company_id,
@@ -637,24 +636,22 @@ export const deleteCompany = async (req: Request, res: Response) => {
                 details: `Removeu empresa: ${deletedCompany.name}`
             });
 
-            res.json({ message: 'Company and associated data deleted' });
+            res.json({ message: 'Company and all associated data deleted successfully.' });
         } catch (e: any) {
             await client.query('ROLLBACK');
             console.error(`[Delete Company ${id}] Failed:`, e);
-
-            // Return detailed error for debugging
             res.status(500).json({
-                error: 'Failed to delete company. Check dependencies.',
-                details: e.message || e.toString(),
-                constraint: e.constraint, // PostgreSQL constraint name
-                table: e.table // PostgreSQL table name if available
+                error: 'Failed to delete company due to technical dependencies.',
+                details: e.message,
+                table: e.table,
+                constraint: e.constraint
             });
         } finally {
             client.release();
         }
     } catch (error) {
         console.error('Error deleting company:', error);
-        res.status(500).json({ error: 'Failed to delete company' });
+        res.status(500).json({ error: 'Internal Server Error' });
     }
 };
 

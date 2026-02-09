@@ -1,5 +1,6 @@
 import { createContext, useContext, useState, useEffect, ReactNode } from "react";
 import { CompanySummary } from "../types";
+import { useTheme } from "next-themes";
 
 interface User {
     id: number | string; // Supporting 'superadmin-fixed' string IDs
@@ -13,6 +14,7 @@ interface User {
     company?: CompanySummary;
     profile_pic_url?: string;
     permissions?: string[];
+    theme?: string;
 }
 
 interface AuthContextType {
@@ -21,6 +23,7 @@ interface AuthContextType {
     login: (token: string, user: User) => void;
     logout: () => void;
     isLoading: boolean;
+    updateUserTheme: (theme: string) => void;
 
     isAuthenticated: boolean;
     refreshUser: () => Promise<void>;
@@ -32,6 +35,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     const [user, setUser] = useState<User | null>(null);
     const [token, setToken] = useState<string | null>(null);
     const [isLoading, setIsLoading] = useState(true);
+    const { setTheme } = useTheme();
 
     useEffect(() => {
         // Load from localStorage on mount
@@ -40,16 +44,28 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
         if (storedToken && storedUser) {
             setToken(storedToken);
-            setUser(JSON.parse(storedUser));
+            const parsedUser = JSON.parse(storedUser);
+            setUser(parsedUser);
+            // Restore user theme
+            if (parsedUser.theme) {
+                setTheme(parsedUser.theme);
+            }
         }
         setIsLoading(false);
-    }, []);
+    }, [setTheme]);
 
     const login = (newToken: string, newUser: User) => {
         localStorage.setItem("auth_token", newToken);
         localStorage.setItem("auth_user", JSON.stringify(newUser));
         setToken(newToken);
         setUser(newUser);
+
+        // Apply user theme preference
+        if (newUser.theme) {
+            setTheme(newUser.theme);
+        } else {
+            setTheme('light'); // Default
+        }
     };
 
     const logout = () => {
@@ -57,6 +73,34 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         localStorage.removeItem("auth_user");
         setToken(null);
         setUser(null);
+        setTheme('light'); // Reset to default on logout
+    };
+
+    const updateUserTheme = async (newTheme: string) => {
+        if (user) {
+            // Optimistic update
+            const updatedUser = { ...user, theme: newTheme };
+            setUser(updatedUser);
+            localStorage.setItem("auth_user", JSON.stringify(updatedUser));
+            setTheme(newTheme);
+
+            // Persist to backend
+            try {
+                await fetch('/api/users/profile', {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${token}`
+                    },
+                    body: JSON.stringify({ theme: newTheme })
+                });
+            } catch (error) {
+                console.error("Failed to persist theme preference", error);
+            }
+        } else {
+            // Guest mode
+            setTheme(newTheme);
+        }
     };
 
     const refreshUser = async () => {
@@ -81,6 +125,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
                 isLoading,
                 isAuthenticated: !!user,
                 refreshUser,
+                updateUserTheme,
             }}
         >
             {children}

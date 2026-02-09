@@ -1,0 +1,10 @@
+--- START AUDIT ---
+Found 2 appointments created in last hour.
+[ID 20] Company: 27 | Title: "Consulta" | Start DB: "Fri Feb 06 2026 12:00:00 GMT-0300 (Horário Padrão de Brasília)"
+   -> JS Date: Fri Feb 06 2026 12:00:00 GMT-0300 (Horário Padrão de Brasília)
+   -> ISO: 2026-02-06T15:00:00.000Z
+   -> Resp: null
+[ID 19] Company: 27 | Title: "Consulta" | Start DB: "Fri Feb 06 2026 12:00:00 GMT-0300 (Horário Padrão de Brasília)"
+   -> JS Date: Fri Feb 06 2026 12:00:00 GMT-0300 (Horário Padrão de Brasília)
+   -> ISO: 2026-02-06T15:00:00.000Z
+   -> Resp: null

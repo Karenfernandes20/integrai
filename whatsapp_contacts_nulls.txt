@@ -1,0 +1,10 @@
+id: NO
+jid: NO
+name: YES
+push_name: YES
+profile_pic_url: YES
+instance: YES
+created_at: YES
+updated_at: YES
+company_id: YES
+phone: YES

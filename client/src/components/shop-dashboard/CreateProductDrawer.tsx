@@ -19,8 +19,9 @@ interface CreateProductDrawerProps {
 }
 
 export function CreateProductDrawer({ open, onOpenChange, onSuccess }: CreateProductDrawerProps) {
-    const { token } = useAuth();
+    const { token, user } = useAuth();
     const [loading, setLoading] = useState(false);
+    const isHealthMode = user?.company?.operation_type === 'pacientes' || user?.company?.operational_profile === 'CLINICA' || user?.company?.category === 'clinica';
 
     // Form States
     const [name, setName] = useState("");
@@ -29,6 +30,8 @@ export function CreateProductDrawer({ open, onOpenChange, onSuccess }: CreatePro
     const [barcode, setBarcode] = useState("");
     const [status, setStatus] = useState("active");
     const [description, setDescription] = useState("");
+    const [batchNumber, setBatchNumber] = useState("");
+    const [expirationDate, setExpirationDate] = useState("");
 
     const [costPrice, setCostPrice] = useState("");
     const [salePrice, setSalePrice] = useState("");
@@ -97,7 +100,9 @@ export function CreateProductDrawer({ open, onOpenChange, onSuccess }: CreatePro
                 location,
                 unit,
                 supplier_id: supplierId ? parseInt(supplierId) : null,
-                channels
+                channels,
+                batch_number: batchNumber,
+                expiration_date: expirationDate || null
             };
 
             const res = await fetch('/api/shop/inventory', {
@@ -143,13 +148,15 @@ export function CreateProductDrawer({ open, onOpenChange, onSuccess }: CreatePro
         setLocation("");
         setUnit("un");
         setSupplierId("");
+        setBatchNumber("");
+        setExpirationDate("");
     };
 
     return (
         <Sheet open={open} onOpenChange={onOpenChange}>
             <SheetContent side="right" className="w-full sm:max-w-xl overflow-y-auto">
                 <SheetHeader>
-                    <SheetTitle className="text-2xl">Cadastro de Produto</SheetTitle>
+                    <SheetTitle className="text-2xl">{isHealthMode ? 'Cadastro de Insumo' : 'Cadastro de Produto'}</SheetTitle>
                 </SheetHeader>
 
                 <div className="py-6 space-y-6">
@@ -163,14 +170,14 @@ export function CreateProductDrawer({ open, onOpenChange, onSuccess }: CreatePro
 
                         <TabsContent value="basic" className="space-y-4 mt-4">
                             <div className="space-y-2">
-                                <Label>Nome do Produto *</Label>
-                                <Input value={name} onChange={e => setName(e.target.value)} placeholder="Ex: Camiseta Básica P" />
+                                <Label>{isHealthMode ? 'Nome do Insumo *' : 'Nome do Produto *'}</Label>
+                                <Input value={name} onChange={e => setName(e.target.value)} placeholder={isHealthMode ? "Ex: Luvas de Látex" : "Ex: Camiseta Básica P"} />
                             </div>
 
                             <div className="grid grid-cols-2 gap-4">
                                 <div className="space-y-2">
                                     <Label>Categoria</Label>
-                                    <Input value={category} onChange={e => setCategory(e.target.value)} placeholder="Ex: Vestuário" />
+                                    <Input value={category} onChange={e => setCategory(e.target.value)} placeholder={isHealthMode ? "Ex: Descartáveis" : "Ex: Vestuário"} />
                                 </div>
                                 <div className="space-y-2">
                                     <Label>Status</Label>
@@ -183,6 +190,19 @@ export function CreateProductDrawer({ open, onOpenChange, onSuccess }: CreatePro
                                     </Select>
                                 </div>
                             </div>
+
+                            {isHealthMode && (
+                                <div className="grid grid-cols-2 gap-4">
+                                    <div className="space-y-2">
+                                        <Label>Número do Lote</Label>
+                                        <Input value={batchNumber} onChange={e => setBatchNumber(e.target.value)} placeholder="Ex: LT-2024-001" />
+                                    </div>
+                                    <div className="space-y-2">
+                                        <Label>Data de Validade</Label>
+                                        <Input type="date" value={expirationDate} onChange={e => setExpirationDate(e.target.value)} />
+                                    </div>
+                                </div>
+                            )}
 
                             <div className="grid grid-cols-2 gap-4">
                                 <div className="space-y-2">
@@ -204,7 +224,7 @@ export function CreateProductDrawer({ open, onOpenChange, onSuccess }: CreatePro
                         <TabsContent value="prices" className="space-y-4 mt-4">
                             <div className="grid grid-cols-2 gap-4">
                                 <div className="space-y-2">
-                                    <Label>Preço de Custo (R$)</Label>
+                                    <Label>{isHealthMode ? 'Preço de Compra (R$)' : 'Preço de Custo (R$)'}</Label>
                                     <Input
                                         type="number"
                                         value={costPrice}
@@ -213,7 +233,7 @@ export function CreateProductDrawer({ open, onOpenChange, onSuccess }: CreatePro
                                     />
                                 </div>
                                 <div className="space-y-2">
-                                    <Label>Preço de Venda (R$) *</Label>
+                                    <Label>{isHealthMode ? 'Preço de Saída / Uso (Opcional)' : 'Preço de Venda (R$) *'}</Label>
                                     <Input
                                         type="number"
                                         value={salePrice}
@@ -282,11 +302,11 @@ export function CreateProductDrawer({ open, onOpenChange, onSuccess }: CreatePro
                             </div>
 
                             <div className="space-y-4">
-                                <Label className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">Canais de Venda</Label>
+                                <Label className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">{isHealthMode ? 'Canais de Uso' : 'Canais de Venda'}</Label>
                                 <div className="grid grid-cols-2 gap-4">
                                     <div className="flex items-center space-x-2">
                                         <Checkbox id="pdv" checked={channels.pdv} onCheckedChange={(c: any) => setChannels({ ...channels, pdv: c })} />
-                                        <Label htmlFor="pdv">PDV Loja</Label>
+                                        <Label htmlFor="pdv">{isHealthMode ? 'Uso Interno' : 'PDV Loja'}</Label>
                                     </div>
                                     <div className="flex items-center space-x-2">
                                         <Checkbox id="campaigns" checked={channels.campaigns} onCheckedChange={(c: any) => setChannels({ ...channels, campaigns: c })} />
@@ -309,7 +329,7 @@ export function CreateProductDrawer({ open, onOpenChange, onSuccess }: CreatePro
                             Salvar e Novo
                         </Button>
                         <Button onClick={() => handleSubmit(false)} disabled={loading}>
-                            {loading ? 'Salvando...' : 'Salvar Produto'}
+                            {loading ? 'Salvando...' : isHealthMode ? 'Salvar Insumo' : 'Salvar Produto'}
                         </Button>
                     </div>
                 </SheetFooter>

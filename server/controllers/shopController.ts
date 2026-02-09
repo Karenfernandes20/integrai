@@ -243,7 +243,9 @@ export const createInventoryItem = async (req: RequestWithInstance, res: Respons
             location,
             image_url,
             status,
-            channels
+            channels,
+            batch_number,
+            expiration_date
         } = req.body;
 
         // Auto-generate SKU if missing (simple timestamp based)
@@ -258,14 +260,15 @@ export const createInventoryItem = async (req: RequestWithInstance, res: Respons
             INSERT INTO inventory (
                 company_id, instance_id, name, sku, barcode, category, description,
                 cost_price, sale_price, margin, quantity, min_quantity, location, unit,
-                supplier_id, image_url, status
+                supplier_id, image_url, status, batch_number, expiration_date
             )
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)
             RETURNING *
         `, [
             company_id, instance_id, name, finalSku, barcode, category, description,
             cost, sale, margin.toFixed(2), quantity || 0, min_quantity || 0,
-            location, unit || 'un', supplier_id, image_url, status || 'active'
+            location, unit || 'un', supplier_id, image_url, status || 'active',
+            batch_number, expiration_date
         ]);
 
         const newItem = result.rows[0];

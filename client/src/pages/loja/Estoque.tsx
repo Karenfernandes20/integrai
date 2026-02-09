@@ -15,6 +15,7 @@ import {
     TableRow,
 } from "../../components/ui/table";
 import { Badge } from '../../components/ui/badge';
+import { cn } from '../../lib/utils';
 
 interface Product {
     id: number;
@@ -30,7 +31,7 @@ interface Product {
 }
 
 export default function EstoquePage() {
-    const { token } = useAuth();
+    const { token, user } = useAuth();
     const [isDrawerOpen, setIsDrawerOpen] = useState(false);
     const [products, setProducts] = useState<Product[]>([]);
     const [loading, setLoading] = useState(true);
@@ -80,12 +81,14 @@ export default function EstoquePage() {
         return <Badge variant="secondary">Inativo</Badge>;
     };
 
+    const isHealthMode = user?.company?.operation_type === 'pacientes' || user?.company?.operational_profile === 'CLINICA' || user?.company?.category === 'clinica';
+
     return (
         <div className="p-6 space-y-6">
             <div className="flex justify-between items-center">
-                <h1 className="text-3xl font-bold">Estoque</h1>
+                <h1 className="text-3xl font-bold">{isHealthMode ? 'Insumos / Clínica' : 'Estoque'}</h1>
                 <Button onClick={() => setIsDrawerOpen(true)}>
-                    <Plus className="mr-2 h-4 w-4" /> Novo Produto
+                    <Plus className="mr-2 h-4 w-4" /> {isHealthMode ? 'Novo Insumo' : 'Novo Produto'}
                 </Button>
             </div>
 
@@ -93,7 +96,7 @@ export default function EstoquePage() {
                 <div className="relative flex-1 max-w-sm">
                     <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
                     <Input
-                        placeholder="Buscar por nome, SKU ou categoria..."
+                        placeholder={isHealthMode ? "Buscar por insumo, lote ou categoria..." : "Buscar por nome, SKU ou categoria..."}
                         className="pl-8"
                         value={searchTerm}
                         onChange={(e) => setSearchTerm(e.target.value)}
@@ -104,7 +107,7 @@ export default function EstoquePage() {
 
             <Card>
                 <CardHeader>
-                    <CardTitle>Produtos Cadastrados</CardTitle>
+                    <CardTitle>{isHealthMode ? 'Insumos Cadastrados' : 'Produtos Cadastrados'}</CardTitle>
                 </CardHeader>
                 <CardContent>
                     <div className="rounded-md border">
@@ -112,10 +115,12 @@ export default function EstoquePage() {
                             <TableHeader>
                                 <TableRow>
                                     <TableHead className="w-[80px]">SKU</TableHead>
-                                    <TableHead>Produto</TableHead>
+                                    <TableHead>{isHealthMode ? 'Insumo' : 'Produto'}</TableHead>
+                                    {isHealthMode && <TableHead>Lote</TableHead>}
+                                    {isHealthMode && <TableHead>Validade</TableHead>}
                                     <TableHead>Categoria</TableHead>
-                                    <TableHead>Preço Venda</TableHead>
-                                    <TableHead className="text-center">Estoque</TableHead>
+                                    <TableHead>{isHealthMode ? 'Custo' : 'Preço Venda'}</TableHead>
+                                    <TableHead className="text-center">{isHealthMode ? 'Qtd' : 'Estoque'}</TableHead>
                                     <TableHead>Local</TableHead>
                                     <TableHead>Status</TableHead>
                                 </TableRow>
@@ -137,8 +142,21 @@ export default function EstoquePage() {
                                         <TableRow key={product.id}>
                                             <TableCell className="font-mono text-xs text-muted-foreground">{product.sku}</TableCell>
                                             <TableCell className="font-medium">{product.name}</TableCell>
+                                            {isHealthMode && <TableCell className="text-xs font-mono">{(product as any).batch_number || '-'}</TableCell>}
+                                            {isHealthMode && (
+                                                <TableCell className="text-xs">
+                                                    {(product as any).expiration_date ? (
+                                                        <span className={cn(
+                                                            new Date((product as any).expiration_date) < new Date() ? "text-red-500 font-bold" :
+                                                                new Date((product as any).expiration_date) < new Date(Date.now() + 30 * 24 * 60 * 60 * 1000) ? "text-amber-500 font-medium" : ""
+                                                        )}>
+                                                            {new Date((product as any).expiration_date).toLocaleDateString('pt-BR')}
+                                                        </span>
+                                                    ) : '-'}
+                                                </TableCell>
+                                            )}
                                             <TableCell>{product.category || '-'}</TableCell>
-                                            <TableCell>{formatCurrency(product.sale_price)}</TableCell>
+                                            <TableCell>{isHealthMode ? formatCurrency((product as any).cost_price || 0) : formatCurrency(product.sale_price)}</TableCell>
                                             <TableCell className="text-center font-bold">{Number(product.quantity)}</TableCell>
                                             <TableCell className="text-xs">{product.location || '-'}</TableCell>
                                             <TableCell>{getStatusBadge(product.status, Number(product.quantity), Number(product.min_quantity))}</TableCell>

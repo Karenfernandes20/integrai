@@ -8,7 +8,7 @@ const ensureTaskExists = async (
     companyId: number,
     priority: 'low' | 'medium' | 'high' = 'medium'
 ) => {
-    if (!pool) return;
+    if (!pool || pool.totalCount === 0) return;
 
     // Check if a similar pending task exists
     const existing = await pool.query(`

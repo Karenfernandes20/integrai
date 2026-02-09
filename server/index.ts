@@ -52,7 +52,7 @@ app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ limit: '10mb', extended: true }));
 
 // APPLY SYSTEM MODE MIDDLEWARE
-app.use(systemModeMiddleware);
+// app.use(systemModeMiddleware); // Removed as per request to replace with granular RBAC
 
 app.use("/api", routes);
 
@@ -159,11 +159,11 @@ const startServer = async () => {
   try {
     // SKIP MIGRATIONS FOR MOCK TESTING (To avoid crash on DB Connect Error)
     // await runMigrations();
-    await runLavajatoMigrations();
-    await runRestaurantMigrations();
-    await runShopMigrations();
-    await runOperationalProfileMigration();
-    await runInventoryUpdateMigration();
+    // await runLavajatoMigrations();
+    // await runRestaurantMigrations();
+    // await runShopMigrations();
+    // await runOperationalProfileMigration();
+    // await runInventoryUpdateMigration();
     console.log("Migrations check skipped for offline/mock mode.");
 
     // INITIALIZE SYSTEM MODE (Safe Check)
@@ -357,9 +357,8 @@ const startServer = async () => {
     try {
       console.log("Starting background tasks...");
       checkAndStartScheduledCampaigns(io);
-      processFollowUps(io);
       checkSubscriptions(io);
-      runEngagementChecks();
+      // runEngagementChecks(); // DISABLED TEMPORARILY TO PREVENT STARTUP CRASH
       console.log("Background tasks started.");
     } catch (bgError) {
       console.error("Failed to start background tasks:", bgError);

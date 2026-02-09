@@ -2,9 +2,11 @@ import { Moon, Sun } from "lucide-react";
 import { useTheme } from "next-themes";
 import { Button } from "./ui/button";
 import { useEffect, useState } from "react";
+import { useAuth } from "../contexts/AuthContext";
 
 export function ThemeToggle() {
-    const { theme, setTheme } = useTheme();
+    const { theme } = useTheme();
+    const { updateUserTheme } = useAuth();
     const [mounted, setMounted] = useState(false);
 
     // Avoid hydration mismatch
@@ -18,7 +20,7 @@ export function ThemeToggle() {
         <Button
             variant="ghost"
             size="icon"
-            onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
+            onClick={() => updateUserTheme(theme === "dark" ? "light" : "dark")}
             title={theme === "dark" ? "Ativar Modo Claro" : "Ativar Modo Escuro"}
             className="rounded-full transition-all duration-300 hover:bg-primary/10"
         >

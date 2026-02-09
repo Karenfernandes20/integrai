@@ -4,7 +4,7 @@ import jwt from 'jsonwebtoken';
 import { pool } from '../db';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'your_jwt_secret_key_change_in_production';
-import { ROLES, DEFAULT_PERMISSIONS } from '../config/roles';
+import { ROLES, DEFAULT_ROLE_PERMISSIONS } from '../config/roles';
 
 export const login = async (req: Request, res: Response) => {
     try {
@@ -140,7 +140,8 @@ export const login = async (req: Request, res: Response) => {
                 company: companyDetails,
                 company_id: user.company_id,
                 permissions: user.permissions || [],
-                profile_pic_url: user.profile_pic_url // Assuming this column exists or will exist logic
+                profile_pic_url: user.profile_pic_url,
+                theme: user.theme || 'light'
             },
         });
 
@@ -173,7 +174,7 @@ export const register = async (req: Request, res: Response) => {
         // Or for a tenant? "Cadastre sua empresa" in generic sense.
         // Assuming public registration -> New Tenant Admin.
 
-        const permissions = DEFAULT_PERMISSIONS[defaultRole] || {};
+        const permissions = DEFAULT_ROLE_PERMISSIONS[defaultRole as keyof typeof DEFAULT_ROLE_PERMISSIONS] || [];
 
         const result = await pool.query(
             `INSERT INTO app_users 

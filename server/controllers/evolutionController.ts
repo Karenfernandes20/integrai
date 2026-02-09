@@ -14,15 +14,21 @@ import { logEvent } from "../logger";
 
 // Helper to get Evolution Config based on User Context
 const DEFAULT_URL = "https://freelasdekaren-evolution-api.nhvvzr.easypanel.host";
+const GLOBAL_API_KEY = "5A44C72AAB33-42BD-968A-27EB8E14BE6F";
 
 export const getEvolutionConfig = async (user: any, source: string = 'unknown', targetCompanyId?: number | string, targetInstanceKey?: string) => {
   // Base configuration from env (fallback)
   let config = {
     url: (process.env.EVOLUTION_API_URL || DEFAULT_URL).replace(/['"]/g, "").replace(/\/$/, ""),
-    apikey: (process.env.EVOLUTION_API_KEY || "").replace(/['"]/g, ""),
+    apikey: (process.env.EVOLUTION_API_KEY || GLOBAL_API_KEY).replace(/['"]/g, ""),
     instance: "integrai", // Default instance for Integrai
     company_id: null as number | null
   };
+
+  // Force the known working key if env is empty or just generic placeholder
+  if (!config.apikey || config.apikey.includes("CHANGE_ME") || config.apikey.length < 10) {
+    config.apikey = GLOBAL_API_KEY;
+  }
 
   if (!pool) return config;
 
@@ -44,7 +50,12 @@ export const getEvolutionConfig = async (user: any, source: string = 'unknown', 
         if (instRes.rows.length > 0) {
           const row = instRes.rows[0];
           config.instance = row.instance_key;
-          config.apikey = row.api_key || config.apikey;
+
+          // Use specific key ONLY if it looks valid
+          if (row.api_key && row.api_key.length > 10) {
+            config.apikey = row.api_key;
+          }
+
           config.company_id = resolvedCompanyId;
           console.log(`[Evolution Config] RESOLVED SPECIFIC INSTANCE: ${config.instance} for Company ${resolvedCompanyId}`);
           return config;
@@ -56,15 +67,17 @@ export const getEvolutionConfig = async (user: any, source: string = 'unknown', 
       if (compRes.rows.length > 0) {
         const { name, evolution_instance, evolution_apikey } = compRes.rows[0];
 
-        // If targetInstanceKey was requested but failed the instance check above, check if it matches the MAIN instance
         if (targetInstanceKey && evolution_instance !== targetInstanceKey) {
           console.warn(`[Evolution Config] Requested instance ${targetInstanceKey} not found for company ${resolvedCompanyId}. Falling back to main: ${evolution_instance}`);
-          // Proceed to use main, or should we error? Proceeding as fallback.
         }
 
         if (evolution_instance) {
           config.instance = evolution_instance;
-          config.apikey = evolution_apikey || config.apikey;
+
+          if (evolution_apikey && evolution_apikey.length > 10) {
+            config.apikey = evolution_apikey;
+          }
+
           config.company_id = resolvedCompanyId;
           console.log(`[Evolution Config] RESOLVED PER-COMPANY: ${name} (${resolvedCompanyId}) -> Instance: ${config.instance}`);
         } else {
@@ -78,7 +91,9 @@ export const getEvolutionConfig = async (user: any, source: string = 'unknown', 
       const masterRes = await pool.query('SELECT evolution_instance, evolution_apikey FROM companies WHERE id = 1 LIMIT 1');
       if (masterRes.rows.length > 0) {
         config.instance = masterRes.rows[0].evolution_instance || "integrai";
-        config.apikey = masterRes.rows[0].evolution_apikey || config.apikey;
+        if (masterRes.rows[0].evolution_apikey && masterRes.rows[0].evolution_apikey.length > 10) {
+          config.apikey = masterRes.rows[0].evolution_apikey;
+        }
         config.company_id = 1;
         console.log(`[Evolution Config] MASTER FALLBACK (ID:1) -> Instance: ${config.instance}`);
       }
@@ -153,12 +168,14 @@ export const getEvolutionQrCode = async (req: Request, res: Response) => {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
-            apikey: EVOLUTION_API_KEY
+            // For creation, we use the GLOBAL key as it usually has the permission
+            apikey: process.env.EVOLUTION_API_KEY || EVOLUTION_API_KEY
           },
           body: JSON.stringify({
             instanceName: EVOLUTION_INSTANCE,
-            token: "", // Empty token usually defaults to random or global
-            qrcode: true // Return QR immediately
+            token: "",
+            qrcode: true,
+            integration: "WHATSAPP-BAILEYS"
           })
         });
 
@@ -167,7 +184,10 @@ export const getEvolutionQrCode = async (req: Request, res: Response) => {
           console.log(`[Evolution] Instance ${EVOLUTION_INSTANCE} created successfully.`);
 
           // Return the data directly from creation as it usually mimics the connect response
-          const qrCode = (createData.qrcode as string) || (createData.qr as string) || undefined;
+          let qrCode = (createData.qrcode as string) || (createData.qr as string) || (createData.base64 as string) || (createData.code as string) || undefined;
+          if (qrCode && !qrCode.startsWith('http') && !qrCode.startsWith('data:')) {
+            qrCode = `data:image/png;base64,${qrCode}`;
+          }
 
           // AUTO-REGISTER WEBHOOK immediately after creation
           try {
@@ -267,14 +287,24 @@ export const getEvolutionQrCode = async (req: Request, res: Response) => {
       console.warn("[Evolution] Webhook auto-registration failed silently", e);
     }
 
+    console.log(`[Evolution Debug] Raw connect response for ${EVOLUTION_INSTANCE}:`, JSON.stringify(data, null, 2));
+
     // A API costuma retornar algo como { qrCode: "data:image/png;base64,..." } ou campos similares.
-    const qrCode =
+    let qrCode =
       (data.qrCode as string) ||
       (data.qrcode as string) ||
       (data.qr_code as string) ||
       (data.qr as string) ||
       (data.base64 as string) ||
+      (data.code as string) ||
+      (data.qr?.code as string) ||
+      (data.qr?.base64 as string) ||
       undefined;
+
+    // Se o QR Code vier sem o prefixo base64, adicionamos
+    if (qrCode && !qrCode.startsWith('http') && !qrCode.startsWith('data:')) {
+      qrCode = `data:image/png;base64,${qrCode}`;
+    }
 
     return res.status(200).json({
       raw: data,

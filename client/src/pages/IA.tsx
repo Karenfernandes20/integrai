@@ -123,7 +123,7 @@ export default function IAPage() {
         <div className="space-y-6">
             <div className="flex justify-between items-center">
                 <div>
-                    <h2 className="text-3xl font-bold tracking-tight">Central de IA</h2>
+                    <h2 className="text-3xl font-bold tracking-tight">Central de Chatbot</h2>
                     <p className="text-muted-foreground">Gerencie seus agentes virtuais e configurações de inteligência artificial.</p>
                 </div>
                 <Button onClick={fetchData} variant="outline" size="icon">

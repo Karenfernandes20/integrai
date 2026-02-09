@@ -1,0 +1,393 @@
+      {/* Area do Chat - PREMIUM SAAS DESIGN */}
+      <div className={cn(
+        "flex-1 flex flex-col relative min-h-0 h-full min-w-0 transition-all overflow-hidden bg-[#020617]",
+        !selectedConversation ? "hidden md:flex" : "flex"
+      )}>
+        {!selectedConversation ? (
+          <div className="flex-1 flex flex-col items-center justify-center bg-[#020617] text-center p-8">
+            <div className="relative mb-8">
+              <div className="absolute inset-0 bg-blue-500/20 blur-[100px] rounded-full" />
+              <div className="relative w-72 h-72 bg-slate-900/40 border border-slate-800 rounded-full flex items-center justify-center backdrop-blur-sm">
+                <div className="flex flex-col items-center gap-4">
+                  <div className="p-5 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-2xl shadow-lg shadow-blue-500/20">
+                    <Zap className="h-10 w-10 text-white" />
+                  </div>
+                  <div className="flex -space-x-3">
+                    {[1,2,3].map(i => (
+                      <div key={i} className="w-10 h-10 rounded-full border-2 border-[#020617] bg-slate-800 flex items-center justify-center text-[10px] font-bold">
+                        {String.fromCharCode(64 + i)}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
+            <h2 className="text-3xl font-bold text-white mb-4 tracking-tight">IntegrAI <span className="text-blue-500 text-sm font-medium border border-blue-500/30 px-2 py-0.5 rounded-full ml-2 uppercase tracking-widest">Command Center</span></h2>
+            <p className="text-slate-400 text-lg max-w-md leading-relaxed">
+              Inicie um atendimento selecionando uma conversa ao lado ou comece uma nova via contatos. 
+            </p>
+            <div className="mt-12 flex items-center gap-6 px-6 py-3 bg-slate-900/50 border border-slate-800 rounded-2xl text-slate-500 text-sm">
+              <div className="flex items-center gap-2"><div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" /> IA Pronta</div>
+              <div className="w-px h-4 bg-slate-800" />
+              <div className="flex items-center gap-2"><LayoutGrid className="w-4 h-4" /> CRM Ativo</div>
+              <div className="w-px h-4 bg-slate-800" />
+              <div className="flex items-center gap-2"><Lock className="w-4 h-4" /> LGPD Secure</div>
+            </div>
+          </div>
+        ) : (
+          <>
+            {/* Chat Header - MODERN & CLEAN */}
+            <div className="h-[76px] bg-[#020617]/80 backdrop-blur-md border-b border-white/5 flex items-center justify-between px-6 shrink-0 z-30">
+              <div className="flex items-center gap-4 overflow-hidden">
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="md:hidden -ml-2 text-slate-400 hover:text-white hover:bg-white/5 rounded-full"
+                  onClick={() => setSelectedConversation(null)}
+                >
+                  <ChevronLeft className="h-6 w-6" />
+                </Button>
+                
+                <div className="relative">
+                  <Avatar className="h-11 w-11 ring-2 ring-slate-800 cursor-pointer hover:ring-blue-500/50 transition-all" onClick={() => setIsContactInfoOpen(true)}>
+                    <AvatarImage src={selectedConversation.profile_pic_url || `https://api.dicebear.com/7.x/initials/svg?seed=${getDisplayName(selectedConversation)}`} />
+                    <AvatarFallback className="bg-slate-800 text-slate-300 font-bold uppercase text-xs">{(getDisplayName(selectedConversation)?.[0] || "?")}</AvatarFallback>
+                  </Avatar>
+                  {selectedConversation.status === 'OPEN' && (
+                    <div className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 bg-emerald-500 border-[3px] border-[#020617] rounded-full" />
+                  )}
+                </div>
+
+                <div className="flex flex-col cursor-pointer min-w-0" onClick={() => setIsContactInfoOpen(true)}>
+                  <div className="flex items-center gap-2">
+                    <span className="text-[16px] font-bold text-slate-100 truncate leading-tight">
+                      {getDisplayName(selectedConversation)}
+                    </span>
+                    {selectedConversation.is_group && (
+                      <Badge variant="outline" className="text-[9px] h-4 bg-blue-500/10 text-blue-400 border-blue-500/20 font-bold uppercase tracking-tighter">Grupo</Badge>
+                    )}
+                    {(selectedConversation.instance_friendly_name || selectedConversation.instance) && (
+                      <div className="flex items-center gap-1 bg-slate-900 border border-slate-800 px-1.5 py-0.5 rounded text-[9px] font-mono text-slate-500">
+                         <Zap className="w-2.5 h-2.5" /> {selectedConversation.instance_friendly_name || selectedConversation.instance}
+                      </div>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2 text-xs">
+                    <span className={cn(
+                      "font-medium",
+                      selectedConversation.status === 'OPEN' ? "text-emerald-500/80" : "text-slate-500"
+                    )}>
+                      {selectedConversation.status === 'OPEN' ? (
+                        <span className="flex items-center gap-1"><div className="w-1 h-1 rounded-full bg-emerald-500" /> em atendimento</span>
+                      ) : "cliente / paciente"}
+                    </span>
+                    {selectedConversation.user_name && (
+                      <>
+                        <span className="text-slate-700">•</span>
+                        <span className="text-slate-500 italic">Resp: {selectedConversation.user_name}</span>
+                      </>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <div className="flex items-center bg-slate-900/50 border border-white/5 rounded-full p-1 mr-2 invisible group-hover:visible lg:visible">
+                   <Button variant="ghost" size="icon" className="h-8 w-8 text-slate-500 hover:text-white rounded-full transition-all">
+                      <Phone className="h-4 w-4" />
+                   </Button>
+                   <Button variant="ghost" size="icon" className="h-8 w-8 text-slate-500 hover:text-white rounded-full transition-all">
+                      <Calendar className="h-4 w-4" />
+                   </Button>
+                </div>
+                
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className={cn("h-10 w-10 text-slate-400 hover:text-white hover:bg-white/5 rounded-full transition-all", isMessageSearchOpen && "bg-white/10 text-white")}
+                        onClick={() => setIsMessageSearchOpen(!isMessageSearchOpen)}
+                      >
+                        <Search className="h-5 w-5" />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent side="bottom" className="bg-slate-800 border-slate-700 text-slate-100">Procurar histórico</TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="ghost" size="icon" className="h-10 w-10 text-slate-400 hover:text-white hover:bg-white/5 rounded-full">
+                      <MoreVertical className="h-5 w-5" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="bg-slate-900 border-white/10 text-slate-200 w-56 shadow-2xl">
+                    <DropdownMenuItem onClick={() => { setFollowUpInitialData({ conversation_id: selectedConversation.id, contact_name: getDisplayName(selectedConversation), phone: selectedConversation.phone, origin: 'Atendimento' }); setIsFollowUpModalOpen(true); }} className="gap-3 py-2.5 focus:bg-slate-800 cursor-pointer font-medium">
+                      <CalendarCheck className="h-4 w-4 text-emerald-400" /> Agendar / Novo Follow-up
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => setIsRelationshipModalOpen(true)} className="gap-3 py-2.5 focus:bg-slate-800 cursor-pointer font-medium">
+                      <Link2 className="h-4 w-4 text-blue-400" /> Ver Relacionamentos
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={handleRenameContact} className="gap-3 py-2.5 focus:bg-slate-800 cursor-pointer font-medium">
+                      <UserEdit className="h-4 w-4 text-slate-400" /> Editar Ficha
+                    </DropdownMenuItem>
+                    <DropdownMenuSeparator className="bg-white/5" />
+                    {selectedConversation.status !== 'OPEN' ? (
+                      <DropdownMenuItem onClick={() => handleStartAtendimento()} className="gap-3 py-2.5 focus:bg-emerald-500/20 text-emerald-500 font-bold cursor-pointer">
+                        <Zap className="h-4 w-4" /> Iniciar Atendimento
+                      </DropdownMenuItem>
+                    ) : (
+                      <DropdownMenuItem onClick={() => handleCloseAtendimento()} className="gap-3 py-2.5 focus:bg-amber-500/20 text-amber-500 font-bold cursor-pointer">
+                        <CheckSquare className="h-4 w-4" /> Finalizar / Concluir
+                      </DropdownMenuItem>
+                    )}
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </div>
+            </div>
+
+            {/* MESSAGE SEARCH BAR (COLLAPSIBLE) */}
+            {isMessageSearchOpen && (
+              <div className="bg-slate-900 border-b border-white/5 p-3 flex items-center gap-3 animate-in slide-in-from-top-4 duration-200">
+                <Search className="w-4 h-4 text-slate-500 ml-2" />
+                <Input 
+                   placeholder="Filtrar mensagens nesta conversa..." 
+                   className="flex-1 bg-slate-950 border-white/5 h-9 text-xs text-slate-100 placeholder:text-slate-600 focus-visible:ring-1 focus-visible:ring-blue-500/40"
+                   value={messageSearchTerm}
+                   onChange={(e) => setMessageSearchTerm(e.target.value)}
+                   autoFocus
+                />
+                <Button size="sm" variant="ghost" onClick={() => { setIsMessageSearchOpen(false); setMessageSearchTerm(""); }} className="h-8 text-slate-500 hover:text-white">Fechar</Button>
+              </div>
+            )}
+
+            {/* MESSAGES AREA - DARK FLOW */}
+            <div className="flex-1 flex flex-col min-h-0 relative">
+              <div
+                ref={scrollRef}
+                onScroll={handleScroll}
+                className={cn(
+                  "flex-1 overflow-y-auto px-4 py-8 flex flex-col gap-6 relative z-10 custom-scrollbar-thin",
+                  "bg-[#020617]",
+                  messages.length === 0 && "items-center justify-center"
+                )}
+                style={{
+                  backgroundImage: `radial-gradient(circle at 50% 50%, rgba(30, 41, 59, 0.2) 0%, transparent 100%)`,
+                }}
+              >
+                {/* DATE LABELS & MESSAGES LOGIC INJECTED HERE */}
+                {messages.length === 0 && !isLoadingMessages && (
+                  <div className="flex flex-col items-center justify-center p-12 text-center max-w-sm">
+                    <div className="w-20 h-20 bg-slate-900/50 rounded-full flex items-center justify-center mb-6 ring-1 ring-white/5">
+                      <MessageSquare className="h-8 w-8 text-slate-700" />
+                    </div>
+                    <h3 className="text-slate-300 font-semibold mb-2">Mensagens Criptografadas</h3>
+                    <p className="text-slate-500 text-xs leading-relaxed">
+                      As mensagens desta conversa são protegidas de ponta a ponta. Você verá o histórico assim que o cliente enviar uma nova mensagem ou você responder.
+                    </p>
+                  </div>
+                )}
+
+                {/* Groups Loop Rendering */}
+                {(() => {
+                   const displayMessages = (messageSearchTerm ? messages.filter(m => m.content?.toLowerCase().includes(messageSearchTerm.toLowerCase())) : messages);
+                   const processedMessages = (() => {
+                     const map = new Map<string, Message>();
+                     displayMessages.forEach(m => {
+                       const key = String(m.external_id || m.id);
+                       map.set(key, m);
+                     });
+                     return Array.from(map.values()).sort((a, b) => new Date(a.sent_at).getTime() - new Date(b.sent_at).getTime());
+                   })();
+
+                   const groups: Message[][] = [];
+                   let currentGroup: Message[] = [];
+                   processedMessages.forEach((msg, idx) => {
+                     const prevMsg = processedMessages[idx - 1];
+                     const isSameSender = prevMsg && (
+                       prevMsg.direction === msg.direction &&
+                       (msg.direction === 'outbound' ? prevMsg.user_id === msg.user_id : prevMsg.sender_jid === msg.sender_jid)
+                     );
+                     const timeDiff = prevMsg ? (new Date(msg.sent_at).getTime() - new Date(prevMsg.sent_at).getTime()) / 1000 / 60 : 0;
+                     if (isSameSender && timeDiff <= 3) {
+                       currentGroup.push(msg);
+                     } else {
+                       currentGroup = [msg];
+                       groups.push(currentGroup);
+                     }
+                   });
+
+                   let lastDateLabel = "";
+
+                   return groups.map((group, groupIdx) => {
+                     const firstMsg = group[0];
+                     const msgDateLabel = formatDateLabel(firstMsg.sent_at);
+                     const showDate = msgDateLabel !== lastDateLabel;
+                     lastDateLabel = msgDateLabel;
+                     const isOutbound = firstMsg.direction === 'outbound';
+
+                     return (
+                       <React.Fragment key={`group-${groupIdx}-${firstMsg.id}`}>
+                         {showDate && (
+                           <div className="flex justify-center my-6 sticky top-2 z-10">
+                             <div className="px-4 py-1.5 bg-slate-900/80 backdrop-blur-sm border border-white/5 rounded-full text-[10px] uppercase tracking-widest font-bold text-slate-500 shadow-xl">
+                               {msgDateLabel}
+                             </div>
+                           </div>
+                         )}
+                         <div className={cn(
+                           "flex flex-col w-full max-w-[85%] lg:max-w-[75%] gap-0.5",
+                           isOutbound ? "items-end self-end" : "items-start self-start"
+                         )}>
+                            {group.map((msg, msgIdx) => (
+                               <div 
+                                 key={msg.id} 
+                                 id={`msg-${msg.id}`}
+                                 className={cn(
+                                   "relative group/msg flex items-end gap-2",
+                                   isOutbound ? "flex-row-reverse" : "flex-row"
+                                 )}
+                               >
+                                  <div className={cn(
+                                    "px-4 py-2 my-0.5 rounded-2xl text-sm transition-all relative overflow-hidden",
+                                    isOutbound 
+                                      ? "bg-gradient-to-br from-blue-600 to-indigo-700 text-white shadow-lg shadow-blue-900/10 rounded-tr-sm" 
+                                      : "bg-slate-900 text-slate-200 border border-white/5 rounded-tl-sm",
+                                    msg.status === 'DELETED' && "italic opacity-40 bg-transparent border-slate-800"
+                                  )}>
+                                     {/* Content Rendering (Text/Image/Audio/etc) - Simplified for brevity */}
+                                     {msg.status === 'DELETED' ? "🚫 Esta mensagem foi apagada" : (
+                                       <div className="flex flex-col gap-1">
+                                          {msg.reply_to_content && (
+                                            <div className="mb-2 p-2 bg-black/10 rounded border-l-2 border-white/30 text-[11px] opacity-80 truncate max-w-[200px]">
+                                               {msg.reply_to_content}
+                                            </div>
+                                          )}
+                                          <div className="whitespace-pre-wrap leading-relaxed break-words">
+                                             {msg.type === 'image' && msg.media_url && (
+                                               <div className="rounded-lg overflow-hidden mb-1 ring-1 ring-white/10">
+                                                  <img src={msg.media_url} alt="Media" className="max-h-64 object-cover cursor-pointer hover:scale-[1.02] transition-transform" onClick={() => window.open(msg.media_url, '_blank')} />
+                                               </div>
+                                             )}
+                                             {msg.content}
+                                          </div>
+                                          <div className={cn(
+                                            "flex items-center gap-1.5 mt-1 self-end",
+                                            isOutbound ? "justify-end" : "justify-start"
+                                          )}>
+                                             <span className="text-[10px] opacity-60 font-mono tracking-tighter">
+                                               {new Date(msg.sent_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                             </span>
+                                             {isOutbound && (
+                                                <div className="flex">
+                                                   <CheckCheck className={cn("w-3.5 h-3.5", msg.status === 'READ' ? "text-emerald-400" : "text-slate-400")} />
+                                                </div>
+                                             )}
+                                          </div>
+                                       </div>
+                                     )}
+                                  </div>
+                                  
+                                  {/* Quick Reaction Button (Hover) */}
+                                  <div className={cn(
+                                    "opacity-0 group-hover/msg:opacity-100 transition-opacity flex gap-1",
+                                    isOutbound ? "mr-1" : "ml-1"
+                                  )}>
+                                     <button className="p-1 hover:bg-slate-800 rounded-full text-slate-500" onClick={() => setReplyTo(msg)}><CornerUpLeft className="w-3.5 h-3.5" /></button>
+                                     <button className="p-1 hover:bg-slate-800 rounded-full text-slate-500" onClick={() => handleSendReaction(msg.external_id || msg.id, '❤️')}><Heart className="w-3.5 h-3.5" /></button>
+                                  </div>
+                               </div>
+                            ))}
+                         </div>
+                       </React.Fragment>
+                     );
+                   });
+                })()}
+                <div ref={messagesEndRef} className="h-1 shrink-0" />
+              </div>
+
+              {/* FLOATING AI SUGGESTIONS HUD */}
+              <div className="absolute bottom-28 left-0 right-0 z-20 px-6 pointer-events-none">
+                 <div className="flex flex-wrap gap-2 justify-center max-w-4xl mx-auto pointer-events-auto">
+                    {['Resumir Histórico', 'Sugerir Próximo Passo', 'Check-up Sugestão'].map((sug, i) => (
+                       <button key={i} className="px-4 py-2 bg-slate-900/90 border border-blue-500/20 rounded-full text-[11px] font-bold text-blue-400 hover:bg-blue-500/10 hover:border-blue-500/40 backdrop-blur-md transition-all flex items-center gap-2 shadow-2xl">
+                          <Sparkles className="w-3 h-3" /> {sug}
+                       </button>
+                    ))}
+                 </div>
+              </div>
+
+              {/* INPUT AREA - ULTRA MODERN INTEGRATED */}
+              <div className="bg-[#020617] p-6 z-20">
+                 <div className="max-w-6xl mx-auto bg-slate-900/40 border border-white/5 rounded-[28px] p-2 pr-4 shadow-2xl backdrop-blur-xl">
+                    <div className="flex items-end gap-2">
+                       <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                             <Button variant="ghost" size="icon" className="h-10 w-10 shrink-0 text-slate-400 hover:text-white rounded-full">
+                                <Plus className="h-5 w-5" />
+                             </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent side="top" align="start" className="bg-slate-900 border-white/10 text-slate-200 w-48 mb-2">
+                             <DropdownMenuItem className="gap-3 py-2.5 cursor-pointer"><Image className="h-4 w-4" /> Fotos & Vídeos</DropdownMenuItem>
+                             <DropdownMenuItem className="gap-3 py-2.5 cursor-pointer"><FileText className="h-4 w-4" /> Documentos</DropdownMenuItem>
+                             <DropdownMenuItem className="gap-3 py-2.5 cursor-pointer"><Mic className="h-4 w-4" /> Áudio</DropdownMenuItem>
+                             <DropdownMenuItem className="gap-3 py-2.5 cursor-pointer text-blue-400"><Calendar className="h-4 w-4" /> Enviar Horário</DropdownMenuItem>
+                          </DropdownMenuContent>
+                       </DropdownMenu>
+
+                       <Button variant="ghost" size="icon" className="h-10 w-10 shrink-0 text-slate-400 hover:text-white rounded-full" onClick={() => setShowEmojiPicker(!showEmojiPicker)}>
+                          <Smile className="h-5 w-5" />
+                       </Button>
+
+                       <div className="flex-1 min-h-[40px] flex flex-col justify-center">
+                          <textarea
+                             rows={1}
+                             placeholder="Digite uma mensagem ou comando /..."
+                             className="w-full bg-transparent border-none text-slate-100 placeholder:text-slate-600 focus:ring-0 text-sm py-2.5 resize-none max-h-48 custom-scrollbar scroll-py-2"
+                             value={messageInput}
+                             onChange={(e) => {
+                                setMessageInput(e.target.value);
+                                e.target.style.height = 'auto';
+                                e.target.style.height = e.target.scrollHeight + 'px';
+                             }}
+                             onKeyDown={(e) => {
+                                if (e.key === 'Enter' && !e.shiftKey) {
+                                   e.preventDefault();
+                                   handleSendMessage();
+                                }
+                             }}
+                          />
+                       </div>
+
+                       <div className="flex items-center self-end mb-1 gap-2">
+                          {messageInput.trim() ? (
+                             <Button 
+                               onClick={handleSendMessage}
+                               className="h-9 w-9 bg-blue-600 hover:bg-blue-500 text-white rounded-full p-0 shadow-lg shadow-blue-500/20"
+                             >
+                                <Send className="h-4 w-4" />
+                             </Button>
+                          ) : (
+                             <Button 
+                               variant="ghost"
+                               size="icon"
+                               className="h-10 w-10 text-slate-400 hover:text-blue-500 rounded-full"
+                             >
+                                <Mic className="h-5 w-5" />
+                             </Button>
+                          )}
+                       </div>
+                    </div>
+                 </div>
+                 
+                 {/* Typing Indicator */}
+                 <div className="h-4 mt-2 px-8">
+                    {/* Logica de typing seria injetada aqui */}
+                 </div>
+              </div>
+            </div>
+          </>
+        )}
+      </div>

@@ -42,13 +42,99 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs"
 import { Textarea } from "../components/ui/textarea";
 import { Badge } from "../components/ui/badge";
 
-const AVAILABLE_PERMISSIONS = [
-  { id: "dashboard", label: "Dashboard" },
-  { id: "crm", label: "CRM" },
-  { id: "atendimentos", label: "Atendimentos" },
-  { id: "financeiro", label: "Financeiro" },
-  { id: "relatorios", label: "Relatórios" },
-  { id: "configuracoes", label: "Configurações" }
+const PERMISSION_GROUPS = [
+  {
+    name: "📊 Financeiro",
+    permissions: [
+      { id: 'finance.view', label: 'Visualizar financeiro' },
+      { id: 'finance.create', label: 'Criar cobranças' },
+      { id: 'finance.edit', label: 'Editar cobranças' },
+      { id: 'finance.delete', label: 'Excluir cobranças' },
+      { id: 'finance.export', label: 'Exportar relatórios' }
+    ]
+  },
+  {
+    name: "📋 Cadastros",
+    permissions: [
+      { id: 'reg.companies', label: 'Empresas' },
+      { id: 'reg.users', label: 'Usuários' },
+      { id: 'reg.clients', label: 'Clientes' },
+      { id: 'reg.professionals', label: 'Profissionais' },
+      { id: 'reg.products', label: 'Produtos' },
+      { id: 'reg.services', label: 'Serviços' }
+    ]
+  },
+  {
+    name: "📅 Agendamentos",
+    permissions: [
+      { id: 'schedule.view', label: 'Visualizar agenda' },
+      { id: 'schedule.create', label: 'Criar agendamento' },
+      { id: 'schedule.edit', label: 'Editar agendamento' },
+      { id: 'schedule.cancel', label: 'Cancelar agendamento' },
+      { id: 'schedule.delete', label: 'Excluir agendamento' },
+      { id: 'schedule.view_others', label: 'Ver agenda de outros usuários' }
+    ]
+  },
+  {
+    name: "💬 Atendimentos / CRM",
+    permissions: [
+      { id: 'crm.view', label: 'Visualizar atendimentos' },
+      { id: 'crm.attend', label: 'Atender clientes' },
+      { id: 'crm.transfer', label: 'Transferir atendimento' },
+      { id: 'crm.close', label: 'Encerrar atendimento' },
+      { id: 'crm.move_cards', label: 'Mover cards no CRM' },
+      { id: 'crm.edit_stages', label: 'Editar etapas do funil' }
+    ]
+  },
+  {
+    name: "🤖 Chatbot",
+    permissions: [
+      { id: 'bot.view', label: 'Visualizar chatbots' },
+      { id: 'bot.create', label: 'Criar chatbot' },
+      { id: 'bot.edit', label: 'Editar chatbot' },
+      { id: 'bot.publish', label: 'Publicar chatbot' },
+      { id: 'bot.connect', label: 'Conectar chatbot a números' },
+      { id: 'bot.metrics', label: 'Visualizar métricas' }
+    ]
+  },
+  {
+    name: "📣 Campanhas",
+    permissions: [
+      { id: 'campaigns.create', label: 'Criar campanhas' },
+      { id: 'campaigns.edit', label: 'Editar campanhas' },
+      { id: 'campaigns.send', label: 'Disparar campanhas' },
+      { id: 'campaigns.report', label: 'Ver relatórios' }
+    ]
+  },
+  {
+    name: "📦 Estoque / Vendas",
+    permissions: [
+      { id: 'inventory.view', label: 'Visualizar estoque' },
+      { id: 'inventory.create_prod', label: 'Criar produto' },
+      { id: 'inventory.edit_prod', label: 'Editar produto' },
+      { id: 'inventory.delete_prod', label: 'Excluir produto' },
+      { id: 'inventory.sale', label: 'Registrar venda' },
+      { id: 'inventory.cancel_sale', label: 'Cancelar venda' }
+    ]
+  },
+  {
+    name: "📈 BI / Relatórios",
+    permissions: [
+      { id: 'bi.view', label: 'Visualizar dashboards' },
+      { id: 'bi.create_report', label: 'Criar relatórios' },
+      { id: 'bi.export', label: 'Exportar dados' }
+    ]
+  },
+  {
+    name: "⚙️ Configurações",
+    permissions: [
+      { id: 'settings.company', label: 'Configurações da empresa' },
+      { id: 'settings.integrations', label: 'Integrações' },
+      { id: 'settings.whatsapp', label: 'Instâncias WhatsApp' },
+      { id: 'settings.qrcode', label: 'QR Code' },
+      { id: 'settings.webhooks', label: 'Webhooks / n8n' }
+    ]
+  }
 ];
 
 // Schema now only validates text fields; file validation is manual or via input accept
@@ -139,7 +225,7 @@ const SuperadminPage = () => {
     instagram_page_id: "",
     instagram_business_id: "",
     instagram_access_token: "",
-    instagram_status: ""
+    instagram_status: "",
   });
   const [plans, setPlans] = useState<any[]>([]); // New state for plans
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
@@ -170,6 +256,7 @@ const SuperadminPage = () => {
     full_name: "",
     email: "",
     password: "",
+    role: "USER" as string,
     permissions: [] as string[],
     city: "",
     state: "",
@@ -177,53 +264,27 @@ const SuperadminPage = () => {
   });
   const [creatingUser, setCreatingUser] = useState(false);
 
-  // System Mode State
-  const [currentMode, setCurrentMode] = useState("normal");
-  const [isChangingMode, setIsChangingMode] = useState(false);
+  // Permissions utility
+  const togglePermission = (permId: string) => {
+    setNewUser(prev => ({
+      ...prev,
+      permissions: prev.permissions.includes(permId)
+        ? prev.permissions.filter(p => p !== permId)
+        : [...prev.permissions, permId]
+    }));
+  };
 
-  const loadMode = async () => {
-    try {
-      const res = await fetch("/api/admin/system/mode", {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (res.ok) {
-        const data = await res.json();
-        setCurrentMode(data.mode);
-      }
-    } catch (e) {
-      console.error(e);
+  const handleRolePreset = (role: string) => {
+    if (role === 'ADMIN') {
+      const allPerms = PERMISSION_GROUPS.flatMap(g => g.permissions.map(p => p.id));
+      setNewUser(prev => ({ ...prev, role, permissions: allPerms }));
+    } else {
+      // Clear permissions for manual selection when not ADMIN
+      setNewUser(prev => ({ ...prev, role, permissions: [] }));
     }
   };
 
-  const handleModeChange = async (newMode: string) => {
-    setIsChangingMode(true);
-    try {
-      const res = await fetch("/api/admin/system/mode", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({ mode: newMode }),
-      });
 
-      if (!res.ok) throw new Error("Falha ao trocar modo");
-
-      toast({
-        title: "Modo alterado",
-        description: `Sistema operando agora em modo: ${newMode.toUpperCase()}`,
-      });
-      setCurrentMode(newMode);
-    } catch (e: any) {
-      toast({
-        title: "Erro ao trocar modo",
-        description: e.message,
-        variant: "destructive",
-      });
-    } finally {
-      setIsChangingMode(false);
-    }
-  };
 
   const loadCompanies = async () => {
     setIsLoading(true);
@@ -269,7 +330,6 @@ const SuperadminPage = () => {
   useEffect(() => {
     if (token) {
       loadCompanies();
-      loadMode();
       loadLegalPages(); // Load legal pages
 
       // Load plans
@@ -316,6 +376,8 @@ const SuperadminPage = () => {
     setFormValues((prev) => ({ ...prev, [name]: value }));
   };
 
+
+
   const handleSelectChange = (value: string) => {
     setFormValues((prev) => ({
       ...prev,
@@ -352,7 +414,7 @@ const SuperadminPage = () => {
       instagram_page_id: company.instagram_page_id || "",
       instagram_business_id: company.instagram_business_id || "",
       instagram_access_token: company.instagram_access_token || "",
-      instagram_status: company.instagram_status || ""
+      instagram_status: company.instagram_status || "",
     });
     setSelectedFile(null);
     setRemoveLogo(false);
@@ -374,7 +436,25 @@ const SuperadminPage = () => {
       if (res.ok) {
         const data = await res.json();
         setCurrentInstances(data);
-        // setInstancesConfigOpen(true); // Removido para mostrar inline
+
+        // Populate form definitions to show inputs in Edit Mode
+        setFormValues(prev => {
+          const currentMax = parseInt(prev.max_instances) || 1;
+          const newDefs = data.map((inst: any) => ({
+            name: inst.name,
+            instance_key: inst.instance_key,
+            api_key: inst.api_key || ''
+          }));
+
+          // Pad if necessary (e.g. if max_instances > connected instances)
+          while (newDefs.length < currentMax) {
+            newDefs.push({ name: `Instância ${newDefs.length + 1}`, instance_key: '', api_key: '' });
+          }
+
+          return {
+            ...prev,
+          };
+        });
       } else {
         toast({ title: "Erro", description: "Falha ao carregar instâncias", variant: "destructive" });
       }
@@ -434,7 +514,7 @@ const SuperadminPage = () => {
       instagram_page_id: "",
       instagram_business_id: "",
       instagram_access_token: "",
-      instagram_status: ""
+      instagram_status: "",
     });
     setSelectedFile(null);
     setRemoveLogo(false);
@@ -570,7 +650,7 @@ const SuperadminPage = () => {
     setLoadingUsers(true);
     setCompanyUsers([]);
     setCompanyUsers([]);
-    setNewUser({ full_name: "", email: "", password: "", permissions: [], city: "", state: "", phone: "" }); // Reset form
+    setNewUser({ full_name: "", email: "", password: "", role: "USER", permissions: [], city: "", state: "", phone: "" }); // Reset form
     try {
       const res = await fetch(`/api/companies/${company.id}/users`, {
         headers: { Authorization: `Bearer ${token}` },
@@ -646,7 +726,6 @@ const SuperadminPage = () => {
         body: JSON.stringify({
           ...newUser,
           company_id: selectedCompanyId,
-          role: "ADMIN", // Defaulting to Admin for company users created this way, or could be USUARIO
           user_type: "company_user",
         }),
       });
@@ -658,7 +737,7 @@ const SuperadminPage = () => {
 
       const createdUser = await res.json();
       setCompanyUsers((prev) => [createdUser, ...prev]);
-      setNewUser({ full_name: "", email: "", password: "", permissions: [], city: "", state: "", phone: "" });
+      setNewUser({ full_name: "", email: "", password: "", role: "USER", permissions: [], city: "", state: "", phone: "" });
       toast({ title: "Usuário adicionado com sucesso!" });
     } catch (err: any) {
       toast({ title: err.message, variant: "destructive" });
@@ -709,133 +788,190 @@ const SuperadminPage = () => {
         <div className="flex flex-col lg:flex-row gap-8 items-start">
           <section className="w-full lg:w-[320px] space-y-6 shrink-0">
             {/* COMPANIES LIST */}
-            <Card className="border border-primary-soft/70 bg-card/95 shadow-strong">
-              <CardHeader className="flex flex-row items-center justify-between">
-                <CardTitle className="text-xl flex items-center gap-2">
-                  <Users className="h-5 w-5 text-primary" />
+            <Card className="border border-slate-200 bg-white shadow-sm overflow-hidden">
+              <CardHeader className="flex flex-row items-center justify-between py-3 px-4 bg-slate-50/50 border-b border-slate-100">
+                <CardTitle className="text-[14px] font-medium text-[#475569] flex items-center gap-2">
+                  <Users className="h-4 w-4 text-[#64748B]" />
                   Empresas Cadastradas ({companies.length})
                 </CardTitle>
-                <Button variant="outline" size="sm" onClick={loadCompanies} disabled={isLoading}>
-                  <RotateCcw className={cn("w-4 h-4 mr-2", isLoading && "animate-spin")} />
-                  Atualizar
+                <Button variant="ghost" size="icon" className="h-8 w-8 text-[#64748B]" onClick={loadCompanies} disabled={isLoading} title="Atualizar">
+                  <RotateCcw className={cn("w-3.5 h-3.5", isLoading && "animate-spin")} />
                 </Button>
               </CardHeader>
-              <CardContent>
+              <CardContent className="p-0">
                 {isLoading ? (
-                  <div className="text-center py-8 text-muted-foreground">Carregando empresas...</div>
+                  <div className="text-center py-8 text-muted-foreground text-xs">Carregando empresas...</div>
                 ) : (
-                  <div className="space-y-4">
+                  <div className="space-y-2 p-2">
                     {companies.map((company) => (
                       <div
                         key={company.id}
-                        className="flex flex-col p-3 rounded-xl border bg-white shadow-sm hover:shadow-md hover:border-primary/20 transition-all duration-200 gap-3"
+                        className="flex flex-col py-2 px-3 rounded-[10px] bg-white border border-transparent hover:border-slate-100 hover:bg-[#F8FAFC] transition-all gap-2 group shadow-sm hover:shadow-md"
                       >
-                        <div className="flex items-start gap-3 min-w-0">
+                        <div className="flex items-center gap-3 min-w-0">
                           {company.logo_url ? (
-                            <img src={company.logo_url} alt={company.name} className="h-10 w-10 rounded-lg object-cover border shadow-sm shrink-0" />
+                            <img src={company.logo_url} alt={company.name} className="h-8 w-8 rounded-lg object-cover border border-slate-200 shrink-0" />
                           ) : (
-                            <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center text-primary font-bold text-sm border border-primary/20 whitespace-nowrap shrink-0">
-                              {company.name.substring(0, 2).toUpperCase()}
+                            <div className="h-8 w-8 rounded-lg bg-slate-100 flex items-center justify-center text-slate-500 font-medium text-[10px] border border-slate-200 shrink-0 uppercase">
+                              {company.name.substring(0, 2)}
                             </div>
                           )}
-                          <div className="space-y-0.5 min-w-0 flex-1">
-                            <h3 className="font-bold text-slate-800 text-sm tracking-wide leading-tight">{company.name}</h3>
-                            <div className="flex flex-wrap gap-2 text-xs text-slate-500 items-center">
-                              <span className="bg-slate-100 px-1 py-0.5 rounded font-mono">ID: {company.id}</span>
-                              {company.city && <span>{company.city}</span>}
+                          <div className="space-y-0 min-w-0 flex-1">
+                            <h3 className="font-medium text-slate-700 text-[13px] truncate">{company.name}</h3>
+                            <div className="flex gap-2 text-[11px] text-[#94A3B8] items-center">
+                              <span className="font-mono">#{company.id}</span>
+                              {company.city && (
+                                <>
+                                  <span className="text-slate-300">•</span>
+                                  <span className="truncate">{company.city}</span>
+                                </>
+                              )}
                             </div>
                           </div>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-7 w-7 text-[#64748B] opacity-0 group-hover:opacity-100 transition-opacity shrink-0"
+                            onClick={() => handleOpenDashboard(company)}
+                            title="Ver Dashboard"
+                          >
+                            <ShieldAlert className="w-3.5 h-3.5" />
+                          </Button>
                         </div>
-                        <div className="flex items-center justify-between gap-1 mt-1 border-t pt-2">
-                          <Button size="xs" variant="outline" className="h-7 text-[10px] px-2" onClick={() => handleOpenDashboard(company)}>Dashboard</Button>
-                          <div className="flex items-center gap-1">
-                            {/* USERS DIALOG */}
-                            <Dialog>
-                              <DialogTrigger asChild>
-                                <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => handleManageUsers(company)} title="Gerenciar Usuários">
-                                  <Users className="w-3 h-3" />
-                                </Button>
-                              </DialogTrigger>
-                              <DialogContent className="max-w-3xl max-h-[85vh] overflow-auto">
-                                <DialogHeader>
-                                  <DialogTitle className="truncate">Usuários - {company.name}</DialogTitle>
-                                  <DialogDescription>Gerencie o acesso a esta empresa.</DialogDescription>
-                                </DialogHeader>
-                                <div className="space-y-6 pt-4">
-                                  <div className="space-y-2">
-                                    <h3 className="font-medium text-sm">Usuários Existentes</h3>
-                                    {loadingUsers ? <p className="text-xs">Carregando...</p> : companyUsers.length === 0 ? <p className="text-xs text-muted-foreground">Nenhum usuário.</p> : (
-                                      <div className="grid gap-2">
-                                        {companyUsers.map(u => (
-                                          <div key={u.id} className="flex justify-between items-center p-2 border rounded bg-muted/20">
-                                            <div className="text-sm">
-                                              <div className="font-medium">{u.full_name}</div>
-                                              <div className="text-xs text-muted-foreground">{u.email} ({u.role})</div>
-                                            </div>
-                                            <div className="flex gap-1">
-                                              <Dialog>
-                                                <DialogTrigger asChild>
-                                                  <Button size="icon" variant="ghost" className="h-7 w-7"><KeyRound className="w-3 h-3" /></Button>
-                                                </DialogTrigger>
-                                                <DialogContent>
-                                                  <DialogHeader><DialogTitle>Resetar Senha</DialogTitle></DialogHeader>
-                                                  <div className="flex gap-2 pt-4">
-                                                    <Input
-                                                      type="password"
-                                                      placeholder="Nova Senha"
-                                                      value={resetPasswords[u.id] || ''}
-                                                      onChange={e => handlePasswordChange(u.id, e.target.value)}
-                                                    />
-                                                    <Button onClick={() => submitPasswordReset(u.id)}>Salvar</Button>
-                                                  </div>
-                                                </DialogContent>
-                                              </Dialog>
-                                              <Button size="icon" variant="ghost" className="h-7 w-7 text-destructive" onClick={() => handleDeleteUser(u.id)}><Trash2 className="w-3 h-3" /></Button>
-                                            </div>
+                        <div className="flex items-center justify-end gap-1 px-1">
+                          {/* USERS DIALOG */}
+                          <Dialog>
+                            <DialogTrigger asChild>
+                              <Button size="icon" variant="ghost" className="h-7 w-7 text-[#64748B] hover:text-primary transition-colors" onClick={() => handleManageUsers(company)} title="Gerenciar Usuários">
+                                <Users className="w-3.5 h-3.5" />
+                              </Button>
+                            </DialogTrigger>
+                            <DialogContent className="max-w-3xl max-h-[85vh] overflow-auto">
+                              <DialogHeader>
+                                <DialogTitle className="truncate">Usuários - {company.name}</DialogTitle>
+                                <DialogDescription>Gerencie o acesso a esta empresa.</DialogDescription>
+                              </DialogHeader>
+                              <div className="space-y-6 pt-4">
+                                <div className="space-y-2">
+                                  <h3 className="font-medium text-sm">Usuários Existentes</h3>
+                                  {loadingUsers ? <p className="text-xs">Carregando...</p> : companyUsers.length === 0 ? <p className="text-xs text-muted-foreground">Nenhum usuário.</p> : (
+                                    <div className="grid gap-2">
+                                      {companyUsers.map(u => (
+                                        <div key={u.id} className="flex justify-between items-center p-2 border rounded bg-muted/20">
+                                          <div className="text-sm">
+                                            <div className="font-medium">{u.full_name}</div>
+                                            <div className="text-xs text-muted-foreground">{u.email} ({u.role})</div>
                                           </div>
-                                        ))}
-                                      </div>
-                                    )}
-                                  </div>
-                                  <Separator />
-                                  <div className="space-y-3">
-                                    <h3 className="font-medium text-sm">Adicionar Usuário</h3>
-                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                                      <Input placeholder="Nome" value={newUser.full_name} onChange={e => setNewUser({ ...newUser, full_name: e.target.value })} className="h-8 text-xs" />
-                                      <Input placeholder="Email" value={newUser.email} onChange={e => setNewUser({ ...newUser, email: e.target.value })} className="h-8 text-xs" />
-                                      <Input placeholder="Senha" type="password" value={newUser.password} onChange={e => setNewUser({ ...newUser, password: e.target.value })} className="h-8 text-xs" />
-                                      <Input placeholder="Telefone" value={newUser.phone} onChange={e => setNewUser({ ...newUser, phone: e.target.value })} className="h-8 text-xs" />
+                                          <div className="flex gap-1">
+                                            <Dialog>
+                                              <DialogTrigger asChild>
+                                                <Button size="icon" variant="ghost" className="h-7 w-7"><KeyRound className="w-3 h-3" /></Button>
+                                              </DialogTrigger>
+                                              <DialogContent>
+                                                <DialogHeader><DialogTitle>Resetar Senha</DialogTitle></DialogHeader>
+                                                <div className="flex gap-2 pt-4">
+                                                  <Input
+                                                    type="password"
+                                                    placeholder="Nova Senha"
+                                                    value={resetPasswords[u.id] || ''}
+                                                    onChange={e => handlePasswordChange(u.id, e.target.value)}
+                                                  />
+                                                  <Button onClick={() => submitPasswordReset(u.id)}>Salvar</Button>
+                                                </div>
+                                              </DialogContent>
+                                            </Dialog>
+                                            <Button size="icon" variant="ghost" className="h-7 w-7 text-destructive" onClick={() => handleDeleteUser(u.id)}><Trash2 className="w-3 h-3" /></Button>
+                                          </div>
+                                        </div>
+                                      ))}
                                     </div>
-                                    <div className="flex justify-end">
-                                      <Button size="sm" onClick={handleCreateUser} disabled={creatingUser}>{creatingUser ? 'Adicionando...' : 'Adicionar'}</Button>
+                                  )}
+                                </div>
+                                <Separator />
+                                <div className="space-y-4">
+                                  <h3 className="font-medium text-sm">Adicionar Usuário</h3>
+                                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                    <Input placeholder="Nome" value={newUser.full_name} onChange={e => setNewUser({ ...newUser, full_name: e.target.value })} className="h-8 text-xs" />
+                                    <Input placeholder="Email" value={newUser.email} onChange={e => setNewUser({ ...newUser, email: e.target.value })} className="h-8 text-xs" />
+                                    <Input placeholder="Senha" type="password" value={newUser.password} onChange={e => setNewUser({ ...newUser, password: e.target.value })} className="h-8 text-xs" />
+                                    <Input placeholder="Telefone" value={newUser.phone} onChange={e => setNewUser({ ...newUser, phone: e.target.value })} className="h-8 text-xs" />
+
+                                    <div className="space-y-1.5">
+                                      <Label className="text-[10px]">Cargo (Role)</Label>
+                                      <Select value={newUser.role} onValueChange={handleRolePreset}>
+                                        <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
+                                        <SelectContent>
+                                          <SelectItem value="ADMIN">Administrador</SelectItem>
+                                          <SelectItem value="MANAGER">Gestor</SelectItem>
+                                          <SelectItem value="USER">Usuário</SelectItem>
+                                          <SelectItem value="READ_ONLY">Somente Leitura</SelectItem>
+                                          <SelectItem value="CUSTOM">Personalizado</SelectItem>
+                                        </SelectContent>
+                                      </Select>
+                                    </div>
+
+                                    <div className="flex items-end">
+                                      <Button size="sm" onClick={handleCreateUser} disabled={creatingUser} className="w-full h-8 text-xs">
+                                        {creatingUser ? 'Adicionando...' : 'Adicionar Usuário'}
+                                      </Button>
+                                    </div>
+                                  </div>
+
+                                  <div className="space-y-4 border rounded-lg p-4 bg-slate-50/50 mt-4">
+                                    <h4 className="font-bold text-sm border-b pb-2 flex items-center gap-2">
+                                      🧩 Permissões Granulares
+                                    </h4>
+                                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                                      {PERMISSION_GROUPS.map(group => (
+                                        <div key={group.name} className="space-y-2">
+                                          <Label className="text-xs font-bold text-primary flex items-center gap-1">
+                                            {group.name}
+                                          </Label>
+                                          <div className="space-y-2 pl-1">
+                                            {group.permissions.map(perm => (
+                                              <div key={perm.id} className="flex items-center space-x-2">
+                                                <Checkbox
+                                                  id={`perm-${perm.id}`}
+                                                  checked={newUser.permissions.includes(perm.id)}
+                                                  onCheckedChange={() => togglePermission(perm.id)}
+                                                  className="h-3.5 w-3.5"
+                                                />
+                                                <label htmlFor={`perm-${perm.id}`} className="text-[11px] leading-none cursor-pointer text-slate-700 hover:text-primary transition-colors">
+                                                  {perm.label}
+                                                </label>
+                                              </div>
+                                            ))}
+                                          </div>
+                                        </div>
+                                      ))}
                                     </div>
                                   </div>
                                 </div>
-                              </DialogContent>
-                            </Dialog>
+                              </div>
+                            </DialogContent>
+                          </Dialog>
 
-                            <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => handleEdit(company)} title="Editar Empresa">
-                              <Pencil className="w-3 h-3" />
-                            </Button>
+                          <Button size="icon" variant="ghost" className="h-7 w-7 text-[#64748B] hover:text-primary transition-colors" onClick={() => handleEdit(company)} title="Editar Empresa">
+                            <Pencil className="w-3.5 h-3.5" />
+                          </Button>
 
-                            <AlertDialog>
-                              <AlertDialogTrigger asChild>
-                                <Button size="icon" variant="ghost" className="text-destructive h-7 w-7" title="Excluir Empresa">
-                                  <Trash2 className="w-3 h-3" />
-                                </Button>
-                              </AlertDialogTrigger>
-                              <AlertDialogContent>
-                                <AlertDialogHeader>
-                                  <AlertDialogTitle className="truncate">Excluir {company.name}?</AlertDialogTitle>
-                                  <AlertDialogDescription>Esta ação é irreversível.</AlertDialogDescription>
-                                </AlertDialogHeader>
-                                <AlertDialogFooter>
-                                  <AlertDialogCancel>Cancelar</AlertDialogCancel>
-                                  <AlertDialogAction className="bg-destructive" onClick={() => handleDelete(company)}>Excluir</AlertDialogAction>
-                                </AlertDialogFooter>
-                              </AlertDialogContent>
-                            </AlertDialog>
-                          </div>
+                          <AlertDialog>
+                            <AlertDialogTrigger asChild>
+                              <Button size="icon" variant="ghost" className="text-[#64748B] hover:text-destructive h-7 w-7 transition-colors" title="Excluir Empresa">
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </Button>
+                            </AlertDialogTrigger>
+                            <AlertDialogContent>
+                              <AlertDialogHeader>
+                                <AlertDialogTitle className="truncate">Excluir {company.name}?</AlertDialogTitle>
+                                <AlertDialogDescription>Esta ação é irreversível.</AlertDialogDescription>
+                              </AlertDialogHeader>
+                              <AlertDialogFooter>
+                                <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                                <AlertDialogAction className="bg-destructive" onClick={() => handleDelete(company)}>Excluir</AlertDialogAction>
+                              </AlertDialogFooter>
+                            </AlertDialogContent>
+                          </AlertDialog>
                         </div>
                       </div>
                     ))}
@@ -899,56 +1035,7 @@ const SuperadminPage = () => {
           </section>
 
           <section className="flex-1 w-full space-y-6">
-            {/* MODOS OPERACIONAIS */}
-            <Card className="border border-primary-soft/70 bg-card/95 shadow-strong">
-              <CardHeader>
-                <CardTitle className="text-base sm:text-lg flex items-center gap-2">
-                  <ShieldAlert className="h-4 w-4 text-primary" />
-                  Modos Operacionais
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                  <Button
-                    variant={currentMode === "normal" ? "default" : "outline"}
-                    className={cn("h-16 flex-col gap-1", currentMode === "normal" && "border-2 border-primary")}
-                    onClick={() => handleModeChange("normal")}
-                    disabled={isChangingMode}
-                  >
-                    <span className="font-bold">Normal</span>
-                  </Button>
-                  <Button
-                    variant={currentMode === "maintenance" ? "default" : "outline"}
-                    className={cn("h-16 flex-col gap-1", currentMode === "maintenance" && "bg-amber-500 hover:bg-amber-600 text-white")}
-                    onClick={() => handleModeChange("maintenance")}
-                    disabled={isChangingMode}
-                  >
-                    <span className="font-bold">Manutenção</span>
-                  </Button>
-                  <Button
-                    variant={currentMode === "emergency" ? "default" : "outline"}
-                    className={cn("h-16 flex-col gap-1", currentMode === "emergency" && "bg-red-600 hover:bg-red-700 text-white")}
-                    onClick={() => handleModeChange("emergency")}
-                    disabled={isChangingMode}
-                  >
-                    <span className="font-bold">Emergência</span>
-                  </Button>
-                  <Button
-                    variant={currentMode === "readonly" ? "default" : "outline"}
-                    className={cn("h-16 flex-col gap-1", currentMode === "readonly" && "bg-blue-600 hover:bg-blue-700 text-white")}
-                    onClick={() => handleModeChange("readonly")}
-                    disabled={isChangingMode}
-                  >
-                    <span className="font-bold">Leitura</span>
-                  </Button>
-                </div>
-                <div className="bg-muted/50 p-3 rounded-lg border text-xs text-muted-foreground space-y-1">
-                  <p>● <b>Normal:</b> Acesso total.</p>
-                  <p>● <b>Manutenção:</b> Apenas Admins.</p>
-                  <p>● <b>Emergência:</b> Apenas SuperAdmin.</p>
-                </div>
-              </CardContent>
-            </Card>
+
 
             {/* NOVO CLIENTE / EDITAR */}
             <Card className="border border-primary-soft/70 bg-card/95 shadow-strong">
@@ -993,15 +1080,28 @@ const SuperadminPage = () => {
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <div className="grid grid-cols-2 gap-3">
                     <div className="space-y-1.5">
-                      <Label>Nome da Instância (Evolution)</Label>
-                      <Input name="evolution_instance" value={formValues.evolution_instance} onChange={handleChange} />
+                      <Label>Instância Evolution (Principal)</Label>
+                      <Input name="evolution_instance" value={formValues.evolution_instance} onChange={handleChange} placeholder="nome_da_instancia" />
                     </div>
                     <div className="space-y-1.5">
-                      <Label>API Key</Label>
-                      <Input name="evolution_apikey" type="password" value={formValues.evolution_apikey} onChange={handleChange} />
+                      <Label>API Key (Evolution)</Label>
+                      <Input name="evolution_apikey" value={formValues.evolution_apikey} onChange={handleChange} placeholder="Global ou Específica" />
                     </div>
+                  </div>
+
+                  <div className="flex items-center gap-3 border rounded p-3">
+                    <Label className="w-1/3">Max. Instâncias</Label>
+                    <Input
+                      type="number"
+                      name="max_instances"
+                      value={formValues.max_instances}
+                      onChange={handleChange}
+                      className="w-20"
+                      min="1"
+                    />
+                    <p className="text-xs text-muted-foreground flex-1">Quantidade de slots de conexão disponíveis.</p>
                   </div>
 
                   <Separator className="my-2" />
@@ -1041,10 +1141,6 @@ const SuperadminPage = () => {
                       <Label>Vencimento</Label>
                       <Input type="date" value={formValues.due_date} onChange={(e) => setFormValues(prev => ({ ...prev, due_date: e.target.value }))} />
                     </div>
-                    <div className="space-y-1.5">
-                      <Label>Máximo de Instâncias</Label>
-                      <Input type="number" min="1" value={formValues.max_instances} onChange={(e) => setFormValues(prev => ({ ...prev, max_instances: e.target.value }))} />
-                    </div>
                   </div>
 
                   <div className="space-y-1.5">
@@ -1071,7 +1167,7 @@ const SuperadminPage = () => {
           </section>
         </div>
       </div>
-    </div>
+    </div >
   );
 };
 export default SuperadminPage;

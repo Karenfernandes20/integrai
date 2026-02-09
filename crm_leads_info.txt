@@ -1,0 +1,8 @@
+COLUMNS: id, name, phone, email, value, stage_id, description, origin, created_at, updated_at, company_id, instance_id, insurance_plan_id, insurance_card_number, insurance_validity, insurance_coverage_type
+CONSTRAINTS:
+crm_leads_company_id_fkey: FOREIGN KEY (company_id) REFERENCES companies(id)
+crm_leads_instance_id_fkey: FOREIGN KEY (instance_id) REFERENCES company_instances(id) ON DELETE SET NULL
+crm_leads_insurance_plan_id_fkey: FOREIGN KEY (insurance_plan_id) REFERENCES crm_insurance_plans(id) ON DELETE SET NULL
+crm_leads_phone_company_unique: UNIQUE (phone, company_id)
+crm_leads_pkey: PRIMARY KEY (id)
+crm_leads_stage_id_fkey: FOREIGN KEY (stage_id) REFERENCES crm_stages(id)

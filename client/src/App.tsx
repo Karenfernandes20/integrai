@@ -80,8 +80,12 @@ import TasksPage from "./pages/Tasks";
 import LogsPage from "./pages/Logs";
 import AlertsPage from "./pages/Alerts";
 import HealthPage from "./pages/Health";
+import ChatbotPage from "./pages/Chatbot";
 import IAPage from "./pages/IA";
 import AuditoriaPage from "./pages/Auditoria";
+import ProfessionalsPage from "./pages/Professionals";
+import InsurancePlansPage from "./pages/InsurancePlans";
+import ClinicalBIPage from "./pages/ClinicalBI";
 
 
 import TemplatesPage from "./pages/Templates";
@@ -106,6 +110,9 @@ import VendasLojaPage from "./pages/loja/Vendas";
 import EstoquePage from "./pages/loja/Estoque";
 import FornecedoresPage from "./pages/loja/Fornecedores";
 import MetasPage from "./pages/loja/Metas";
+
+// Clinica Pages
+import ProntuarioPage from "./pages/Prontuario";
 
 
 import { AuthProvider } from "./contexts/AuthContext";
@@ -157,12 +164,19 @@ const App = () => (
                   <Route path="financeiro" element={<FinanceiroPage />} />
                   <Route path="usuarios" element={<UsuariosPage />} />
                   <Route path="cidades" element={<CidadesPage />} />
+                  <Route path="estoque" element={<EstoquePage />} />
                   <Route path="qr-code" element={<QrCodePage />} />
+                  <Route path="chatbot" element={<ChatbotPage />} />
+                  <Route path="ia" element={<ChatbotPage />} />
                   <Route path="configuracoes" element={<ConfiguracoesPage />} />
                   <Route path="contatos" element={<ContatosPage />} />
                   <Route path="follow-up" element={<FollowUpPage />} />
                   <Route path="faq" element={<FaqPage />} />
                   <Route path="tags" element={<TagsPage />} />
+                  <Route path="profissionais" element={<ProfessionalsPage />} />
+                  <Route path="convenios" element={<InsurancePlansPage />} />
+                  <Route path="bi-clinico" element={<ClinicalBIPage />} />
+                  <Route path="prontuario" element={<ProntuarioPage />} />
 
                   {/* Lavajato Specific Routes */}
                   <Route element={<RouteGuard requiredProfile="LAVAJATO" />}>

@@ -1,3 +1,4 @@
+import React, { useState, useEffect, useRef, useMemo, useLayoutEffect, Fragment } from "react";
 import {
   MessageCircleMore,
   Phone,
@@ -39,10 +40,25 @@ import {
   ArrowLeft,
   Bot,
   Link2,
+  Sparkles,
+  Zap,
+  LayoutGrid,
+  CheckSquare,
+  Users,
+  Clock,
+  Filter,
+  UserCircle,
+  CornerUpLeft,
+  Heart,
+  MoreHorizontal,
+  Lock,
+  Calendar,
+  Stethoscope,
 } from "lucide-react";
 import RelationshipManager from "../components/RelationshipManager";
 import { Badge } from "../components/ui/badge";
 import { FollowUpModal } from "../components/follow-up/FollowUpModal";
+import { AppointmentModal } from "../components/agenda/AppointmentModal";
 import { toast } from "sonner";
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
 import { Input } from "../components/ui/input";
@@ -50,23 +66,30 @@ import { Button } from "../components/ui/button";
 import { ScrollArea } from "../components/ui/scroll-area";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "../components/ui/tabs";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../components/ui/dialog";
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from "../components/ui/sheet";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
+  DropdownMenuSeparator,
 } from "../components/ui/dropdown-menu";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "../components/ui/tooltip";
 import { io } from "socket.io-client";
-import { useState, useEffect, useRef, useMemo, useLayoutEffect, Fragment } from "react";
 import { TagManager } from "../components/TagManager";
 import { ContactDetailsPanel } from "../components/ContactDetailsPanel";
 import type { FormEvent } from "react";
+import { format } from "date-fns";
+import { ptBR } from "date-fns/locale";
 import { cn } from "../lib/utils";
 import { Avatar, AvatarFallback, AvatarImage } from "../components/ui/avatar";
 import { useAuth } from "../contexts/AuthContext";
 import { CallModal } from "../components/CallModal";
-
-
 
 interface Conversation {
   id: number | string;
@@ -77,40 +100,48 @@ interface Conversation {
   unread_count?: number;
   profile_pic_url?: string;
   status?: 'PENDING' | 'OPEN' | 'CLOSED';
-  user_id?: number; // ID do atendente responsável
+  user_id?: number;
   started_at?: string;
   closed_at?: string;
   is_group?: boolean;
   group_name?: string;
   company_name?: string;
-  // New fields for name resolution
   contact_push_name?: string;
   last_sender_name?: string;
   last_message_source?: string;
   instance?: string;
   instance_friendly_name?: string;
   tags?: { id: number; name: string; color: string }[];
+  user_name?: string;
 }
 
 interface Message {
-  id: number | string;
-  direction: "inbound" | "outbound";
-  content: string;
-  sent_at: string;
+  id: string | number;
+  body?: string;
+  content?: string;
+  direction: 'inbound' | 'outbound';
+  type?: string;
   status?: string;
-  external_id?: string;
-  message_type?: string;
+  fromMe?: boolean;
+  timestamp?: number;
+  sent_at?: string;
   media_url?: string;
-  sender_jid?: string;
-  sender_name?: string;
-  agent_name?: string;
-  user_id?: number | string;
-  remoteJid?: string;
-  message_origin?: string;
-  user_name?: string;
-  saved_name?: string;
+  media_type?: string;
+  reply_to?: string;
+  reply_to_content?: string;
   instance_friendly_name?: string;
   reactions?: { emoji: string; senderId: string; fromMe: boolean; timestamp: number }[];
+  external_id?: string;
+  message_type?: string;
+  user_id?: number | string;
+  agent_name?: string;
+  sender_jid?: string;
+  sender_name?: string;
+  user_name?: string;
+  remoteJid?: string;
+  message_origin?: string;
+  saved_name?: string;
+  t?: number;
 }
 
 interface Contact {
@@ -261,7 +292,8 @@ const AtendimentoPage = () => {
   // Contact Info Panel State
   const [isContactInfoOpen, setIsContactInfoOpen] = useState(false);
 
-  // New states for contact import
+  const [messageInput, setMessageInput] = useState("");
+  const [replyingTo, setReplyingTo] = useState<Message | null>(null);
   const [importedContacts, setImportedContacts] = useState<Contact[]>([]);
   const [isLoadingContacts, setIsLoadingContacts] = useState(false);
   const [contactSearchTerm, setContactSearchTerm] = useState("");
@@ -326,6 +358,8 @@ const AtendimentoPage = () => {
   const [apiError, setApiError] = useState<string | null>(null);
   const [isFollowUpModalOpen, setIsFollowUpModalOpen] = useState(false);
   const [followUpInitialData, setFollowUpInitialData] = useState<any>(null);
+  const [isAppointmentModalOpen, setIsAppointmentModalOpen] = useState(false);
+  const [appointmentInitialData, setAppointmentInitialData] = useState<any>(null);
 
   // SuperAdmin Filters
   const [availableCompanies, setAvailableCompanies] = useState<any[]>([]);
@@ -340,6 +374,7 @@ const AtendimentoPage = () => {
     return saved === 'true';
   });
   const [isRelationshipModalOpen, setIsRelationshipModalOpen] = useState(false);
+  const [isNewContactModalOpen, setIsNewContactModalOpen] = useState(false);
 
   const volumeRef = useRef(notificationVolume);
   const mutedRef = useRef(isNotificationMuted);
@@ -362,9 +397,6 @@ const AtendimentoPage = () => {
   const [openPage, setOpenPage] = useState(1);
   const [closedPage, setClosedPage] = useState(1);
 
-  // Reply State
-  const [replyingTo, setReplyingTo] = useState<Message | null>(null);
-
   // Image Zoom State
   const [viewingImage, setViewingImage] = useState<string | null>(null);
 
@@ -373,6 +405,11 @@ const AtendimentoPage = () => {
 
   // Delete Dialog State
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+
+  // Agenda List State
+  const [isAgendaListOpen, setIsAgendaListOpen] = useState(false);
+  const [contactAgenda, setContactAgenda] = useState<any[]>([]);
+  const [isLoadingAgenda, setIsLoadingAgenda] = useState(false);
   const [messageToDelete, setMessageToDelete] = useState<Message | null>(null);
   const [showNewMessageBanner, setShowNewMessageBanner] = useState(false);
 
@@ -1679,9 +1716,10 @@ const AtendimentoPage = () => {
     }
   };
 
-  const handleSendMessage = async (e: FormEvent) => {
-    e.preventDefault();
-    if (!newMessage.trim() || !selectedConversation) return;
+  const handleSendMessage = async (e?: FormEvent | React.MouseEvent) => {
+    e?.preventDefault();
+    const contentToSend = messageInput.trim();
+    if (!contentToSend || !selectedConversation) return;
 
     console.log("Tentando enviar mensagem...");
 
@@ -1697,8 +1735,8 @@ const AtendimentoPage = () => {
       return;
     }
 
-    const messageContent = newMessage; // Capture current state
-    setNewMessage(""); // Clear input IMMEDIATELY for instant feedback
+    const messageContent = contentToSend;
+    setMessageInput("");
 
     // 1. Validation (Strict)
     if (!messageContent || !messageContent.trim()) {
@@ -2053,7 +2091,7 @@ const AtendimentoPage = () => {
   };
 
   const onEmojiClick = (emojiData: EmojiClickData) => {
-    setNewMessage((prev) => prev + emojiData.emoji);
+    setMessageInput((prev) => prev + emojiData.emoji);
   };
 
   const handleAttachmentClick = () => {
@@ -2206,9 +2244,15 @@ const AtendimentoPage = () => {
 
   const handleReturnToPending = async (conversation?: Conversation) => {
     const conv = conversation || selectedConversation;
-    if (!conv) return;
-    if (!confirm("Deseja devolver este atendimento para a fila de pendentes?")) return;
+    if (!conv) {
+      toast.error("Nenhuma conversa selecionada");
+      return;
+    }
 
+    // We'll stick to browser confirm for now but with better logging
+    if (!window.confirm("Deseja devolver este atendimento para a fila de pendentes?")) return;
+
+    const toastId = toast.loading("Devolvendo para a fila...");
     try {
       const res = await fetch(`/api/crm/conversations/${conv.id}/pending`, {
         method: "POST",
@@ -2216,18 +2260,19 @@ const AtendimentoPage = () => {
       });
       if (res.ok) {
         setConversations(prev => prev.map(c =>
-          c.id === conv.id ? { ...c, status: 'PENDING' as const, user_id: undefined } : c
+          String(c.id) === String(conv.id) ? { ...c, status: 'PENDING' as const, user_id: null as any } : c
         ));
-        if (selectedConversation?.id === conv.id) {
+        if (selectedConversation && String(selectedConversation.id) === String(conv.id)) {
           setSelectedConversation(null);
         }
+        toast.success("Atendimento devolvido com sucesso", { id: toastId });
       } else {
         const err = await res.json();
-        alert(err.error || "Erro ao devolver para pendentes");
+        toast.error(err.error || "Erro ao devolver atendimento", { id: toastId });
       }
     } catch (e) {
       console.error(e);
-      alert("Erro de conexão.");
+      toast.error("Erro de conexão ao servidor", { id: toastId });
     }
   };
 
@@ -2275,9 +2320,13 @@ const AtendimentoPage = () => {
 
   const handleCloseAtendimento = async (conversation?: Conversation) => {
     const conv = conversation || selectedConversation;
-    if (!conv) return;
-    if (!confirm("Deseja realmente encerrar este atendimento?")) return;
+    if (!conv) {
+      toast.error("Nenhuma conversa selecionada");
+      return;
+    }
+    if (!window.confirm("Deseja realmente encerrar este atendimento?")) return;
 
+    const toastId = toast.loading("Encerrando atendimento...");
     try {
       const res = await fetch(`/api/crm/conversations/${conv.id}/close`, {
         method: "POST",
@@ -2285,25 +2334,31 @@ const AtendimentoPage = () => {
       });
       if (res.ok) {
         setConversations(prev => prev.map(c =>
-          c.id === conv.id ? { ...c, status: 'CLOSED' as const } : c
+          String(c.id) === String(conv.id) ? { ...c, status: 'CLOSED' as const } : c
         ));
-        if (selectedConversation?.id === conv.id) {
+        if (selectedConversation && String(selectedConversation.id) === String(conv.id)) {
           setSelectedConversation(prev => prev ? { ...prev, status: 'CLOSED' as const } : null);
         }
+        toast.success("Atendimento encerrado com sucesso", { id: toastId });
       } else {
         const err = await res.json();
-        alert(err.error || "Erro ao encerrar atendimento");
+        toast.error(err.error || "Erro ao encerrar atendimento", { id: toastId });
       }
     } catch (e) {
       console.error(e);
+      toast.error("Erro de conexão ao servidor", { id: toastId });
     }
   };
 
   const handleReopenAtendimento = async (conversation?: Conversation) => {
     const conv = conversation || selectedConversation;
-    if (!conv) return;
-    if (!confirm("Deseja realmente reabrir este atendimento?")) return;
+    if (!conv) {
+      toast.error("Nenhuma conversa selecionada");
+      return;
+    }
+    if (!window.confirm("Deseja realmente reabrir este atendimento?")) return;
 
+    const toastId = toast.loading("Reabrindo atendimento...");
     try {
       const res = await fetch(`/api/crm/conversations/${conv.id}/start`, {
         method: "POST",
@@ -2312,19 +2367,20 @@ const AtendimentoPage = () => {
       if (res.ok) {
         const userId = user?.id ? Number(user.id) : undefined;
         setConversations(prev => prev.map(c =>
-          c.id === conv.id ? { ...c, status: 'OPEN' as const, user_id: userId } : c
+          String(c.id) === String(conv.id) ? { ...c, status: 'OPEN' as const, user_id: userId } : c
         ));
-        if (selectedConversation?.id === conv.id) {
+        if (selectedConversation && String(selectedConversation.id) === String(conv.id)) {
           setSelectedConversation(prev => prev ? { ...prev, status: 'OPEN' as const, user_id: userId } : null);
         }
         setViewMode('OPEN');
+        toast.success("Atendimento reaberto com sucesso", { id: toastId });
       } else {
         const err = await res.json();
-        alert(err.error || "Erro ao reabrir atendimento");
+        toast.error(err.error || "Erro ao reabrir atendimento", { id: toastId });
       }
     } catch (e) {
       console.error(e);
-      alert("Erro ao conectar.");
+      toast.error("Erro de conexão ao servidor", { id: toastId });
     }
   };
 
@@ -2342,12 +2398,86 @@ const AtendimentoPage = () => {
   // Note: if user_id is null/undefined on an OPEN chat, we allow messaging as it's the 'unclaimed' state.
 
 
+  const fetchContactAgenda = async (phone: string) => {
+    if (!phone) return;
+    setIsLoadingAgenda(true);
+    try {
+      const res = await fetch(`/api/crm/follow-ups?phone=${encodeURIComponent(phone)}`, {
+        headers: { "Authorization": `Bearer ${token}` }
+      });
+      if (res.ok) {
+        setContactAgenda(await res.json());
+      }
+    } catch (e) {
+      console.error("Erro ao buscar agenda:", e);
+    } finally {
+      setIsLoadingAgenda(false);
+    }
+  };
+
+
 
   // Helper para resolver o nome do contato baseado no banco de dados sincronizado (Declaração movida para o topo)
 
 
+
+  const handleCreateContact = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const toastId = toast.loading("Salvando contato...");
+
+    if (!newContactName.trim() || !newContactPhone.trim()) {
+      toast.error("Nome e telefone são obrigatórios.", { id: toastId });
+      return;
+    }
+
+    const rawPhone = newContactPhone.replace(/\D/g, "");
+    if (rawPhone.length < 10) {
+      toast.error("Telefone inválido.", { id: toastId });
+      return;
+    }
+
+    try {
+      const res = await fetch('/api/evolution/contacts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify({ name: newContactName, phone: rawPhone, companyId: user?.company_id })
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        toast.success("Contato salvo!", { id: toastId });
+
+        const newContact = {
+          id: data.id || Date.now(),
+          name: newContactName,
+          phone: rawPhone,
+          profile_pic_url: data.profile_pic_url
+        };
+
+        setContacts(prev => [...prev, newContact]);
+        setIsNewContactModalOpen(false);
+        setNewContactName("");
+        setNewContactPhone("");
+
+        // Start conversation immediately
+        handleStartConversationFromContact(newContact);
+
+      } else {
+        const err = await res.json();
+        toast.error(err.error || "Erro ao criar contato", { id: toastId });
+      }
+    } catch (e) {
+      toast.error("Erro de conexão", { id: toastId });
+    }
+  };
+
   const renderConversationCard = (conv: Conversation) => {
     const isSelected = selectedConversation?.id === conv.id;
+    const statusColor =
+      conv.status === 'OPEN' && conv.user_id ? "bg-blue-500" :
+        conv.status === 'CLOSED' ? "bg-slate-500" :
+          "bg-emerald-500"; // Pending
+
     return (
       <div
         key={conv.id}
@@ -2356,726 +2486,683 @@ const AtendimentoPage = () => {
           setConversations(prev => prev.map(c => c.id === conv.id ? { ...c, unread_count: 0 } : c));
         }}
         className={cn(
-          "flex flex-col px-4 py-3 cursor-pointer transition-colors border-b border-[#222E35] min-h-[72px]",
-          isSelected ? "bg-[#2A3942]" : "bg-[#111B21] hover:bg-[#202C33]"
+          "group relative flex flex-col p-3 cursor-pointer transition-all duration-200 border-l-[3px]",
+          isSelected
+            ? `bg-slate-800/80 border-${conv.status === 'OPEN' ? 'blue' : 'emerald'}-500 shadow-md`
+            : "bg-transparent border-transparent hover:bg-slate-800/40 hover:border-slate-700"
         )}
       >
-        <div className="flex items-center w-full">
-          <div className="relative shrink-0 mr-3">
-            <Avatar className="h-12 w-12 rounded-full border-none">
+        <div className="flex items-start gap-3 w-full">
+          {/* Avatar Area */}
+          <div className="relative shrink-0">
+            <Avatar className="h-11 w-11 rounded-xl shadow-sm border border-slate-700/50">
               <AvatarImage src={conv.profile_pic_url || `https://api.dicebear.com/7.x/initials/svg?seed=${getDisplayName(conv)}`} />
-              <AvatarFallback className="bg-[#6a7175] text-white font-bold">
+              <AvatarFallback className="bg-slate-700 text-slate-300 font-bold rounded-xl">
                 {(getDisplayName(conv)?.[0] || "?").toUpperCase()}
               </AvatarFallback>
             </Avatar>
+            {/* Online/Status Badge */}
+            {conv.status === 'OPEN' && (
+              <span className="absolute -bottom-1 -right-1 w-3.5 h-3.5 bg-blue-500 border-2 border-slate-900 rounded-full" title="Em Atendimento"></span>
+            )}
+            {conv.unread_count && conv.unread_count > 0 ? (
+              <span className="absolute -top-1.5 -right-1.5 min-w-[18px] h-[18px] bg-emerald-500 text-[#0F172A] text-[10px] font-bold flex items-center justify-center rounded-full px-1 shadow-sm border border-[#0F172A]">
+                {conv.unread_count}
+              </span>
+            ) : null}
           </div>
 
-          <div className="flex-1 min-w-0 flex flex-col justify-center">
-            <div className="flex justify-between items-baseline mb-0.5">
-              <div className="flex items-center gap-1.5 min-w-0 pr-2 max-w-[75%]">
-                <span className={cn(
-                  "font-normal text-[16px] truncate leading-tight",
-                  isSelected ? "text-[#E9EDEF]" : "text-[#E9EDEF]"
-                )}>
-                  {getDisplayName(conv)}
-                </span>
-
-                {/* Instance Tags */}
-                {conv.instance_friendly_name && (
-                  <span className="px-1 py-0.5 rounded-[3px] text-[8px] font-bold bg-[#202C33] text-[#8696A0] uppercase tracking-tighter border border-[#222E35] shrink-0">
-                    {conv.instance_friendly_name}
-                  </span>
-                )}
-              </div>
+          {/* Content Area */}
+          <div className="flex-1 min-w-0 flex flex-col gap-0.5">
+            <div className="flex justify-between items-center">
+              <h3 className={cn(
+                "text-[14.5px] font-semibold truncate leading-tight tracking-tight",
+                isSelected ? "text-slate-100" : "text-slate-300 group-hover:text-slate-200"
+              )}>
+                {getDisplayName(conv)}
+              </h3>
               <span className={cn(
-                "text-[12px] shrink-0 font-normal",
-                conv.unread_count && conv.unread_count > 0 ? "text-[#00a884]" : "text-[#8696A0]"
+                "text-[10px] tabular-nums shrink-0 font-medium opacity-60",
+                isSelected ? "text-slate-300" : "text-slate-500"
               )}>
                 {conv.last_message_at ? formatListDate(conv.last_message_at) : ""}
               </span>
             </div>
 
-            {/* Tags Row */}
-            <div onClick={(e) => e.stopPropagation()} className="mb-0.5">
-              <TagManager
-                entityId={conv.id}
-                entityType="conversation"
-                maxVisible={4}
-                variant="list"
-                readOnly={true}
-                tags={conv.tags}
-              />
+            {/* Tags & Instance */}
+            <div className="flex items-center gap-1.5 overflow-hidden my-0.5">
+              {conv.instance_friendly_name && (
+                <span className="px-1.5 py-0.5 rounded-md text-[9px] font-bold bg-slate-800 text-slate-400 uppercase tracking-wider border border-slate-700/50">
+                  {conv.instance_friendly_name}
+                </span>
+              )}
+              {/* Simplified Tags for Card */}
+              {conv.tags && conv.tags.length > 0 && (
+                <span className="flex gap-1">
+                  {conv.tags.slice(0, 2).map(tag => (
+                    <span key={tag.id} className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: tag.color }} title={tag.name} />
+                  ))}
+                </span>
+              )}
             </div>
 
-            <div className="flex justify-between items-center gap-2">
-              <div className="flex flex-col flex-1 min-w-0 gap-1">
-                <div className="flex items-center gap-1">
-                  {isSelected && conv.status === 'OPEN' && conv.user_id && (
-                    <div className="shrink-0 h-1.5 w-1.5 rounded-full bg-[#25D366]" title="Em atendimento"></div>
-                  )}
-                  <p className="text-[14px] leading-[18px] text-[#8696A0] truncate max-w-full">
-                    {conv.last_message || <span className="italic opacity-60 italic">Iniciar conversa...</span>}
-                  </p>
-                </div>
-              </div>
+            <div className="flex justify-between items-center mt-0.5">
+              <p className={cn(
+                "text-[13px] leading-snug truncate max-w-[90%]",
+                isSelected ? "text-slate-400" : "text-slate-500 group-hover:text-slate-400"
+              )}>
+                {/* Sender Prefix */}
+                {conv.is_group && conv.last_sender_name && <span className="text-slate-300 mr-1">{conv.last_sender_name}:</span>}
+                {conv.last_message || <span className="italic opacity-50 flex items-center gap-1"><Sparkles className="w-3 h-3" /> Iniciar conversa...</span>}
+              </p>
 
-              {conv.unread_count && conv.unread_count > 0 ? (
-                <div className="shrink-0 w-5 h-5 flex items-center justify-center rounded-full bg-[#25D366] ml-2">
-                  <span className="text-[12px] font-bold text-[#111B21]">
-                    {conv.unread_count}
-                  </span>
-                </div>
-              ) : null}
+              {/* Quick Action Trigger */}
+              <div className={cn(
+                "opacity-0 transition-opacity group-hover:opacity-100",
+                isSelected ? "opacity-100" : ""
+              )}>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-7 w-7 text-slate-500 hover:text-slate-100 hover:bg-slate-800 rounded-lg"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <MoreHorizontal className="h-4 w-4" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="bg-[#1e293b] border-slate-700 text-slate-200 w-52 shadow-2xl z-[100]">
+                    <DropdownMenuItem
+                      onClick={(e) => { e.stopPropagation(); setSelectedConversation(conv); handleRenameContact(); }}
+                      className="gap-2 focus:bg-slate-800 focus:text-slate-100 cursor-pointer"
+                    >
+                      <Pencil className="h-3.5 w-3.5 text-slate-400" /> Renomear Contato
+                    </DropdownMenuItem>
+
+                    {(!conv.status || conv.status === 'PENDING') && (
+                      <DropdownMenuItem
+                        onClick={(e) => { e.stopPropagation(); handleStartAtendimento(conv); }}
+                        className="gap-2 focus:bg-emerald-500/10 focus:text-emerald-400 cursor-pointer text-emerald-500"
+                      >
+                        <Play className="h-3.5 w-3.5" /> Iniciar Atendimento
+                      </DropdownMenuItem>
+                    )}
+
+                    {conv.status === 'OPEN' && (
+                      <>
+                        <DropdownMenuItem
+                          onClick={(e) => { e.stopPropagation(); handleReturnToPending(conv); }}
+                          className="gap-2 focus:bg-amber-500/10 focus:text-amber-400 cursor-pointer text-amber-500"
+                        >
+                          <ArrowLeft className="h-3.5 w-3.5" /> Devolver para Fila
+                        </DropdownMenuItem>
+                        <DropdownMenuItem
+                          onClick={(e) => { e.stopPropagation(); handleCloseAtendimento(conv); }}
+                          className="gap-2 focus:bg-red-500/10 focus:text-red-400 cursor-pointer text-red-500"
+                        >
+                          <XCircle className="h-3.5 w-3.5" /> Encerrar Atendimento
+                        </DropdownMenuItem>
+                      </>
+                    )}
+
+                    {conv.status === 'CLOSED' && (
+                      <DropdownMenuItem
+                        onClick={(e) => { e.stopPropagation(); handleReopenAtendimento(conv); }}
+                        className="gap-2 focus:bg-emerald-500/10 focus:text-emerald-400 cursor-pointer text-emerald-500"
+                      >
+                        <RotateCcw className="h-3.5 w-3.5" /> Reabrir Conversa
+                      </DropdownMenuItem>
+                    )}
+
+
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </div>
             </div>
           </div>
         </div>
 
-        {/* Action Buttons */}
-        <div className="flex gap-2 mt-2 w-full justify-end">
-          {(!conv.status || conv.status === 'PENDING') && (
-            <>
-              <Button
-                size="icon"
-                variant="outline"
-                className="h-8 w-8 text-[#00a884] border-[#00a884] hover:bg-[#00a884] hover:text-[#111B21] rounded-full"
-                title="Iniciar Conversa"
-                onClick={(e) => {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  handleStartAtendimento(conv);
-                }}
-              >
-                <Play className="h-4 w-4 fill-current" />
-              </Button>
-              <Button
-                size="icon"
-                variant="outline"
-                className="h-8 w-8 text-red-500 border-red-500 hover:bg-red-500 hover:text-white rounded-full"
-                title="Fechar Conversa"
-                onClick={(e) => {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  handleCloseAtendimento(conv);
-                }}
-              >
-                <X className="h-4 w-4" />
-              </Button>
-            </>
-          )}
+        {/* Hover Actions Overlay (Bottom) */}
+        {isSelected && (
+          <div className="flex gap-2 mt-3 pt-2 border-t border-slate-700/50 justify-between items-center animate-in slide-in-from-top-1">
+            <div className="flex gap-1">
+              {(!conv.status || conv.status === 'PENDING') && (
+                <Button size="sm" variant="ghost" className="h-7 px-2 text-emerald-400 hover:text-emerald-300 hover:bg-emerald-500/10 text-[10px] uppercase font-bold tracking-wide" onClick={(e) => { e.stopPropagation(); handleStartAtendimento(conv); }}>
+                  <Play className="h-3 w-3 mr-1.5 fill-current" /> Atender
+                </Button>
+              )}
+              {conv.status === 'OPEN' && (
+                <Button size="sm" variant="ghost" className="h-7 px-2 text-amber-400 hover:text-amber-300 hover:bg-amber-500/10 text-[10px] uppercase font-bold tracking-wide" onClick={(e) => { e.stopPropagation(); handleReturnToPending(conv); }}>
+                  <ArrowLeft className="h-3 w-3 mr-1.5" /> Devolver
+                </Button>
+              )}
+            </div>
 
-          {conv.status === 'OPEN' && (
-            <>
-              <Button
-                size="icon"
-                variant="outline"
-                className="h-8 w-8 text-orange-500 border-orange-500 hover:bg-orange-500 hover:text-white rounded-full"
-                title="Voltar para Pendentes"
-                onClick={(e) => {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  handleReturnToPending(conv);
-                }}
-              >
-                <ArrowLeft className="h-4 w-4" />
+            {conv.status !== 'CLOSED' ? (
+              <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-slate-500 hover:text-red-400 rounded-full" onClick={(e) => { e.stopPropagation(); handleCloseAtendimento(conv); }} title="Encerrar">
+                <X className="h-3.5 w-3.5" />
               </Button>
-              <Button
-                size="icon"
-                variant="outline"
-                className="h-8 w-8 text-red-500 border-red-500 hover:bg-red-500 hover:text-white rounded-full"
-                title="Encerrar Conversa"
-                onClick={(e) => {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  handleCloseAtendimento(conv);
-                }}
-              >
-                <X className="h-4 w-4" />
+            ) : (
+              <Button size="sm" variant="ghost" className="h-7 w-full text-slate-400 hover:text-slate-200 bg-slate-800 hover:bg-slate-700 text-[10px]" onClick={(e) => { e.stopPropagation(); handleReopenAtendimento(conv); }}>
+                <RotateCcw className="h-3 w-3 mr-1.5" /> Reabrir
               </Button>
-            </>
-          )}
-
-          {conv.status === 'CLOSED' && (
-            <Button
-              size="icon"
-              variant="outline"
-              className="h-8 w-8 text-zinc-400 border-zinc-600 hover:bg-zinc-700 hover:text-zinc-200 rounded-full"
-              title="Reabrir Conversa"
-              onClick={(e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                handleReopenAtendimento(conv);
-              }}
-            >
-              <RotateCcw className="h-4 w-4" />
-            </Button>
-          )}
-        </div>
+            )}
+          </div>
+        )}
       </div>
     );
   };
 
   return (
-    <div className="flex h-screen w-full overflow-hidden bg-[#111B21]" onClick={() => setShowEmojiPicker(false)}>
-      {/* Sidebar - Lista de Conversas / Contatos */}
+    <div className="flex h-screen w-full overflow-hidden bg-[#0F172A] font-sans selection:bg-blue-500/30 text-slate-200" onClick={() => setShowEmojiPicker(false)}>
+
+      {/* Sidebar - ELEGANT DARK THEME */}
       <div className={cn(
-        "flex flex-col bg-[#111B21] border-r border-[#222E35] shrink-0 z-20 transition-all",
-        "w-full md:w-[360px]",
+        "flex flex-col bg-[#0F172A] border-r border-slate-800 shrink-0 z-20 transition-all shadow-xl",
+        "w-full md:w-[380px]",
         selectedConversation ? "hidden md:flex" : "flex"
       )}>
-        <Tabs
-          value={activeTab}
-          onValueChange={(value) => setActiveTab(value as "conversas" | "contatos")}
-          className="flex flex-1 flex-col min-h-0"
-        >
-          {/* Header da Sidebar - WhatsApp Style */}
-          <div className="h-[64px] bg-[#202C33] flex items-center justify-between px-4 shrink-0">
-            <div className="flex items-center gap-3">
-              <div className="relative">
-                <Avatar className="h-10 w-10">
-                  <AvatarFallback className="bg-[#6a7175] text-white">EU</AvatarFallback>
-                </Avatar>
-                {/* Connection Status Indicator */}
-                <div
-                  className={cn(
-                    "absolute bottom-0 right-0 w-3 h-3 rounded-full border-2 border-[#111B21] z-10",
-                    whatsappStatus === 'open' ? "bg-[#25D366]" :
-                      whatsappStatus === 'connecting' ? "bg-yellow-500 animate-pulse" : "bg-red-500"
-                  )}
-                  title={whatsappStatus === 'open' ? "Conectado" : whatsappStatus === 'connecting' ? "Conectando..." : "Desconectado"}
-                />
-              </div>
+        {/* HEADER SIDEBAR */}
+        <div className="h-[68px] shrink-0 px-4 flex items-center justify-between border-b border-slate-800 bg-[#0F172A]">
+          <div className="flex items-center gap-3">
+            <div className="relative group cursor-pointer" title={`Status: ${whatsappStatus}`}>
+              <Avatar className="h-10 w-10 ring-2 ring-slate-800 group-hover:ring-slate-700 transition-all">
+                <AvatarFallback className="bg-blue-600 text-white font-bold text-xs">EU</AvatarFallback>
+              </Avatar>
+              <div className={cn(
+                "absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 border-[3px] border-[#0F172A] rounded-full",
+                whatsappStatus === 'open' ? "bg-emerald-500" : whatsappStatus === 'connecting' ? "bg-amber-500 animate-pulse" : "bg-red-500"
+              )} />
             </div>
 
-            <div className="flex items-center gap-2">
-              <Button size="icon" variant="ghost" className="text-[#aebac1] hover:bg-white/10 rounded-full" onClick={syncAllPhotos} title="Sincronizar fotos">
-                <Image className="h-5 w-5" />
-              </Button>
-              <Button
-                size="icon"
-                variant="ghost"
-                className="text-[#aebac1] hover:bg-white/10 rounded-full"
-                onClick={() => {
-                  const newMuted = !isNotificationMuted;
-                  setIsNotificationMuted(newMuted);
-                  localStorage.setItem('notification_muted', String(newMuted));
-                }}
-              >
-                {isNotificationMuted ? <VolumeX className="h-5 w-5 text-red-500" /> : <Volume2 className="h-5 w-5" />}
-              </Button>
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button variant="ghost" size="icon" className="text-[#aebac1] hover:bg-white/10 rounded-full">
-                    <MoreVertical className="h-5 w-5" />
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="bg-[#233138] border-none text-[#E9EDEF]">
-                  <DropdownMenuItem onClick={() => playNotificationSound(false)}>Testar som 🔔</DropdownMenuItem>
-                  {user?.role === 'SUPERADMIN' && (
-                    <DropdownMenuItem onClick={() => setSelectedCompanyFilter(null)}>Todas Empresas</DropdownMenuItem>
-                  )}
-                </DropdownMenuContent>
-              </DropdownMenu>
-            </div>
-          </div>
-
-          {/* Search/Filter Container */}
-          <div className="p-2 border-b border-[#222E35]">
-            <div className="relative group">
-              <div className="absolute left-3 top-[7px] z-10">
-                <Search className="h-4 w-4 text-[#8696A0]" />
-              </div>
-              <Input
-                ref={sidebarSearchInputRef}
-                placeholder="Pesquisar ou começar uma nova conversa"
-                className="pl-12 h-9 bg-[#202C33] border-none rounded-lg text-sm text-[#E9EDEF] placeholder-[#8696A0] focus-visible:ring-0"
-                value={conversationSearchTerm}
-                onChange={(e) => setConversationSearchTerm(e.target.value)}
-              />
-            </div>
-
-            {/* QUICK NAVIGATION TABS */}
-            <div className="flex items-center gap-1 mt-2 w-full">
+            {/* Tabs Switcher */}
+            <div className="flex bg-slate-900 rounded-lg p-1 border border-slate-800">
               <button
-                onClick={() => setViewMode('PENDING')}
-                className={cn(
-                  "flex-1 justify-center text-[12px] px-3 py-1 rounded-full transition-all text-center",
-                  viewMode === 'PENDING' ? "bg-[#00a884] text-[#111B21] font-medium" : "bg-[#202C33] text-[#8696A0] hover:bg-[#2A3942]"
-                )}
+                onClick={() => setActiveTab('conversas')}
+                className={cn("px-3 py-1.5 rounded-md text-xs font-bold transition-all flex items-center gap-2", activeTab === 'conversas' ? "bg-slate-800 text-slate-100 shadow-sm ring-1 ring-slate-700 from-slate-800 to-slate-900 bg-gradient-to-b" : "text-slate-500 hover:text-slate-300")}
               >
-                Pendentes
+                <MessageCircle className="w-3.5 h-3.5" /> Chats
               </button>
               <button
-                onClick={() => setViewMode('OPEN')}
-                className={cn(
-                  "flex-1 justify-center text-[12px] px-3 py-1 rounded-full transition-all text-center",
-                  viewMode === 'OPEN' ? "bg-[#00a884] text-[#111B21] font-medium" : "bg-[#202C33] text-[#8696A0] hover:bg-[#2A3942]"
-                )}
+                onClick={() => setActiveTab('contatos')}
+                className={cn("px-3 py-1.5 rounded-md text-xs font-bold transition-all flex items-center gap-2", activeTab === 'contatos' ? "bg-slate-800 text-slate-100 shadow-sm ring-1 ring-slate-700 bg-gradient-to-b from-slate-800 to-slate-900" : "text-slate-500 hover:text-slate-300")}
               >
-                Abertos
-              </button>
-              <button
-                onClick={() => setViewMode('CLOSED')}
-                className={cn(
-                  "flex-1 justify-center text-[12px] px-3 py-1 rounded-full transition-all text-center",
-                  viewMode === 'CLOSED' ? "bg-[#00a884] text-[#111B21] font-medium" : "bg-[#202C33] text-[#8696A0] hover:bg-[#2A3942]"
-                )}
-              >
-                Fechados
+                <Users className="w-3.5 h-3.5" /> Contatos
               </button>
             </div>
           </div>
 
-          <div className="flex-1 overflow-y-auto custom-scrollbar bg-[#111B21]">
-            {activeTab === 'conversas' && (
-              <div className="flex flex-col h-full">
+          <div className="flex items-center gap-1">
+            <Button size="icon" variant="ghost" className="h-8 w-8 text-slate-500 hover:text-slate-200 hover:bg-slate-800 rounded-full" onClick={() => setIsNotificationMuted(!isNotificationMuted)}>
+              {isNotificationMuted ? <VolumeX className="h-4 w-4 text-red-400" /> : <Volume2 className="h-4 w-4 text-emerald-400" />}
+            </Button>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button size="icon" variant="ghost" className="h-8 w-8 text-slate-500 hover:text-slate-200 hover:bg-slate-800 rounded-full">
+                  <MoreVertical className="h-4 w-4" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="bg-slate-900 border-slate-800 text-slate-200 w-56 shadow-xl">
+                <DropdownMenuItem onClick={syncAllPhotos} className="focus:bg-slate-800 focus:text-slate-100 cursor-pointer">
+                  <RefreshCcw className="mr-2 h-4 w-4" /> Sincronizar Fotos
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => playNotificationSound(false)} className="focus:bg-slate-800 focus:text-slate-100 cursor-pointer">
+                  🔔 Testar Som
+                </DropdownMenuItem>
+                {user?.role === 'SUPERADMIN' && (
+                  <DropdownMenuItem onClick={() => setSelectedCompanyFilter(null)} className="focus:bg-slate-800 focus:text-slate-100 cursor-pointer">
+                    🏢 Todas Empresas
+                  </DropdownMenuItem>
+                )}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
+        </div>
+
+        {/* CONTENT AREA (Search + Lists) */}
+        <div className="flex-1 overflow-hidden flex flex-col bg-[#0F172A]">
+
+          {/* TAB: CONVERSAS */}
+          {activeTab === 'conversas' && (
+            <>
+              <div className="px-3 pt-3 pb-0 space-y-3 bg-[#0F172A] z-10">
+                <div className="relative group">
+                  <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-500 group-focus-within:text-blue-500 transition-colors" />
+                  <Input
+                    ref={sidebarSearchInputRef}
+                    placeholder="Pesquisar conversas..."
+                    className="pl-9 h-10 bg-slate-900 border-slate-800 focus:border-blue-500/50 text-slate-200 placeholder:text-slate-600 rounded-xl transition-all font-medium text-sm shadow-inner"
+                    value={conversationSearchTerm}
+                    onChange={(e) => setConversationSearchTerm(e.target.value)}
+                  />
+                </div>
+
+                {/* Status Filters */}
+                <div className="flex p-1 bg-slate-900 border border-slate-800 rounded-xl gap-1">
+                  {(['PENDING', 'OPEN', 'CLOSED'] as const).map(tab => (
+                    <button
+                      key={tab}
+                      onClick={() => setViewMode(tab)}
+                      className={cn(
+                        "flex-1 py-1.5 text-[10px] font-bold uppercase tracking-wider rounded-lg transition-all",
+                        viewMode === tab ? (
+                          tab === 'PENDING' ? "bg-slate-800 text-emerald-400 shadow-sm ring-1 ring-slate-700" :
+                            tab === 'OPEN' ? "bg-slate-800 text-blue-400 shadow-sm ring-1 ring-slate-700" :
+                              "bg-slate-800 text-slate-300 shadow-sm ring-1 ring-slate-700"
+                        ) : "text-slate-600 hover:text-slate-300 hover:bg-slate-800/50"
+                      )}
+                    >
+                      {tab === 'PENDING' ? 'Pendentes' : tab === 'OPEN' ? 'Abertos' : 'Fechados'}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="flex-1 overflow-y-auto custom-scrollbar pt-2 px-0 pb-20 space-y-0.5">
+
+                {/* Loading State */}
                 {isLoadingConversations && !conversationSearchTerm && (
-                  <div className="flex flex-col items-center justify-center p-8 opacity-60 m-auto">
-                    <Loader2 className="h-8 w-8 animate-spin text-[#008069] mb-2" />
-                    <span className="text-xs text-[#8696A0]">Carregando conversas...</span>
+                  <div className="flex flex-col items-center justify-center p-8 opacity-60 mt-10">
+                    <Loader2 className="h-8 w-8 animate-spin text-blue-500 mb-2" />
+                    <span className="text-xs text-slate-500 font-medium">Sincronizando...</span>
                   </div>
                 )}
 
+                {/* Error State */}
                 {apiError && !isLoadingConversations && (
-                  <div className="flex flex-col items-center justify-center p-6 m-auto text-center">
-                    <div className="bg-red-500/10 p-3 rounded-full mb-2">
-                      <ShieldAlert className="h-6 w-6 text-red-500" />
-                    </div>
-                    <p className="text-sm font-medium text-red-400 mb-1">Erro de Conexão</p>
-                    <p className="text-xs text-[#8696A0] mb-3 max-w-[200px]">{apiError}</p>
-                    <Button variant="outline" size="sm" onClick={() => fetchConversations()} className="text-xs h-7 bg-transparent border-red-500/30 text-red-400 hover:bg-red-500/10">
+                  <div className="flex flex-col items-center justify-center p-6 text-center m-4 bg-red-500/5 rounded-xl border border-red-500/10">
+                    <ShieldAlert className="h-8 w-8 text-red-500 mb-2" />
+                    <p className="text-xs text-red-400 mb-3">{apiError}</p>
+                    <Button variant="outline" size="sm" onClick={() => fetchConversations()} className="h-7 text-xs border-red-500/20 text-red-400 hover:bg-red-500/10 hover:text-red-300">
                       Tentar Novamente
                     </Button>
                   </div>
                 )}
 
+                {/* Global Search Results */}
                 {!isLoadingConversations && !apiError && conversationSearchTerm && conversationSearchTerm.length >= 2 ? (
-                  <div className="flex flex-col flex-1 divide-y divide-zinc-100 dark:divide-zinc-800">
+                  <div className="flex flex-col">
                     {isSearchingGlobal ? (
-                      <div className="flex flex-col items-center justify-center p-12 gap-3">
-                        <Loader2 className="h-8 w-8 animate-spin text-[#008069] opacity-40" />
-                        <span className="text-xs text-muted-foreground animate-pulse">Pesquisando no histórico...</span>
+                      <div className="py-8 flex flex-col items-center">
+                        <Loader2 className="h-6 w-6 animate-spin text-blue-500 mb-2" />
+                        <span className="text-xs text-slate-500">Buscando no histórico...</span>
                       </div>
                     ) : (
                       <>
                         {globalSearchResults.conversations.length > 0 && (
-                          <div className="flex flex-col">
-                            <div className="px-4 py-2 bg-zinc-50 dark:bg-zinc-900/50 text-[11px] font-bold text-[#008069] uppercase tracking-wider sticky top-0 z-10 border-b border-zinc-100 dark:border-zinc-800">
-                              Conversas
-                            </div>
-                            <div className="flex flex-col">
-                              {globalSearchResults.conversations.map(conv => renderConversationCard(conv))}
-                            </div>
+                          <div>
+                            <div className="px-4 py-2 text-[10px] font-bold text-slate-500 uppercase tracking-wider bg-slate-900/50">Conversas Encontradas</div>
+                            {globalSearchResults.conversations.map(conv => renderConversationCard(conv))}
                           </div>
                         )}
 
-                        <div className="flex flex-col mt-2">
-                          <div className="px-4 py-2 bg-zinc-50 dark:bg-zinc-900/50 text-[11px] font-bold text-[#008069] uppercase tracking-wider sticky top-0 z-10 border-b border-zinc-100 dark:border-zinc-800">
-                            Mensagens
-                          </div>
-                          {globalSearchResults.messages.length > 0 ? (
-                            <div className="flex flex-col divide-y divide-zinc-50 dark:divide-zinc-900/30">
-                              {globalSearchResults.messages.map(msg => (
-                                <div
-                                  key={msg.id}
-                                  onClick={() => {
-                                    const conv = conversations.find(c => c.id === msg.conversation_id) || {
-                                      id: msg.conversation_id,
-                                      phone: msg.chat_phone,
-                                      contact_name: msg.contact_name,
-                                      is_group: msg.is_group,
-                                      group_name: msg.group_name,
-                                      profile_pic_url: msg.profile_pic_url // Use message's associated pic if available
-                                    } as Conversation;
-                                    setSelectedConversation(conv);
-                                    setConversationSearchTerm("");
-                                  }}
-                                  className="px-4 py-3 hover:bg-zinc-50 dark:hover:bg-zinc-900 cursor-pointer flex gap-3 transition-colors group"
-                                >
-                                  <Avatar className="h-10 w-10 shrink-0">
-                                    <AvatarImage src={msg.profile_pic_url} />
-                                    <AvatarFallback className="bg-zinc-100 dark:bg-zinc-800 text-[10px]">
-                                      {((msg.contact_name || msg.group_name || "?")[0]).toUpperCase()}
-                                    </AvatarFallback>
-                                  </Avatar>
-                                  <div className="flex flex-col gap-0.5 min-w-0 flex-1">
-                                    <div className="flex justify-between items-center w-full">
-                                      <span className="font-semibold text-sm text-zinc-900 dark:text-zinc-100 truncate flex-1 pr-2">
-                                        {msg.contact_name || msg.group_name || msg.chat_phone}
-                                      </span>
-                                      <div className="flex items-center gap-1.5">
-                                        <span className="text-[10px] text-[#008069] font-bold shrink-0">{formatListDate(msg.sent_at)}</span>
-                                        {msg.instance_friendly_name && (
-                                          <span className="px-1 py-0.5 rounded-[3px] text-[8px] font-bold bg-[#202C33] text-[#8696A0] uppercase tracking-tighter border border-[#222E35] shrink-0">
-                                            {msg.instance_friendly_name}
-                                          </span>
-                                        )}
-                                      </div>
-                                    </div>
-                                    <p className="text-xs text-muted-foreground line-clamp-2 leading-relaxed">
-                                      <HighlightedText text={msg.content} highlight={conversationSearchTerm} />
-                                    </p>
-                                    {(msg.is_group || msg.group_name) && (
-                                      <span className="text-[9px] text-[#008069] font-medium uppercase tracking-tighter mt-0.5">Grupo</span>
-                                    )}
+                        {globalSearchResults.messages.length > 0 && (
+                          <div className="mt-2">
+                            <div className="px-4 py-2 text-[10px] font-bold text-slate-500 uppercase tracking-wider bg-slate-900/50">Mensagens Encontradas</div>
+                            {globalSearchResults.messages.map(msg => (
+                              <div
+                                key={msg.id}
+                                onClick={() => {
+                                  const conv = conversations.find(c => c.id === msg.conversation_id) || {
+                                    id: msg.conversation_id,
+                                    phone: msg.chat_phone,
+                                    contact_name: msg.contact_name,
+                                    is_group: msg.is_group,
+                                    group_name: msg.group_name,
+                                    profile_pic_url: msg.profile_pic_url
+                                  } as Conversation;
+                                  setSelectedConversation(conv);
+                                  setConversationSearchTerm("");
+                                }}
+                                className="px-4 py-3 hover:bg-slate-800/50 cursor-pointer flex gap-3 transition-colors group border-b border-slate-800/50"
+                              >
+                                <Avatar className="h-9 w-9 shrink-0 ring-1 ring-slate-700">
+                                  <AvatarImage src={msg.profile_pic_url} />
+                                  <AvatarFallback className="bg-slate-800 text-[10px] font-bold text-slate-400">
+                                    {((msg.contact_name || msg.group_name || "?")[0]).toUpperCase()}
+                                  </AvatarFallback>
+                                </Avatar>
+                                <div className="flex flex-col gap-0.5 min-w-0 flex-1">
+                                  <div className="flex justify-between items-center w-full">
+                                    <span className="font-semibold text-sm text-slate-200 truncate flex-1 pr-2">
+                                      {msg.contact_name || msg.group_name || msg.chat_phone}
+                                    </span>
+                                    <span className="text-[10px] text-slate-500 font-medium shrink-0">{formatListDate(msg.sent_at)}</span>
                                   </div>
+                                  <p className="text-xs text-slate-400 line-clamp-2 leading-relaxed opacity-80">
+                                    <HighlightedText text={msg.content} highlight={conversationSearchTerm} />
+                                  </p>
                                 </div>
-                              ))}
-                            </div>
-                          ) : (
-                            <div className="flex flex-col items-center justify-center p-8 opacity-40">
-                              <Search className="h-8 w-8 mb-2" />
-                              <p className="text-xs italic text-center">Nenhuma mensagem encontrada com "{conversationSearchTerm}"</p>
-                            </div>
-                          )}
-                        </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+
+                        {globalSearchResults.conversations.length === 0 && globalSearchResults.messages.length === 0 && (
+                          <div className="py-12 flex flex-col items-center opacity-50">
+                            <Search className="h-8 w-8 text-slate-600 mb-2" />
+                            <span className="text-sm text-slate-500">Nada encontrado</span>
+                          </div>
+                        )}
                       </>
                     )}
                   </div>
                 ) : (
-                  <div className={cn("flex flex-col flex-1", ((viewMode === 'PENDING' && pendingConversations.length === 0) || (viewMode === 'OPEN' && openConversations.length === 0) || (viewMode === 'CLOSED' && closedConversations.length === 0)) ? "justify-center" : "py-2")}>
-                    {/* DYNAMIC LIST BASED ON VIEWMODE */}
-
+                  <div className="flex flex-col flex-1 pb-10">
+                    {/* Lists by ViewMode */}
                     {viewMode === 'PENDING' && pendingConversations.length > 0 &&
                       pendingConversations.slice((pendingPage - 1) * ITEMS_PER_PAGE, pendingPage * ITEMS_PER_PAGE).map(conv => renderConversationCard(conv))
                     }
-
-                    {viewMode === 'PENDING' && Math.ceil(pendingConversations.length / ITEMS_PER_PAGE) > 1 && (
-                      <div className="flex justify-center p-2 mb-10"><span className="text-xs text-muted-foreground">Página {pendingPage}</span></div>
-                    )}
-
-
                     {viewMode === 'OPEN' && openConversations.length > 0 &&
                       openConversations.slice((openPage - 1) * ITEMS_PER_PAGE, openPage * ITEMS_PER_PAGE).map(conv => renderConversationCard(conv))
                     }
-                    {viewMode === 'OPEN' && Math.ceil(openConversations.length / ITEMS_PER_PAGE) > 1 && (
-                      <div className="flex justify-center p-2 mb-10"><span className="text-xs text-muted-foreground">Página {openPage}</span></div>
-                    )}
-
                     {viewMode === 'CLOSED' && closedConversations.length > 0 &&
                       closedConversations.slice((closedPage - 1) * ITEMS_PER_PAGE, closedPage * ITEMS_PER_PAGE).map(conv => renderConversationCard(conv))
                     }
-                    {viewMode === 'CLOSED' && Math.ceil(closedConversations.length / ITEMS_PER_PAGE) > 1 && (
-                      <div className="flex justify-center p-2 mb-10"><span className="text-xs text-muted-foreground">Página {closedPage}</span></div>
-                    )}
 
-                    {/* EMPTY STATES */}
+                    {/* Empty States */}
                     {((viewMode === 'PENDING' && pendingConversations.length === 0) ||
                       (viewMode === 'OPEN' && openConversations.length === 0) ||
                       (viewMode === 'CLOSED' && closedConversations.length === 0)) && (
-                        <div className="flex flex-col items-center justify-center text-center p-6 opacity-60 m-auto">
-                          <MessageSquare className="h-10 w-10 text-zinc-300 mb-2" />
-                          <p className="text-sm font-medium text-zinc-500">
-                            {viewMode === 'PENDING' ? 'Nenhuma conversa pendente' :
-                              viewMode === 'OPEN' ? 'Nenhum atendimento aberto' :
-                                'Nenhuma conversa finalizada'}
+                        <div className="flex flex-col items-center justify-center text-center p-8 opacity-40 mt-10">
+                          <div className="w-16 h-16 bg-slate-900/50 rounded-full flex items-center justify-center mb-3">
+                            <MessageSquare className="h-6 w-6 text-slate-600" />
+                          </div>
+                          <p className="text-sm font-medium text-slate-500">
+                            {viewMode === 'PENDING' ? 'Tudo certo! Nenhuma conversa pendente.' :
+                              viewMode === 'OPEN' ? 'Nenhum atendimento em aberto.' :
+                                'Nenhuma conversa finalizada recentemente.'}
                           </p>
                         </div>
                       )}
                   </div>
                 )}
               </div>
-            )}
-          </div>
+            </>
+          )}
 
-          {/* Aba NOVA CONVERSA / CONTATOS - Manually rendered to avoid Radix ID issues */}
+          {/* TAB: CONTATOS */}
           {activeTab === 'contatos' && (
-            <div className="flex-1 flex flex-col min-h-0 m-0 bg-[#111B21] animate-in slide-in-from-left-20 duration-200">
-              {/* Header de Nova Conversa (Estilo WhatsApp) */}
-              <div className="h-[108px] bg-[#202C33] flex flex-col px-4 gap-4 text-[#E9EDEF] shrink-0 justify-end pb-3">
-                <div className="flex items-center gap-4">
-                  <button onClick={() => setActiveTab("conversas")} className="hover:bg-white/10 rounded-full p-2 -ml-2 text-[#aebac1]">
-                    <ChevronLeft className="h-6 w-6" />
-                  </button>
-                  <div className="font-medium text-[19px]">Nova conversa</div>
+            <div className="flex flex-col h-full animate-in slide-in-from-left-4 duration-300 bg-[#0F172A]">
+              <div className="p-3 bg-[#0F172A] border-b border-transparent z-10 space-y-3">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-sm font-bold text-slate-200">Meus Contatos</h3>
+                  <div className="text-xs text-slate-500 font-medium">{filteredContacts.length} contatos</div>
                 </div>
-              </div>
-
-              {/* Search Bar */}
-              <div className="p-3 bg-[#111B21] border-b border-[#222E35] z-10">
-                <div className="relative">
-                  <Search className="absolute left-3 top-2.5 h-4 w-4 text-[#8696A0]" />
+                <div className="relative group">
+                  <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-500" />
                   <Input
-                    placeholder="Pesquisar nome ou número"
-                    className="pl-12 bg-[#202C33] border-none rounded-lg h-9 text-sm text-[#E9EDEF] placeholder-[#8696A0] focus-visible:ring-0"
+                    placeholder="Filtrar por nome ou número..."
+                    className="pl-9 h-10 bg-slate-900 border-slate-800 text-slate-200 rounded-xl focus:border-blue-500/50"
                     value={contactSearchTerm}
                     onChange={(e) => setContactSearchTerm(e.target.value)}
                   />
                 </div>
               </div>
 
-              <div className="flex-1 overflow-y-auto flex flex-col custom-scrollbar">
-
-                {/* List starts here */}
-                {isLoadingContacts && filteredContacts.length === 0 && (
-                  <div className="flex flex-col items-center justify-center p-8 text-muted-foreground gap-2 h-full">
-                    <RefreshCcw className="h-5 w-5 animate-spin" />
-                    <span className="text-xs">Carregando contatos do WhatsApp...</span>
-                  </div>
-                )}
-
-                {!isLoadingContacts && filteredContacts.length === 0 && !contactSearchTerm && (
-                  <div className="text-center text-gray-400 text-sm mt-8 px-4">
-                    Nenhum contato encontrado no WhatsApp.<br />Verifique se o celular está conectado.
-                  </div>
-                )}
-
-                {/* Remove Sync Button - Automatic Load on Tab Change implemented via useEffect below */}
-
-                {/* Botão Novo Contato Manual */}
-                <div className="flex items-center gap-4 p-4 hover:bg-gray-100 dark:hover:bg-zinc-900 cursor-pointer transition-colors" onClick={() => {
-                  // Just focus input
-                }}>
-                  <div className="w-10 h-10 rounded-full bg-[#008069] flex items-center justify-center text-white shrink-0">
+              <div className="flex-1 overflow-y-auto custom-scrollbar px-2 pb-20">
+                {/* Novo Contato BTN */}
+                <button onClick={() => setIsNewContactModalOpen(true)} className="w-full flex items-center gap-3 p-3 hover:bg-slate-800/50 rounded-xl transition-all group mb-2 border border-dashed border-slate-800 hover:border-slate-700">
+                  <div className="w-10 h-10 rounded-full bg-slate-800 flex items-center justify-center text-blue-500 group-hover:bg-blue-500 group-hover:text-white transition-colors">
                     <UserPlus className="h-5 w-5" />
                   </div>
-                  <div className="flex flex-col text-left">
-                    <span className="text-base font-normal text-gray-900 dark:text-gray-100">Novo contato</span>
+                  <div className="text-left">
+                    <span className="block text-sm font-semibold text-slate-300 group-hover:text-white">Adicionar Contato</span>
+                    <span className="block text-xs text-slate-500">Iniciar nova conversa</span>
                   </div>
-                </div>
+                </button>
 
-                <div className="px-4 py-3 text-[#008069] font-medium text-sm">
-                  CONTATOS DO WHATSAPP ({filteredContacts.length})
-                </div>
-
-                {[...filteredContacts]
-                  .sort((a, b) => (a.name || "").localeCompare(b.name || ""))
-                  .map((contact, idx) => (
-                    <div
-                      key={contact.phone || contact.id}
-                      className="flex items-center p-3 border-b border-gray-100 dark:border-zinc-800 hover:bg-zinc-50 dark:hover:bg-zinc-900 transition-colors gap-3 group"
-                    >
-                      <Avatar className="h-10 w-10 shrink-0">
-                        <AvatarImage src={contact.profile_pic_url} />
-                        <AvatarFallback className="bg-gray-200 text-gray-500">
-                          {((contact.push_name || contact.name)?.[0] || "?").toUpperCase()}
-                        </AvatarFallback>
-                      </Avatar>
-
-                      <div className="flex-1 min-w-0">
-                        <div className="font-medium text-[15px] text-zinc-900 dark:text-zinc-100 whitespace-nowrap overflow-hidden text-ellipsis" title={contact.push_name || contact.name || "Sem nome"}>
-                          {contact.push_name || contact.name || "Sem nome"}
-                        </div>
-                        <div className="text-[13px] text-zinc-500 font-normal whitespace-nowrap">
-                          {getContactPhone(contact)}
-                        </div>
-                      </div>
-
-                      <Button
-                        size="icon"
-                        variant="ghost"
-                        className="h-10 w-10 text-[#008069] opacity-0 group-hover:opacity-100 transition-opacity rounded-full hover:bg-[#008069]/10"
-                        onClick={() => handleStartConversationFromContact(contact)}
-                        title="Iniciar conversa"
-                      >
-                        <MessageCircle className="h-5 w-5" />
-                      </Button>
+                {/* Contact List */}
+                {filteredContacts.map(contact => (
+                  <div key={contact.id} className="group flex items-center gap-3 p-2.5 hover:bg-slate-800/40 rounded-xl cursor-pointer border border-transparent hover:border-slate-800/50 transition-all">
+                    <Avatar className="h-10 w-10 shrink-0 ring-1 ring-slate-800">
+                      <AvatarImage src={contact.profile_pic_url} />
+                      <AvatarFallback className="bg-slate-700 text-[10px] text-slate-300 font-bold">
+                        {((contact.name || contact.push_name || "?")[0]).toUpperCase()}
+                      </AvatarFallback>
+                    </Avatar>
+                    <div className="flex-1 min-w-0">
+                      <div className="text-sm font-medium text-slate-200 truncate">{contact.name || contact.push_name}</div>
+                      <div className="text-xs text-slate-500 font-mono tracking-tight">{getContactPhone(contact)}</div>
                     </div>
-                  ))}
-
-                {!isLoadingContacts && filteredContacts.length === 0 && contactSearchTerm && (
-                  <div className="p-8 text-center">
-                    <p className="text-gray-500 text-sm mb-4">Nenhum contato encontrado.</p>
-                    <Button
-                      variant="outline"
-                      className="w-full text-[#008069]"
-                      onClick={() => {
-                        // Start chat with raw number
-                        const raw = contactSearchTerm.replace(/\D/g, '');
-                        if (raw.length >= 10) {
-                          handleStartConversationFromContact({
-                            id: 'temp-' + Date.now(),
-                            name: contactSearchTerm,
-                            phone: raw,
-                          });
-                        }
-                      }}
-                    >
-                      Conversar com {contactSearchTerm}
+                    <Button size="icon" variant="ghost" className="h-8 w-8 text-blue-500 opacity-0 group-hover:opacity-100 bg-blue-500/10 hover:bg-blue-500/20 rounded-full transition-all" onClick={(e) => { e.stopPropagation(); handleStartConversationFromContact(contact); }}>
+                      <MessageCircle className="h-4 w-4" />
                     </Button>
+                  </div>
+                ))}
+
+                {filteredContacts.length === 0 && !isLoadingContacts && (
+                  <div className="text-center p-8 opacity-50">
+                    <p className="text-xs text-slate-500">Nenhum contato encontrado.</p>
                   </div>
                 )}
               </div>
             </div>
           )}
-          {/* End CardContent removed */}
-        </Tabs>
+        </div>
       </div>
 
+
       {/* Area do Chat */}
+      {/* Area do Chat - PREMIUM SAAS DESIGN */}
       <div className={cn(
-        "flex-1 flex flex-col relative min-h-0 h-full min-w-0 transition-all overflow-hidden",
-        "bg-[#efeae2] dark:bg-[#0b141a]",
+        "flex-1 flex flex-col relative min-h-0 h-full min-w-0 transition-all overflow-hidden bg-[#020617]",
         !selectedConversation ? "hidden md:flex" : "flex"
       )}>
         {!selectedConversation ? (
-          <div className="flex-1 flex flex-col items-center justify-center bg-[#222E35]/20 text-center p-8">
-            <div className="w-64 h-64 bg-zinc-800/20 rounded-full flex items-center justify-center mb-8">
-              <MessageCircle className="h-32 w-32 text-[#8696A0] opacity-20" />
+          <div className="flex-1 flex flex-col items-center justify-center bg-[#020617] text-center p-8">
+            <div className="relative mb-8">
+              <div className="absolute inset-0 bg-blue-500/20 blur-[100px] rounded-full" />
+              <div className="relative w-72 h-72 bg-slate-900/40 border border-slate-800 rounded-full flex items-center justify-center backdrop-blur-sm">
+                <div className="flex flex-col items-center gap-4">
+                  <div className="p-5 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-2xl shadow-lg shadow-blue-500/20">
+                    <Zap className="h-10 w-10 text-white" />
+                  </div>
+                  <div className="flex -space-x-3">
+                    {[1, 2, 3].map(i => (
+                      <div key={i} className="w-10 h-10 rounded-full border-2 border-[#020617] bg-slate-800 flex items-center justify-center text-[10px] font-bold">
+                        {String.fromCharCode(64 + i)}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
             </div>
-            <h2 className="text-2xl font-light text-[#E9EDEF] mb-2">WhatsApp Web</h2>
-            <p className="text-[#8696A0] text-sm max-w-sm leading-relaxed">
-              Envie e receba mensagens sem precisar manter seu celular conectado.<br />
-              Use o WhatsApp em até 4 dispositivos vinculados e 1 celular simultaneamente.
+            <h2 className="text-3xl font-bold text-white mb-4 tracking-tight">IntegrAI <span className="text-blue-500 text-sm font-medium border border-blue-500/30 px-2 py-0.5 rounded-full ml-2 uppercase tracking-widest">Command Center</span></h2>
+            <p className="text-slate-400 text-lg max-w-md leading-relaxed">
+              Inicie um atendimento selecionando uma conversa ao lado ou comece uma nova via contatos.
             </p>
-            <div className="mt-auto pt-10 text-[#8696A0] text-[12px] flex items-center gap-1 opacity-50">
-              <span className="text-[14px]">🔒</span> Criptografia de ponta a ponta
+            <div className="mt-12 flex items-center gap-6 px-6 py-3 bg-slate-900/50 border border-slate-800 rounded-2xl text-slate-500 text-sm">
+              <div className="flex items-center gap-2"><div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" /> IA Pronta</div>
+              <div className="w-px h-4 bg-slate-800" />
+              <div className="flex items-center gap-2"><LayoutGrid className="w-4 h-4" /> CRM Ativo</div>
+              <div className="w-px h-4 bg-slate-800" />
+              <div className="flex items-center gap-2"><Lock className="w-4 h-4" /> LGPD Secure</div>
             </div>
           </div>
         ) : (
           <>
-            {/* Header do Chat - WhatsApp Web Original Style */}
-            <div className="h-[64px] bg-[#202C33] border-b border-[#222E35] flex items-center justify-between px-4 shrink-0 z-30">
-              <div className="flex items-center gap-3 overflow-hidden">
+            {/* Chat Header - MODERN & CLEAN */}
+            <div className="h-[76px] bg-[#020617]/80 backdrop-blur-md border-b border-white/5 flex items-center justify-between px-6 shrink-0 z-30">
+              <div className="flex items-center gap-4 overflow-hidden">
                 <Button
                   variant="ghost"
                   size="icon"
-                  className="md:hidden -ml-2 text-[#aebac1]"
+                  className="md:hidden -ml-2 text-slate-400 hover:text-white hover:bg-white/5 rounded-full"
                   onClick={() => setSelectedConversation(null)}
                 >
                   <ChevronLeft className="h-6 w-6" />
                 </Button>
-                <Avatar className="h-10 w-10 cursor-pointer">
-                  <AvatarImage src={selectedConversation.profile_pic_url || `https://api.dicebear.com/7.x/initials/svg?seed=${getDisplayName(selectedConversation)}`} />
-                  <AvatarFallback className="bg-[#6a7175] text-white">{(getDisplayName(selectedConversation)?.[0] || "?").toUpperCase()}</AvatarFallback>
-                </Avatar>
+
+                <div className="relative">
+                  <Avatar className="h-11 w-11 ring-2 ring-slate-800 cursor-pointer hover:ring-blue-500/50 transition-all" onClick={() => setIsContactInfoOpen(true)}>
+                    <AvatarImage src={selectedConversation.profile_pic_url || `https://api.dicebear.com/7.x/initials/svg?seed=${getDisplayName(selectedConversation)}`} />
+                    <AvatarFallback className="bg-slate-800 text-slate-300 font-bold uppercase text-xs">{(getDisplayName(selectedConversation)?.[0] || "?")}</AvatarFallback>
+                  </Avatar>
+                  {selectedConversation.status === 'OPEN' && (
+                    <div className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 bg-emerald-500 border-[3px] border-[#020617] rounded-full" />
+                  )}
+                </div>
+
                 <div className="flex flex-col cursor-pointer min-w-0" onClick={() => setIsContactInfoOpen(true)}>
-                  <span className="text-[16px] font-medium text-[#E9EDEF] truncate leading-tight flex items-center gap-2">
-                    {getDisplayName(selectedConversation)}
+                  <div className="flex items-center gap-2">
+                    <span className="text-[16px] font-bold text-slate-100 truncate leading-tight">
+                      {getDisplayName(selectedConversation)}
+                    </span>
                     {selectedConversation.is_group && (
-                      <span className="text-[10px] bg-[#202C33] text-[#8696A0] border border-[#222E35] px-1 rounded uppercase">Grupo</span>
+                      <Badge variant="outline" className="text-[9px] h-4 bg-blue-500/10 text-blue-400 border-blue-500/20 font-bold uppercase tracking-tighter">Grupo</Badge>
                     )}
                     {(selectedConversation.instance_friendly_name || selectedConversation.instance) && (
-                      <span className="text-[10px] bg-[#202C33] text-[#8696A0] border border-[#222E35] px-1.5 py-0.5 rounded uppercase font-bold tracking-wider">
-                        {selectedConversation.instance_friendly_name || selectedConversation.instance}
-                      </span>
+                      <div className="flex items-center gap-1 bg-slate-900 border border-slate-800 px-1.5 py-0.5 rounded text-[9px] font-mono text-slate-500">
+                        <Zap className="w-2.5 h-2.5" /> {selectedConversation.instance_friendly_name || selectedConversation.instance}
+                      </div>
                     )}
-                  </span>
-                  <span className="text-[13px] text-[#8696A0] truncate leading-tight">
-                    {selectedConversation.status === 'OPEN' && selectedConversation.user_id ? "em atendimento" : "online"}
-                  </span>
+                  </div>
+                  <div className="flex items-center gap-2 text-xs">
+                    <span className={cn(
+                      "font-medium",
+                      selectedConversation.status === 'OPEN' ? "text-emerald-500/80" : "text-slate-500"
+                    )}>
+                      {selectedConversation.status === 'OPEN' ? (
+                        <span className="flex items-center gap-1"><div className="w-1 h-1 rounded-full bg-emerald-500" /> em atendimento</span>
+                      ) : "cliente / paciente"}
+                    </span>
+                    {selectedConversation.user_name && (
+                      <>
+                        <span className="text-slate-700">•</span>
+                        <span className="text-slate-500 italic">Resp: {selectedConversation.user_name}</span>
+                      </>
+                    )}
+                  </div>
                 </div>
               </div>
 
-              <div className="flex items-center gap-4 text-[#aebac1]">
-                {/* Call Button */}
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-10 w-10 text-[#aebac1] hover:bg-white/10 rounded-full"
-                  onClick={() => toast.info("Funcionalidade em implantação", { description: "Em breve você poderá realizar ligações diretamente pelo sistema. Fique atento às próximas atualizações." })}
-                  title="Ligar para contato"
-                >
-                  <Phone className="h-5 w-5" />
-                </Button>
+              <div className="flex items-center gap-2">
+                <div className="flex items-center bg-slate-900/50 border border-white/5 rounded-full p-1 mr-2 invisible group-hover:visible lg:visible">
+                  <Button variant="ghost" size="icon" className="h-8 w-8 text-slate-500 hover:text-white rounded-full transition-all">
+                    <Phone className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8 text-slate-500 hover:text-white rounded-full transition-all"
+                    onClick={() => {
+                      setIsAgendaListOpen(true);
+                      fetchContactAgenda(selectedConversation.phone);
+                    }}
+                    title="Agenda do contato"
+                  >
+                    <Calendar className="h-4 w-4" />
+                  </Button>
+                </div>
 
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-10 w-10 text-[#aebac1] hover:bg-white/10 rounded-full"
-                  onClick={() => setIsMessageSearchOpen(!isMessageSearchOpen)}
-                  title="Pesquisar mensagens"
-                >
-                  <Search className="h-5 w-5" />
-                </Button>
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className={cn("h-10 w-10 text-slate-400 hover:text-white hover:bg-white/5 rounded-full transition-all", isMessageSearchOpen && "bg-white/10 text-white")}
+                        onClick={() => setIsMessageSearchOpen(!isMessageSearchOpen)}
+                      >
+                        <Search className="h-5 w-5" />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent side="bottom" className="bg-slate-800 border-slate-700 text-slate-100">Procurar histórico</TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
 
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
-                    <Button variant="ghost" size="icon" className="h-10 w-10 text-[#aebac1] hover:bg-white/10 rounded-full">
+                    <Button variant="ghost" size="icon" className="h-10 w-10 text-slate-400 hover:text-white hover:bg-white/5 rounded-full">
                       <MoreVertical className="h-5 w-5" />
                     </Button>
                   </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end" className="bg-[#233138] border-none text-[#E9EDEF] w-48">
-                    <DropdownMenuItem
-                      onClick={() => {
-                        setFollowUpInitialData({
-                          conversation_id: selectedConversation.id,
-                          contact_name: getDisplayName(selectedConversation),
-                          phone: selectedConversation.phone,
-                          origin: 'Atendimento'
-                        });
-                        setIsFollowUpModalOpen(true);
-                      }}
-                      className="gap-3 py-3"
-                    >
-                      <CalendarCheck className="h-4 w-4" /> Novo Follow-up
+                  <DropdownMenuContent align="end" className="bg-slate-900 border-white/10 text-slate-200 w-56 shadow-2xl">
+                    <DropdownMenuItem onClick={() => { setAppointmentInitialData({ conversation_id: selectedConversation.id, client_name: getDisplayName(selectedConversation), phone: selectedConversation.phone }); setIsAppointmentModalOpen(true); }} className="gap-3 py-2.5 focus:bg-slate-800 cursor-pointer font-medium">
+                      <CalendarCheck className="h-4 w-4 text-emerald-400" /> Agendar / Novo Agendamento
                     </DropdownMenuItem>
-                    <DropdownMenuItem
-                      onClick={() => setIsRelationshipModalOpen(true)}
-                      className="gap-3 py-3"
-                    >
-                      <Link2 className="h-4 w-4" /> Relacionamentos
+                    <DropdownMenuItem onClick={() => { setFollowUpInitialData({ conversation_id: selectedConversation.id, contact_name: getDisplayName(selectedConversation), phone: selectedConversation.phone, origin: 'Atendimento' }); setIsFollowUpModalOpen(true); }} className="gap-3 py-2.5 focus:bg-slate-800 cursor-pointer font-medium">
+                      <Clock className="h-4 w-4 text-amber-400" /> Novo Follow-up
                     </DropdownMenuItem>
-                    <DropdownMenuItem onClick={handleRenameContact} className="py-3">Editar contato</DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => setIsRelationshipModalOpen(true)} className="gap-3 py-2.5 focus:bg-slate-800 cursor-pointer font-medium">
+                      <Link2 className="h-4 w-4 text-blue-400" /> Ver Relacionamentos
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={handleRenameContact} className="gap-3 py-2.5 focus:bg-slate-800 cursor-pointer font-medium">
+                      <UserCircle className="h-4 w-4 text-slate-400" /> Editar Ficha
+                    </DropdownMenuItem>
+                    <DropdownMenuSeparator className="bg-white/5" />
                     {selectedConversation.status !== 'OPEN' ? (
-                      <DropdownMenuItem onClick={() => handleStartAtendimento()} className="py-3 text-[#00a884]">Iniciar Chat</DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => handleStartAtendimento()} className="gap-3 py-2.5 focus:bg-emerald-500/20 text-emerald-500 font-bold cursor-pointer">
+                        <Zap className="h-4 w-4" /> Iniciar Atendimento
+                      </DropdownMenuItem>
                     ) : (
-                      <DropdownMenuItem onClick={() => handleCloseAtendimento()} className="py-3 text-red-500">Encerrar Chat</DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => handleCloseAtendimento()} className="gap-3 py-2.5 focus:bg-amber-500/20 text-amber-500 font-bold cursor-pointer">
+                        <CheckSquare className="h-4 w-4" /> Finalizar / Concluir
+                      </DropdownMenuItem>
                     )}
                   </DropdownMenuContent>
                 </DropdownMenu>
               </div>
             </div>
 
+            {/* MESSAGE SEARCH BAR (COLLAPSIBLE) */}
+            {isMessageSearchOpen && (
+              <div className="bg-slate-900 border-b border-white/5 p-3 flex items-center gap-3 animate-in slide-in-from-top-4 duration-200">
+                <Search className="w-4 h-4 text-slate-500 ml-2" />
+                <Input
+                  placeholder="Filtrar mensagens nesta conversa..."
+                  className="flex-1 bg-slate-950 border-white/5 h-9 text-xs text-slate-100 placeholder:text-slate-600 focus-visible:ring-1 focus-visible:ring-blue-500/40"
+                  value={messageSearchTerm}
+                  onChange={(e) => setMessageSearchTerm(e.target.value)}
+                  autoFocus
+                />
+                <Button size="sm" variant="ghost" onClick={() => { setIsMessageSearchOpen(false); setMessageSearchTerm(""); }} className="h-8 text-slate-500 hover:text-white">Fechar</Button>
+              </div>
+            )}
+
+            {/* MESSAGES AREA - DARK FLOW */}
             <div className="flex-1 flex flex-col min-h-0 relative">
               <div
                 ref={scrollRef}
                 onScroll={handleScroll}
                 className={cn(
-                  "flex-1 overflow-y-auto p-4 flex flex-col gap-1 relative z-10 scrollbar-thin scrollbar-thumb-zinc-300 dark:scrollbar-thumb-zinc-800",
-                  "bg-[#efeae2] dark:bg-[#0b141a] bg-opacity-95",
+                  "flex-1 overflow-y-auto px-4 py-8 flex flex-col gap-6 relative z-10 custom-scrollbar-thin",
+                  "bg-[#020617]",
                   messages.length === 0 && "items-center justify-center"
                 )}
                 style={{
-                  backgroundImage: `url('https://user-images.githubusercontent.com/15075759/28719144-86dc0f70-73b1-11e7-911d-60d70fcded21.png')`,
-                  backgroundBlendMode: 'overlay',
-                  backgroundAttachment: 'fixed'
+                  backgroundImage: `radial-gradient(circle at 50% 50%, rgba(30, 41, 59, 0.2) 0%, transparent 100%)`,
                 }}
               >
-                {/* MESSAGE SEARCH HIGHLIGHTING/FILTERING */}
-                {messageSearchTerm && (
-                  <div className="sticky top-0 z-20 bg-zinc-100/90 dark:bg-zinc-800/90 backdrop-blur-sm p-2 mb-2 rounded-lg border border-[#008069]/20 shadow-sm text-center">
-                    <p className="text-xs text-zinc-600 dark:text-zinc-300 font-medium">
-                      Mostrando resultados para: <span className="text-[#008069] font-bold">"{messageSearchTerm}"</span>
+                {/* DATE LABELS & MESSAGES LOGIC INJECTED HERE */}
+                {messages.length === 0 && !isLoadingMessages && (
+                  <div className="flex flex-col items-center justify-center p-12 text-center max-w-sm">
+                    <div className="w-20 h-20 bg-slate-900/50 rounded-full flex items-center justify-center mb-6 ring-1 ring-white/5">
+                      <MessageSquare className="h-8 w-8 text-slate-700" />
+                    </div>
+                    <h3 className="text-slate-300 font-semibold mb-2">Mensagens Criptografadas</h3>
+                    <p className="text-slate-500 text-xs leading-relaxed">
+                      As mensagens desta conversa são protegidas de ponta a ponta. Você verá o histórico assim que o cliente enviar uma nova mensagem ou você responder.
                     </p>
                   </div>
                 )}
-                {messages.length === 0 && (
-                  <div className="flex flex-col items-center justify-center p-8 text-center animate-in fade-in duration-700">
-                    <div className="w-24 h-24 bg-zinc-100 dark:bg-zinc-800 rounded-full flex items-center justify-center mb-4 shadow-sm">
-                      <MessageSquare className="h-10 w-10 text-zinc-400" />
-                    </div>
-                    <h3 className="text-lg font-semibold text-zinc-600 dark:text-zinc-400 mb-1">Nenhuma mensagem encontrada</h3>
-                    <p className="text-xs text-muted-foreground max-w-[250px] mb-6">Esta conversa ainda não possui mensagens no banco de dados.</p>
-                    <span className="bg-[#ffeecd] dark:bg-[#1f2c34] text-zinc-800 dark:text-[#ffd279] text-[10px] px-3 py-1.5 rounded shadow-sm text-center max-w-[90%] flex items-center gap-2">
-                      <ShieldAlert className="h-3 w-3" /> As mensagens são protegidas com criptografia de ponta a ponta.
-                    </span>
-                  </div>
-                )}
 
+                {/* Groups Loop Rendering */}
                 {(() => {
-                  // Rule 2 & 3: Deduplication and Deterministic Ordering
                   const displayMessages = (messageSearchTerm ? messages.filter(m => m.content?.toLowerCase().includes(messageSearchTerm.toLowerCase())) : messages);
-
                   const processedMessages = (() => {
                     const map = new Map<string, Message>();
                     displayMessages.forEach(m => {
                       const key = String(m.external_id || m.id);
-                      // If message already exists in map, update it (status etc)
                       map.set(key, m);
                     });
-
-                    return Array.from(map.values()).sort((a, b) => {
-                      const timeA = new Date(a.sent_at).getTime();
-                      const timeB = new Date(b.sent_at).getTime();
-                      if (timeA !== timeB) return timeA - timeB;
-                      return String(a.external_id || a.id).localeCompare(String(b.external_id || b.id));
-                    });
+                    return Array.from(map.values()).sort((a, b) => new Date(a.sent_at).getTime() - new Date(b.sent_at).getTime());
                   })();
 
-                  // Rule 6: Rigid Grouping
                   const groups: Message[][] = [];
                   let currentGroup: Message[] = [];
-
                   processedMessages.forEach((msg, idx) => {
                     const prevMsg = processedMessages[idx - 1];
                     const isSameSender = prevMsg && (
@@ -3083,8 +3170,7 @@ const AtendimentoPage = () => {
                       (msg.direction === 'outbound' ? prevMsg.user_id === msg.user_id : prevMsg.sender_jid === msg.sender_jid)
                     );
                     const timeDiff = prevMsg ? (new Date(msg.sent_at).getTime() - new Date(prevMsg.sent_at).getTime()) / 1000 / 60 : 0;
-
-                    if (isSameSender && timeDiff <= 5) {
+                    if (isSameSender && timeDiff <= 3) {
                       currentGroup.push(msg);
                     } else {
                       currentGroup = [msg];
@@ -3096,427 +3182,204 @@ const AtendimentoPage = () => {
 
                   return groups.map((group, groupIdx) => {
                     const firstMsg = group[0];
-                    const msgDateStr = firstMsg.sent_at ? new Date(firstMsg.sent_at).toDateString() : "";
-                    const isNewDay = msgDateStr !== lastDateLabel;
-                    if (isNewDay) lastDateLabel = msgDateStr;
+                    const msgDateLabel = formatDateLabel(firstMsg.sent_at);
+                    const showDate = msgDateLabel !== lastDateLabel;
+                    lastDateLabel = msgDateLabel;
+                    const isOutbound = firstMsg.direction === 'outbound';
 
                     return (
-                      <div key={`group-${groupIdx}`} className="flex flex-col w-full">
-                        {isNewDay && firstMsg.sent_at && (
-                          <div className="flex justify-center my-4 sticky top-0 z-20">
-                            <span className="bg-[#D9FDD3]/80 dark:bg-[#182229] px-3 py-1.5 rounded-lg text-[12.5px] text-[#54656f] dark:text-[#8696A0] shadow-sm border border-black/5">
-                              {formatDateLabel(firstMsg.sent_at)}
-                            </span>
+                      <React.Fragment key={`group-${groupIdx}-${firstMsg.id}`}>
+                        {showDate && (
+                          <div className="flex justify-center my-6 sticky top-2 z-10">
+                            <div className="px-4 py-1.5 bg-slate-900/80 backdrop-blur-sm border border-white/5 rounded-full text-[10px] uppercase tracking-widest font-bold text-slate-500 shadow-xl">
+                              {msgDateLabel}
+                            </div>
                           </div>
                         )}
-
-                        <div
-                          className={cn(
-                            "flex flex-col w-full group/msg-group relative mb-2",
-                            firstMsg.direction === "outbound" ? "items-end" : "items-start"
-                          )}
-                        >
-                          {/* Sender name for groups (inbound) */}
-                          {selectedConversation?.is_group && firstMsg.direction === 'inbound' && (
-                            <span className="text-[12.5px] font-medium text-[#8696A0] px-2 mb-0.5">
-                              {firstMsg.saved_name || firstMsg.sender_name || firstMsg.sender_jid?.split('@')[0] || "Participante"}
-                            </span>
-                          )}
-
-                          {/* Origin label for outbound messages */}
-                          {firstMsg.direction === 'outbound' && (
-                            <span className="text-[10px] font-bold text-[#8696A0] px-2 mb-0.5 uppercase tracking-widest flex items-center gap-1.5 opacity-80">
-                              {/* System user (has user_id) */}
-                              {firstMsg.user_id ? (
-                                <>
-                                  <div className={cn(
-                                    "w-1.5 h-1.5 rounded-full shadow-[0_0_4px_rgba(37,211,102,0.4)]",
-                                    String(firstMsg.user_id) === String(user?.id) ? "bg-[#25D366]" : "bg-blue-400"
-                                  )} />
-                                  <span className={cn(String(firstMsg.user_id) === String(user?.id) ? "text-[#25D366]" : "text-blue-400")}>
-                                    {firstMsg.agent_name || firstMsg.user_name || "Operador"}
-                                  </span>
-                                </>
-                              ) : (
-                                <>
-                                  {/* WhatsApp Mobile/Web */}
-                                  {(firstMsg as any).message_source === 'whatsapp_mobile' || (firstMsg as any).message_origin === 'whatsapp_mobile' ? (
-                                    <>
-                                      <div className="w-1.5 h-1.5 bg-cyan-400 rounded-full shadow-[0_0_4px_rgba(34,211,238,0.4)]" />
-                                      <span className="text-cyan-400">Celular</span>
-                                    </>
-                                  ) : (
-                                    /* Evolution API / AI Agent / System */
-                                    <>
-                                      <div className="w-1.5 h-1.5 bg-purple-400 rounded-full animate-pulse shadow-[0_0_4px_rgba(168,85,247,0.4)]" />
-                                      <span className="text-purple-400">{firstMsg.agent_name || "Sistema"}</span>
-                                    </>
-                                  )}
-                                </>
+                        <div className={cn(
+                          "flex flex-col w-full max-w-[85%] lg:max-w-[75%] gap-0.5",
+                          isOutbound ? "items-end self-end" : "items-start self-start"
+                        )}>
+                          {group.map((msg, msgIdx) => (
+                            <div
+                              key={msg.id}
+                              id={`msg-${msg.id}`}
+                              className={cn(
+                                "relative group/msg flex items-end gap-2",
+                                isOutbound ? "flex-row-reverse" : "flex-row"
                               )}
-                            </span>
-                          )}
-
-                          {group.map((msg, msgIdx) => {
-                            const isFirstInGroup = msgIdx === 0;
-                            const isLastInGroup = msgIdx === group.length - 1;
-                            const type = msg.message_type || 'text';
-
-                            return (
-                              <div
-                                key={msg.id}
-                                className={cn(
-                                  "relative max-w-[65%] min-w-[80px] shadow-[0_1px_0.5px_rgba(0,0,0,0.13)] text-[14.2px] leading-[19px] break-words group",
-                                  msg.reactions && msg.reactions.length > 0 ? "mb-5" : "mb-[2px]",
-                                  msg.direction === "outbound"
-                                    ? "bg-[#dcf8c6] dark:bg-[#005C4B] text-[#111B21] dark:text-[#E9EDEF] self-end ml-auto"
-                                    : "bg-white dark:bg-[#202C33] text-[#111B21] dark:text-[#E9EDEF] self-start mr-auto",
-                                  // Border radius logic for grouping (WhatsApp style)
-                                  isFirstInGroup && msg.direction === 'outbound' ? "rounded-l-lg rounded-tr-none rounded-br-lg" :
-                                    isFirstInGroup && msg.direction === 'inbound' ? "rounded-r-lg rounded-tl-none rounded-bl-lg" : "rounded-lg",
-                                  "px-[12px] py-[8px]"
-                                )}
-                              >
-                                {/* Message Tail (Bico) - Only for first in group */}
-                                {isFirstInGroup && (
-                                  <div className={cn(
-                                    "absolute top-0 w-3 h-4",
-                                    msg.direction === "outbound"
-                                      ? "right-[-8px] text-[#dcf8c6] dark:text-[#005C4B]"
-                                      : "left-[-8px] text-white dark:text-[#202C33]"
-                                  )}>
-                                    <svg viewBox="0 0 8 13" width="8" height="13" className="fill-current">
-                                      {msg.direction === "outbound" ? (
-                                        <path d="M5.188 1H0v11.193l6.467-8.625C7.526 2.156 6.958 1 5.188 1z" />
-                                      ) : (
-                                        <path d="M2.812 1H8v11.193L1.533 3.568C.474 2.156 1.042 1 2.812 1z" />
+                            >
+                              <div className={cn(
+                                "px-4 py-2 my-0.5 rounded-2xl text-sm transition-all relative overflow-hidden",
+                                isOutbound
+                                  ? "bg-gradient-to-br from-blue-600 to-indigo-700 text-white shadow-lg shadow-blue-900/10 rounded-tr-sm"
+                                  : "bg-slate-900 text-slate-200 border border-white/5 rounded-tl-sm",
+                                msg.status === 'DELETED' && "italic opacity-40 bg-transparent border-slate-800"
+                              )}>
+                                {/* Content Rendering (Text/Image/Audio/etc) - Simplified for brevity */}
+                                {msg.status === 'DELETED' ? "🚫 Esta mensagem foi apagada" : (
+                                  <div className="flex flex-col gap-1">
+                                    {msg.reply_to_content && (
+                                      <div className="mb-2 p-2 bg-black/10 rounded border-l-2 border-white/30 text-[11px] opacity-80 truncate max-w-[200px]">
+                                        {msg.reply_to_content}
+                                      </div>
+                                    )}
+                                    <div className="whitespace-pre-wrap leading-relaxed break-words">
+                                      {msg.type === 'image' && msg.media_url && (
+                                        <div className="rounded-lg overflow-hidden mb-1 ring-1 ring-white/10">
+                                          <img src={msg.media_url} alt="Media" className="max-h-64 object-cover cursor-pointer hover:scale-[1.02] transition-transform" onClick={() => window.open(msg.media_url, '_blank')} />
+                                        </div>
                                       )}
-                                    </svg>
+                                      {msg.body || msg.content}
+                                    </div>
+                                    <div className={cn(
+                                      "flex items-center gap-1.5 mt-1 self-end",
+                                      isOutbound ? "justify-end" : "justify-start"
+                                    )}>
+                                      <span className="text-[10px] opacity-60 font-mono tracking-tighter">
+                                        {new Date(msg.sent_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                      </span>
+                                      {isOutbound && (
+                                        <div className="flex">
+                                          <CheckCheck className={cn("w-3.5 h-3.5", msg.status === 'READ' ? "text-emerald-400" : "text-slate-400")} />
+                                        </div>
+                                      )}
+                                    </div>
                                   </div>
                                 )}
-
-                                {/* Render Message Content */}
-                                {(() => {
-                                  const mediaUrl = getMediaUrl(msg);
-
-                                  if (type === 'image') {
-                                    return (
-                                      <div className="flex flex-col gap-1 -m-1">
-                                        {mediaUrl ? (
-                                          <div className="relative rounded overflow-hidden bg-black/5 min-w-[200px] min-h-[150px] cursor-pointer hover:opacity-95 transition-opacity" onClick={() => setViewingImage(mediaUrl)}>
-                                            <img src={mediaUrl} alt="Imagem" className="w-full h-auto object-cover max-h-[300px]" loading="lazy" />
-                                          </div>
-                                        ) : (
-                                          <div className="flex items-center gap-2 bg-black/10 dark:bg-white/10 p-3 rounded-lg">
-                                            <Image className="h-5 w-5" /> <span className="italic opacity-80">Imagem indisponível</span>
-                                          </div>
-                                        )}
-                                        {msg.content && <span className="whitespace-pre-wrap pt-1 px-1 pb-1">{msg.content}</span>}
-                                      </div>
-                                    );
-                                  }
-
-                                  if (type === 'audio') {
-                                    const audioSpeed = audioSpeeds[msg.id] || 1;
-                                    return (
-                                      <div className="flex items-center gap-2 min-w-[250px] py-1">
-                                        <div className="p-2 bg-[#d6eeba] dark:bg-[#1d3d3a] rounded-full">
-                                          <Mic className="h-5 w-5 text-[#008069]" />
-                                        </div>
-                                        <div className="flex flex-col flex-1">
-                                          {mediaUrl ? (
-                                            <audio
-                                              controls
-                                              src={mediaUrl}
-                                              className="w-full h-8"
-                                              ref={(el) => { if (el) el.playbackRate = audioSpeed; }}
-                                            />
-                                          ) : (
-                                            <span className="italic opacity-80">Áudio indisponível</span>
-                                          )}
-                                        </div>
-                                        {mediaUrl && (
-                                          <Button
-                                            variant="ghost" size="sm" className="h-8 px-2 text-xs font-bold hover:bg-black/5"
-                                            onClick={(e) => {
-                                              e.stopPropagation();
-                                              const audioEl = e.currentTarget.parentElement?.querySelector('audio') as HTMLAudioElement;
-                                              handleAudioSpeedToggle(msg.id, audioEl);
-                                            }}
-                                          >
-                                            {audioSpeed}x
-                                          </Button>
-                                        )}
-                                      </div>
-                                    );
-                                  }
-
-                                  if (type === 'video') {
-                                    return (
-                                      <div className="flex flex-col gap-1 -m-1">
-                                        {mediaUrl ? (
-                                          <video controls src={mediaUrl} className="w-full max-h-[300px] rounded-t bg-black" />
-                                        ) : (
-                                          <div className="flex items-center gap-2 bg-black/10 dark:bg-white/10 p-3 rounded-lg">
-                                            <Video className="h-5 w-5" /> <span className="italic opacity-80">Vídeo indisponível</span>
-                                          </div>
-                                        )}
-                                        {msg.content && <span className="whitespace-pre-wrap pt-1 px-1 pb-1">{msg.content}</span>}
-                                      </div>
-                                    );
-                                  }
-
-                                  if (type === 'document') {
-                                    return (
-                                      <div className="flex items-center gap-3 bg-black/5 dark:bg-white/5 p-2 rounded-lg min-w-[200px] border border-black/5">
-                                        <div className="p-2 bg-red-100 dark:bg-red-900/30 rounded text-red-600 dark:text-red-400">
-                                          <FileText className="h-6 w-6" />
-                                        </div>
-                                        <div className="flex flex-col gap-0.5 overflow-hidden flex-1">
-                                          <span className="truncate font-medium text-sm">{msg.content || 'Documento'}</span>
-                                          {msg.media_url && <a href={getMediaUrl(msg)} target="_blank" rel="noopener noreferrer" className="text-[11px] underline opacity-70 hover:opacity-100">Baixar arquivo</a>}
-                                        </div>
-                                      </div>
-                                    );
-                                  }
-
-                                  if (type === 'sticker') {
-                                    return (
-                                      <div className="flex flex-col gap-1">
-                                        {msg.media_url ? (
-                                          <div className="relative rounded-lg overflow-hidden bg-transparent min-w-[100px] max-w-[150px]">
-                                            <img src={getMediaUrl(msg)} alt="Sticker" className="w-full h-auto object-cover" loading="lazy" />
-                                          </div>
-                                        ) : (
-                                          <div className="flex items-center gap-2 bg-black/10 dark:bg-white/10 p-2 rounded-lg">
-                                            <Sticker className="h-5 w-5" /> <span className="italic opacity-80">Sticker</span>
-                                          </div>
-                                        )}
-                                      </div>
-                                    );
-                                  }
-
-                                  return (
-                                    <span className="block pr-12 pb-1 whitespace-pre-wrap break-words leading-[1.4]">
-                                      {messageSearchTerm ? (
-                                        <HighlightedText text={msg.content} highlight={messageSearchTerm} />
-                                      ) : (
-                                        msg.content
-                                      )}
-                                    </span>
-                                  );
-                                })()}
-
-                                {msg.reactions && msg.reactions.length > 0 && (
-                                  <div className="absolute -bottom-3 right-2 z-20 flex cursor-pointer gap-1 rounded-full border border-zinc-100 bg-white px-1.5 py-0.5 text-[11px] shadow-sm dark:border-zinc-700 dark:bg-[#233138]" title="Reações">
-                                    {Array.from(new Set(msg.reactions.map((r: any) => r.emoji))).filter(Boolean).slice(0, 3).map((e: any) => <span key={e} className="leading-none">{e}</span>)}
-                                    {msg.reactions.length > 1 && <span className="ml-0.5 font-medium text-zinc-500 dark:text-zinc-400">{msg.reactions.length}</span>}
-                                  </div>
-                                )}
-
-                                {/* Timestamp & Status */}
-                                <span className="absolute right-2 bottom-[4px] text-[10px] flex items-center gap-1 text-[#8696A0] dark:text-[#8696A0]">
-                                  {msg.instance_friendly_name && (
-                                    <span className="opacity-60 italic mr-0.5">
-                                      {msg.direction === 'inbound' ? 'recebida' : 'enviada'} via {msg.instance_friendly_name} •
-                                    </span>
-                                  )}
-                                  {formatTime(msg.sent_at)}
-                                  {msg.direction === "outbound" && (
-                                    msg.status === 'sending' ? <Loader2 className="h-3 w-3 animate-spin" /> :
-                                      <CheckCheck className={cn("h-4 w-4", msg.status === 'read' ? "text-[#53bdeb]" : "text-[#8696A0]")} />
-                                  )}
-                                </span>
-
-                                {/* Hover Actions Menu */}
-                                <div className="absolute top-1 right-1 opacity-0 group-hover:opacity-100 transition-opacity flex gap-1 z-50">
-                                  <DropdownMenu>
-                                    <DropdownMenuTrigger asChild>
-                                      <Button variant="ghost" size="icon" className="h-6 w-6 hover:bg-black/10 rounded-full">
-                                        <ChevronDown className="h-4 w-4 text-[#8696A0]" />
-                                      </Button>
-                                    </DropdownMenuTrigger>
-                                    <DropdownMenuContent align="end" className="bg-white dark:bg-[#233138] border-none text-[#111B21] dark:text-[#E9EDEF]">
-                                      <div className="flex gap-2 p-2 justify-center border-b border-zinc-100 dark:border-zinc-700/50 mb-1">
-                                        {["👍", "❤️", "😂", "😮", "😢", "😡"].map(emoji => (
-                                          <button
-                                            key={emoji}
-                                            className="hover:scale-125 transition-transform text-lg leading-none"
-                                            onClick={() => handleSendReaction(msg, emoji)}
-                                            title={`Reagir com ${emoji}`}
-                                          >
-                                            {emoji}
-                                          </button>
-                                        ))}
-                                        <button className="hover:scale-125 transition-transform text-xs opacity-50 hover:opacity-100" onClick={() => handleSendReaction(msg, "")} title="Remover reação">
-                                          🚫
-                                        </button>
-                                      </div>
-                                      <DropdownMenuItem onClick={() => handleReplyMessage(msg)} className="gap-2"><Plus className="h-4 w-4" /> Responder</DropdownMenuItem>
-                                      {msg.direction === 'outbound' && (
-                                        <DropdownMenuItem onClick={() => handleEditMessage(msg)} className="gap-2"><Pencil className="h-4 w-4" /> Editar</DropdownMenuItem>
-                                      )}
-                                      <DropdownMenuItem onClick={() => {
-                                        navigator.clipboard.writeText(msg.content);
-                                        toast.success("Copiado!");
-                                      }} className="gap-2"><FileText className="h-4 w-4" /> Copiar texto</DropdownMenuItem>
-                                      <DropdownMenuItem onClick={() => handleDeleteClick(msg)} className="gap-2 text-red-500 focus:text-red-500">
-                                        <Trash2 className="h-4 w-4" /> Apagar
-                                      </DropdownMenuItem>
-                                    </DropdownMenuContent>
-                                  </DropdownMenu>
-                                </div>
                               </div>
-                            );
-                          })}
+
+                              {/* Quick Reaction Button (Hover) */}
+                              <div className={cn(
+                                "opacity-0 group-hover/msg:opacity-100 transition-opacity flex gap-1",
+                                isOutbound ? "mr-1" : "ml-1"
+                              )}>
+                                <button className="p-1 hover:bg-slate-800 rounded-full text-slate-500" onClick={() => setReplyingTo(msg)}><CornerUpLeft className="w-3.5 h-3.5" /></button>
+                                <button className="p-1 hover:bg-slate-800 rounded-full text-slate-500" onClick={() => handleSendReaction(msg, '❤️')}><Heart className="w-3.5 h-3.5" /></button>
+                              </div>
+                            </div>
+                          ))}
                         </div>
-                      </div>
+                      </React.Fragment>
                     );
                   });
                 })()}
-                <div ref={messagesEndRef} />
+                <div ref={messagesEndRef} className="h-1 shrink-0" />
 
-                {showNewMessageBanner && (
-                  <div
-                    className="fixed bottom-[100px] left-1/2 md:left-[calc(360px+(100%-360px)/2)] -translate-x-1/2 z-50 bg-[#00a884] text-[#111B21] px-4 py-2 rounded-full shadow-2xl cursor-pointer flex items-center gap-2 animate-in fade-in slide-in-from-bottom-4 duration-300 hover:bg-[#008f70] transition-colors"
-                    onClick={() => {
-                      setShowNewMessageBanner(false);
-                      scrollToBottom('smooth');
-                    }}
-                  >
-                    <ChevronDown className="h-4 w-4" />
-                    <span className="text-xs font-bold">Nova mensagem</span>
+                {/* FLOATING EMOJI PICKER */}
+                {showEmojiPicker && (
+                  <div className="absolute bottom-24 left-6 z-50">
+                    <EmojiPicker
+                      onEmojiClick={(emojiData) => {
+                        onEmojiClick(emojiData);
+                        setShowEmojiPicker(false);
+                      }}
+                      theme={Theme.DARK}
+                      lazyLoadEmojis={true}
+                    />
                   </div>
                 )}
               </div>
-            </div>
 
-            {/* Reply Preview */}
-            {replyingTo && (
-              <div className="sticky bottom-[70px] z-40 bg-zinc-100/95 dark:bg-zinc-800/95 border-l-[6px] border-violet-500 p-3 mx-4 mb-0 rounded-t-lg shadow-lg backdrop-blur supports-[backdrop-filter]:bg-zinc-100/60 flex justify-between items-center animate-in slide-in-from-bottom-2 border-t border-r border-zinc-200 dark:border-zinc-700">
-                <div className="flex flex-col overflow-hidden mr-4">
-                  <span className="text-xs font-bold text-violet-600 dark:text-violet-400 mb-0.5">
-                    Respondendo a {replyingTo.direction === 'outbound' ? 'Você' : (replyingTo.agent_name || replyingTo.sender_name || 'Participante')}
-                  </span>
-                  <span className="text-sm text-zinc-600 dark:text-zinc-300 truncate line-clamp-1 opacity-90">
-                    {replyingTo.content || (replyingTo.media_url ? '📷 Mídia' : 'Mensagem')}
-                  </span>
-                </div>
-                <Button variant="ghost" size="sm" className="h-8 w-8 rounded-full p-0 shrink-0 text-zinc-500 hover:text-red-500" onClick={() => setReplyingTo(null)}>
-                  <XCircle className="h-5 w-5" />
-                </Button>
-              </div>
-            )}
 
-            {/* Chat Input Area - WhatsApp Dark Style */}
-            <div className="flex-none bg-[#202C33] px-4 py-2 flex items-center gap-2 w-full min-h-[62px] z-30" onClick={(e) => e.stopPropagation()}>
+              {/* INPUT AREA - ULTRA MODERN INTEGRATED */}
+              <div className="relative bg-[#020617] p-6 z-20 shrink-0">
+                <div className="max-w-6xl mx-auto bg-slate-900/40 border border-white/5 rounded-[28px] p-2 pr-4 shadow-2xl backdrop-blur-xl">
+                  <div className="flex items-end gap-2">
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button variant="ghost" size="icon" className="h-10 w-10 shrink-0 text-slate-400 hover:text-white rounded-full">
+                          <Plus className="h-5 w-5" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent side="top" align="start" className="bg-slate-900 border-white/10 text-slate-200 w-48 mb-2">
+                        <DropdownMenuItem onClick={handleAttachmentClick} className="gap-3 py-2.5 cursor-pointer"><Image className="h-4 w-4" /> Fotos & Vídeos</DropdownMenuItem>
+                        <DropdownMenuItem onClick={handleAttachmentClick} className="gap-3 py-2.5 cursor-pointer"><FileText className="h-4 w-4" /> Documentos</DropdownMenuItem>
+                        <DropdownMenuItem onClick={handleAttachmentClick} className="gap-3 py-2.5 cursor-pointer"><Mic className="h-4 w-4" /> Áudio</DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => { setAppointmentInitialData({ conversation_id: selectedConversation?.id, client_name: getDisplayName(selectedConversation), phone: selectedConversation?.phone }); setIsAppointmentModalOpen(true); }} className="gap-3 py-2.5 cursor-pointer text-blue-400"><Calendar className="h-4 w-4" /> Enviar Horário / Agendar</DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
 
-              {/* Emoji Picker Popover */}
-              {showEmojiPicker && (
-                <div className="absolute bottom-16 left-4 z-50 shadow-2xl border-none rounded-lg overflow-hidden">
-                  <EmojiPicker theme={Theme.DARK} onEmojiClick={onEmojiClick} width={300} height={400} />
-                </div>
-              )}
-
-              <div className="flex items-center gap-1">
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className={cn("text-[#8696A0] hover:bg-white/10 rounded-full", showEmojiPicker && "text-[#00a884]")}
-                  disabled={!selectedConversation}
-                  onClick={() => setShowEmojiPicker(!showEmojiPicker)}
-                  type="button"
-                >
-                  <Smile className="h-6 w-6" />
-                </Button>
-
-                <input
-                  type="file"
-                  ref={fileInputRef}
-                  className="hidden"
-                  onChange={handleFileChange}
-                />
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="text-[#8696A0] hover:bg-white/10 rounded-full"
-                  disabled={!selectedConversation}
-                  onClick={handleAttachmentClick}
-                  type="button"
-                >
-                  <Plus className="h-6 w-6" />
-                </Button>
-              </div>
-
-              <form
-                className="flex-1 flex items-center gap-2"
-                onSubmit={handleSendMessage}
-              >
-                {isRecording ? (
-                  <div className="flex-1 flex items-center gap-4 bg-[#2A3942] rounded-lg px-4 h-[42px] animate-in fade-in slide-in-from-bottom-2">
-                    <div className="flex items-center gap-2 flex-1">
-                      <div className="h-2 w-2 rounded-full bg-red-500 animate-pulse" />
-                      <span className="text-[#E9EDEF] font-mono">{formatDuration(recordingDuration)}</span>
-                    </div>
-                    <Button type="button" variant="ghost" size="icon" className="text-red-500 hover:bg-red-500/10 rounded-full" onClick={cancelRecording}>
-                      <X className="h-6 w-6" />
+                    <Button variant="ghost" size="icon" className="h-10 w-10 shrink-0 text-slate-400 hover:text-white rounded-full" onClick={() => setShowEmojiPicker(!showEmojiPicker)}>
+                      <Smile className="h-5 w-5" />
                     </Button>
-                    <Button type="button" variant="ghost" size="icon" className="text-[#00a884] hover:bg-[#00a884]/10 rounded-full" onClick={stopAndSendRecording}>
-                      <Send className="h-6 w-6" />
-                    </Button>
-                  </div>
-                ) : (
-                  <>
-                    <div className="flex-1 relative flex items-center">
+
+                    <div className="flex-1 min-h-[40px] flex flex-col justify-center">
                       <textarea
-                        className="flex-1 bg-[#2A3942] border-none text-[#E9EDEF] focus-visible:ring-0 focus-visible:ring-offset-0 placeholder:text-[#8696A0] py-[10px] px-[12px] rounded-lg text-[15px] resize-none overflow-y-auto max-h-[200px] min-h-[42px] leading-[20px] scrollbar-thin"
-                        placeholder={
-                          !selectedConversation ? "Selecione um contato" :
-                            (isPending && !selectedConversation.is_group) ? "Inicie o atendimento para responder" :
-                              (isClosed && !selectedConversation.is_group) ? "Conversa encerrada" : "Digite uma mensagem"
-                        }
                         rows={1}
-                        value={newMessage}
+                        placeholder="Digite uma mensagem ou comando /..."
+                        className="w-full bg-transparent border-none text-slate-100 placeholder:text-slate-600 focus:ring-0 text-sm py-2.5 resize-none max-h-48 custom-scrollbar scroll-py-2"
+                        value={messageInput}
                         onChange={(e) => {
-                          setNewMessage(e.target.value);
-                          // Auto-resize
+                          setMessageInput(e.target.value);
                           e.target.style.height = 'auto';
-                          e.target.style.height = `${Math.min(e.target.scrollHeight, 200)}px`;
+                          e.target.style.height = e.target.scrollHeight + 'px';
                         }}
                         onKeyDown={(e) => {
                           if (e.key === 'Enter' && !e.shiftKey) {
                             e.preventDefault();
-                            handleSendMessage(e as any);
+                            handleSendMessage();
                           }
                         }}
-                        disabled={!selectedConversation || isReadOnly}
-                        onFocus={() => setShowEmojiPicker(false)}
                       />
                     </div>
 
-                    {newMessage.trim() && selectedConversation ? (
-                      <Button type="submit" size="icon" className="h-[42px] w-[42px] shrink-0 text-[#8696A0] hover:text-[#00a884] bg-transparent shadow-none hover:bg-white/5 rounded-full">
-                        <Send className="h-6 w-6" />
-                      </Button>
-                    ) : (
-                      <Button
-                        type="button"
-                        size="icon"
-                        variant="ghost"
-                        className="h-[42px] w-[42px] shrink-0 text-[#8696A0] hover:bg-white/5 rounded-full"
-                        disabled={!selectedConversation || isReadOnly}
-                        onClick={startRecording}
-                      >
-                        <Mic className="h-6 w-6" />
-                      </Button>
-                    )}
-                  </>
-                )}
-              </form>
+                    <div className="flex items-center self-end mb-1 gap-2">
+                      {isRecording ? (
+                        <div className="flex items-center gap-3 bg-slate-800/80 px-4 py-1.5 rounded-full border border-blue-500/30 animate-in zoom-in-95">
+                          <div className="flex items-center gap-2">
+                            <div className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
+                            <span className="text-[11px] font-mono text-slate-100">{formatDuration(recordingDuration)}</span>
+                          </div>
+                          <div className="flex gap-1 border-l border-white/10 pl-2">
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8 text-slate-400 hover:text-red-400"
+                              onClick={cancelRecording}
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                            <Button
+                              size="icon"
+                              className="h-8 w-8 bg-blue-600 hover:bg-blue-500 text-white rounded-full"
+                              onClick={stopAndSendRecording}
+                            >
+                              <Send className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        </div>
+                      ) : messageInput.trim() ? (
+                        <Button
+                          onClick={handleSendMessage}
+                          className="h-9 w-9 bg-blue-600 hover:bg-blue-500 text-white rounded-full p-0 shadow-lg shadow-blue-500/20"
+                        >
+                          <Send className="h-4 w-4" />
+                        </Button>
+                      ) : (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-10 w-10 text-slate-400 hover:text-blue-500 rounded-full"
+                          onClick={startRecording}
+                        >
+                          <Mic className="h-5 w-5" />
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Typing Indicator */}
+                <div className="h-4 mt-2 px-8">
+                  {/* Logica de typing seria injetada aqui */}
+                </div>
+              </div>
             </div>
           </>
         )}
       </div>
+
       {/* Call UI Components */}
       {incomingCall && (
         <Dialog open={true} onOpenChange={() => { }}>
@@ -3570,6 +3433,16 @@ const AtendimentoPage = () => {
           contact_name: getDisplayName(selectedConversation),
           phone: selectedConversation?.phone,
           origin: "Atendimento"
+        }}
+      />
+
+      <AppointmentModal
+        isOpen={isAppointmentModalOpen}
+        onClose={() => setIsAppointmentModalOpen(false)}
+        initialData={appointmentInitialData || {
+          conversation_id: selectedConversation?.id,
+          client_name: getDisplayName(selectedConversation),
+          phone: selectedConversation?.phone
         }}
       />
 
@@ -3675,6 +3548,135 @@ const AtendimentoPage = () => {
         onRename={handleRenameContact}
         onTagsUpdate={handleTagsUpdate}
       />
+
+      {/* NEW CONTACT MODAL */}
+      <Dialog open={isNewContactModalOpen} onOpenChange={setIsNewContactModalOpen}>
+        <DialogContent className="sm:max-w-[425px]">
+          <DialogHeader>
+            <DialogTitle>Novo Contato</DialogTitle>
+          </DialogHeader>
+          <form onSubmit={handleCreateContact} className="space-y-4 pt-4">
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Nome</label>
+              <Input
+                value={newContactName}
+                onChange={(e) => setNewContactName(e.target.value)}
+                placeholder="Nome do cliente"
+                required
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Telefone</label>
+              <Input
+                value={newContactPhone}
+                onChange={(e) => {
+                  const v = e.target.value.replace(/\D/g, "");
+                  setNewContactPhone(v);
+                }}
+                placeholder="(11) 99999-9999"
+                required
+              />
+            </div>
+            <div className="flex justify-end gap-2 pt-2">
+              <Button type="button" variant="ghost" onClick={() => setIsNewContactModalOpen(false)}>Cancelar</Button>
+              <Button type="submit" disabled={isLoadingContacts}>
+                {isLoadingContacts ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <UserPlus className="w-4 h-4 mr-2" />}
+                Salvar Contato
+              </Button>
+            </div>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Contact Agenda Sheet */}
+      <Sheet open={isAgendaListOpen} onOpenChange={setIsAgendaListOpen}>
+        <SheetContent className="w-full sm:w-[420px] p-0 bg-[#0F172A] border-slate-800 text-slate-100 flex flex-col">
+          <SheetHeader className="h-[76px] px-6 flex flex-row items-center justify-between border-b border-white/5 space-y-0 shrink-0">
+            <SheetTitle className="text-slate-100">Agenda do Contato</SheetTitle>
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-8 gap-2 border-emerald-500/20 bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20 hover:text-emerald-300"
+              onClick={() => {
+                if (selectedConversation) {
+                  setAppointmentInitialData({
+                    conversation_id: selectedConversation.id,
+                    client_name: getDisplayName(selectedConversation),
+                    phone: selectedConversation.phone
+                  });
+                  setIsAppointmentModalOpen(true);
+                }
+              }}
+            >
+              <Plus className="h-4 w-4" /> Novo Agendamento
+            </Button>
+          </SheetHeader>
+
+          <div className="flex-1 overflow-y-auto p-6 space-y-4 custom-scrollbar">
+            {isLoadingAgenda ? (
+              <div className="flex flex-col items-center justify-center py-12 space-y-3 opacity-50">
+                <Loader2 className="h-8 w-8 animate-spin text-blue-500" />
+                <span className="text-sm text-slate-400 font-medium">Carregando agendamentos...</span>
+              </div>
+            ) : contactAgenda.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-12 text-center space-y-4">
+                <div className="w-16 h-16 bg-slate-900 rounded-full flex items-center justify-center ring-1 ring-white/5">
+                  <Calendar className="h-8 w-8 text-slate-700" />
+                </div>
+                <div className="space-y-1">
+                  <p className="text-slate-300 font-medium">Nenhum agendamento</p>
+                  <p className="text-slate-500 text-xs">Este contato não possui follow-ups agendados.</p>
+                </div>
+              </div>
+            ) : (
+              contactAgenda.map((item) => (
+                <div key={item.id} className="bg-slate-900/50 border border-white/5 rounded-xl p-4 space-y-3 hover:border-white/10 transition-all group">
+                  <div className="flex justify-between items-start">
+                    <div className="space-y-1">
+                      <h4 className="font-bold text-slate-100 text-sm group-hover:text-blue-400 transition-colors uppercase tracking-tight">{item.title}</h4>
+                      <div className="flex items-center gap-1.5 text-[11px] text-slate-400 font-medium bg-slate-950/50 px-2 py-1 rounded w-fit">
+                        <Clock className="w-3 h-3 text-blue-500" />
+                        {item.scheduled_at ? format(new Date(item.scheduled_at), "dd 'de' MMMM 'às' HH:mm", { locale: ptBR }) : 'Sem data'}
+                      </div>
+                    </div>
+                    <Badge className={cn(
+                      "text-[9px] uppercase font-black tracking-widest px-1.5 h-5",
+                      item.status === 'pending' || item.status === 'scheduled' ? "bg-amber-500/10 text-amber-400 border-amber-500/20" :
+                        item.status === 'completed' ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20" :
+                          "bg-red-500/10 text-red-400 border-red-500/20"
+                    )}>
+                      {item.status === 'pending' || item.status === 'scheduled' ? 'Pendente' : item.status === 'completed' ? 'Concluído' : 'Atrasado'}
+                    </Badge>
+                  </div>
+                  {item.description && (
+                    <p className="text-[11px] text-slate-500 leading-relaxed italic border-l-2 border-slate-800 pl-3">
+                      {item.description}
+                    </p>
+                  )}
+                  <div className="flex items-center justify-between pt-2 border-t border-white/5">
+                    <span className="text-[9px] font-bold text-slate-500 bg-slate-950 px-2 py-0.5 rounded border border-white/5 uppercase">
+                      {item.type || 'Ação'}
+                    </span>
+                    <div className="flex gap-1">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-7 text-[10px] text-blue-400 hover:text-blue-300 hover:bg-blue-500/10"
+                        onClick={() => {
+                          setFollowUpInitialData({ ...item, id: item.id });
+                          setIsFollowUpModalOpen(true);
+                        }}
+                      >
+                        <Pencil className="h-3 w-3 mr-1" /> Editar
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        </SheetContent>
+      </Sheet>
     </div >
   );
 };

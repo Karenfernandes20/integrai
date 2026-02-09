@@ -9,6 +9,7 @@ export const getFollowUps = async (req: Request, res: Response) => {
         const companyId = user?.company_id;
         const isAdmin = user.role === 'SUPERADMIN' || user.role === 'ADMIN';
 
+        const { phone } = req.query;
         let query = `
             SELECT 
                 f.*,
@@ -26,10 +27,18 @@ export const getFollowUps = async (req: Request, res: Response) => {
             WHERE f.company_id = $1
         `;
         const params: any[] = [companyId];
+        let paramIndex = 2;
+
+        if (phone) {
+            query += ` AND (f.phone = $${paramIndex} OR c.phone = $${paramIndex} OR l.phone = $${paramIndex})`;
+            params.push(phone);
+            paramIndex++;
+        }
 
         if (!isAdmin) {
-            query += ` AND f.user_id = $2`;
+            query += ` AND f.user_id = $${paramIndex}`;
             params.push(user.id);
+            paramIndex++;
         }
 
         query += ` ORDER BY f.scheduled_at ASC`;

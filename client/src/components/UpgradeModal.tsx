@@ -10,53 +10,42 @@ import { Badge } from "./ui/badge";
 const PLANS = [
     {
         name: "Básico",
-        description: "Ideal para quem está começando a organizar o atendimento.",
+        description: "Ideal para pequenas empresas que estão começando.",
         monthly: 497,
         annual: 497 * 12 * 0.8, // 20% off
         stripeLinkMonthly: "https://buy.stripe.com/test_basic_monthly",
         stripeLinkAnnual: "https://buy.stripe.com/test_basic_annual",
         features: [
-            "Até 3 Usuários",
+            "Até 5 Usuários",
             "1 Conexão WhatsApp",
-            "CRM Básico",
-            "Agendamentos",
+            "CRM Completo",
+            "Agendamentos Ilimitados",
+            "1 Agente de IA",
+            "Campanhas de Mensagens",
+            "5.000 mensagens/mês",
             "Suporte por Email"
         ],
         highlight: false
     },
     {
         name: "Avançado",
-        description: "Para empresas que buscam escalar vendas com automação.",
+        description: "Para empresas que buscam crescimento acelerado.",
         monthly: 597,
         annual: 597 * 12 * 0.8,
         stripeLinkMonthly: "https://buy.stripe.com/test_pro_monthly",
         stripeLinkAnnual: "https://buy.stripe.com/test_pro_annual",
         features: [
-            "Até 10 Usuários",
+            "Até 15 Usuários",
             "3 Conexões WhatsApp",
-            "CRM Avançado",
-            "Automações de Mensagens",
-            "Disparos em Massa (Limitado)",
+            "CRM Avançado com BI",
+            "Agendamentos Ilimitados",
+            "3 Agentes de IA",
+            "Automações Avançadas",
+            "20.000 mensagens/mês",
+            "API de Integração",
             "Suporte Prioritário"
         ],
         highlight: true
-    },
-    {
-        name: "Enterprise",
-        description: "Poder total com IA e recursos ilimitados.",
-        monthly: 497,
-        annual: 497 * 12 * 0.8,
-        stripeLinkMonthly: "https://buy.stripe.com/test_enterprise_monthly",
-        stripeLinkAnnual: "https://buy.stripe.com/test_enterprise_annual",
-        features: [
-            "Usuários Ilimitados",
-            "Conexões Ilimitadas",
-            "Agentes de IA Personalizados",
-            "API de Integração Completa",
-            "Gestor de Conta Dedicado",
-            "Disparos Ilimitados"
-        ],
-        highlight: false
     }
 ];
 
@@ -104,7 +93,7 @@ export function UpgradeModal({ open, onOpenChange }: UpgradeModalProps) {
                     </Label>
                 </div>
 
-                <div className="grid md:grid-cols-3 gap-4 px-1">
+                <div className="grid md:grid-cols-2 gap-6 px-1 max-w-4xl mx-auto">
                     {PLANS.map((plan) => {
                         const price = isAnnual ? (plan.monthly * 0.8).toFixed(0) : plan.monthly;
 

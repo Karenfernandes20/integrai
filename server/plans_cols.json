@@ -1,0 +1,70 @@
+[
+  {
+    "column_name": "id",
+    "data_type": "integer"
+  },
+  {
+    "column_name": "name",
+    "data_type": "character varying"
+  },
+  {
+    "column_name": "max_users",
+    "data_type": "integer"
+  },
+  {
+    "column_name": "max_whatsapp_users",
+    "data_type": "integer"
+  },
+  {
+    "column_name": "max_connections",
+    "data_type": "integer"
+  },
+  {
+    "column_name": "max_queues",
+    "data_type": "integer"
+  },
+  {
+    "column_name": "max_open_sessions",
+    "data_type": "integer"
+  },
+  {
+    "column_name": "use_campaigns",
+    "data_type": "boolean"
+  },
+  {
+    "column_name": "use_schedules",
+    "data_type": "boolean"
+  },
+  {
+    "column_name": "use_internal_chat",
+    "data_type": "boolean"
+  },
+  {
+    "column_name": "use_external_api",
+    "data_type": "boolean"
+  },
+  {
+    "column_name": "use_kanban",
+    "data_type": "boolean"
+  },
+  {
+    "column_name": "created_at",
+    "data_type": "timestamp without time zone"
+  },
+  {
+    "column_name": "updated_at",
+    "data_type": "timestamp without time zone"
+  },
+  {
+    "column_name": "max_ai_agents",
+    "data_type": "integer"
+  },
+  {
+    "column_name": "max_automations",
+    "data_type": "integer"
+  },
+  {
+    "column_name": "max_messages_month",
+    "data_type": "integer"
+  }
+]

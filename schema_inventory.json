@@ -1,0 +1,82 @@
+[
+  {
+    "column_name": "id",
+    "data_type": "integer"
+  },
+  {
+    "column_name": "company_id",
+    "data_type": "integer"
+  },
+  {
+    "column_name": "instance_id",
+    "data_type": "integer"
+  },
+  {
+    "column_name": "name",
+    "data_type": "character varying"
+  },
+  {
+    "column_name": "sku",
+    "data_type": "character varying"
+  },
+  {
+    "column_name": "barcode",
+    "data_type": "character varying"
+  },
+  {
+    "column_name": "category",
+    "data_type": "character varying"
+  },
+  {
+    "column_name": "description",
+    "data_type": "text"
+  },
+  {
+    "column_name": "cost_price",
+    "data_type": "numeric"
+  },
+  {
+    "column_name": "sale_price",
+    "data_type": "numeric"
+  },
+  {
+    "column_name": "quantity",
+    "data_type": "numeric"
+  },
+  {
+    "column_name": "min_quantity",
+    "data_type": "numeric"
+  },
+  {
+    "column_name": "unit",
+    "data_type": "character varying"
+  },
+  {
+    "column_name": "supplier_id",
+    "data_type": "integer"
+  },
+  {
+    "column_name": "image_url",
+    "data_type": "text"
+  },
+  {
+    "column_name": "status",
+    "data_type": "character varying"
+  },
+  {
+    "column_name": "created_at",
+    "data_type": "timestamp without time zone"
+  },
+  {
+    "column_name": "updated_at",
+    "data_type": "timestamp without time zone"
+  },
+  {
+    "column_name": "location",
+    "data_type": "character varying"
+  },
+  {
+    "column_name": "margin",
+    "data_type": "numeric"
+  }
+]

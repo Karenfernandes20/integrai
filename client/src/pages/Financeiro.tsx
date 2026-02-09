@@ -135,8 +135,16 @@ const CATEGORIES_REVENUES_FALLBACK = [
 
 const COLORS = ["#0088FE", "#00C49F", "#FFBB28", "#FF8042", "#8884d8", "#82ca9d", "#ffc658", "#8dd1e1", "#a4de65", "#d0ed57"];
 
+import ClinicalFinance from "./clinica/ClinicalFinance";
+
 const FinanceiroPage = () => {
   const { token, user } = useAuth();
+
+  // Conditionally render Clinical Finance
+  if (user?.company?.operation_type === 'pacientes' || user?.company?.operational_profile === 'CLINICA') {
+    return <ClinicalFinance />;
+  }
+
   // Main Tabs State
   const [mainTab, setMainTab] = useState("expenses"); // expenses, revenues, cashflow
 

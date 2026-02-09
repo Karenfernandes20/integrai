@@ -1,0 +1,5 @@
+COLUMNS: id, jid, name, push_name, profile_pic_url, instance, created_at, updated_at, company_id, phone
+CONSTRAINTS:
+whatsapp_contacts_company_id_fkey: FOREIGN KEY (company_id) REFERENCES companies(id)
+whatsapp_contacts_jid_instance_comp_unique: UNIQUE (jid, instance, company_id)
+whatsapp_contacts_pkey: PRIMARY KEY (id)

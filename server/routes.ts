@@ -8,7 +8,13 @@ import {
   resetUserPassword,
   updateProfile,
 } from './controllers/userController';
-import { getStages, getLeads, updateLeadStage, updateLead, createStage, deleteStage, getCrmDashboardStats } from './controllers/crmController';
+import { getStages, getLeads, updateLeadStage, updateLead, createStage, deleteStage, getCrmDashboardStats, createLead } from './controllers/crmController';
+import { getProfessionals, createProfessional, updateProfessional, deleteProfessional } from './controllers/professionalsController';
+import {
+  getInsurancePlans, createInsurancePlan, updateInsurancePlan, deleteInsurancePlan,
+  getProfessionalInsuranceConfigs, upsertProfessionalInsuranceConfig
+} from './controllers/insuranceController';
+import { getClinicalBIStats } from './controllers/clinicalBIController';
 import {
   handleWebhook,
   getConversations,
@@ -21,7 +27,7 @@ import { getCities, createCity } from './controllers/cityController';
 import { login, register } from './controllers/authController';
 import { authenticateToken, authorizeRole, authorizePermission } from './middleware/authMiddleware';
 import { rateLimit } from './middleware/rateLimitMiddleware';
-import { MODULES, ACTIONS } from './config/roles';
+import { PERMISSIONS } from './config/roles';
 import { getCompanies, createCompany, updateCompany, deleteCompany, getCompanyUsers, getCompany, getCompanyInstances, updateCompanyInstance } from './controllers/companyController';
 import { startConversation, closeConversation, updateContactNameWithAudit, deleteConversation, returnToPending } from './controllers/conversationController';
 import { getFollowUps, createFollowUp, updateFollowUp, deleteFollowUp, getFollowUpStats } from './controllers/followUpController';
@@ -139,6 +145,8 @@ router.post('/evolution/profile-pic/sync', authenticateToken, syncAllProfilePics
 // CRM Routes
 // Call Routes (Integration with Evolution)
 import { getCalls, startOutboundCall, getVoiceToken, getVoiceTwiML } from './controllers/callController';
+import { getCrmAppointments, createCrmAppointment, updateCrmAppointment, deleteCrmAppointment } from './controllers/appointmentController';
+
 router.get('/crm/calls', authenticateToken, getCalls);
 router.post('/crm/calls/start', authenticateToken, startOutboundCall);
 router.post('/crm/calls/token', authenticateToken, getVoiceToken);
@@ -151,6 +159,13 @@ router.post('/crm/conversations/:id/close', authenticateToken, closeConversation
 router.post('/crm/conversations/:id/pending', authenticateToken, returnToPending);
 router.put('/crm/conversations/:id/name', authenticateToken, updateContactNameWithAudit);
 router.delete('/crm/conversations/:id', authenticateToken, deleteConversation);
+
+// Appointments Routes
+router.get('/crm/appointments', authenticateToken, getCrmAppointments);
+router.post('/crm/appointments', authenticateToken, createCrmAppointment);
+router.put('/crm/appointments/:id', authenticateToken, updateCrmAppointment);
+router.delete('/crm/appointments/:id', authenticateToken, deleteCrmAppointment);
+
 
 // Cities routes
 router.get('/cities', getCities);
@@ -178,15 +193,64 @@ router.get('/crm/stages', authenticateToken, getStages);
 router.post('/crm/stages', authenticateToken, createStage);
 router.delete('/crm/stages/:id', authenticateToken, deleteStage);
 router.get('/crm/leads', authenticateToken, getLeads);
-router.put('/crm/leads/:id', authenticateToken, authorizePermission(MODULES.CRM, ACTIONS.WRITE), updateLead);
-router.put('/crm/leads/:id/move', authenticateToken, authorizePermission(MODULES.CRM, ACTIONS.WRITE), updateLeadStage);
+router.put('/crm/leads/:id', authenticateToken, authorizePermission('crm.move_cards'), updateLead);
+router.post('/crm/leads', authenticateToken, authorizePermission('crm.move_cards'), createLead);
+router.put('/crm/leads/:id/move', authenticateToken, authorizePermission('crm.move_cards'), updateLeadStage);
 
-// Follow-up Routes
+// Bot Routes (Chatbot)
+import {
+  getBots, createBot, updateBot, deleteBot,
+  getBotFlow, saveBotFlow,
+  getBotInstances, toggleBotInstance
+} from './controllers/botController';
+
+router.get('/bots', authenticateToken, getBots);
+router.post('/bots', authenticateToken, createBot);
+router.put('/bots/:id', authenticateToken, updateBot);
+router.delete('/bots/:id', authenticateToken, deleteBot);
+
+router.get('/bots/:id/flow', authenticateToken, getBotFlow);
+router.post('/bots/:id/flow', authenticateToken, saveBotFlow);
+
+router.get('/bots/:id/instances', authenticateToken, getBotInstances);
+router.post('/bots/:id/instances', authenticateToken, toggleBotInstance);
+
+// Clinical Finance Routes
+import {
+  getClinicalDashboard, getClinicalTransactions,
+  createClinicalTransaction, updateClinicalTransaction
+} from './controllers/clinicalFinanceController';
+
+router.get('/finance/clinical/dashboard', authenticateToken, getClinicalDashboard);
+router.get('/finance/clinical/transactions', authenticateToken, getClinicalTransactions);
+router.post('/finance/clinical/transactions', authenticateToken, createClinicalTransaction);
+router.put('/finance/clinical/transactions/:id', authenticateToken, updateClinicalTransaction);
+
+// Generic Financial Routes (Existing)
 router.get('/crm/follow-ups', authenticateToken, getFollowUps);
 router.get('/crm/follow-ups/stats', authenticateToken, getFollowUpStats);
 router.post('/crm/follow-ups', authenticateToken, createFollowUp);
 router.put('/crm/follow-ups/:id', authenticateToken, updateFollowUp);
 router.delete('/crm/follow-ups/:id', authenticateToken, deleteFollowUp);
+
+// Professionals Routes
+router.get('/crm/professionals', authenticateToken, getProfessionals);
+router.post('/crm/professionals', authenticateToken, authorizePermission('reg.professionals'), createProfessional);
+router.put('/crm/professionals/:id', authenticateToken, authorizePermission('reg.professionals'), updateProfessional);
+router.delete('/crm/professionals/:id', authenticateToken, authorizePermission('reg.professionals'), deleteProfessional);
+
+// Insurance Routes
+router.get('/crm/insurance-plans', authenticateToken, getInsurancePlans);
+router.post('/crm/insurance-plans', authenticateToken, authorizePermission('reg.services'), createInsurancePlan);
+router.put('/crm/insurance-plans/:id', authenticateToken, authorizePermission('reg.services'), updateInsurancePlan);
+router.delete('/crm/insurance-plans/:id', authenticateToken, authorizePermission('reg.services'), deleteInsurancePlan);
+
+// Professional-Insurance Configs
+router.get('/crm/professional-insurance-configs', authenticateToken, getProfessionalInsuranceConfigs);
+router.post('/crm/professional-insurance-configs', authenticateToken, authorizePermission('reg.professionals'), upsertProfessionalInsuranceConfig);
+
+// Clinical BI
+router.get('/crm/clinical-bi', authenticateToken, getClinicalBIStats);
 
 // Reports routes
 // Reports routes
@@ -210,9 +274,9 @@ router.get('/financial/receivables', authenticateToken, getReceivables);
 router.get('/financial/receivables-by-city', authenticateToken, getReceivablesByCity);
 router.get('/financial/cashflow', authenticateToken, getCashFlow);
 router.get('/financial/stats', authenticateToken, getFinancialStats);
-router.post('/financial/transactions', authenticateToken, authorizePermission(MODULES.FINANCIAL, ACTIONS.WRITE), createFinancialTransaction);
-router.put('/financial/transactions/:id', authenticateToken, authorizePermission(MODULES.FINANCIAL, ACTIONS.WRITE), updateFinancialTransaction);
-router.delete('/financial/transactions/:id', authenticateToken, authorizePermission(MODULES.FINANCIAL, ACTIONS.DELETE), deleteFinancialTransaction);
+router.post('/financial/transactions', authenticateToken, authorizePermission('finance.create'), createFinancialTransaction);
+router.put('/financial/transactions/:id', authenticateToken, authorizePermission('finance.edit'), updateFinancialTransaction);
+router.delete('/financial/transactions/:id', authenticateToken, authorizePermission('finance.delete'), deleteFinancialTransaction);
 router.put('/financial/transactions/:id/reactivate', authenticateToken, reactivateFinancialTransaction);
 router.post('/financial/transactions/:id/pay', authenticateToken, markAsPaid);
 
@@ -337,7 +401,7 @@ router.get('/evolution-debug', authenticateToken, async (req: Request, res: Resp
 });
 
 // DEBUG ROUTE FOR MESSAGES
-router.get('/debug-messages/:id', authenticateToken, async (req: Request, res: Response) => {
+router.get('/debug-messages/:id', authenticateToken, async (req: Request, res: Response) => { // getReceivables is already defined or imported, removing duplicate if present
   try {
     const { id } = req.params;
     const conv = await pool!.query('SELECT * FROM whatsapp_conversations WHERE id = $1', [id]);
@@ -488,7 +552,7 @@ import {
   getSuppliers,
   createSupplier,
   getPayments,
-  getReceivables
+  getReceivables as getShopReceivables
 } from './controllers/shopController';
 import { validateCompanyAndInstance } from './middleware/validateCompanyAndInstance';
 
@@ -496,11 +560,11 @@ router.get('/shop/dashboard', authenticateToken, validateCompanyAndInstance, get
 router.get('/shop/sales', authenticateToken, validateCompanyAndInstance, getSales);
 router.post('/shop/sales', authenticateToken, validateCompanyAndInstance, createSale);
 router.get('/shop/inventory', authenticateToken, validateCompanyAndInstance, getInventory);
-router.post('/shop/inventory', authenticateToken, authorizePermission(MODULES.CRM, ACTIONS.WRITE), validateCompanyAndInstance, createInventoryItem);
-router.put('/shop/inventory/:id', authenticateToken, authorizePermission(MODULES.CRM, ACTIONS.WRITE), validateCompanyAndInstance, updateInventoryItem);
+router.post('/shop/inventory', authenticateToken, authorizePermission('inventory.create_prod'), validateCompanyAndInstance, createInventoryItem);
+router.put('/shop/inventory/:id', authenticateToken, authorizePermission('inventory.edit_prod'), validateCompanyAndInstance, updateInventoryItem);
 router.get('/shop/suppliers', authenticateToken, validateCompanyAndInstance, getSuppliers);
 router.post('/shop/suppliers', authenticateToken, validateCompanyAndInstance, createSupplier);
 router.get('/shop/payments', authenticateToken, validateCompanyAndInstance, getPayments);
-router.get('/shop/receivables', authenticateToken, validateCompanyAndInstance, getReceivables);
+router.get('/shop/receivables', authenticateToken, validateCompanyAndInstance, getShopReceivables);
 
 export default router;

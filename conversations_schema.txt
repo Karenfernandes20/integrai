@@ -1,0 +1,24 @@
+id (integer) - Nullable: NO
+external_id (character varying) - Nullable: NO
+phone (character varying) - Nullable: YES
+contact_name (character varying) - Nullable: YES
+profile_pic_url (text) - Nullable: YES
+unread_count (integer) - Nullable: YES
+last_message_at (timestamp without time zone) - Nullable: YES
+instance (character varying) - Nullable: YES
+created_at (timestamp without time zone) - Nullable: YES
+updated_at (timestamp without time zone) - Nullable: YES
+status (character varying) - Nullable: YES
+user_id (integer) - Nullable: YES
+started_at (timestamp without time zone) - Nullable: YES
+closed_at (timestamp without time zone) - Nullable: YES
+last_message (text) - Nullable: YES
+company_id (integer) - Nullable: YES
+is_group (boolean) - Nullable: YES
+group_name (character varying) - Nullable: YES
+last_message_source (character varying) - Nullable: YES
+last_instance_key (text) - Nullable: YES
+channel (character varying) - Nullable: YES
+instagram_user_id (character varying) - Nullable: YES
+instagram_username (character varying) - Nullable: YES
+instance_id (integer) - Nullable: YES

@@ -45,10 +45,11 @@ import {
   Package,
   Target,
 } from "lucide-react";
-import { useLocation, useNavigate } from "react-router-dom";
+import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext";
 import { useState, useEffect } from "react";
 import { EditProfileModal } from "./EditProfileModal";
+import { Avatar, AvatarFallback, AvatarImage } from "./ui/avatar";
 
 const items: any[] = []; // Placeholder to avoid breaking if referenced elsewhere, but unused now.
 
@@ -98,9 +99,39 @@ export function AppSidebar() {
     }
   };
 
+  const [searchParams] = useSearchParams();
+  const [impersonatedProfile, setImpersonatedProfile] = useState<string | null>(null);
+
+  useEffect(() => {
+    const urlCompanyId = searchParams.get('companyId');
+    if (user?.role === 'SUPERADMIN' && urlCompanyId && token) {
+      // Fetch company profile to impersonate menu
+      fetch(`/api/companies/${urlCompanyId}`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      })
+        .then(res => res.json())
+        .then(data => {
+          if (data.operational_profile) setImpersonatedProfile(data.operational_profile);
+          else {
+            // Fallback logic similar to main engine
+            let p = 'GENERIC';
+            if (data.operation_type === 'pacientes' || data.category === 'clinica') p = 'CLINICA';
+            else if (data.operation_type === 'loja' || data.category === 'loja') p = 'LOJA';
+            else if (data.category === 'lavajato') p = 'LAVAJATO';
+            else if (data.category === 'restaurante') p = 'RESTAURANTE';
+            else if (data.operation_type === 'motoristas' || data.category === 'transporte') p = 'TRANSPORTE';
+            setImpersonatedProfile(p);
+          }
+        })
+        .catch(() => setImpersonatedProfile(null));
+    } else {
+      setImpersonatedProfile(null);
+    }
+  }, [searchParams, user, token]);
+
   // --- DYNAMIC MENU ENGINE ---
   // Determine Profile
-  let profile = (user as any)?.company?.operational_profile;
+  let profile = impersonatedProfile || (user as any)?.company?.operational_profile;
   if (!profile) {
     if ((user as any)?.company?.category === 'loja' || (user as any)?.company?.operation_type === 'loja') profile = 'LOJA';
     else if ((user as any)?.company?.category === 'lavajato') profile = 'LAVAJATO';
@@ -136,8 +167,8 @@ export function AppSidebar() {
     // 1. SuperAdmin Only Check
     if (item.superAdminOnly && user?.role !== 'SUPERADMIN') return false;
 
-    // 2. Grant Everything to Admin/Superadmin
-    if (user?.role === 'SUPERADMIN' || user?.role === 'ADMIN') return true;
+    // 2. Grant Everything to Superadmin
+    if (user?.role === 'SUPERADMIN') return true;
 
     // 3. Permission Check
     // If no permission requirements, show it
@@ -149,6 +180,15 @@ export function AppSidebar() {
     return user.permissions.includes(item.requiredPermission);
   });
 
+  const getInitials = (name: string) => {
+    if (!name) return "??";
+    const parts = name.trim().split(/\s+/);
+    if (parts.length >= 2) {
+      return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+    }
+    return name.substring(0, 2).toUpperCase();
+  };
+
 
 
   return (
@@ -159,24 +199,19 @@ export function AppSidebar() {
           onClick={() => setIsEditProfileOpen(true)}
           title="Ver/Editar perfil"
         >
-          {user?.role === 'SUPERADMIN' ? (
-            <img
-              src="/logo-integrai.jpg"
-              alt="Logo Integrai"
-              className="h-9 w-9 rounded-xl object-contain bg-white"
-            />
-          ) : user?.company?.logo_url ? (
+          {user?.company?.logo_url && user?.role !== 'SUPERADMIN' ? (
             <img
               src={user.company.logo_url}
               alt="Logo"
               className="h-9 w-9 rounded-xl object-cover bg-white"
             />
           ) : (
-            <img
-              src="/logo-integrai.jpg"
-              alt="Logo Integrai"
-              className="h-9 w-9 rounded-xl object-contain bg-white"
-            />
+            <Avatar className="h-9 w-9 rounded-xl border border-sidebar-border/50 shrink-0">
+              <AvatarImage src={user?.profile_pic_url} className="object-cover" />
+              <AvatarFallback className="bg-sidebar-primary text-sidebar-primary-foreground text-xs font-bold rounded-xl">
+                {getInitials(user?.full_name || "??")}
+              </AvatarFallback>
+            </Avatar>
           )}
           <div className="flex flex-col text-xs min-w-0">
             <span className="text-sm font-semibold tracking-tight truncate max-w-[120px] group-hover:text-sidebar-primary-foreground">

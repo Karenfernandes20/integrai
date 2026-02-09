@@ -7,7 +7,7 @@ import { Label } from "./ui/label";
 import { ScrollArea } from "./ui/scroll-area";
 import { Avatar, AvatarFallback, AvatarImage } from "./ui/avatar";
 import { toast } from "sonner";
-import { Save, User, Phone, Lock, Upload, X, Building2 } from "lucide-react";
+import { Save, User, Lock, Upload, X, Building2 } from "lucide-react";
 
 interface EditProfileModalProps {
     isOpen: boolean;
@@ -19,7 +19,6 @@ export function EditProfileModal({ isOpen, onClose }: EditProfileModalProps) {
     const u = user as any;
     const [formData, setFormData] = useState({
         full_name: u?.full_name || "",
-        phone: u?.phone || "",
         password: "",
         confirmPassword: "",
     });
@@ -72,7 +71,6 @@ export function EditProfileModal({ isOpen, onClose }: EditProfileModalProps) {
         try {
             const formDataToSend = new FormData();
             formDataToSend.append('full_name', formData.full_name);
-            formDataToSend.append('phone', formData.phone);
             if (formData.password) {
                 formDataToSend.append('password', formData.password);
             }
@@ -129,7 +127,7 @@ export function EditProfileModal({ isOpen, onClose }: EditProfileModalProps) {
 
     return (
         <Dialog open={isOpen} onOpenChange={onClose}>
-            <DialogContent className="sm:max-w-[400px] h-[90vh] sm:h-[85vh] flex flex-col p-0 gap-0">
+            <DialogContent className="w-[95%] sm:max-w-[420px] max-h-[90vh] flex flex-col p-0 gap-0 overflow-hidden outline-none">
                 <DialogHeader className="p-6 pb-2">
                     <DialogTitle className="flex items-center gap-2">
                         <User className="h-5 w-5 text-[#008069]" />
@@ -137,8 +135,8 @@ export function EditProfileModal({ isOpen, onClose }: EditProfileModalProps) {
                     </DialogTitle>
                 </DialogHeader>
 
-                <ScrollArea className="flex-1 px-6">
-                    <div className="space-y-4 py-4">
+                <div className="flex-1 min-h-0 overflow-y-auto">
+                    <div className="space-y-4 p-4 sm:p-6">
                         <div className="space-y-2">
                             <Label htmlFor="full_name">Nome Completo</Label>
                             <div className="relative">
@@ -152,18 +150,6 @@ export function EditProfileModal({ isOpen, onClose }: EditProfileModalProps) {
                             </div>
                         </div>
 
-                        <div className="space-y-2">
-                            <Label htmlFor="phone">Telefone</Label>
-                            <div className="relative">
-                                <Phone className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
-                                <Input
-                                    id="phone"
-                                    className="pl-9"
-                                    value={formData.phone}
-                                    onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-                                />
-                            </div>
-                        </div>
 
                         {/* Logo Upload Section */}
                         <div className="space-y-2 pt-2 border-t mt-4">
@@ -176,11 +162,11 @@ export function EditProfileModal({ isOpen, onClose }: EditProfileModalProps) {
                                 <Avatar className="h-24 w-24 border-2 border-white shadow-sm">
                                     <AvatarImage src={logoPreview || undefined} className="object-cover" />
                                     <AvatarFallback className="bg-[#008069] text-white text-xl font-bold">
-                                        {getInitials(companyName)}
+                                        {getInitials(formData.full_name || u?.full_name || "?")}
                                     </AvatarFallback>
                                 </Avatar>
 
-                                <div className="flex gap-2 w-full">
+                                <div className="flex flex-wrap gap-2 w-full justify-center">
                                     <label className="flex-1 cursor-pointer">
                                         <div className="flex items-center justify-center gap-2 h-9 px-4 py-2 bg-white border rounded-md text-sm font-medium hover:bg-gray-50 transition-colors shadow-sm">
                                             <Upload className="h-4 w-4" />
@@ -247,9 +233,9 @@ export function EditProfileModal({ isOpen, onClose }: EditProfileModalProps) {
                             </div>
                         </div>
                     </div>
-                </ScrollArea>
+                </div>
 
-                <DialogFooter className="p-6 pt-2 border-t">
+                <DialogFooter className="p-4 sm:p-6 border-t flex flex-col sm:flex-row gap-2 shrink-0">
                     <Button variant="ghost" onClick={onClose} disabled={isLoading}>
                         Cancelar
                     </Button>

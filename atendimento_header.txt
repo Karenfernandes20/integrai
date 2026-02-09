@@ -1,0 +1,149 @@
+import React, { useState, useEffect, useRef, useMemo, useLayoutEffect, Fragment } from "react";
+import {
+  MessageCircleMore,
+  Phone,
+  Paperclip,
+  Send,
+  MoreVertical,
+  Search,
+  CheckCheck,
+  RefreshCcw,
+  UserPlus,
+  Trash2,
+  Pencil,
+  XCircle,
+  Play,
+  CheckCircle2,
+  RotateCcw,
+  CalendarCheck,
+  Image,
+  FileText,
+  Mic,
+  Video,
+  MapPin,
+  Contact as ContactIcon,
+  Sticker,
+  Volume2,
+  VolumeX,
+  Volume1,
+  ChevronLeft,
+  ChevronRight,
+  MessageSquare,
+  MessageCircle,
+  ShieldAlert,
+  Download,
+  X,
+  Loader2,
+  ChevronDown,
+  Smile,
+  Plus,
+  ArrowLeft,
+  Bot,
+  Link2,
+  Sparkles,
+  Zap,
+  LayoutGrid,
+  CheckSquare,
+  Users,
+  Clock,
+  Filter,
+  UserCircle,
+  CornerUpLeft,
+  Heart,
+  MoreHorizontal,
+  Lock,
+  Calendar,
+  Stethoscope,
+} from "lucide-react";
+import RelationshipManager from "../components/RelationshipManager";
+import { Badge } from "../components/ui/badge";
+import { FollowUpModal } from "../components/follow-up/FollowUpModal";
+import { toast } from "sonner";
+import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
+import { Input } from "../components/ui/input";
+import { Button } from "../components/ui/button";
+import { ScrollArea } from "../components/ui/scroll-area";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "../components/ui/tabs";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../components/ui/dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+  DropdownMenuSeparator,
+} from "../components/ui/dropdown-menu";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "../components/ui/tooltip";
+import { io } from "socket.io-client";
+import { TagManager } from "../components/TagManager";
+import { ContactDetailsPanel } from "../components/ContactDetailsPanel";
+import type { FormEvent } from "react";
+import { cn } from "../lib/utils";
+import { Avatar, AvatarFallback, AvatarImage } from "../components/ui/avatar";
+import { useAuth } from "../contexts/AuthContext";
+import { CallModal } from "../components/CallModal";
+
+interface Conversation {
+  id: number | string;
+  phone: string;
+  contact_name: string;
+  last_message?: string;
+  last_message_at?: string;
+  unread_count?: number;
+  profile_pic_url?: string;
+  status?: 'PENDING' | 'OPEN' | 'CLOSED';
+  user_id?: number;
+  started_at?: string;
+  closed_at?: string;
+  is_group?: boolean;
+  group_name?: string;
+  company_name?: string;
+  contact_push_name?: string;
+  last_sender_name?: string;
+  last_message_source?: string;
+  instance?: string;
+  instance_friendly_name?: string;
+  tags?: { id: number; name: string; color: string }[];
+  user_name?: string;
+}
+
+interface Message {
+  id: string | number;
+  body?: string;
+  content?: string;
+  direction: 'inbound' | 'outbound';
+  type?: string;
+  status?: string;
+  fromMe?: boolean;
+  timestamp?: number;
+  sent_at?: string;
+  media_url?: string;
+  media_type?: string;
+  reply_to?: string;
+  reply_to_content?: string;
+  instance_friendly_name?: string;
+  reactions?: { emoji: string; senderId: string; fromMe: boolean; timestamp: number }[];
+  external_id?: string;
+  message_type?: string;
+  user_id?: number | string;
+  agent_name?: string;
+  sender_jid?: string;
+  sender_name?: string;
+  user_name?: string;
+  remoteJid?: string;
+  message_origin?: string;
+  saved_name?: string;
+  t?: number;
+}
+
+interface Contact {
+  id: number | string;
+  name: string;
+  phone: string;
+  profile_pic_url?: string;
+  push_name?: string;
+}
