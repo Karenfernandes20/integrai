@@ -56,8 +56,9 @@ export const getCompany = async (req: Request, res: Response) => {
             SELECT 
                 id, name, cnpj, city, state, phone, logo_url, evolution_instance, evolution_apikey, created_at,
                 COALESCE(operation_type, 'clientes') as operation_type,
-                category,
+                category, operational_profile, max_instances,
                 primary_color, secondary_color, system_name, custom_domain,
+                instagram_enabled, instagram_app_id, instagram_app_secret, instagram_page_id, instagram_business_id, instagram_access_token, instagram_status,
                 plan_id, due_date
             FROM companies WHERE id = $1
         `, [id]);
@@ -115,7 +116,7 @@ export const createCompany = async (req: Request, res: Response) => {
                 evolution_instance || null,
                 evolution_apikey || null,
                 operation_type || 'clientes',
-                (operation_type === 'pacientes' || category === 'clinica') ? 'CLINICA' :
+                (operation_type === 'pacientes' || operation_type === 'clinica' || category === 'clinica') ? 'CLINICA' :
                     (operation_type === 'loja' || category === 'loja') ? 'LOJA' :
                         (operation_type === 'restaurante' || category === 'restaurante') ? 'RESTAURANTE' :
                             (operation_type === 'lavajato' || category === 'lavajato') ? 'LAVAJATO' :
@@ -261,7 +262,7 @@ export const updateCompany = async (req: Request, res: Response) => {
         const { id } = req.params;
         const { name, cnpj, city, state, phone, evolution_instance, evolution_apikey, operation_type, category, remove_logo,
             primary_color, secondary_color, system_name, custom_domain, plan_id, due_date, max_instances,
-            // Instagram
+            instanceDefinitions,
             // Instagram
             instagram_enabled, instagram_app_id, instagram_app_secret, instagram_page_id, instagram_business_id, instagram_access_token
         } = req.body;
@@ -375,7 +376,7 @@ export const updateCompany = async (req: Request, res: Response) => {
 
         const newMax = max_instances ? parseInt(max_instances) : 1;
         const opTy = operation_type || 'clientes';
-        const opProf = (opTy === 'pacientes' || category === 'clinica') ? 'CLINICA' :
+        const opProf = (opTy === 'pacientes' || opTy === 'clinica' || category === 'clinica') ? 'CLINICA' :
             (opTy === 'loja' || category === 'loja') ? 'LOJA' :
                 (opTy === 'restaurante' || category === 'restaurante') ? 'RESTAURANTE' :
                     (opTy === 'lavajato' || category === 'lavajato') ? 'LAVAJATO' :
@@ -411,53 +412,66 @@ export const updateCompany = async (req: Request, res: Response) => {
         ];
 
 
-        // --- INSTANCE SYNC ---
-        // Create new instances if limit increased
+        // --- INSTANCE SYNC & DEFINITIONS ---
         try {
             const countRes = await pool.query('SELECT COUNT(*) FROM company_instances WHERE company_id = $1', [id]);
             const currentCount = parseInt(countRes.rows[0].count);
 
-            if (newMax > currentCount) {
-                const diff = newMax - currentCount;
+            // 1. Process Definitions (Update/Seed)
+            let parsedDefs = [];
+            if (instanceDefinitions) {
+                try {
+                    parsedDefs = typeof instanceDefinitions === 'string'
+                        ? JSON.parse(instanceDefinitions)
+                        : instanceDefinitions;
+                } catch (e) {
+                    console.error('Error parsing instanceDefinitions', e);
+                }
+            }
 
-                // Fetch existing to avoid name/key collision (e.g. if user renamed "Instância 2" to "Instância 3")
-                const existingRes = await pool.query('SELECT name, instance_key FROM company_instances WHERE company_id = $1', [id]);
-                const existingNames = new Set(existingRes.rows.map(r => r.name));
-                const existingKeys = new Set(existingRes.rows.map(r => r.instance_key));
+            if (parsedDefs.length > 0) {
+                // Fetch current instances to update by index or key
+                const currentInstRes = await pool.query('SELECT id FROM company_instances WHERE company_id = $1 ORDER BY id ASC', [id]);
+                const currentInsts = currentInstRes.rows;
 
-                let added = 0;
-                let candidate = 1;
-
-                // Loop until we have added the required number of new instances
-                while (added < diff) {
-                    const seedName = `Instância ${candidate}`;
-                    const seedKey = `integrai_${id}_${candidate}`;
-
-                    // If this name or key is already taken, skip to next candidate
-                    if (existingNames.has(seedName) || existingKeys.has(seedKey)) {
-                        candidate++;
-                        continue;
+                for (let i = 0; i < parsedDefs.length; i++) {
+                    const def = parsedDefs[i];
+                    if (currentInsts[i]) {
+                        // Update existing
+                        await pool.query(
+                            `UPDATE company_instances 
+                             SET name = $1, instance_key = $2, api_key = $3 
+                             WHERE id = $4`,
+                            [def.name, def.instance_key, def.api_key || null, currentInsts[i].id]
+                        );
+                    } else if (i < newMax) {
+                        // Create new if missing but within new limit
+                        await pool.query(
+                            `INSERT INTO company_instances (company_id, name, instance_key, api_key, status)
+                             VALUES ($1, $2, $3, $4, 'disconnected')`,
+                            [id, def.name, def.instance_key, def.api_key || null]
+                        );
                     }
+                }
+            }
 
-                    // Found a free slot, insert it
+            // 2. Handle limit changes (Add auto-generated or Delete excess)
+            // If newMax is still greater than what we processed/exists, add more
+            const finalCountRes = await pool.query('SELECT COUNT(*) FROM company_instances WHERE company_id = $1', [id]);
+            const finalCount = parseInt(finalCountRes.rows[0].count);
+
+            if (newMax > finalCount) {
+                const diff = newMax - finalCount;
+                for (let i = 0; i < diff; i++) {
+                    const seedName = `Instância ${finalCount + i + 1}`;
+                    const seedKey = `integrai_${id}_${finalCount + i + 1}`;
                     await pool.query(`
                         INSERT INTO company_instances (company_id, name, instance_key, status)
                         VALUES ($1, $2, $3, 'disconnected')
                     `, [id, seedName, seedKey]);
-
-                    existingNames.add(seedName);
-                    existingKeys.add(seedKey);
-
-                    added++;
-                    candidate++;
                 }
-                console.log(`[Update Company ${id}] Added ${diff} new instances (filling gaps).`);
-            } else if (newMax < currentCount) {
-                const diff = currentCount - newMax;
-                // Delete the most recent instances (highest IDs)
-                // We trust the database ensures company_id match.
-                // Subquery finds the IDs to keep or delete. 
-                // Simple approach: Delete top N by ID desc
+            } else if (newMax < finalCount) {
+                const diff = finalCount - newMax;
                 await pool.query(`
                     DELETE FROM company_instances 
                     WHERE id IN (
@@ -467,7 +481,6 @@ export const updateCompany = async (req: Request, res: Response) => {
                         LIMIT $2
                     )
                 `, [id, diff]);
-                console.log(`[Update Company ${id}] Removed ${diff} excess instances.`);
             }
         } catch (instErr) {
             console.error(`[Update Company ${id}] Failed to sync instances:`, instErr);
@@ -539,44 +552,32 @@ export const deleteCompany = async (req: Request, res: Response) => {
             const userRes = await client.query('SELECT id FROM app_users WHERE company_id = $1', [id]);
             const userIds = userRes.rows.map(r => r.id);
 
-            // 1. WhatsApp & Campaigns
+            // 1. WhatsApp & Webhooks (Children first)
             await client.query('DELETE FROM whatsapp_audit_logs WHERE user_id = ANY($1::int[]) OR conversation_id IN (SELECT id FROM whatsapp_conversations WHERE company_id = $2)', [userIds, id]);
             await client.query('DELETE FROM whatsapp_campaign_contacts WHERE campaign_id IN (SELECT id FROM whatsapp_campaigns WHERE company_id = $1)', [id]);
             await client.query('DELETE FROM whatsapp_messages WHERE conversation_id IN (SELECT id FROM whatsapp_conversations WHERE company_id = $1)', [id]);
             await client.query('DELETE FROM whatsapp_conversations WHERE company_id = $1', [id]);
             await client.query('DELETE FROM whatsapp_campaigns WHERE company_id = $1', [id]);
             await client.query('DELETE FROM whatsapp_contacts WHERE company_id = $1', [id]);
-            await client.query('DELETE FROM company_instances WHERE company_id = $1', [id]);
 
-            // 2. CRM
+            // 2. CRM & Professional
             await client.query('DELETE FROM crm_follow_ups WHERE company_id = $1', [id]);
             await client.query('DELETE FROM crm_appointments WHERE company_id = $1', [id]);
             await client.query('DELETE FROM crm_lead_tags WHERE lead_id IN (SELECT id FROM crm_leads WHERE company_id = $1)', [id]);
             await client.query('DELETE FROM crm_tags WHERE company_id = $1', [id]);
 
-            // CRM Professional & Insurance Config
             await client.query('DELETE FROM crm_professional_insurance_config WHERE professional_id IN (SELECT id FROM crm_professionals WHERE company_id = $1)', [id]);
             await client.query('DELETE FROM crm_professionals WHERE company_id = $1', [id]);
             await client.query('DELETE FROM crm_insurance_plans WHERE company_id = $1', [id]);
 
-            // Lavajato Dependencies
-            await client.query('DELETE FROM lavajato_service_orders WHERE company_id = $1', [id]);
-            await client.query('DELETE FROM lavajato_appointments WHERE company_id = $1', [id]);
-            await client.query('DELETE FROM lavajato_client_subscriptions WHERE client_id IN (SELECT id FROM crm_leads WHERE company_id = $1)', [id]);
-            await client.query('DELETE FROM lavajato_vehicles WHERE client_id IN (SELECT id FROM crm_leads WHERE company_id = $1)', [id]);
-
-            await client.query('DELETE FROM crm_leads WHERE company_id = $1', [id]);
-            await client.query('DELETE FROM crm_stages WHERE company_id = $1', [id]);
-
-            // 3. Finance & Inventory
+            // 3. Finance & Shop (Delete Financial dependencies before leads/users)
+            await client.query('DELETE FROM sale_items WHERE sale_id IN (SELECT id FROM sales WHERE company_id = $1)', [id]);
             await client.query('DELETE FROM receivables WHERE company_id = $1', [id]);
             await client.query('DELETE FROM payments WHERE company_id = $1', [id]);
-            await client.query('DELETE FROM sale_items WHERE sale_id IN (SELECT id FROM sales WHERE company_id = $1)', [id]);
             await client.query('DELETE FROM sales WHERE company_id = $1', [id]);
             await client.query('DELETE FROM inventory_movements WHERE company_id = $1', [id]);
             await client.query('DELETE FROM inventory WHERE company_id = $1', [id]);
             await client.query('DELETE FROM suppliers WHERE company_id = $1', [id]);
-
             await client.query('DELETE FROM financial_transactions WHERE company_id = $1', [id]);
             await client.query('DELETE FROM financial_categories WHERE company_id = $1', [id]);
             await client.query('DELETE FROM financial_cost_centers WHERE company_id = $1', [id]);
@@ -589,31 +590,57 @@ export const deleteCompany = async (req: Request, res: Response) => {
             await client.query('DELETE FROM restaurant_menu_categories WHERE company_id = $1', [id]);
             await client.query('DELETE FROM restaurant_tables WHERE company_id = $1', [id]);
 
-            // 5. Tasks, Roadmap & System
+            // 5. Lavajato
+            await client.query('DELETE FROM lavajato_service_orders WHERE company_id = $1', [id]);
+            await client.query('DELETE FROM lavajato_appointments WHERE company_id = $1', [id]);
+            await client.query('DELETE FROM lavajato_client_subscriptions WHERE company_id = $1', [id]);
+            await client.query('DELETE FROM lavajato_vehicles WHERE company_id = $1', [id]);
+            await client.query('DELETE FROM lavajato_boxes WHERE company_id = $1', [id]);
+            await client.query('DELETE FROM lavajato_services WHERE company_id = $1', [id]);
+            await client.query('DELETE FROM lavajato_plans WHERE company_id = $1', [id]);
+
+            // 6. Leads (AFTER all things referencing leads like appointments, OS, sales, etc)
+            await client.query('DELETE FROM crm_leads WHERE company_id = $1', [id]);
+            await client.query('DELETE FROM crm_stages WHERE company_id = $1', [id]);
+
+            // 7. Bots & AI
+            await client.query('DELETE FROM bot_sessions WHERE bot_id IN (SELECT id FROM bots WHERE company_id = $1)', [id]);
+            await client.query('DELETE FROM bot_instances WHERE bot_id IN (SELECT id FROM bots WHERE company_id = $1)', [id]);
+            await client.query('DELETE FROM bot_edges WHERE bot_id IN (SELECT id FROM bots WHERE company_id = $1)', [id]);
+            await client.query('DELETE FROM bot_nodes WHERE bot_id IN (SELECT id FROM bots WHERE company_id = $1)', [id]);
+            await client.query('DELETE FROM bots WHERE company_id = $1', [id]);
+            await client.query('DELETE FROM ai_agents WHERE company_id = $1', [id]);
+
+            // 8. Tasks & Roadmaps
             await client.query('DELETE FROM admin_task_history WHERE task_id IN (SELECT id FROM admin_tasks WHERE company_id = $1)', [id]);
             await client.query('DELETE FROM admin_tasks WHERE company_id = $1', [id]);
             await client.query('DELETE FROM roadmap_comments WHERE roadmap_item_id IN (SELECT id FROM roadmap_items WHERE company_id = $1)', [id]);
             await client.query('DELETE FROM roadmap_items WHERE company_id = $1', [id]);
-            await client.query('DELETE FROM entity_links WHERE source_id IN (SELECT id::text FROM roadmap_items WHERE company_id = $1)', [id]);
+            await client.query('DELETE FROM entity_links WHERE company_id = $1', [id]);
 
+            // 9. Workflows & FAQ
             await client.query('DELETE FROM workflow_executions WHERE workflow_id IN (SELECT id FROM system_workflows WHERE company_id = $1)', [id]);
             await client.query('DELETE FROM system_workflows WHERE company_id = $1', [id]);
-            await client.query('DELETE FROM global_templates WHERE company_id = $1', [id]);
-            await client.query('DELETE FROM ai_agents WHERE company_id = $1', [id]);
             await client.query('DELETE FROM faq_questions WHERE company_id = $1', [id]);
-            await client.query('DELETE FROM audit_logs WHERE company_id = $1', [id]);
-            await client.query('DELETE FROM system_logs WHERE company_id = $1', [id]);
-            await client.query('DELETE FROM goals WHERE company_id = $1', [id]);
+            await client.query('DELETE FROM global_templates WHERE company_id = $1', [id]);
 
-            // 6. Subscription & Usage
+            // 10. System Logs & Alerts (Alerts BEFORE Logs)
+            await client.query('DELETE FROM admin_alerts WHERE log_id IN (SELECT id FROM system_logs WHERE company_id = $1)', [id]);
+            await client.query('DELETE FROM system_logs WHERE company_id = $1', [id]);
+            await client.query('DELETE FROM audit_logs WHERE company_id = $1', [id]);
+            await client.query('DELETE FROM system_settings WHERE company_id = $1', [id]).catch(() => { }); // Optional column
+
+            // 11. Subscription & Usage
             await client.query('DELETE FROM invoices WHERE company_id = $1', [id]);
             await client.query('DELETE FROM subscriptions WHERE company_id = $1', [id]);
             await client.query('DELETE FROM company_usage WHERE company_id = $1', [id]);
+            await client.query('DELETE FROM goals WHERE company_id = $1', [id]);
 
-            // 7. Users
+            // 12. Instances & Users (Delete Instances AFTER things referencing them)
+            await client.query('DELETE FROM company_instances WHERE company_id = $1', [id]);
             await client.query('DELETE FROM app_users WHERE company_id = $1', [id]);
 
-            // 8. The Company itself
+            // 13. The Company itself
             const result = await client.query('DELETE FROM companies WHERE id = $1 RETURNING *', [id]);
 
             await client.query('COMMIT');
@@ -683,8 +710,23 @@ export const getCompanyInstances = async (req: Request, res: Response) => {
         }
 
         const { sync } = req.query;
-        const result = await pool.query('SELECT * FROM company_instances WHERE company_id = $1 ORDER BY id ASC', [id]);
+        let result = await pool.query('SELECT * FROM company_instances WHERE company_id = $1 ORDER BY id ASC', [id]);
         let instances = result.rows;
+
+        // Auto-migration/Seed for legacy companies
+        if (instances.length === 0) {
+            console.log(`[getCompanyInstances] Company ${id} has no instances. Seeding from legacy data...`);
+            const companyRes = await pool.query('SELECT evolution_instance, evolution_apikey FROM companies WHERE id = $1', [id]);
+            if (companyRes.rows.length > 0) {
+                const comp = companyRes.rows[0];
+                const insertRes = await pool.query(`
+                    INSERT INTO company_instances (company_id, name, instance_key, api_key, status)
+                    VALUES ($1, 'Instância 1', $2, $3, 'disconnected')
+                    RETURNING *
+                `, [id, comp.evolution_instance || `integrai_${id}_1`, comp.evolution_apikey || null]);
+                instances = insertRes.rows;
+            }
+        }
 
         if (sync === 'true') {
             const syncedInstances = [];

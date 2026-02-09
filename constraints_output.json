@@ -1,0 +1,6 @@
+[
+  {
+    "conname": "companies_operation_type_check",
+    "pg_get_constraintdef": "CHECK (((operation_type)::text = ANY (ARRAY['motoristas'::text, 'clientes'::text, 'pacientes'::text, 'loja'::text, 'clinica'::text, 'lavajato'::text, 'restaurante'::text])))"
+  }
+]

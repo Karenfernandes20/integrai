@@ -115,7 +115,7 @@ export function AppSidebar() {
           else {
             // Fallback logic similar to main engine
             let p = 'GENERIC';
-            if (data.operation_type === 'pacientes' || data.category === 'clinica') p = 'CLINICA';
+            if (data.operation_type === 'pacientes' || data.operation_type === 'clinica' || data.category === 'clinica') p = 'CLINICA';
             else if (data.operation_type === 'loja' || data.category === 'loja') p = 'LOJA';
             else if (data.category === 'lavajato') p = 'LAVAJATO';
             else if (data.category === 'restaurante') p = 'RESTAURANTE';
@@ -137,7 +137,7 @@ export function AppSidebar() {
     else if ((user as any)?.company?.category === 'lavajato') profile = 'LAVAJATO';
     else if ((user as any)?.company?.category === 'restaurante') profile = 'RESTAURANTE';
     else if ((user as any)?.company?.operation_type === 'motoristas' || (user as any)?.company?.category === 'transporte') profile = 'TRANSPORTE';
-    else if ((user as any)?.company?.operation_type === 'pacientes' || (user as any)?.company?.category === 'clinica') profile = 'CLINICA';
+    else if ((user as any)?.company?.operation_type === 'pacientes' || (user as any)?.company?.operation_type === 'clinica' || (user as any)?.company?.category === 'clinica') profile = 'CLINICA';
     else profile = 'GENERIC';
   }
 
@@ -149,7 +149,14 @@ export function AppSidebar() {
     // If superadmin, we should append the specific tools
     // But Superadmin might also want to see the "Company Content" logic.
     // Usually Superadmin sees "GENERIC" unless impersonating, but let's stick to the engine.
-    navItems = [...navItems, ...SUPERADMIN_ITEMS];
+    navItems = [...SUPERADMIN_ITEMS, ...navItems];
+
+    // Reorder: Move "Atendimento" to second position for SuperAdmin
+    const atendimentoIndex = navItems.findIndex(i => i.label === "Atendimento");
+    if (atendimentoIndex > -1) {
+      const [atendimentoItem] = navItems.splice(atendimentoIndex, 1);
+      navItems.splice(1, 0, atendimentoItem);
+    }
   }
 
   // Ensure FAQ is penultimate (second to last) if it exists, logic from before
