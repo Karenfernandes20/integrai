@@ -7,67 +7,61 @@ export const getCrmAppointments = async (req: Request, res: Response) => {
         const companyId = (req as any).user.company_id;
         const { start, end, responsible_id, lead_id } = req.query;
 
+        const params: any[] = [];
+        // DEBUG: REMOVED ALL JOINS TO ISOLATE THE ISSUE
         let query = `
             SELECT a.id, a.title, a.client_name, a.phone, a.status, a.type, a.description, a.location, 
-                   to_char(a.start_time, 'YYYY-MM-DD"T"HH24:MI:SS.MS') as start_time,
-                   to_char(a.end_time, 'YYYY-MM-DD"T"HH24:MI:SS.MS') as end_time,
-                   a.lead_id, a.responsible_id, a.insurance_plan_id, a.billing_amount,
-                   l.name as lead_name, 
-                   COALESCE(p.name, u.full_name) as responsible_name, 
-                   l.profile_pic as lead_avatar,
-                   p.color as professional_color
+                   a.start_time, a.end_time,
+                   a.lead_id, a.responsible_id, a.insurance_plan_id, a.billing_amount
             FROM crm_appointments a
-            LEFT JOIN crm_leads l ON a.lead_id = l.id
-            LEFT JOIN crm_professionals p ON a.responsible_id = p.id
-            LEFT JOIN app_users u ON a.responsible_id = u.id
-            WHERE a.company_id = $1
+            WHERE 1=1 AND a.deleted_at IS NULL
         `;
-        const params: any[] = [companyId];
-        let paramIndex = 2;
 
-        if (start && end) {
-            // Force params to be interpreted as UTC instants, then converted to naive timestamps (UTC face value)
-            query += ` AND a.start_time BETWEEN $${paramIndex} AND $${paramIndex + 1}`;
-            params.push(start, end);
-            paramIndex += 2;
+        if (companyId) {
+            params.push(companyId);
+            query += ` AND a.company_id = $${params.length}`;
         }
 
-        if (responsible_id) {
-            query += ` AND a.responsible_id = $${paramIndex}`;
+        console.log("DEBUG: RAW QUERY WITHOUT JOINS");
+
+        // COMPLETELY BYPASS ALL OTHER FILTERS FOR NOW
+        // console.log("DEBUG: BYPASSING ALL FILTERS EXCEPT COMPANY_ID");
+
+        // if (start && end) {
+        //     params.push(start, end);
+        if (start && end) {
+            params.push(start, end);
+            // Use timestamptz casting to ensure correct timezone comparison
+            // Buffer of 24 hours (1 day) to handle any UTC/Local offset issues gracefully without manual math
+            query += ` AND a.start_time >= ($${params.length - 1}::timestamptz - INTERVAL '24 hours') AND a.start_time <= ($${params.length}::timestamptz + INTERVAL '24 hours')`;
+        }
+
+        if (responsible_id && responsible_id !== 'all') {
             params.push(responsible_id);
-            paramIndex++;
+            query += ` AND a.responsible_id = $${params.length}`;
         }
 
         if (lead_id) {
-            query += ` AND a.lead_id = $${paramIndex}`;
             params.push(lead_id);
-            paramIndex++;
+            query += ` AND a.lead_id = $${params.length}`;
         }
 
         query += " ORDER BY a.start_time ASC";
 
-        // DEBUG LOGGING
-        console.log("--- GET APPOINTMENTS DEBUG ---");
-        console.log("Query Params:", req.query);
-        console.log("SQL Query:", query);
-        console.log("SQL Params:", params);
-
         const result = await pool!.query(query, params);
-        console.log("Found rows:", result.rowCount);
 
-        // Map to frontend friendly format if needed, but the frontend expects:
-        // id, title, client, whatsapp, start, end, status, type, responsible, description, location
         const events = result.rows.map(row => ({
             id: row.id.toString(),
             title: row.title,
             client: row.client_name || row.lead_name || 'Cliente',
             clientAvatar: row.lead_avatar,
             whatsapp: row.phone,
-            start: row.start_time,
-            end: row.end_time,
+            // Ensure dates are valid ISO strings
+            start: row.start_time instanceof Date ? row.start_time.toISOString() : row.start_time,
+            end: row.end_time instanceof Date ? row.end_time.toISOString() : row.end_time,
             status: row.status,
             type: row.type,
-            responsible: row.responsible_name,
+            responsible: row.responsible_name || 'Sem Responsável',
             professionalColor: row.professional_color,
             responsibleId: row.responsible_id,
             description: row.description,
@@ -79,7 +73,7 @@ export const getCrmAppointments = async (req: Request, res: Response) => {
 
         res.json(events);
     } catch (error: any) {
-        console.error("Error getting appointments:", error);
+        console.error('Error fetching CRM appointments:', error);
         res.status(500).json({ error: error.message });
     }
 };
@@ -170,9 +164,11 @@ export const deleteCrmAppointment = async (req: Request, res: Response) => {
         const companyId = (req as any).user.company_id;
         const { id } = req.params;
 
+        const userId = (req as any).user.id;
+
         const result = await pool!.query(
-            "DELETE FROM crm_appointments WHERE id = $1 AND company_id = $2 RETURNING id",
-            [id, companyId]
+            "UPDATE crm_appointments SET deleted_at = NOW(), deleted_by = $3 WHERE id = $1 AND company_id = $2 RETURNING id",
+            [id, companyId, userId]
         );
 
         if (result.rows.length === 0) {

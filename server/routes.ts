@@ -44,6 +44,9 @@ router.post('/webhooks/instagram', handleInstagramWebhook);
 // Auth routes
 router.post('/auth/login', login);
 router.post('/auth/register', register);
+router.get('/auth/me', authenticateToken, (req, res) => {
+  res.json((req as any).user);
+});
 
 import { upload } from './middleware/uploadMiddleware';
 
@@ -194,26 +197,48 @@ router.post('/crm/stages', authenticateToken, createStage);
 router.delete('/crm/stages/:id', authenticateToken, deleteStage);
 router.get('/crm/leads', authenticateToken, getLeads);
 router.put('/crm/leads/:id', authenticateToken, authorizePermission('crm.move_cards'), updateLead);
-router.post('/crm/leads', authenticateToken, authorizePermission('crm.move_cards'), createLead);
+router.post('/crm/leads', authenticateToken, createLead);
 router.put('/crm/leads/:id/move', authenticateToken, authorizePermission('crm.move_cards'), updateLeadStage);
 
-// Bot Routes (Chatbot)
+// Bot Routes (Chatbot V2)
 import {
-  getBots, createBot, updateBot, deleteBot,
-  getBotFlow, saveBotFlow,
-  getBotInstances, toggleBotInstance
-} from './controllers/botController';
+  getChatbots, createChatbot, updateChatbot, deleteChatbot,
+  getFlow, saveFlow, publishFlow,
+  getInstances, toggleInstance
+} from './controllers/chatbotController';
 
-router.get('/bots', authenticateToken, getBots);
-router.post('/bots', authenticateToken, createBot);
-router.put('/bots/:id', authenticateToken, updateBot);
-router.delete('/bots/:id', authenticateToken, deleteBot);
+router.get('/bots', authenticateToken, getChatbots);
+router.post('/bots', authenticateToken, createChatbot);
+router.put('/bots/:id', authenticateToken, updateChatbot);
+router.delete('/bots/:id', authenticateToken, deleteChatbot);
+router.get('/bots/:id/flow', authenticateToken, getFlow);
+router.post('/bots/:id/flow', authenticateToken, saveFlow);
+router.post('/bots/:id/publish', authenticateToken, publishFlow);
+router.get('/bots/:id/instances', authenticateToken, getInstances);
+router.post('/bots/:id/instances', authenticateToken, toggleInstance);
 
-router.get('/bots/:id/flow', authenticateToken, getBotFlow);
-router.post('/bots/:id/flow', authenticateToken, saveBotFlow);
+// Chatbot Execution Webhook
+import { processChatbotMessage } from './services/chatbotService';
+router.post('/webhook/chatbot/:empresaId/:instancia', async (req: Request, res: Response) => {
+  res.status(200).json({ status: 'received' });
+  const { instancia } = req.params;
+  const body = req.body;
 
-router.get('/bots/:id/instances', authenticateToken, getBotInstances);
-router.post('/bots/:id/instances', authenticateToken, toggleBotInstance);
+  // Extract message data (similar to main webhook)
+  const data = body.data || body;
+  const messages = data.messages || [data];
+  if (messages && messages[0]) {
+    const msg = messages[0];
+    const remoteJid = msg.key?.remoteJid;
+    const isFromMe = msg.key?.fromMe;
+
+    if (remoteJid && !isFromMe && !remoteJid.includes('@g.us')) {
+      const phone = remoteJid.split('@')[0];
+      const text = msg.message?.conversation || msg.message?.extendedTextMessage?.text || "";
+      await processChatbotMessage(instancia, phone, text);
+    }
+  }
+});
 
 // Clinical Finance Routes
 import {
@@ -416,6 +441,19 @@ router.get('/debug-messages/:id', authenticateToken, async (req: Request, res: R
     });
   } catch (e: any) {
     res.status(500).json({ error: e.message });
+  }
+});
+
+router.get('/debug-query', async (req, res) => {
+  try {
+    const result = await pool!.query('SELECT content FROM app_debug_logs ORDER BY id DESC LIMIT 1');
+    if (result.rows.length > 0) {
+      res.type('text/plain').send(result.rows[0].content);
+    } else {
+      res.type('text/plain').send("No logs in database yet.");
+    }
+  } catch (e: any) {
+    res.status(500).json({ error: 'DB Log Error', details: e.message });
   }
 });
 

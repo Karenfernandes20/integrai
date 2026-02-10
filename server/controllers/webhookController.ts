@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import { pool } from '../db';
 import { logEvent } from '../logger';
 import { triggerWorkflow } from './workflowController';
+import { processChatbotMessage } from '../services/chatbotService';
 
 // Tipo simplificado da mensagem
 interface WebhookMessage {
@@ -667,6 +668,11 @@ export const handleWebhook = async (req: Request, res: Response) => {
                     conversation_id: conversationId,
                     phone: phone
                 }).catch(e => console.error('[Workflow Trigger Error]:', e));
+
+                // Process Chatbot (V2 logic)
+                if (direction === 'inbound') {
+                    processChatbotMessage(instance, phone, content).catch(e => console.error('[Chatbot Error]:', e));
+                }
 
                 // Emit Socket (Critical Path for UI Responsiveness)
                 const io = req.app.get('io');

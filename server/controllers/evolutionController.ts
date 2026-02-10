@@ -49,7 +49,7 @@ export const getEvolutionConfig = async (user: any, source: string = 'unknown', 
         const instRes = await pool.query('SELECT instance_key, api_key FROM company_instances WHERE instance_key = $1 AND company_id = $2', [targetInstanceKey, resolvedCompanyId]);
         if (instRes.rows.length > 0) {
           const row = instRes.rows[0];
-          config.instance = row.instance_key;
+          config.instance = row.instance_key.replace(/\s+/g, '_').replace(/[^a-zA-Z0-9_-]/g, '');
 
           // Use specific key ONLY if it looks valid
           if (row.api_key && row.api_key.length > 10) {
@@ -72,7 +72,7 @@ export const getEvolutionConfig = async (user: any, source: string = 'unknown', 
         }
 
         if (evolution_instance) {
-          config.instance = evolution_instance;
+          config.instance = evolution_instance.replace(/\s+/g, '_').replace(/[^a-zA-Z0-9_-]/g, '');
 
           if (evolution_apikey && evolution_apikey.length > 10) {
             config.apikey = evolution_apikey;
@@ -146,7 +146,9 @@ export const getEvolutionQrCode = async (req: Request, res: Response) => {
     }
 
     // Prepare connection URL
-    const connectUrl = `${EVOLUTION_API_URL.replace(/\/$/, "")}/instance/connect/${EVOLUTION_INSTANCE}`;
+    // SANITIZE INSTANCE NAME: Evolution API doesn't like spaces
+    const sanitizedInstance = EVOLUTION_INSTANCE.replace(/\s+/g, '_').replace(/[^a-zA-Z0-9_-]/g, '');
+    const connectUrl = `${EVOLUTION_API_URL.replace(/\/$/, "")}/instance/connect/${sanitizedInstance}`;
     console.log(`[Evolution] Fetching QR Code from: ${connectUrl}`);
 
     const response = await fetch(connectUrl, {
@@ -161,19 +163,19 @@ export const getEvolutionQrCode = async (req: Request, res: Response) => {
       const errorText = await response.text();
       // Auto-Create Logic if 404
       if (response.status === 404 && (errorText.includes("does not exist") || errorText.includes("not found"))) {
-        console.log(`[Evolution] Instance ${EVOLUTION_INSTANCE} not found. Attempting to create it...`);
+        console.log(`[Evolution] Instance ${sanitizedInstance} not found. Attempting to create it...`);
 
         const createUrl = `${EVOLUTION_API_URL.replace(/\/$/, "")}/instance/create`;
         const createRes = await fetch(createUrl, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
-            // For creation, we use the GLOBAL key as it usually has the permission
+            // For creation, we MUST use the GLOBAL key if available, as it has perms to create
             apikey: process.env.EVOLUTION_API_KEY || EVOLUTION_API_KEY
           },
           body: JSON.stringify({
-            instanceName: EVOLUTION_INSTANCE,
-            token: "",
+            instanceName: sanitizedInstance,
+            token: EVOLUTION_API_KEY, // Use the user-provided key as the instance token
             qrcode: true,
             integration: "WHATSAPP-BAILEYS"
           })
@@ -200,7 +202,7 @@ export const getEvolutionQrCode = async (req: Request, res: Response) => {
             const backendUrl = rawBackendUrl.replace(/\/$/, "");
             const webhookUrl = `${backendUrl}/api/evolution/webhook`;
 
-            const wUrl = `${EVOLUTION_API_URL.replace(/\/$/, "")}/webhook/set/${EVOLUTION_INSTANCE}`;
+            const wUrl = `${EVOLUTION_API_URL.replace(/\/$/, "")}/webhook/set/${sanitizedInstance}`;
             fetch(wUrl, {
               method: "POST",
               headers: { "Content-Type": "application/json", apikey: EVOLUTION_API_KEY },
@@ -216,7 +218,7 @@ export const getEvolutionQrCode = async (req: Request, res: Response) => {
           return res.status(200).json({
             raw: createData,
             qrcode: qrCode,
-            instance: EVOLUTION_INSTANCE,
+            instance: sanitizedInstance,
             created_now: true
           });
         } else {
@@ -264,11 +266,11 @@ export const getEvolutionQrCode = async (req: Request, res: Response) => {
       const rawBackendUrl = process.env.BACKEND_URL || `${protocol}://${host}`;
       const backendUrl = rawBackendUrl.replace(/\/$/, "");
       const webhookUrl = `${backendUrl}/api/evolution/webhook`;
-      console.log(`[Evolution] Auto-registering Webhook for ${EVOLUTION_INSTANCE}: ${webhookUrl}`);
+      console.log(`[Evolution] Auto-registering Webhook for ${sanitizedInstance}: ${webhookUrl}`);
 
       const endpoints = [
-        `${EVOLUTION_API_URL.replace(/\/$/, "")}/webhook/set/${EVOLUTION_INSTANCE}`,
-        `${EVOLUTION_API_URL.replace(/\/$/, "")}/webhook/instance/${EVOLUTION_INSTANCE}`
+        `${EVOLUTION_API_URL.replace(/\/$/, "")}/webhook/set/${sanitizedInstance}`,
+        `${EVOLUTION_API_URL.replace(/\/$/, "")}/webhook/instance/${sanitizedInstance}`
       ];
 
       for (const wUrl of endpoints) {
@@ -309,7 +311,7 @@ export const getEvolutionQrCode = async (req: Request, res: Response) => {
     return res.status(200).json({
       raw: data,
       qrcode: qrCode,
-      instance: EVOLUTION_INSTANCE // Return instance name so frontend can show it
+      instance: sanitizedInstance // Return instance name so frontend can show it
     });
   } catch (error: any) {
     console.error("Erro ao obter QR Code da Evolution API:", error);

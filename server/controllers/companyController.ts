@@ -173,7 +173,9 @@ export const createCompany = async (req: Request, res: Response) => {
                 for (let i = 1; i <= limitInstances; i++) {
                     const isFirst = i === 1;
                     const seedName = `Instância ${i}`;
-                    const seedKey = (isFirst && evolution_instance) ? evolution_instance : `integrai_${newCompany.id}_${i}`;
+                    const rawKey = (isFirst && evolution_instance) ? evolution_instance : `integrai_${newCompany.id}_${i}`;
+                    // SANITIZE: Remove spaces and special chars for Evolution compatibility
+                    const seedKey = rawKey.replace(/\s+/g, '_').replace(/[^a-zA-Z0-9_-]/g, '').toLowerCase();
                     const seedApiKey = (isFirst && evolution_apikey) ? evolution_apikey : null;
 
                     await pool.query(`
@@ -436,20 +438,23 @@ export const updateCompany = async (req: Request, res: Response) => {
 
                 for (let i = 0; i < parsedDefs.length; i++) {
                     const def = parsedDefs[i];
+                    // Sanitize key before use/save
+                    const sanitizedKey = (def.instance_key || "").replace(/\s+/g, '_').replace(/[^a-zA-Z0-9_-]/g, '').toLowerCase();
+
                     if (currentInsts[i]) {
                         // Update existing
                         await pool.query(
                             `UPDATE company_instances 
                              SET name = $1, instance_key = $2, api_key = $3 
                              WHERE id = $4`,
-                            [def.name, def.instance_key, def.api_key || null, currentInsts[i].id]
+                            [def.name, sanitizedKey, def.api_key || null, currentInsts[i].id]
                         );
                     } else if (i < newMax) {
                         // Create new if missing but within new limit
                         await pool.query(
                             `INSERT INTO company_instances (company_id, name, instance_key, api_key, status)
                              VALUES ($1, $2, $3, $4, 'disconnected')`,
-                            [id, def.name, def.instance_key, def.api_key || null]
+                            [id, def.name, sanitizedKey, def.api_key || null]
                         );
                     }
                 }

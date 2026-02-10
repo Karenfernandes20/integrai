@@ -265,18 +265,22 @@ const BotEditor = ({ botId, onBack }: { botId: number, onBack: () => void }) => 
             });
             if (res.ok) {
                 const data = await res.json();
-                // Map database nodes to visual nodes
-                const mappedNodes: Node[] = data.nodes.map((n: any) => ({
+
+                // The new Professional Chatbot uses JSONB directly, no need for complex mapping 
+                // but we handle both for partial legacy support if any.
+                const mappedNodes: Node[] = (data.nodes || []).map((n: any) => ({
                     id: n.id,
                     type: n.type,
-                    position: { x: n.position_x, y: n.position_y },
-                    data: n.content || {}
+                    position: n.position || { x: n.position_x || 100, y: n.position_y || 100 },
+                    data: n.data || n.content || {}
                 }));
-                const mappedEdges: Edge[] = data.edges.map((e: any) => ({
+
+                const mappedEdges: Edge[] = (data.edges || []).map((e: any) => ({
                     id: e.id,
-                    source: e.source_node_id,
-                    target: e.target_node_id,
-                    sourceHandle: e.source_handle,
+                    source: e.source || e.source_node_id,
+                    target: e.target || e.target_node_id,
+                    sourceHandle: e.sourceHandle || e.source_handle,
+                    targetHandle: e.targetHandle || e.target_handle,
                     label: e.label
                 }));
 
@@ -317,11 +321,11 @@ const BotEditor = ({ botId, onBack }: { botId: number, onBack: () => void }) => 
                     'Content-Type': 'application/json',
                     Authorization: `Bearer ${token}`
                 },
-                body: JSON.stringify(payload)
+                body: JSON.stringify({ flow: payload })
             });
 
             if (res.ok) {
-                toast({ title: "Sucesso", description: "Fluxo salvo com sucesso!" });
+                toast({ title: "Sucesso", description: "Fluxo salvo como rascunho!" });
             } else {
                 throw new Error("Falha ao salvar");
             }
@@ -352,6 +356,21 @@ const BotEditor = ({ botId, onBack }: { botId: number, onBack: () => void }) => 
                 <div className="flex gap-2">
                     <Button variant="outline" onClick={() => setIsInstancesOpen(true)}>
                         <Network className="mr-2 h-4 w-4" /> Instâncias
+                    </Button>
+                    <Button
+                        className="bg-purple-600 hover:bg-purple-700"
+                        onClick={async () => {
+                            try {
+                                const res = await fetch(`/api/bots/${botId}/publish`, {
+                                    method: 'POST',
+                                    headers: { Authorization: `Bearer ${token}` }
+                                });
+                                if (res.ok) toast({ title: "Publicado!", description: "Seu chatbot agora está ativo nas instâncias conectadas." });
+                                else toast({ title: "Erro na publicação", variant: "destructive" });
+                            } catch (e) { toast({ title: "Erro", description: "Falha ao publicar", variant: "destructive" }); }
+                        }}
+                    >
+                        Publicar
                     </Button>
                 </div>
             </div>

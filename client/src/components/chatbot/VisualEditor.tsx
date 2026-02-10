@@ -5,7 +5,7 @@ import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import {
     MessageSquare, HelpCircle, GitFork, Zap, UserCheck,
-    Plus, Minus, X, MousePointer2, Save, Play
+    Plus, Minus, X, MousePointer2, Save, Play, Trash2
 } from 'lucide-react';
 
 const NODE_WIDTH = 250;
@@ -27,6 +27,19 @@ export const VisualEditor: React.FC<VisualEditorProps> = ({
     const [edges, setEdges] = useState<Edge[]>(initialEdges);
     const [viewport, setViewport] = useState<Viewport>({ x: 0, y: 0, zoom: 1 });
     const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
+
+    // Sync from props (when initial data arrives from API)
+    useEffect(() => {
+        if (initialNodes && initialNodes.length > 0) {
+            setNodes(initialNodes);
+        }
+    }, [initialNodes]);
+
+    useEffect(() => {
+        if (initialEdges && initialEdges.length > 0) {
+            setEdges(initialEdges);
+        }
+    }, [initialEdges]);
 
     // Interaction State
     const [isDraggingNode, setIsDraggingNode] = useState<string | null>(null);
@@ -114,19 +127,26 @@ export const VisualEditor: React.FC<VisualEditorProps> = ({
     // --- NODE OPERATIONS ---
 
     const addNode = (type: NodeType) => {
-        const id = crypto.randomUUID();
-        // Center of viewport
-        const center = screenToWorld(
-            containerRef.current ? containerRef.current.clientWidth / 2 + containerRef.current.offsetLeft : 0,
-            containerRef.current ? containerRef.current.clientHeight / 2 + containerRef.current.offsetTop : 0
+        if (!containerRef.current) return;
+        const id = typeof crypto.randomUUID === 'function'
+            ? crypto.randomUUID()
+            : Math.random().toString(36).substring(2, 11);
+        const rect = containerRef.current.getBoundingClientRect();
+
+        // Calculate center of the current view using absolute screen coordinates
+        const worldPos = screenToWorld(
+            rect.left + rect.width / 2,
+            rect.top + rect.height / 2
         );
 
         setNodes(prev => [...prev, {
             id,
             type,
-            position: { x: -viewport.x / viewport.zoom + 100, y: -viewport.y / viewport.zoom + 100 },
-            data: { label: type === 'message' ? 'Nova Mensagem' : 'Novo Bloco' }
+            position: { x: worldPos.x - 125, y: worldPos.y - 50 }, // -125 is half of NODE_WIDTH
+            data: { label: type === 'message' ? 'Nova Mensagem' : type.toUpperCase() }
         }]);
+
+        setSelectedNodeId(id); // Auto-focus the new node
     };
 
     const activeConnectionEnd = (nodeId: string) => {
@@ -191,6 +211,9 @@ export const VisualEditor: React.FC<VisualEditorProps> = ({
                 </Button>
                 <Button size="sm" variant="ghost" onClick={() => addNode('condition')} title="Condição">
                     <GitFork className="h-4 w-4 text-orange-600" />
+                </Button>
+                <Button size="sm" variant="ghost" onClick={() => addNode('action')} title="Ação">
+                    <Zap className="h-4 w-4 text-slate-600" />
                 </Button>
                 <Button size="sm" variant="ghost" onClick={() => addNode('handoff')} title="Humano">
                     <UserCheck className="h-4 w-4 text-rose-600" />
@@ -305,6 +328,7 @@ export const VisualEditor: React.FC<VisualEditorProps> = ({
                                     className="h-10 px-3 flex items-center gap-2 border-b border-inherit cursor-grab active:cursor-grabbing bg-inherit rounded-t-lg"
                                     onMouseDown={(e) => {
                                         e.stopPropagation();
+                                        setSelectedNodeId(node.id); // Selection on grab
                                         setIsDraggingNode(node.id);
                                         setDragStart({ x: e.clientX, y: e.clientY });
                                     }}
@@ -379,6 +403,7 @@ export const VisualEditor: React.FC<VisualEditorProps> = ({
                                     onChange={e => updateData('label', e.target.value)}
                                     placeholder="Nome identificador"
                                 />
+                                <p className="text-[10px] text-slate-400">ID: {node.id}</p>
                             </div>
 
                             {node.type === 'message' && (
@@ -390,7 +415,7 @@ export const VisualEditor: React.FC<VisualEditorProps> = ({
                                         onChange={e => updateData('content', e.target.value)}
                                         placeholder="Digite a mensagem que o bot enviará..."
                                     />
-                                    <p className="text-[10px] text-slate-400">Você pode usar variáveis como {'{nome}'}.</p>
+                                    <p className="text-[10px] text-slate-400">Dica: Use {"{{nome}}"} para personalizar.</p>
                                 </div>
                             )}
 
@@ -417,8 +442,54 @@ export const VisualEditor: React.FC<VisualEditorProps> = ({
                                 </>
                             )}
 
-                            {/* Generic JSON Editor for other types for now */}
-                            {!['message', 'question'].includes(node.type) && (
+                            {node.type === 'condition' && (
+                                <>
+                                    <div className="space-y-2">
+                                        <label className="text-xs font-bold text-slate-500 uppercase">Verificar Variável</label>
+                                        <input
+                                            className="w-full text-sm p-2 border rounded-md font-mono"
+                                            value={node.data.variable || ''}
+                                            onChange={e => updateData('variable', e.target.value)}
+                                            placeholder="ex: opcao_escolhida"
+                                        />
+                                    </div>
+                                    <div className="space-y-2">
+                                        <label className="text-xs font-bold text-slate-500 uppercase">Regra: IGUAL A</label>
+                                        <div className="flex gap-2">
+                                            <input
+                                                className="flex-1 text-sm p-2 border rounded-md"
+                                                value={node.data.matchValue || ''}
+                                                onChange={e => updateData('matchValue', e.target.value)}
+                                                placeholder="Valor para comparar"
+                                            />
+                                        </div>
+                                    </div>
+                                    <p className="text-[10px] text-slate-400">O fluxo seguirá pelo caminho conectado se a condição for atendida.</p>
+                                </>
+                            )}
+
+                            {node.type === 'action' && (
+                                <div className="space-y-4">
+                                    <div className="space-y-2">
+                                        <label className="text-xs font-bold text-slate-500 uppercase">Tipo de Ação</label>
+                                        <select
+                                            className="w-full text-sm p-2 border rounded-md bg-white"
+                                            value={node.data.action || 'create_lead'}
+                                            onChange={e => updateData('action', e.target.value)}
+                                        >
+                                            <option value="create_lead">Criar Lead no CRM</option>
+                                            <option value="notify_admin">Notificar Administrador</option>
+                                            <option value="external_webhook">Chamar Webhook Externo</option>
+                                            <option value="add_tag">Adicionar Tag ao Contato</option>
+                                        </select>
+                                    </div>
+                                    <div className="p-3 bg-slate-50 rounded border border-dashed border-slate-300">
+                                        <p className="text-[10px] text-slate-500">Configurações adicionais para esta ação estarão disponíveis na próxima atualização.</p>
+                                    </div>
+                                </div>
+                            )}
+
+                            {!['message', 'question', 'condition', 'action'].includes(node.type) && (
                                 <div className="space-y-2">
                                     <label className="text-xs font-bold text-slate-500 uppercase">Configuração (JSON)</label>
                                     <textarea
@@ -427,18 +498,32 @@ export const VisualEditor: React.FC<VisualEditorProps> = ({
                                         readOnly
                                         disabled
                                     />
-                                    <p className="text-[10px] text-amber-600">Edição avançada para este tipo em breve.</p>
                                 </div>
                             )}
                         </div>
 
-                        <div className="p-4 border-t bg-slate-50">
+                        <div className="p-4 border-t bg-slate-50 flex flex-col gap-2">
+                            <Button
+                                variant="outline"
+                                className="w-full"
+                                onClick={() => {
+                                    const id = crypto.randomUUID();
+                                    setNodes(prev => [...prev, {
+                                        ...node,
+                                        id,
+                                        position: { x: node.position.x + 50, y: node.position.y + 50 }
+                                    }]);
+                                    setSelectedNodeId(id);
+                                }}
+                            >
+                                Duplicar Bloco
+                            </Button>
                             <Button
                                 variant="destructive"
                                 className="w-full"
                                 onClick={deleteNode}
                             >
-                                <Minus className="mr-2 h-4 w-4" /> Excluir Bloco
+                                <Trash2 className="mr-2 h-4 w-4" /> Excluir Bloco
                             </Button>
                         </div>
                     </div>

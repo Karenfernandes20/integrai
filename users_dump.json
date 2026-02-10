@@ -1,0 +1,23 @@
+[
+  {
+    "id": 38,
+    "email": "karen@agenda.com",
+    "full_name": "Karen Agenda",
+    "role": "ADMIN",
+    "company_id": 30
+  },
+  {
+    "id": 1,
+    "email": "dev.karenfernandes@gmail.com",
+    "full_name": "Superadmin ",
+    "role": "SUPERADMIN",
+    "company_id": null
+  },
+  {
+    "id": 36,
+    "email": "karen@pessoal.com",
+    "full_name": "Karen",
+    "role": "ADMIN",
+    "company_id": 21
+  }
+]
