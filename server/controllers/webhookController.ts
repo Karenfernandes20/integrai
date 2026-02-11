@@ -496,8 +496,8 @@ export const handleWebhook = async (req: Request, res: Response) => {
                 } else {
                     const newConv = await pool.query(
                         `INSERT INTO whatsapp_conversations (external_id, phone, contact_name, instance, status, company_id, is_group, group_name, last_instance_key) 
-                         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $4) RETURNING id`,
-                        [normalizedJid, normalizedPhone, finalName, instance, currentStatus, companyId, isGroup, isGroup ? finalName : null]
+                         VALUES ($1, $2, $3, $4::text, $5, $6, $7, $8, $4::text) RETURNING id`,
+                        [normalizedJid, normalizedPhone, finalName, String(instance), currentStatus, companyId, isGroup, isGroup ? finalName : null]
                     );
                     conversationId = newConv.rows[0].id;
                 }
