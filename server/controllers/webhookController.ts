@@ -610,7 +610,7 @@ export const handleWebhook = async (req: Request, res: Response) => {
                 `INSERT INTO whatsapp_messages (conversation_id, direction, content, sent_at, status, external_id, message_type, media_url, user_id, sender_jid, sender_name, company_id, instance_id, instance_key, instance_name) 
                  VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15) 
                  ON CONFLICT (external_id) DO NOTHING RETURNING *`,
-                [conversationId, direction, content, sent_at, 'received', externalId, messageType, mediaUrl, null, senderJid, senderName, companyId, instanceId, instance, instanceDisplayName]
+                [conversationId, direction, content, sent_at.toISOString(), 'received', externalId, messageType, mediaUrl, null, senderJid, senderName, companyId, instanceId, instance, instanceDisplayName]
             );
 
             if (insertedMsg.rows.length > 0) {
@@ -762,7 +762,7 @@ export const handleWebhook = async (req: Request, res: Response) => {
                          unread_count = CASE WHEN $3 = 'inbound' THEN unread_count + 1 ELSE unread_count END,
                          last_instance_key = $4
                      WHERE id = $5`,
-                    [sent_at, content, direction, instance, conversationId]
+                    [sent_at.toISOString(), content, direction, instance, conversationId]
                 );
                 // ... (rest of the block logic continues as is, no change needed in text replacement if I target carefully)
 
