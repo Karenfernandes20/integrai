@@ -112,17 +112,19 @@ const QrCodePage = () => {
 
       const targetId = selectedCompanyId || user?.company_id;
 
-      // This ensures the backend uses the correct Instance Key and API Key
-      // skipSave is used when we call this FROM handleSaveCompany (which already saved)
+      // If we need to save the instance first, do it
       if (company?.whatsapp_type === 'evolution' && !skipSave) {
-        // We call handleSaveCompany logic inline but without closing the modal
-        const allInstances = [...instances];
-        if (targetInstance) {
-          if (targetInstance.id) {
-            const idx = allInstances.findIndex(i => i.id === targetInstance.id);
-            if (idx !== -1) allInstances[idx] = targetInstance;
-          } else if (targetInstance.slot_index !== undefined && allInstances[targetInstance.slot_index]) {
-            allInstances[targetInstance.slot_index] = targetInstance;
+        // Build a proper allInstances array
+        const maxSlots = Number(company?.whatsapp_limit || 1);
+        const allInstances: any[] = [];
+        
+        for (let i = 0; i < maxSlots; i++) {
+          const existingInst = instances[i];
+          // If we're editing this slot and it matches, use the updated version
+          if (targetInstance && (!targetInstance.id && targetInstance.slot_index === i) || (targetInstance.id && existingInst?.id === targetInstance.id)) {
+            allInstances.push(targetInstance);
+          } else if (existingInst) {
+            allInstances.push(existingInst);
           }
         }
 
@@ -308,15 +310,34 @@ const QrCodePage = () => {
         api_key: selectedInstance.api_key?.trim() || ""
       } : null;
 
-      const allInstances = [...instances];
-      if (trimmedInstance) {
-        if (trimmedInstance.id) {
-          const idx = allInstances.findIndex(i => i.id === trimmedInstance.id);
-          if (idx !== -1) allInstances[idx] = trimmedInstance;
-        } else if (trimmedInstance.slot_index !== undefined) {
-          allInstances[trimmedInstance.slot_index] = trimmedInstance;
+      // Build a proper allInstances array that includes all current instances
+      const allInstances: any[] = [];
+      const maxSlots = Number(company?.whatsapp_limit || 1);
+      
+      for (let i = 0; i < maxSlots; i++) {
+        const existingInst = instances[i];
+        // If we're editing this slot and it matches, use the updated version
+        const isEditingThisSlot = trimmedInstance && (
+          (!trimmedInstance.id && trimmedInstance.slot_index === i) || 
+          (trimmedInstance.id && existingInst?.id === trimmedInstance.id)
+        );
+        
+        if (isEditingThisSlot) {
+          console.log(`[QrCode] Adding edited instance at index ${i}:`, trimmedInstance);
+          allInstances.push(trimmedInstance);
+        } else if (existingInst) {
+          console.log(`[QrCode] Keeping existing instance at index ${i}:`, { id: existingInst.id, name: existingInst.name });
+          allInstances.push(existingInst);
+        } else {
+          console.log(`[QrCode] Skipping empty slot ${i}`);
         }
       }
+
+      console.log("[QrCode] Building instanceDefinitions:", {
+        maxSlots,
+        selectedInstance: trimmedInstance,
+        allInstances
+      });
 
       const res = await fetch(`/api/companies/${targetId}`, {
         method: "PUT",
@@ -329,6 +350,9 @@ const QrCodePage = () => {
           instanceDefinitions: allInstances
         })
       });
+
+      console.log("[QrCode] Save response status:", res.status);
+
       if (res.ok) {
         // Also save instance if selected
         if (company?.whatsapp_type === 'evolution' && trimmedInstance) {
@@ -337,6 +361,11 @@ const QrCodePage = () => {
             instance_key: trimmedInstance.instance_key,
             api_key: trimmedInstance.api_key
           };
+
+          console.log("[QrCode] Saving individual instance:", { 
+            instanceId: trimmedInstance.id, 
+            payload: { ...instancePayload, api_key: '***' } 
+          });
 
           if (trimmedInstance.id) {
             await fetch(`/api/companies/${targetId}/instances/${trimmedInstance.id}`, {
@@ -347,6 +376,8 @@ const QrCodePage = () => {
               },
               body: JSON.stringify(instancePayload)
             });
+          } else {
+            console.warn("[QrCode] Instance has no ID yet - will be created via instanceDefinitions");
           }
         }
 
@@ -356,34 +387,43 @@ const QrCodePage = () => {
         });
         const updatedInstances = await instRes.json();
 
+        console.log("[QrCode] Updated instances from server:", updatedInstances);
+
         if (Array.isArray(updatedInstances)) {
           setInstances(updatedInstances);
           // Update selected instance with fresh data from DB to ensure IDs are synced
           if (selectedInstance) {
-            // Try to find by ID first, then by matching key/name if it was new
+            // Try to find by ID first, then by matching key if it was new
             let updated = updatedInstances.find((i: any) => i.id === selectedInstance.id);
             if (!updated && selectedInstance.slot_index !== undefined) {
               updated = updatedInstances[selectedInstance.slot_index];
             }
-            if (updated) setSelectedInstance(updated);
+            if (!updated && selectedInstance.instance_key) {
+              // Last resort: match by instance_key
+              updated = updatedInstances.find((i: any) => i.instance_key === selectedInstance.instance_key);
+            }
+            if (updated) {
+              console.log("[QrCode] Synchronized selectedInstance with DB data:", updated);
+              setSelectedInstance(updated);
+            }
           }
         }
 
         if (startConnection) {
           // Trigger QR Code generation
-          // We must wait a tiny bit for state to settle? No, we have updatedInstances.
-          // But handleGenerateQrKey uses selectedInstance from state or override.
-          // Let's pass the updated instance if possible.
-
           let instanceToConnect = selectedInstance;
           if (Array.isArray(updatedInstances)) {
             let updated = updatedInstances.find((i: any) => i.id === selectedInstance?.id);
             if (!updated && selectedInstance?.slot_index !== undefined) {
               updated = updatedInstances[selectedInstance.slot_index];
             }
+            if (!updated && selectedInstance?.instance_key) {
+              updated = updatedInstances.find((i: any) => i.instance_key === selectedInstance.instance_key);
+            }
             if (updated) instanceToConnect = updated;
           }
 
+          console.log("[QrCode] Starting QR generation with instance:", instanceToConnect);
           await handleGenerateQrKey(instanceToConnect, true);
         } else {
           alert("Configurações salvas com sucesso!");

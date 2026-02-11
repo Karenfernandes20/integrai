@@ -499,85 +499,104 @@ export const updateCompany = async (req: Request, res: Response) => {
         ];
 
         // --- INSTANCE SYNC & DEFINITIONS ---
-        // --- INSTANCE SYNC & DEFINITIONS ---
         try {
-            // Fetch current instances to map updates
-            const currentInstRes = await pool.query('SELECT id, instance_key FROM company_instances WHERE company_id = $1 ORDER BY id ASC', [id]);
+            // Fetch current instances
+            const currentInstRes = await pool.query('SELECT id, instance_key, name FROM company_instances WHERE company_id = $1 ORDER BY id ASC', [id]);
             const currentInsts = currentInstRes.rows;
+
+            console.log(`[Update Company ${id}] Processing instances. Current: ${currentInsts.length}, Definitions: ${parsedDefs ? parsedDefs.length : 0}`);
 
             if (parsedDefs && parsedDefs.length > 0) {
                 for (let i = 0; i < parsedDefs.length; i++) {
                     const def = parsedDefs[i];
-                    // Skip if no key provided, unless it's a placeholder update for existing
-                    if (!def.instance_key && !currentInsts[i]) continue;
+
+                    // Skip completely empty definitions
+                    if (!def.instance_key && !def.name && !def.api_key && !def.id && !currentInsts[i]) {
+                        console.log(`[Update Company ${id}] Skipping definition ${i} - empty and no existing instance`);
+                        continue;
+                    }
+
+                    // Determine which instance to update or create
+                    let targetInst = null;
+                    
+                    // Case 1: Definition has an ID - use it directly
+                    if (def.id) {
+                        targetInst = currentInsts.find(ci => ci.id === def.id);
+                    }
+                    // Case 2: No ID but index matches an existing instance - use that
+                    else if (currentInsts[i]) {
+                        targetInst = currentInsts[i];
+                    }
 
                     const rawKey = def.instance_key || `instancia_${i + 1}_${Date.now()}`;
-                    // Relaxed sanitation: Allow mixed case, keep logic simple.
-                    // Evolution V2 supports mixed case keys.
                     const sanitizedKey = rawKey.trim().replace(/\s+/g, '_').replace(/[^a-zA-Z0-9_\-@\.]/g, '');
 
                     try {
-                        if (currentInsts[i]) {
-                            // If instance_key is empty in def, keep existing
-                            // But wait, if user CLEARED it? Evolution needs key.
-                            // Assuming frontend always sends key if available.
-                            // If def.instance_key is missing/empty, use current.
-                            const keyToUse = (def.instance_key && def.instance_key.trim()) ? sanitizedKey : currentInsts[i].instance_key;
-                            const nameToUse = def.name || currentInsts[i].name || `WhatsApp ${i + 1}`;
+                        if (targetInst) {
+                            // UPDATE existing instance
+                            const keyToUse = (def.instance_key && def.instance_key.trim()) ? sanitizedKey : targetInst.instance_key;
+                            const nameToUse = def.name || targetInst.name || `WhatsApp ${i + 1}`;
+                            const apiKeyToUse = def.api_key !== undefined ? def.api_key : null;
+
+                            console.log(`[Update Company ${id}] Updating instance ${targetInst.id}: name=${nameToUse}, key=${keyToUse}`);
 
                             await pool.query(
-                                `UPDATE company_instances SET name = $1, instance_key = $2, api_key = $3 WHERE id = $4`,
-                                [nameToUse, keyToUse, def.api_key || null, currentInsts[i].id]
+                                `UPDATE company_instances SET name = $1, instance_key = $2, api_key = $3, updated_at = NOW() WHERE id = $4`,
+                                [nameToUse, keyToUse, apiKeyToUse, targetInst.id]
                             );
                         } else {
-                            // Connect new instance
-                            if (!def.instance_key) continue; // Skip if no key for new instance
-                            await pool.query(
-                                `INSERT INTO company_instances (company_id, name, instance_key, api_key, status)
-                             VALUES ($1, $2, $3, $4, 'disconnected')`,
+                            // CREATE new instance only if has instance_key
+                            if (!def.instance_key) {
+                                console.log(`[Update Company ${id}] Skipping new instance ${i} - no instance_key provided`);
+                                continue;
+                            }
+
+                            console.log(`[Update Company ${id}] Creating new instance: name=${def.name}, key=${sanitizedKey}`);
+
+                            const createRes = await pool.query(
+                                `INSERT INTO company_instances (company_id, name, instance_key, api_key, status, created_at, updated_at)
+                                 VALUES ($1, $2, $3, $4, 'disconnected', NOW(), NOW())
+                                 RETURNING id, company_id, name, instance_key, api_key, status, created_at, updated_at`,
                                 [id, def.name || `WhatsApp ${i + 1}`, sanitizedKey, def.api_key || null]
                             );
+                            
+                            if (createRes.rows.length > 0) {
+                                console.log(`[Update Company ${id}] Created instance with ID: ${createRes.rows[0].id}`);
+                            }
                         }
                     } catch (dbErr: any) {
-                        if (dbErr.code === '23505') { // Unique violation
+                        if (dbErr.code === '23505') { // Unique violation on instance_key
+                            console.warn(`[Update Company ${id}] Unique key violation for ${sanitizedKey}, appending random suffix`);
                             const retryKey = `${sanitizedKey}_${id}_${Math.floor(Math.random() * 10000)}`;
-                            const finalName = def.name || `WhatsApp ${i + 1}`;
-                            if (currentInsts[i]) {
+                            const finalName = def.name || (targetInst?.name) || `WhatsApp ${i + 1}`;
+
+                            if (targetInst) {
                                 await pool.query(
-                                    `UPDATE company_instances SET name = $1, instance_key = $2, api_key = $3 WHERE id = $4`,
-                                    [finalName, retryKey, def.api_key || null, currentInsts[i].id]
+                                    `UPDATE company_instances SET name = $1, instance_key = $2, api_key = $3, updated_at = NOW() WHERE id = $4`,
+                                    [finalName, retryKey, def.api_key || null, targetInst.id]
                                 );
                             } else {
                                 await pool.query(
-                                    `INSERT INTO company_instances (company_id, name, instance_key, api_key, status)
-                                     VALUES ($1, $2, $3, $4, 'disconnected')`,
+                                    `INSERT INTO company_instances (company_id, name, instance_key, api_key, status, created_at, updated_at)
+                                     VALUES ($1, $2, $3, $4, 'disconnected', NOW(), NOW())
+                                     RETURNING id, company_id, name, instance_key, api_key, status, created_at, updated_at`,
                                     [id, finalName, retryKey, def.api_key || null]
                                 );
                             }
-                            console.warn(`[Update Company] Instance key collision resolved: ${sanitizedKey} -> ${retryKey}`);
                         } else {
                             throw dbErr;
                         }
                     }
                 }
-            } else if (newMax > currentInsts.length) {
-                // User increased limit but didn't provide definitions - Auto-create placeholders if needed?
-                // Current logic: We only create if definitions are provided or via QrCode page one-by-one.
-                // We don't auto-create generic instances here to avoid key collisions, 
-                // BUT the user asked for standard behavior.
-                // Let's NOT auto-create here to avoid overwriting user intent from QrCode page.
-                // The QrCode page already handles creation of missing slots in UI.
             }
 
-            // DELETE EXCESS INSTANCES ONLY if explicitly requested via max_instances reduction
-            // AND strictly if we have more than newMax
+            // Handle max_instances changes
             const finalCountRes = await pool.query('SELECT COUNT(*) FROM company_instances WHERE company_id = $1', [id]);
             const finalCount = parseInt(finalCountRes.rows[0].count);
 
             if (newMax < finalCount) {
-                // Only delete if explicitly reducing limit
                 const diff = finalCount - newMax;
-                // Delete the newest ones (highest IDs) typically
+                console.log(`[Update Company ${id}] Deleting ${diff} excess instances due to limit reduction`);
                 await pool.query(`
                     DELETE FROM company_instances 
                     WHERE id IN (
@@ -588,7 +607,6 @@ export const updateCompany = async (req: Request, res: Response) => {
                     )
                 `, [id, diff]);
             }
-            // Note: We removed auto-generation (Add more) block intentionally to satisfy "Explicit Name/API" rule
         } catch (instErr) {
             console.error(`[Update Company ${id}] Failed to sync instances:`, instErr);
             throw instErr;
@@ -801,25 +819,29 @@ export const getCompanyInstances = async (req: Request, res: Response) => {
         }
 
         const { sync } = req.query;
-        let result = await pool.query('SELECT * FROM company_instances WHERE company_id = $1 ORDER BY id ASC', [id]);
+        let result = await pool.query('SELECT id, company_id, name, instance_key, api_key, status, created_at, updated_at FROM company_instances WHERE company_id = $1 ORDER BY created_at ASC, id ASC', [id]);
         let instances = result.rows;
 
-        // Auto-migration/Seed for legacy companies
+        console.log(`[getCompanyInstances] Company ${id}: Found ${instances.length} instances in DB`);
+
+        // Auto-migration/Seed for legacy companies (companies table still has evolution_instance)
         if (instances.length === 0) {
             const companyRes = await pool.query('SELECT evolution_instance, evolution_apikey FROM companies WHERE id = $1', [id]);
             if (companyRes.rows.length > 0 && companyRes.rows[0].evolution_instance) {
                 const comp = companyRes.rows[0];
-                console.log(`[getCompanyInstances] Company ${id} has legacy evolution_instance. Migrating to company_instances...`);
+                console.log(`[getCompanyInstances] Company ${id} has legacy evolution_instance "${comp.evolution_instance}". Migrating to company_instances...`);
                 const insertRes = await pool.query(`
-                    INSERT INTO company_instances (company_id, name, instance_key, api_key, status)
-                    VALUES ($1, 'Instância Principal', $2, $3, 'disconnected')
-                    RETURNING *
+                    INSERT INTO company_instances (company_id, name, instance_key, api_key, status, created_at, updated_at)
+                    VALUES ($1, 'Instância Principal', $2, $3, 'disconnected', NOW(), NOW())
+                    RETURNING id, company_id, name, instance_key, api_key, status, created_at, updated_at
                 `, [id, comp.evolution_instance, comp.evolution_apikey || null]);
                 instances = insertRes.rows;
+                console.log(`[getCompanyInstances] Migrated legacy instance: ${comp.evolution_instance}`);
             }
         }
 
         if (sync === 'true') {
+            console.log(`[getCompanyInstances] Syncing status for ${instances.length} instances...`);
             const syncedInstances = [];
             for (const inst of instances) {
                 try {
@@ -846,28 +868,29 @@ export const getCompanyInstances = async (req: Request, res: Response) => {
                         else if (['connecting', 'pairing'].includes(lowerState)) status = 'connecting';
 
                         if (status !== inst.status) {
-                            await pool.query('UPDATE company_instances SET status = $1 WHERE id = $2', [status, inst.id]);
+                            await pool.query('UPDATE company_instances SET status = $1, updated_at = NOW() WHERE id = $2', [status, inst.id]);
                             inst.status = status;
                         }
                     } else if (response.status === 404) {
                         // Instance not found in evolution but exists in our DB
                         if (inst.status !== 'disconnected') {
-                            await pool.query('UPDATE company_instances SET status = $1 WHERE id = $2', ['disconnected', inst.id]);
+                            await pool.query('UPDATE company_instances SET status = $1, updated_at = NOW() WHERE id = $2', ['disconnected', inst.id]);
                             inst.status = 'disconnected';
                         }
                     }
                 } catch (err) {
-                    console.error(`[Sync] Failed sync for ${inst.instance_key}:`, err);
+                    console.error(`[Sync] Failed sync for instance ${inst.instance_key}:`, err);
                 }
                 syncedInstances.push(inst);
             }
             instances = syncedInstances;
         }
 
+        console.log(`[getCompanyInstances] Returning ${instances.length} instances for company ${id}`);
         res.json(instances);
     } catch (error) {
         console.error('Error fetching instances:', error);
-        res.status(500).json({ error: 'Failed' });
+        res.status(500).json({ error: 'Failed to fetch instances' });
     }
 };
 
@@ -884,30 +907,46 @@ export const updateCompanyInstance = async (req: Request, res: Response) => {
 
         const { name, api_key, instance_key } = req.body;
 
-        // Uniqueness check
-        if (instance_key) {
+        console.log(`[updateCompanyInstance] Updating instance ${instanceId} for company ${id}:`, { name, instance_key: instance_key ? '***' : undefined });
+
+        // Uniqueness check for instance_key
+        if (instance_key && instance_key.trim()) {
             const checkRes = await pool.query(
-                'SELECT id FROM company_instances WHERE instance_key = $1 AND id != $2',
-                [instance_key.trim(), instanceId]
+                'SELECT id FROM company_instances WHERE instance_key = $1 AND id != $2 AND company_id = $3',
+                [instance_key.trim(), instanceId, id]
             );
             if (checkRes.rows.length > 0) {
-                return res.status(400).json({ error: `A instância '${instance_key}' já está em uso por outra empresa.` });
+                console.error(`[updateCompanyInstance] Instance key already in use: ${instance_key}`);
+                return res.status(400).json({ error: `A instância '${instance_key}' já está em uso.` });
             }
         }
 
-        const sanitizedKey = instance_key ? instance_key.replace(/\s+/g, '_').replace(/[^a-zA-Z0-9_-]/g, '') : null;
+        // Sanitize instance_key
+        const sanitizedKey = instance_key && instance_key.trim() 
+            ? instance_key.trim().replace(/\s+/g, '_').replace(/[^a-zA-Z0-9_\-]/g, '')
+            : null;
 
+        // Update with all columns
         const result = await pool.query(
             `UPDATE company_instances 
              SET name = COALESCE($1, name), 
-                 api_key = COALESCE($2, api_key),
-                 instance_key = COALESCE($3, instance_key)
-             WHERE id = $4 AND company_id = $5 RETURNING *`,
-            [name || null, api_key || null, sanitizedKey || null, instanceId, id]
+                 instance_key = COALESCE($2, instance_key),
+                 api_key = $3,
+                 updated_at = NOW()
+             WHERE id = $4 AND company_id = $5 
+             RETURNING id, company_id, name, instance_key, api_key, status, created_at, updated_at`,
+            [name || null, sanitizedKey || null, api_key || null, instanceId, id]
         );
+
+        if (result.rows.length === 0) {
+            console.error(`[updateCompanyInstance] Instance ${instanceId} not found for company ${id}`);
+            return res.status(404).json({ error: 'Instance not found' });
+        }
+
+        console.log(`[updateCompanyInstance] Successfully updated instance ${instanceId}`);
         res.json(result.rows[0]);
     } catch (error) {
         console.error('Error updating instance:', error);
-        res.status(500).json({ error: 'Failed' });
+        res.status(500).json({ error: 'Failed to update instance' });
     }
 };
