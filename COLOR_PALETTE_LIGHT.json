@@ -1,0 +1,235 @@
+{
+  "palette": {
+    "name": "Integrai Light Mode Premium SaaS",
+    "version": "1.0",
+    "type": "light",
+    "description": "Professional light color palette inspired by Stripe, Notion, Linear and HubSpot",
+    
+    "backgrounds": {
+      "primary": "#F8FAFC",
+      "secondary": "#FFFFFF",
+      "tertiary": "#F1F5F9",
+      "subtle": "#EFF6FF",
+      "description": "Main backgrounds for layout and containers"
+    },
+
+    "text": {
+      "primary": "#0F172A",
+      "secondary": "#64748B",
+      "tertiary": "#94A3B8",
+      "inverse": "#FFFFFF",
+      "description": "Text colors following hierarchy"
+    },
+
+    "actions": {
+      "primary": "#2563EB",
+      "primaryHover": "#1D4ED8",
+      "success": "#16A34A",
+      "error": "#DC2626",
+      "warning": "#EA6D00",
+      "description": "Button and action colors"
+    },
+
+    "borders": {
+      "light": "#E2E8F0",
+      "medium": "#CBD5E1",
+      "description": "Border colors for subtle definition"
+    },
+
+    "states": {
+      "online": "#16A34A",
+      "offline": "#DC2626",
+      "pending": "#16A34A",
+      "closed": "#94A3B8",
+      "description": "Status indicator colors"
+    },
+
+    "special": {
+      "recordingBackground": "#FEE2E2",
+      "recordingText": "#DC2626",
+      "messageOutbound": "#2563EB",
+      "messageInbound": "#FFFFFF",
+      "messageInboundBorder": "#E2E8F0",
+      "dateLabelBackground": "#FFFFFF",
+      "dateLabelBorder": "#E2E8F0",
+      "dateLabelText": "#64748B",
+      "description": "Component-specific colors"
+    }
+  },
+
+  "usage": {
+    "sidebars": {
+      "background": "#FFFFFF",
+      "border": "#E2E8F0",
+      "conversationActive": "#EFF6FF",
+      "conversationActiveText": "#0F172A",
+      "conversationActiveBorder": "#2563EB",
+      "conversationHover": "#F1F5F9",
+      "conversationText": "#0F172A"
+    },
+
+    "headers": {
+      "background": "#FFFFFF",
+      "border": "#E2E8F0",
+      "contactName": "#0F172A",
+      "statusIndicator": "#16A34A",
+      "badges": {
+        "groupBackground": "#2563EB",
+        "groupText": "#FFFFFF",
+        "instanceBackground": "#F1F5F9",
+        "instanceText": "#0F172A"
+      },
+      "buttons": {
+        "defaultText": "#94A3B8",
+        "defaultHover": "#2563EB",
+        "defaultHoverBackground": "#F1F5F9"
+      }
+    },
+
+    "messages": {
+      "containerBackground": "#F8FAFC",
+      "outboundBackground": "#2563EB",
+      "outboundText": "#FFFFFF",
+      "outboundShadow": "#2563EB",
+      "inboundBackground": "#FFFFFF",
+      "inboundBorder": "#E2E8F0",
+      "inboundText": "#0F172A",
+      "dateLabel": {
+        "background": "#FFFFFF",
+        "border": "#E2E8F0",
+        "text": "#64748B"
+      },
+      "metadata": {
+        "text": "#64748B",
+        "hover": "#0F172A"
+      },
+      "reactions": {
+        "hoverBackground": "#F1F5F9"
+      }
+    },
+
+    "input": {
+      "containerBackground": "#F8FAFC",
+      "containerBorder": "#E2E8F0",
+      "fieldBackground": "#FFFFFF",
+      "fieldBorder": "#E2E8F0",
+      "fieldText": "#0F172A",
+      "fieldPlaceholder": "#94A3B8",
+      "buttonBackground": "#2563EB",
+      "buttonHover": "#1D4ED8",
+      "buttonText": "#FFFFFF",
+      "recordingBackground": "#FEE2E2",
+      "recordingBorder": "#DC2626",
+      "recordingText": "#DC2626"
+    },
+
+    "dialogs": {
+      "background": "#FFFFFF",
+      "border": "#E2E8F0",
+      "title": "#0F172A",
+      "text": "#64748B",
+      "buttonPrimary": "#2563EB",
+      "buttonDestructive": "#DC2626",
+      "buttonCancel": "#16A34A"
+    },
+
+    "contacts": {
+      "itemBackground": "#FFFFFF",
+      "itemHover": "#F1F5F9",
+      "itemBorder": "#E2E8F0",
+      "nameText": "#0F172A",
+      "phoneText": "#94A3B8",
+      "addContactBorder": "#E2E8F0",
+      "addContactIconBackground": "#EFF6FF",
+      "addContactIcon": "#2563EB",
+      "messageButton": "#2563EB"
+    },
+
+    "emptyStates": {
+      "background": "#F8FAFC",
+      "iconBackground": "#F1F5F9",
+      "iconColor": "#94A3B8",
+      "titleText": "#0F172A",
+      "descriptionText": "#64748B"
+    },
+
+    "callUI": {
+      "incomingDialogBackground": "#FFFFFF",
+      "incomingIconBackground": "#EFF6FF",
+      "incomingIconColor": "#2563EB",
+      "activeCallBorder": "#16A34A",
+      "notificationBackground": "#FFFFFF"
+    }
+  },
+
+  "tailwind": {
+    "customClasses": {
+      "backgrounds": {
+        "primary": "bg-[#F8FAFC]",
+        "secondary": "bg-[#FFFFFF]",
+        "tertiary": "bg-[#F1F5F9]",
+        "subtle": "bg-[#EFF6FF]"
+      },
+      "text": {
+        "primary": "text-[#0F172A]",
+        "secondary": "text-[#64748B]",
+        "tertiary": "text-[#94A3B8]"
+      },
+      "borders": {
+        "light": "border-[#E2E8F0]",
+        "medium": "border-[#CBD5E1]"
+      },
+      "buttons": {
+        "primary": "bg-[#2563EB] hover:bg-[#1D4ED8]",
+        "success": "bg-[#16A34A]",
+        "error": "bg-[#DC2626]"
+      },
+      "shadows": {
+        "sm": "shadow-sm",
+        "message": "shadow-sm shadow-[#2563EB]/20"
+      }
+    }
+  },
+
+  "design_system": {
+    "borderRadius": {
+      "small": "6px",
+      "medium": "12px",
+      "large": "16px",
+      "full": "24px"
+    },
+    "spacing": {
+      "unit": "4px",
+      "padding": "16px",
+      "gap": "12px"
+    },
+    "transitions": {
+      "duration": "200ms",
+      "timing": "ease-in-out"
+    },
+    "shadows": {
+      "subtle": "0 1px 3px rgba(0, 0, 0, 0.05)",
+      "light": "0 4px 6px rgba(0, 0, 0, 0.1)",
+      "medium": "0 10px 15px rgba(0, 0, 0, 0.1)"
+    }
+  },
+
+  "accessibility": {
+    "contrastRatios": {
+      "AANormal": "4.5:1",
+      "AALarge": "3:1",
+      "AAA": "7:1"
+    },
+    "colorBlindSafe": true,
+    "nightModeReady": true
+  },
+
+  "implementation": {
+    "framework": "Tailwind CSS + React TypeScript",
+    "component_library": "shadcn/ui",
+    "icons": "Lucide React",
+    "file": "/client/src/pages/Atendimento.tsx",
+    "lines_modified": "200+",
+    "backwards_compatible": true
+  }
+}

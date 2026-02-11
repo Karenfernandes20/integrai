@@ -179,4 +179,35 @@
   .dark .custom-scrollbar::-webkit-scrollbar-thumb:hover {
     background: #64748b;
   }
+
+  /* Custom Scrollbar - Subtle (for sidebars) */
+  .custom-scrollbar-subtle::-webkit-scrollbar {
+    width: 5px;
+    height: 5px;
+  }
+
+  .custom-scrollbar-subtle::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  .custom-scrollbar-subtle::-webkit-scrollbar-thumb {
+    background: #e2e8f0;
+    border-radius: 10px;
+    border: 2px solid transparent;
+    background-clip: content-box;
+  }
+
+  .custom-scrollbar-subtle::-webkit-scrollbar-thumb:hover {
+    background: #cbd5e1;
+  }
+
+  .dark .custom-scrollbar-subtle::-webkit-scrollbar-thumb {
+    background: #475569;
+    border: 2px solid transparent;
+    background-clip: content-box;
+  }
+
+  .dark .custom-scrollbar-subtle::-webkit-scrollbar-thumb:hover {
+    background: #64748b;
+  }
 }
