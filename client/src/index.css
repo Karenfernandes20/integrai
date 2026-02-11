@@ -121,6 +121,8 @@
     /* Melhora sensação de App no mobile */
     word-break: break-word;
     overflow-wrap: anywhere;
+    text-rendering: optimizeLegibility;
+    -webkit-tap-highlight-color: transparent;
   }
 
   h1,
@@ -128,6 +130,16 @@
   h3,
   h4 {
     @apply font-semibold tracking-tight;
+  }
+
+  /* Responsive Typography */
+  @media (max-width: 639px) {
+    h1 { @apply text-2xl; }
+    h2 { @apply text-xl; }
+    h3 { @apply text-lg; }
+    p, span, div { font-size: 14px; }
+    .text-sm { font-size: 13px; }
+    .text-xs { font-size: 11px; }
   }
 }
 
@@ -151,8 +163,8 @@
 
   /* Custom Scrollbar - Normal & Elegant */
   .custom-scrollbar::-webkit-scrollbar {
-    width: 8px;
-    height: 8px;
+    width: 6px;
+    height: 6px;
   }
 
   .custom-scrollbar::-webkit-scrollbar-track {
@@ -162,7 +174,7 @@
   .custom-scrollbar::-webkit-scrollbar-thumb {
     background: #cbd5e1;
     border-radius: 10px;
-    border: 3px solid transparent;
+    border: 2px solid transparent;
     background-clip: content-box;
   }
 
@@ -172,7 +184,7 @@
 
   .dark .custom-scrollbar::-webkit-scrollbar-thumb {
     background: #475569;
-    border: 3px solid transparent;
+    border: 2px solid transparent;
     background-clip: content-box;
   }
 
@@ -182,8 +194,8 @@
 
   /* Custom Scrollbar - Subtle (for sidebars) */
   .custom-scrollbar-subtle::-webkit-scrollbar {
-    width: 5px;
-    height: 5px;
+    width: 4px;
+    height: 4px;
   }
 
   .custom-scrollbar-subtle::-webkit-scrollbar-track {
@@ -193,7 +205,7 @@
   .custom-scrollbar-subtle::-webkit-scrollbar-thumb {
     background: #e2e8f0;
     border-radius: 10px;
-    border: 2px solid transparent;
+    border: 1px solid transparent;
     background-clip: content-box;
   }
 
@@ -203,11 +215,24 @@
 
   .dark .custom-scrollbar-subtle::-webkit-scrollbar-thumb {
     background: #475569;
-    border: 2px solid transparent;
+    border: 1px solid transparent;
     background-clip: content-box;
   }
 
   .dark .custom-scrollbar-subtle::-webkit-scrollbar-thumb:hover {
     background: #64748b;
+  }
+
+  /* Mobile Responsive Scrollbar */
+  @media (max-width: 768px) {
+    .custom-scrollbar::-webkit-scrollbar {
+      width: 4px;
+      height: 4px;
+    }
+
+    .custom-scrollbar-subtle::-webkit-scrollbar {
+      width: 3px;
+      height: 3px;
+    }
   }
 }

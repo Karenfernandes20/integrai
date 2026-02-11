@@ -373,39 +373,56 @@ const ClinicalAgenda = () => {
         <div className="flex-1 h-full flex flex-col bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 overflow-hidden font-sans">
 
             {/* 1. TOP HEADER */}
-            <header className="h-12 border-b bg-white dark:bg-slate-900 flex items-center justify-between px-2 shrink-0 z-20 shadow-sm gap-2">
-                <div className="flex items-center gap-2 min-w-0">
-                    <div className="flex bg-slate-100 dark:bg-slate-800 rounded-lg p-0.5 shrink-0">
-                        <Button variant="ghost" size="icon" className="h-7 w-7" onClick={handlePrev}><ChevronLeft size={16} /></Button>
-                        <Button variant="ghost" size="sm" className="h-7 px-2 text-xs font-bold" onClick={() => setDate(new Date())}>Hoje</Button>
-                        <Button variant="ghost" size="icon" className="h-7 w-7" onClick={handleNext}><ChevronRight size={16} /></Button>
+            <header className="h-auto min-h-[48px] border-b bg-white dark:bg-slate-900 flex flex-col sm:flex-row items-center justify-between px-2 py-2 sm:py-0 shrink-0 z-20 shadow-sm gap-2">
+                <div className="flex items-center justify-between w-full sm:w-auto gap-2 min-w-0">
+                    <div className="flex items-center gap-2 min-w-0">
+                        <div className="flex bg-slate-100 dark:bg-slate-800 rounded-lg p-0.5 shrink-0">
+                            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={handlePrev}><ChevronLeft size={16} /></Button>
+                            <Button variant="ghost" size="sm" className="h-7 px-2 text-[10px] sm:text-xs font-bold" onClick={() => setDate(new Date())}>Hoje</Button>
+                            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={handleNext}><ChevronRight size={16} /></Button>
+                        </div>
+                        <h1 className="text-xs sm:text-base font-bold capitalize flex items-center gap-1 truncate min-w-0">
+                            <CalendarIcon className="text-blue-600 w-3 h-3 sm:w-4 sm:h-4 shrink-0" />
+                            <span className="truncate whitespace-nowrap">
+                                {format(date, "EEE, d 'MMM'", { locale: ptBR })}
+                            </span>
+                        </h1>
                     </div>
-                    <h1 className="text-sm sm:text-base font-bold capitalize flex items-center gap-1 truncate min-w-0">
-                        <CalendarIcon className="text-blue-600 w-4 h-4 shrink-0" />
-                        <span className="truncate whitespace-nowrap">
-                            {format(date, "EEE, d 'de' MMM", { locale: ptBR })}
-                        </span>
-                        <span className="text-slate-400 font-normal text-[10px] shrink-0">{format(date, "yyyy")}</span>
-                    </h1>
+
+                    <div className="flex sm:hidden bg-slate-100 dark:bg-slate-800 rounded-lg p-0.5 gap-0.5 shrink-0">
+                        {(['day', 'week', 'month'] as ViewMode[]).map((m) => (
+                            <button
+                                key={m}
+                                onClick={() => setView(m)}
+                                className={cn(
+                                    "px-2 py-1 text-[9px] font-bold rounded-md transition-all capitalize",
+                                    view === m ? "bg-white shadow-sm text-blue-600 border border-slate-200" : "text-slate-500"
+                                )}
+                            >
+                                {m === 'day' ? 'D' : m === 'week' ? 'S' : 'M'}
+                            </button>
+                        ))}
+                    </div>
                 </div>
 
-                <div className="flex items-center gap-3">
+                <div className="flex items-center justify-between w-full sm:w-auto gap-2 sm:gap-3">
                     {/* Professional Filter */}
                     <Select value={selectedProfessional} onValueChange={setSelectedProfessional}>
-                        <SelectTrigger className="w-[140px] h-8 text-xs font-bold bg-slate-50 border-slate-200">
+                        <SelectTrigger className="flex-1 sm:w-[140px] h-8 text-[10px] sm:text-xs font-bold bg-slate-50 border-slate-200">
                             <div className="flex items-center gap-2 truncate">
-                                <User size={14} className="text-slate-400" />
+                                <User size={12} className="text-slate-400 shrink-0" />
                                 <SelectValue placeholder="Profissional" />
                             </div>
                         </SelectTrigger>
                         <SelectContent>
-                            <SelectItem value="all">Todos Profissionais</SelectItem>
+                            <SelectItem value="all">Todos</SelectItem>
                             {professionals.map(p => (
                                 <SelectItem key={p.id} value={p.id.toString()}>{p.name}</SelectItem>
                             ))}
                         </SelectContent>
                     </Select>
-                    <div className="hidden md:flex bg-slate-100 dark:bg-slate-800 rounded-lg p-1 gap-1 shrink-0">
+
+                    <div className="hidden sm:flex bg-slate-100 dark:bg-slate-800 rounded-lg p-1 gap-1 shrink-0">
                         {(['day', 'week', 'month'] as ViewMode[]).map((m) => (
                             <button
                                 key={m}
@@ -415,18 +432,19 @@ const ClinicalAgenda = () => {
                                     view === m ? "bg-white dark:bg-slate-700 shadow-sm text-blue-600 border border-slate-200 dark:border-transparent" : "text-slate-500 hover:text-slate-800 dark:hover:text-slate-200"
                                 )}
                             >
-                                {m === 'day' ? 'Dia' : m === 'week' ? 'Sem.' : 'Mês'}
+                                {m === 'day' ? 'Dia' : m === 'week' ? 'Semana' : 'Mês'}
                             </button>
                         ))}
                     </div>
-                    <Separator orientation="vertical" className="h-6" />
-                    <Button variant="ghost" size="icon" className="h-9 w-9 text-slate-400 hover:text-blue-600" onClick={() => fetchAppointments()} disabled={loading}>
-                        <RefreshCw size={18} className={loading ? "animate-spin" : ""} />
-                    </Button>
-                    <Button className="h-8 bg-blue-600 hover:bg-blue-700 text-white gap-1 px-2 text-xs shadow-lg shadow-blue-500/20" onClick={handleNewAppointment}>
-                        <Plus size={14} /> <span className="hidden lg:inline">Novo Agendamento</span>
-                    </Button>
-                    <Button variant="ghost" size="icon" className="h-8 w-8"><Settings size={16} className="text-slate-400" /></Button>
+
+                    <div className="flex items-center gap-1 sm:gap-2">
+                        <Button variant="ghost" size="icon" className="h-8 w-8 text-slate-400 hover:text-blue-600" onClick={() => fetchAppointments()} disabled={loading}>
+                            <RefreshCw size={16} className={loading ? "animate-spin" : ""} />
+                        </Button>
+                        <Button className="h-8 bg-blue-600 hover:bg-blue-700 text-white gap-1 px-2 text-[10px] sm:text-xs shadow-lg shadow-blue-500/20" onClick={handleNewAppointment}>
+                            <Plus size={14} /> <span className="hidden sm:inline">Novo</span>
+                        </Button>
+                    </div>
                 </div>
             </header>
 

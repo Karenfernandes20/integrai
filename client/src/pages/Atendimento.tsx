@@ -2730,26 +2730,26 @@ const AtendimentoPage = () => {
           {/* TAB: CONVERSAS */}
           {activeTab === 'conversas' && (
             <>
-              <div className="px-3 pt-3 pb-0 space-y-3 bg-white z-10">
+              <div className="px-2 md:px-3 pt-2 md:pt-3 pb-0 space-y-2 md:space-y-3 bg-white z-10">
                 <div className="relative group">
-                  <Search className="absolute left-3 top-2.5 h-4 w-4 text-[#94A3B8] group-focus-within:text-[#2563EB] transition-colors" />
+                  <Search className="absolute left-3 top-2.5 h-3.5 w-3.5 text-[#94A3B8] group-focus-within:text-[#2563EB] transition-colors" />
                   <Input
                     ref={sidebarSearchInputRef}
-                    placeholder="Pesquisar conversas..."
-                    className="pl-9 h-10 bg-[#F1F5F9] border-[#E2E8F0] focus:border-[#2563EB] text-[#0F172A] placeholder:text-[#64748B] rounded-lg transition-all font-medium text-sm"
+                    placeholder="Pesquisar..."
+                    className="pl-9 h-9 md:h-10 bg-[#F1F5F9] border-[#E2E8F0] focus:border-[#2563EB] text-[#0F172A] placeholder:text-[#64748B] rounded-lg transition-all font-medium text-xs md:text-sm"
                     value={conversationSearchTerm}
                     onChange={(e) => setConversationSearchTerm(e.target.value)}
                   />
                 </div>
 
                 {/* Status Filters */}
-                <div className="flex p-1 bg-[#F1F5F9] border border-[#E2E8F0] rounded-xl gap-1">
+                <div className="flex p-0.5 md:p-1 bg-[#F1F5F9] border border-[#E2E8F0] rounded-lg md:rounded-xl gap-0.5 md:gap-1">
                   {(['OPEN', 'PENDING', 'CLOSED'] as const).map(tab => (
                     <button
                       key={tab}
                       onClick={() => setViewMode(tab)}
                       className={cn(
-                        "flex-1 py-1.5 text-[10px] font-bold uppercase tracking-wider rounded-lg transition-all",
+                        "flex-1 py-1 md:py-1.5 text-[8px] md:text-[10px] font-bold uppercase tracking-tighter md:tracking-widest rounded-md md:rounded-lg transition-all",
                         viewMode === tab ? (
                           tab === 'PENDING' ? "bg-[#16A34A] text-white shadow-sm ring-1 ring-[#16A34A]/30" :
                             tab === 'OPEN' ? "bg-[#2563EB] text-white shadow-sm ring-1 ring-[#2563EB]/30" :
@@ -2757,7 +2757,7 @@ const AtendimentoPage = () => {
                         ) : "text-[#64748B] hover:text-[#0F172A] hover:bg-white"
                       )}
                     >
-                      {tab === 'PENDING' ? 'Pendentes' : tab === 'OPEN' ? 'Abertos' : 'Fechados'}
+                      {tab === 'PENDING' ? 'Pend' : tab === 'OPEN' ? 'Aber' : 'Fech'}
                     </button>
                   ))}
                 </div>
@@ -2988,19 +2988,19 @@ const AtendimentoPage = () => {
         ) : (
           <>
             {/* Chat Header - MODERN & CLEAN */}
-            <div className="h-[76px] bg-[#EFF6FF] border-b-[3px] border-[#2563EB] flex items-center justify-between px-6 shrink-0 z-30 shadow-sm">
-              <div className="flex items-center gap-4 overflow-hidden">
+            <div className="h-[60px] md:h-[76px] bg-[#EFF6FF] border-b-2 md:border-b-[3px] border-[#2563EB] flex items-center justify-between px-3 md:px-6 shrink-0 z-30 shadow-sm">
+              <div className="flex items-center gap-2 md:gap-4 overflow-hidden">
                 <Button
                   variant="ghost"
                   size="icon"
-                  className="md:hidden -ml-2 text-[#2563EB] hover:text-[#1D4ED8] hover:bg-white rounded-full"
+                  className="md:hidden -ml-2 text-[#2563EB] hover:text-[#1D4ED8] hover:bg-white rounded-full h-8 w-8"
                   onClick={() => setSelectedConversation(null)}
                 >
-                  <ChevronLeft className="h-6 w-6" />
+                  <ChevronLeft className="h-5 w-5" />
                 </Button>
 
                 <div className="relative">
-                  <Avatar className="h-11 w-11 ring-2 ring-[#E2E8F0] cursor-pointer hover:ring-[#2563EB] transition-all" onClick={() => setIsContactInfoOpen(true)}>
+                  <Avatar className="h-9 md:h-11 w-9 md:w-11 ring-2 ring-[#E2E8F0] cursor-pointer hover:ring-[#2563EB] transition-all" onClick={() => setIsContactInfoOpen(true)}>
                     <AvatarImage src={selectedConversation.profile_pic_url || `https://api.dicebear.com/7.x/initials/svg?seed=${getDisplayName(selectedConversation)}`} />
                     <AvatarFallback className="bg-[#F1F5F9] text-[#0F172A] font-bold uppercase text-xs">{(getDisplayName(selectedConversation)?.[0] || "?")}</AvatarFallback>
                   </Avatar>
@@ -3010,20 +3010,20 @@ const AtendimentoPage = () => {
                 </div>
 
                 <div className="flex flex-col cursor-pointer min-w-0" onClick={() => setIsContactInfoOpen(true)}>
-                  <div className="flex items-center gap-2">
-                    <span className="text-[16px] font-bold text-[#0F172A] truncate leading-tight">
+                  <div className="flex items-center gap-1 md:gap-2">
+                    <span className="text-sm md:text-[16px] font-bold text-[#0F172A] truncate leading-tight">
                       {getDisplayName(selectedConversation)}
                     </span>
                     {selectedConversation.is_group && (
-                      <Badge variant="outline" className="text-[9px] h-4 bg-[#2563EB]/10 text-[#2563EB] border-[#2563EB]/20 font-bold uppercase tracking-tighter">Grupo</Badge>
+                      <Badge variant="outline" className="text-[7px] md:text-[9px] h-4 bg-[#2563EB]/10 text-[#2563EB] border-[#2563EB]/20 font-bold uppercase tracking-tighter">Grupo</Badge>
                     )}
                     {(selectedConversation.instance_friendly_name || selectedConversation.instance) && (
-                      <div className="flex items-center gap-1 bg-[#F1F5F9] border border-[#E2E8F0] px-1.5 py-0.5 rounded text-[9px] font-mono text-[#64748B]">
+                      <div className="hidden md:flex items-center gap-1 bg-[#F1F5F9] border border-[#E2E8F0] px-1.5 py-0.5 rounded text-[9px] font-mono text-[#64748B]">
                         <Zap className="w-2.5 h-2.5" /> {selectedConversation.instance_friendly_name || selectedConversation.instance}
                       </div>
                     )}
                   </div>
-                  <div className="flex items-center gap-2 text-xs">
+                  <div className="flex items-center gap-1 md:gap-2 text-[11px] md:text-xs">
                     <span className={cn(
                       "font-medium",
                       selectedConversation.status === 'OPEN' ? "text-[#16A34A]" : "text-[#94A3B8]"
@@ -3042,10 +3042,10 @@ const AtendimentoPage = () => {
                 </div>
               </div>
 
-              <div className="flex items-center gap-2">
-                <div className="flex items-center bg-[#F1F5F9] border border-[#E2E8F0] rounded-full p-1 mr-2 invisible group-hover:visible lg:visible">
+              <div className="flex items-center gap-1 md:gap-2">
+                <div className="flex items-center bg-[#F1F5F9] border border-[#E2E8F0] rounded-full p-1 mr-0 md:mr-2 hidden md:flex lg:flex">
                   <Button variant="ghost" size="icon" className="h-8 w-8 text-[#94A3B8] hover:text-[#2563EB] rounded-full transition-all">
-                    <Phone className="h-4 w-4" />
+                    <Phone className="h-3.5 w-3.5 md:h-4 md:w-4" />
                   </Button>
                   <Button
                     variant="ghost"
@@ -3057,7 +3057,7 @@ const AtendimentoPage = () => {
                     }}
                     title="Agenda do contato"
                   >
-                    <Calendar className="h-4 w-4" />
+                    <Calendar className="h-3.5 w-3.5 md:h-4 md:w-4" />
                   </Button>
                 </div>
 
@@ -3067,10 +3067,10 @@ const AtendimentoPage = () => {
                       <Button
                         variant="ghost"
                         size="icon"
-                        className={cn("h-10 w-10 text-[#94A3B8] hover:text-[#0F172A] hover:bg-[#F1F5F9] rounded-full transition-all", isMessageSearchOpen && "bg-[#EFF6FF] text-[#2563EB]")}
+                        className={cn("h-8 md:h-10 w-8 md:w-10 text-[#94A3B8] hover:text-[#0F172A] hover:bg-[#F1F5F9] rounded-full transition-all", isMessageSearchOpen && "bg-[#EFF6FF] text-[#2563EB]")}
                         onClick={() => setIsMessageSearchOpen(!isMessageSearchOpen)}
                       >
-                        <Search className="h-5 w-5" />
+                        <Search className="h-4 md:h-5 w-4 md:w-5" />
                       </Button>
                     </TooltipTrigger>
                     <TooltipContent side="bottom" className="bg-white border-[#E2E8F0] text-[#0F172A]">Procurar histórico</TooltipContent>
@@ -3079,21 +3079,21 @@ const AtendimentoPage = () => {
 
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
-                    <Button variant="ghost" size="icon" className="h-10 w-10 text-[#94A3B8] hover:text-[#0F172A] hover:bg-[#F1F5F9] rounded-full">
-                      <MoreVertical className="h-5 w-5" />
+                    <Button variant="ghost" size="icon" className="h-8 md:h-10 w-8 md:w-10 text-[#94A3B8] hover:text-[#0F172A] hover:bg-[#F1F5F9] rounded-full">
+                      <MoreVertical className="h-4 md:h-5 w-4 md:w-5" />
                     </Button>
                   </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end" className="bg-white border-[#E2E8F0] text-[#0F172A] w-56 shadow-xl">
-                    <DropdownMenuItem onClick={() => { setAppointmentInitialData({ conversation_id: selectedConversation.id, client_name: getDisplayName(selectedConversation), phone: selectedConversation.phone }); setIsAppointmentModalOpen(true); }} className="gap-3 py-2.5 focus:bg-[#F1F5F9] cursor-pointer font-medium">
+                  <DropdownMenuContent align="end" className="bg-white border-[#E2E8F0] text-[#0F172A] w-48 md:w-56 shadow-xl">
+                    <DropdownMenuItem onClick={() => { setAppointmentInitialData({ conversation_id: selectedConversation.id, client_name: getDisplayName(selectedConversation), phone: selectedConversation.phone }); setIsAppointmentModalOpen(true); }} className="gap-2 md:gap-3 py-2 md:py-2.5 focus:bg-[#F1F5F9] cursor-pointer font-medium text-xs md:text-sm">
                       <CalendarCheck className="h-4 w-4 text-[#16A34A]" /> Agendar / Novo Agendamento
                     </DropdownMenuItem>
-                    <DropdownMenuItem onClick={() => { setFollowUpInitialData({ conversation_id: selectedConversation.id, contact_name: getDisplayName(selectedConversation), phone: selectedConversation.phone, origin: 'Atendimento' }); setIsFollowUpModalOpen(true); }} className="gap-3 py-2.5 focus:bg-[#F1F5F9] cursor-pointer font-medium">
+                    <DropdownMenuItem onClick={() => { setFollowUpInitialData({ conversation_id: selectedConversation.id, contact_name: getDisplayName(selectedConversation), phone: selectedConversation.phone, origin: 'Atendimento' }); setIsFollowUpModalOpen(true); }} className="gap-2 md:gap-3 py-2 md:py-2.5 focus:bg-[#F1F5F9] cursor-pointer font-medium text-xs md:text-sm">
                       <Clock className="h-4 w-4 text-amber-600" /> Novo Follow-up
                     </DropdownMenuItem>
-                    <DropdownMenuItem onClick={() => setIsRelationshipModalOpen(true)} className="gap-3 py-2.5 focus:bg-[#F1F5F9] cursor-pointer font-medium">
+                    <DropdownMenuItem onClick={() => setIsRelationshipModalOpen(true)} className="gap-2 md:gap-3 py-2 md:py-2.5 focus:bg-[#F1F5F9] cursor-pointer font-medium text-xs md:text-sm">
                       <Link2 className="h-4 w-4 text-[#2563EB]" /> Ver Relacionamentos
                     </DropdownMenuItem>
-                    <DropdownMenuItem onClick={handleRenameContact} className="gap-3 py-2.5 focus:bg-[#F1F5F9] cursor-pointer font-medium">
+                    <DropdownMenuItem onClick={handleRenameContact} className="gap-2 md:gap-3 py-2 md:py-2.5 focus:bg-[#F1F5F9] cursor-pointer font-medium text-xs md:text-sm">
                       <UserCircle className="h-4 w-4 text-[#64748B]" /> Editar Ficha
                     </DropdownMenuItem>
                     <DropdownMenuSeparator className="bg-[#E2E8F0]" />
@@ -3307,32 +3307,32 @@ const AtendimentoPage = () => {
 
 
               {/* INPUT AREA - LIGHT MODE CLEAN */}
-              <div className="relative bg-[#F8FAFC] p-6 z-20 shrink-0 border-t border-[#E2E8F0]">
-                <div className="max-w-6xl mx-auto bg-white border border-[#E2E8F0] rounded-2xl p-2 pr-4 shadow-sm">
-                  <div className="flex items-end gap-2">
+              <div className="relative bg-[#F8FAFC] p-2 md:p-6 z-20 shrink-0 border-t border-[#E2E8F0]">
+                <div className="max-w-6xl mx-auto bg-white border border-[#E2E8F0] rounded-xl md:rounded-2xl p-1 md:p-2 pr-2 md:pr-4 shadow-sm">
+                  <div className="flex items-end gap-0.5 md:gap-2">
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
-                        <Button variant="ghost" size="icon" className="h-10 w-10 shrink-0 text-[#94A3B8] hover:text-[#2563EB] rounded-full">
-                          <Plus className="h-5 w-5" />
+                        <Button variant="ghost" size="icon" className="h-8 md:h-10 w-8 md:w-10 shrink-0 text-[#94A3B8] hover:text-[#2563EB] rounded-full">
+                          <Plus className="h-4 md:h-5 w-4 md:w-5" />
                         </Button>
                       </DropdownMenuTrigger>
-                      <DropdownMenuContent side="top" align="start" className="bg-white border-[#E2E8F0] text-[#0F172A] w-48 mb-2 shadow-lg">
-                        <DropdownMenuItem onClick={handleAttachmentClick} className="gap-3 py-2.5 cursor-pointer focus:bg-[#F1F5F9]"><Image className="h-4 w-4" /> Fotos & Vídeos</DropdownMenuItem>
-                        <DropdownMenuItem onClick={handleAttachmentClick} className="gap-3 py-2.5 cursor-pointer focus:bg-[#F1F5F9]"><FileText className="h-4 w-4" /> Documentos</DropdownMenuItem>
-                        <DropdownMenuItem onClick={handleAttachmentClick} className="gap-3 py-2.5 cursor-pointer focus:bg-[#F1F5F9]"><Mic className="h-4 w-4" /> Áudio</DropdownMenuItem>
-                        <DropdownMenuItem onClick={() => { setAppointmentInitialData({ conversation_id: selectedConversation?.id, client_name: getDisplayName(selectedConversation), phone: selectedConversation?.phone }); setIsAppointmentModalOpen(true); }} className="gap-3 py-2.5 cursor-pointer focus:bg-[#F1F5F9] text-[#2563EB]"><Calendar className="h-4 w-4" /> Enviar Horário / Agendar</DropdownMenuItem>
+                      <DropdownMenuContent side="top" align="start" className="bg-white border-[#E2E8F0] text-[#0F172A] w-40 md:w-48 mb-2 shadow-lg">
+                        <DropdownMenuItem onClick={handleAttachmentClick} className="gap-2 md:gap-3 py-2 md:py-2.5 cursor-pointer focus:bg-[#F1F5F9] text-xs md:text-sm"><Image className="h-4 w-4" /> Fotos & Vídeos</DropdownMenuItem>
+                        <DropdownMenuItem onClick={handleAttachmentClick} className="gap-2 md:gap-3 py-2 md:py-2.5 cursor-pointer focus:bg-[#F1F5F9] text-xs md:text-sm"><FileText className="h-4 w-4" /> Documentos</DropdownMenuItem>
+                        <DropdownMenuItem onClick={handleAttachmentClick} className="gap-2 md:gap-3 py-2 md:py-2.5 cursor-pointer focus:bg-[#F1F5F9] text-xs md:text-sm"><Mic className="h-4 w-4" /> Áudio</DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => { setAppointmentInitialData({ conversation_id: selectedConversation?.id, client_name: getDisplayName(selectedConversation), phone: selectedConversation?.phone }); setIsAppointmentModalOpen(true); }} className="gap-2 md:gap-3 py-2 md:py-2.5 cursor-pointer focus:bg-[#F1F5F9] text-[#2563EB] text-xs md:text-sm"><Calendar className="h-4 w-4" /> Enviar Horário / Agendar</DropdownMenuItem>
                       </DropdownMenuContent>
                     </DropdownMenu>
 
-                    <Button variant="ghost" size="icon" className="h-10 w-10 shrink-0 text-[#94A3B8] hover:text-[#2563EB] rounded-full" onClick={() => setShowEmojiPicker(!showEmojiPicker)}>
-                      <Smile className="h-5 w-5" />
+                    <Button variant="ghost" size="icon" className="h-8 md:h-10 w-8 md:w-10 shrink-0 text-[#94A3B8] hover:text-[#2563EB] rounded-full" onClick={() => setShowEmojiPicker(!showEmojiPicker)}>
+                      <Smile className="h-4 md:h-5 w-4 md:w-5" />
                     </Button>
 
-                    <div className="flex-1 min-h-[40px] flex flex-col justify-center">
+                    <div className="flex-1 min-h-[36px] md:min-h-[40px] flex flex-col justify-center">
                       <textarea
                         rows={1}
-                        placeholder="Digite uma mensagem ou comando /..."
-                        className="w-full bg-transparent border-none text-[#0F172A] placeholder:text-[#94A3B8] focus:ring-0 text-sm py-2.5 resize-none max-h-48 custom-scrollbar scroll-py-2"
+                        placeholder="Digite uma mensagem..."
+                        className="w-full bg-transparent border-none text-[#0F172A] placeholder:text-[#94A3B8] focus:ring-0 text-xs md:text-sm py-1.5 md:py-2.5 resize-none max-h-48 custom-scrollbar scroll-py-2"
                         value={messageInput}
                         onChange={(e) => {
                           setMessageInput(e.target.value);
@@ -3348,46 +3348,46 @@ const AtendimentoPage = () => {
                       />
                     </div>
 
-                    <div className="flex items-center self-end mb-1 gap-2">
+                    <div className="flex items-center self-end mb-0 md:mb-1 gap-1 md:gap-2">
                       {isRecording ? (
-                        <div className="flex items-center gap-3 bg-[#FEE2E2] px-4 py-1.5 rounded-full border border-[#DC2626]/30 animate-in zoom-in-95">
+                        <div className="flex items-center gap-2 md:gap-3 bg-[#FEE2E2] px-2 md:px-4 py-1 md:py-1.5 rounded-full border border-[#DC2626]/30 animate-in zoom-in-95 text-[9px] md:text-[11px]">
                           <div className="flex items-center gap-2">
-                            <div className="w-2 h-2 rounded-full bg-[#DC2626] animate-pulse" />
-                            <span className="text-[11px] font-mono text-[#DC2626]">{formatDuration(recordingDuration)}</span>
+                            <div className="w-1.5 h-1.5 md:w-2 md:h-2 rounded-full bg-[#DC2626] animate-pulse" />
+                            <span className="font-mono text-[#DC2626]">{formatDuration(recordingDuration)}</span>
                           </div>
-                          <div className="flex gap-1 border-l border-[#DC2626]/20 pl-2">
+                          <div className="flex gap-1 border-l border-[#DC2626]/20 pl-1 md:pl-2">
                             <Button
                               variant="ghost"
                               size="icon"
-                              className="h-8 w-8 text-[#DC2626] hover:text-[#991b1b]"
+                              className="h-6 md:h-8 w-6 md:w-8 text-[#DC2626] hover:text-[#991b1b]"
                               onClick={cancelRecording}
                             >
-                              <Trash2 className="h-4 w-4" />
+                              <Trash2 className="h-3 md:h-4 w-3 md:w-4" />
                             </Button>
                             <Button
                               size="icon"
-                              className="h-8 w-8 bg-[#2563EB] hover:bg-[#1D4ED8] text-white rounded-full"
+                              className="h-6 md:h-8 w-6 md:w-8 bg-[#2563EB] hover:bg-[#1D4ED8] text-white rounded-full"
                               onClick={stopAndSendRecording}
                             >
-                              <Send className="h-4 w-4" />
+                              <Send className="h-3 md:h-4 w-3 md:w-4" />
                             </Button>
                           </div>
                         </div>
                       ) : messageInput.trim() ? (
                         <Button
                           onClick={handleSendMessage}
-                          className="h-9 w-9 bg-[#2563EB] hover:bg-[#1D4ED8] text-white rounded-full p-0 shadow-sm shadow-[#2563EB]/20"
+                          className="h-8 md:h-9 w-8 md:w-9 bg-[#2563EB] hover:bg-[#1D4ED8] text-white rounded-full p-0 shadow-sm shadow-[#2563EB]/20 shrink-0"
                         >
-                          <Send className="h-4 w-4" />
+                          <Send className="h-3.5 md:h-4 w-3.5 md:w-4" />
                         </Button>
                       ) : (
                         <Button
                           variant="ghost"
                           size="icon"
-                          className="h-10 w-10 text-[#94A3B8] hover:text-[#2563EB] rounded-full"
+                          className="h-8 md:h-10 w-8 md:w-10 text-[#94A3B8] hover:text-[#2563EB] rounded-full shrink-0"
                           onClick={startRecording}
                         >
-                          <Mic className="h-5 w-5" />
+                          <Mic className="h-4 md:h-5 w-4 md:w-5" />
                         </Button>
                       )}
                     </div>

@@ -101,17 +101,17 @@ export const AdminLayout = () => {
           <SidebarInset className={cn(isAtendimento && "h-[100dvh] overflow-hidden flex flex-col")}>
             <header className="sticky top-0 z-20 flex h-16 items-center justify-between border-b bg-background/80 px-4 backdrop-blur-md shrink-0">
               <div className="flex items-center gap-3">
-                <SidebarTrigger className="mr-1" />
+                <SidebarTrigger className="-ml-1 sm:mr-1" />
                 <div>
                   <div className="flex items-center gap-2">
-                    <h1 className="text-lg font-semibold tracking-tight">{title}</h1>
+                    <h1 className="text-sm sm:text-lg font-bold sm:font-semibold tracking-tight truncate max-w-[120px] sm:max-w-none">{title}</h1>
                     {showProfileBadge && (
-                      <Badge variant="outline" className="bg-primary/5 border-primary/20 text-primary text-[10px] px-2 h-5">
-                        Modo {profile} Ativo
+                      <Badge variant="outline" className="bg-primary/5 border-primary/20 text-primary text-[9px] sm:text-[10px] px-1.5 sm:px-2 h-4 sm:h-5 whitespace-nowrap">
+                        {profile}
                       </Badge>
                     )}
                   </div>
-                  <p className="text-xs text-muted-foreground">Sistema de Gestão Inteligente</p>
+                  <p className="text-[10px] text-muted-foreground hidden sm:block">Integrai Control Panel</p>
                 </div>
               </div>
 
@@ -166,15 +166,15 @@ export const AdminLayout = () => {
 
             <main className={cn(
               "flex-1 bg-gradient-to-b from-background via-background to-primary-soft/10",
-              (isAtendimento || location.pathname.startsWith("/app/agenda")) ? "p-0 overflow-hidden h-[calc(100dvh-4rem)]" : "px-4 pb-8 pt-4"
+              (isAtendimento || location.pathname.startsWith("/app/agenda")) ? "p-0 overflow-hidden h-[calc(100dvh-4rem)]" : "px-2 sm:px-4 pb-8 pt-2 sm:pt-4"
             )}>
               {status?.overdue && user?.role !== 'SUPERADMIN' ? (
-                <div className="flex flex-col items-center justify-center h-full text-center space-y-6 p-8">
-                  <div className="bg-red-100 p-6 rounded-full">
-                    <ShieldAlert className="h-16 w-16 text-red-600" />
+                <div className="flex flex-col items-center justify-center h-full text-center space-y-6 p-4 sm:p-8">
+                  <div className="bg-red-100 p-4 sm:p-6 rounded-full">
+                    <ShieldAlert className="h-12 w-12 sm:h-16 sm:w-16 text-red-600" />
                   </div>
-                  <h2 className="text-3xl font-bold text-red-700">Acesso Bloqueado</h2>
-                  <p className="text-xl max-w-lg text-muted-foreground">
+                  <h2 className="text-2xl sm:text-3xl font-bold text-red-700">Acesso Bloqueado</h2>
+                  <p className="text-lg sm:text-xl max-w-lg text-muted-foreground">
                     A assinatura da sua empresa está vencida. <br />
                     Por favor, regularize o pagamento para restaurar o acesso ao sistema.
                   </p>
@@ -194,8 +194,8 @@ export const AdminLayout = () => {
                 <div className={cn(
                   "mx-auto flex flex-col h-full",
                   isAtendimento ? "max-w-full gap-0" :
-                    location.pathname.startsWith("/app/crm") ? "max-w-full gap-4 p-4" :
-                      location.pathname.startsWith("/app/agenda") ? "max-w-full gap-0 p-0 sm:p-1" : "max-w-6xl gap-6"
+                    location.pathname.startsWith("/app/crm") ? "max-w-full gap-4 p-2 sm:p-4" :
+                      location.pathname.startsWith("/app/agenda") ? "max-w-full gap-0 p-0 sm:p-1" : "max-w-6xl gap-4 sm:gap-6"
                 )}>
                   <Outlet />
                 </div>

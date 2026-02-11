@@ -110,39 +110,39 @@ export const CrmDashboard = ({ company }: CrmDashboardProps) => {
                     </div>
                 </div>
 
-                <div className="flex flex-wrap items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
                     {/* Filters preserved... */}
-                    <div className="flex items-center gap-2 bg-background p-1 rounded-md border shadow-sm">
+                    <div className="flex items-center gap-1 sm:gap-2 bg-background p-1 rounded-md border shadow-sm w-full sm:w-auto justify-between sm:justify-start">
 
-                        <div className="flex items-center gap-1 mx-2">
+                        <div className="flex items-center gap-1 mx-0 sm:mx-2 shrink-0">
                             <input
                                 type="date"
-                                className="h-8 text-xs border rounded px-2 bg-transparent"
+                                className="h-8 w-[90px] sm:w-auto text-[10px] sm:text-xs border rounded px-1 sm:px-2 bg-transparent"
                                 value={dateRange?.start || ''}
                                 onChange={(e) => setDateRange(prev => ({ ...prev, start: e.target.value }))}
                             />
                             <span className="text-xs text-muted-foreground">-</span>
                             <input
                                 type="date"
-                                className="h-8 text-xs border rounded px-2 bg-transparent"
+                                className="h-8 w-[90px] sm:w-auto text-[10px] sm:text-xs border rounded px-1 sm:px-2 bg-transparent"
                                 value={dateRange?.end || ''}
                                 onChange={(e) => setDateRange(prev => ({ ...prev, end: e.target.value }))}
                             />
                         </div>
 
                         <Select defaultValue="all">
-                            <SelectTrigger className="w-[140px] h-8 text-xs">
+                            <SelectTrigger className="flex-1 sm:w-[140px] h-8 text-xs">
                                 <SelectValue placeholder="Atendente" />
                             </SelectTrigger>
                             <SelectContent>
-                                <SelectItem value="all">Todos Atendentes</SelectItem>
+                                <SelectItem value="all">Todos</SelectItem>
                             </SelectContent>
                         </Select>
 
                         <Button
                             variant="ghost"
                             size="icon"
-                            className="h-8 w-8 text-muted-foreground hover:text-primary"
+                            className="h-8 w-8 text-muted-foreground hover:text-primary shrink-0"
                             onClick={() => window.location.reload()}
                         >
                             <RefreshCw className="h-4 w-4" />
