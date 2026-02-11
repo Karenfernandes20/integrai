@@ -15,12 +15,14 @@ interface VisualEditorProps {
     initialNodes?: Node[];
     initialEdges?: Edge[];
     onSave?: (nodes: Node[], edges: Edge[]) => void;
+    activeQueues?: Array<{ id: number; name: string; color: string }>;
 }
 
 export const VisualEditor: React.FC<VisualEditorProps> = ({
     initialNodes = [],
     initialEdges = [],
-    onSave
+    onSave,
+    activeQueues = []
 }) => {
     // State
     const [nodes, setNodes] = useState<Node[]>(initialNodes);
@@ -481,8 +483,24 @@ export const VisualEditor: React.FC<VisualEditorProps> = ({
                                             <option value="notify_admin">Notificar Administrador</option>
                                             <option value="external_webhook">Chamar Webhook Externo</option>
                                             <option value="add_tag">Adicionar Tag ao Contato</option>
+                                            <option value="send_to_queue">Enviar para Fila</option>
                                         </select>
                                     </div>
+                                    {node.data.action === 'send_to_queue' && (
+                                        <div className="space-y-2">
+                                            <label className="text-xs font-bold text-slate-500 uppercase">Fila de Destino</label>
+                                            <select
+                                                className="w-full text-sm p-2 border rounded-md bg-white"
+                                                value={node.data.queueId || ''}
+                                                onChange={e => updateData('queueId', e.target.value)}
+                                            >
+                                                <option value="">Selecione uma fila ativa</option>
+                                                {activeQueues.map(queue => (
+                                                    <option key={queue.id} value={queue.id}>{queue.name}</option>
+                                                ))}
+                                            </select>
+                                        </div>
+                                    )}
                                     <div className="p-3 bg-slate-50 rounded border border-dashed border-slate-300">
                                         <p className="text-[10px] text-slate-500">Configurações adicionais para esta ação estarão disponíveis na próxima atualização.</p>
                                     </div>

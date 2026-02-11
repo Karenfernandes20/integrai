@@ -927,6 +927,10 @@ export const getConversations = async (req: Request, res: Response) => {
             co.push_name as contact_push_name,
             comp.name as company_name,
             COALESCE(ci.name, c.last_instance_key, c.instance) as instance_friendly_name,
+            q.id as queue_id,
+            q.name as queue_name,
+            q.color as queue_color,
+            q.is_active as queue_is_active,
             COALESCE((
                 SELECT json_agg(json_build_object('id', t.id, 'name', t.name, 'color', t.color))
                 FROM conversations_tags ct
@@ -937,6 +941,7 @@ export const getConversations = async (req: Request, res: Response) => {
             LEFT JOIN whatsapp_contacts co ON (c.external_id = co.jid AND c.company_id = co.company_id)
             LEFT JOIN companies comp ON c.company_id = comp.id
             LEFT JOIN company_instances ci ON c.last_instance_key = ci.instance_key
+            LEFT JOIN company_queues q ON c.queue_id = q.id
             WHERE 1=1
         `;
         const params: any[] = [];

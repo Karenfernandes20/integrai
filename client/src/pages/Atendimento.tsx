@@ -113,6 +113,17 @@ interface Conversation {
   instance_friendly_name?: string;
   tags?: { id: number; name: string; color: string }[];
   user_name?: string;
+  queue_id?: number | null;
+  queue_name?: string | null;
+  queue_color?: string | null;
+  queue_is_active?: boolean | null;
+}
+
+interface CompanyQueue {
+  id: number;
+  name: string;
+  color: string;
+  is_active: boolean;
 }
 
 interface Message {
@@ -278,6 +289,8 @@ const AtendimentoPage = () => {
   const isInitialLoadRef = useRef(true);
   const [selectedCompanyFilter, setSelectedCompanyFilter] = useState<string | null>(null);
   const [globalSearchResults, setGlobalSearchResults] = useState<{ conversations: Conversation[], messages: any[] }>({ conversations: [], messages: [] });
+  const [companyQueues, setCompanyQueues] = useState<CompanyQueue[]>([]);
+  const [selectedQueueFilter, setSelectedQueueFilter] = useState<string>('all');
   const [isSearchingGlobal, setIsSearchingGlobal] = useState(false);
   const [isMessageSearchOpen, setIsMessageSearchOpen] = useState(false);
   const [messageSearchTerm, setMessageSearchTerm] = useState("");
@@ -611,6 +624,10 @@ const AtendimentoPage = () => {
         const s = c.status || 'PENDING';
         if (s !== status) return false;
 
+        if (selectedQueueFilter !== 'all') {
+          if (String(c.queue_id || '') !== selectedQueueFilter) return false;
+        }
+
         // Safety Filter: Reject invalid phone numbers (Ghost Cards)
         const numericPhone = phone.replace(/\D/g, '');
         if (!isGroup && numericPhone !== '' && (numericPhone.length < 8 || numericPhone.length > 15)) {
@@ -632,7 +649,30 @@ const AtendimentoPage = () => {
     setOpenConversations(filterByStatusAndSearch('OPEN'));
     setClosedConversations(filterByStatusAndSearch('CLOSED'));
 
-  }, [conversations, conversationSearchTerm, getDisplayName]); // getDisplayName is a dependency because it uses contactMap which is memoized
+  }, [conversations, conversationSearchTerm, selectedQueueFilter, getDisplayName]); // getDisplayName is a dependency because it uses contactMap which is memoized
+
+  useEffect(() => {
+    const fetchQueues = async () => {
+      try {
+        const targetCompanyId = selectedCompanyFilter || user?.company_id;
+        if (!targetCompanyId || !token) {
+          setCompanyQueues([]);
+          return;
+        }
+
+        const res = await fetch(`/api/queues/active?companyId=${targetCompanyId}`, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        if (!res.ok) return;
+        const data = await res.json();
+        setCompanyQueues(Array.isArray(data) ? data : []);
+      } catch (error) {
+        console.error('Erro ao buscar filas ativas:', error);
+      }
+    };
+
+    fetchQueues();
+  }, [token, selectedCompanyFilter, user?.company_id]);
 
   // Persistence: Save active conversation to localStorage
   useEffect(() => {
@@ -1048,7 +1088,11 @@ const AtendimentoPage = () => {
         user_id: data.user_id !== undefined ? data.user_id : c.user_id,
         contact_name: data.contact_name !== undefined ? data.contact_name : c.contact_name,
         group_name: data.group_name !== undefined ? data.group_name : c.group_name,
-        profile_pic_url: data.profile_pic_url !== undefined ? data.profile_pic_url : c.profile_pic_url
+        profile_pic_url: data.profile_pic_url !== undefined ? data.profile_pic_url : c.profile_pic_url,
+        queue_id: data.queue_id !== undefined ? data.queue_id : c.queue_id,
+        queue_name: data.queue_name !== undefined ? data.queue_name : c.queue_name,
+        queue_color: data.queue_color !== undefined ? data.queue_color : c.queue_color,
+        queue_is_active: data.queue_is_active !== undefined ? data.queue_is_active : c.queue_is_active,
       } : c));
 
       setSelectedConversation(curr => curr && curr.id == data.id ? {
@@ -1057,7 +1101,11 @@ const AtendimentoPage = () => {
         user_id: data.user_id !== undefined ? data.user_id : curr.user_id,
         contact_name: data.contact_name !== undefined ? data.contact_name : curr.contact_name,
         group_name: data.group_name !== undefined ? data.group_name : curr.group_name,
-        profile_pic_url: data.profile_pic_url !== undefined ? data.profile_pic_url : curr.profile_pic_url
+        profile_pic_url: data.profile_pic_url !== undefined ? data.profile_pic_url : curr.profile_pic_url,
+        queue_id: data.queue_id !== undefined ? data.queue_id : curr.queue_id,
+        queue_name: data.queue_name !== undefined ? data.queue_name : curr.queue_name,
+        queue_color: data.queue_color !== undefined ? data.queue_color : curr.queue_color,
+        queue_is_active: data.queue_is_active !== undefined ? data.queue_is_active : curr.queue_is_active,
       } : curr);
     });
 
@@ -2531,6 +2579,15 @@ const AtendimentoPage = () => {
 
             {/* Tags Only in Middle Area */}
             <div className="flex items-center gap-1.5 overflow-hidden my-0.5">
+              {conv.queue_id && conv.queue_name && (
+                <span
+                  className="px-1.5 py-0.5 rounded text-[9px] font-semibold text-white"
+                  style={{ backgroundColor: conv.queue_color || '#3B82F6' }}
+                  title={conv.queue_name}
+                >
+                  {conv.queue_name}
+                </span>
+              )}
               {/* Simplified Tags for Card */}
               {conv.tags && conv.tags.length > 0 && (
                 <span className="flex gap-1">
@@ -2757,6 +2814,38 @@ const AtendimentoPage = () => {
                       )}
                     >
                       {tab === 'PENDING' ? 'Pendentes' : tab === 'OPEN' ? 'Abertos' : 'Fechados'}
+                    </button>
+                  ))}
+                </div>
+
+                <div className="flex items-center gap-1 overflow-x-auto pb-1">
+                  <button
+                    onClick={() => setSelectedQueueFilter('all')}
+                    className={cn(
+                      "px-2.5 py-1 rounded-md text-[10px] font-bold border whitespace-nowrap",
+                      selectedQueueFilter === 'all'
+                        ? "bg-slate-800 text-slate-100 border-slate-700"
+                        : "text-slate-500 border-slate-800 hover:text-slate-300"
+                    )}
+                  >
+                    Todas
+                  </button>
+                  {companyQueues.map(queue => (
+                    <button
+                      key={queue.id}
+                      onClick={() => setSelectedQueueFilter(String(queue.id))}
+                      className={cn(
+                        "px-2.5 py-1 rounded-md text-[10px] font-bold border whitespace-nowrap",
+                        selectedQueueFilter === String(queue.id)
+                          ? "text-white"
+                          : "text-slate-300/80 border-slate-700"
+                      )}
+                      style={{
+                        backgroundColor: selectedQueueFilter === String(queue.id) ? queue.color : 'transparent',
+                        borderColor: queue.color,
+                      }}
+                    >
+                      {queue.name}
                     </button>
                   ))}
                 </div>
