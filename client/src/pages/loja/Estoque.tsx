@@ -114,7 +114,7 @@ export default function EstoquePage() {
                         <Table>
                             <TableHeader>
                                 <TableRow>
-                                    <TableHead className="w-[80px]">SKU</TableHead>
+                                    <TableHead className="w-[80px] whitespace-nowrap">SKU</TableHead>
                                     <TableHead>{isHealthMode ? 'Insumo' : 'Produto'}</TableHead>
                                     {isHealthMode && <TableHead>Lote</TableHead>}
                                     {isHealthMode && <TableHead>Validade</TableHead>}
@@ -128,11 +128,11 @@ export default function EstoquePage() {
                             <TableBody>
                                 {loading ? (
                                     <TableRow>
-                                        <TableCell colSpan={7} className="text-center py-8">Carregando...</TableCell>
+                                        <TableCell colSpan={isHealthMode ? 9 : 7} className="text-center py-8">Carregando...</TableCell>
                                     </TableRow>
                                 ) : products.length === 0 ? (
                                     <TableRow>
-                                        <TableCell colSpan={7} className="text-center py-12 text-muted-foreground flex flex-col items-center justify-center h-40">
+                                        <TableCell colSpan={isHealthMode ? 9 : 7} className="text-center py-12 text-muted-foreground flex flex-col items-center justify-center h-40 break-normal whitespace-normal">
                                             <Package className="h-10 w-10 mb-2 opacity-50" />
                                             Nenhum produto encontrado.
                                         </TableCell>
@@ -140,7 +140,7 @@ export default function EstoquePage() {
                                 ) : (
                                     products.map((product) => (
                                         <TableRow key={product.id}>
-                                            <TableCell className="font-mono text-xs text-muted-foreground">{product.sku}</TableCell>
+                                            <TableCell className="font-mono text-xs text-muted-foreground whitespace-nowrap break-normal">{product.sku}</TableCell>
                                             <TableCell className="font-medium">{product.name}</TableCell>
                                             {isHealthMode && <TableCell className="text-xs font-mono">{(product as any).batch_number || '-'}</TableCell>}
                                             {isHealthMode && (
