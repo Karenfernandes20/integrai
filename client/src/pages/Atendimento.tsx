@@ -1029,6 +1029,16 @@ const AtendimentoPage = () => {
       });
     });
 
+    socket.on("message:media_update", (data: any) => {
+      // data: { external_id, media_url }
+      console.log(`[Socket] Media update for msg ${data.external_id}`);
+      setMessages(prev => prev.map(m =>
+        (m.external_id === data.external_id)
+          ? { ...m, media_url: data.media_url }
+          : m
+      ));
+    });
+
     socket.on("contact:update", (data: any) => {
       setImportedContacts(prev => {
         const exists = prev.find(c => c.phone && c.phone.includes(data.phone));
@@ -2725,7 +2735,7 @@ const AtendimentoPage = () => {
         </div>
 
         {/* CONTENT AREA (Search + Lists) */}
-        <div className="flex-1 overflow-hidden flex-col bg-white">
+        <div className="flex-1 flex flex-col overflow-hidden bg-white">
 
           {/* TAB: CONVERSAS */}
           {activeTab === 'conversas' && (
@@ -2757,13 +2767,13 @@ const AtendimentoPage = () => {
                         ) : "text-[#64748B] hover:text-[#0F172A] hover:bg-white"
                       )}
                     >
-                      {tab === 'PENDING' ? 'Pend' : tab === 'OPEN' ? 'Aber' : 'Fech'}
+                      {tab === 'PENDING' ? 'PENDENTES' : tab === 'OPEN' ? 'ABERTOS' : 'FECHADOS'}
                     </button>
                   ))}
                 </div>
               </div>
 
-              <div className="flex-1 overflow-y-auto custom-scrollbar-subtle pt-2 px-0 pb-20 space-y-0.5">
+              <div className="flex-1 min-h-0 flex flex-col">
 
                 {/* Loading State */}
                 {isLoadingConversations && !conversationSearchTerm && (
@@ -2786,7 +2796,7 @@ const AtendimentoPage = () => {
 
                 {/* Global Search Results */}
                 {!isLoadingConversations && !apiError && conversationSearchTerm && conversationSearchTerm.length >= 2 ? (
-                  <div className="flex flex-col">
+                  <div className="flex flex-col flex-1 overflow-y-auto custom-scrollbar pb-10">
                     {isSearchingGlobal ? (
                       <div className="py-8 flex flex-col items-center">
                         <Loader2 className="h-6 w-6 animate-spin text-[#2563EB] mb-2" />
@@ -2856,13 +2866,13 @@ const AtendimentoPage = () => {
                   <div className="flex flex-col flex-1 pb-10 overflow-y-auto custom-scrollbar pr-1">
                     {/* Lists by ViewMode */}
                     {viewMode === 'PENDING' && pendingConversations.length > 0 &&
-                      pendingConversations.slice((pendingPage - 1) * ITEMS_PER_PAGE, pendingPage * ITEMS_PER_PAGE).map(conv => renderConversationCard(conv))
+                      pendingConversations.map(conv => renderConversationCard(conv))
                     }
                     {viewMode === 'OPEN' && openConversations.length > 0 &&
-                      openConversations.slice((openPage - 1) * ITEMS_PER_PAGE, openPage * ITEMS_PER_PAGE).map(conv => renderConversationCard(conv))
+                      openConversations.map(conv => renderConversationCard(conv))
                     }
                     {viewMode === 'CLOSED' && closedConversations.length > 0 &&
-                      closedConversations.slice((closedPage - 1) * ITEMS_PER_PAGE, closedPage * ITEMS_PER_PAGE).map(conv => renderConversationCard(conv))
+                      closedConversations.map(conv => renderConversationCard(conv))
                     }
 
                     {/* Empty States */}
@@ -2905,7 +2915,7 @@ const AtendimentoPage = () => {
                 </div>
               </div>
 
-              <div className="flex-1 overflow-y-auto custom-scrollbar-subtle px-2 pb-20">
+              <div className="flex-1 overflow-y-auto custom-scrollbar px-2 pb-20">
                 {/* Novo Contato BTN */}
                 <button onClick={() => setIsNewContactModalOpen(true)} className="w-full flex items-center gap-3 p-3 hover:bg-[#F1F5F9] rounded-xl transition-all group mb-2 border border-dashed border-[#E2E8F0] hover:border-[#2563EB]">
                   <div className="w-10 h-10 rounded-full bg-[#EFF6FF] flex items-center justify-center text-[#2563EB] group-hover:bg-[#2563EB] group-hover:text-white transition-colors">
@@ -3132,7 +3142,7 @@ const AtendimentoPage = () => {
                 ref={scrollRef}
                 onScroll={handleScroll}
                 className={cn(
-                  "flex-1 overflow-y-auto px-4 py-8 flex flex-col gap-6 relative z-10 custom-scrollbar-thin",
+                  "flex-1 overflow-y-auto px-4 py-8 flex flex-col gap-6 relative z-10 custom-scrollbar",
                   "bg-[#F8FAFC]",
                   messages.length === 0 && "items-center justify-center"
                 )}
@@ -3204,6 +3214,11 @@ const AtendimentoPage = () => {
                           "flex flex-col w-full max-w-[85%] lg:max-w-[75%] gap-0.5",
                           isOutbound ? "items-end self-end" : "items-start self-start"
                         )}>
+                          {isOutbound && firstMsg.agent_name && (
+                            <span className="text-[10px] font-bold text-[#475569] mb-1 mr-1 px-1 flex items-center gap-1">
+                              {firstMsg.agent_name}:
+                            </span>
+                          )}
                           {group.map((msg, msgIdx) => (
                             <div
                               key={msg.id}
@@ -3232,12 +3247,94 @@ const AtendimentoPage = () => {
                                       </div>
                                     )}
                                     <div className="whitespace-pre-wrap leading-relaxed break-words">
-                                      {msg.type === 'image' && msg.media_url && (
-                                        <div className="rounded-lg overflow-hidden mb-1 ring-1 ring-[#E2E8F0]">
-                                          <img src={msg.media_url} alt="Media" className="max-h-64 object-cover cursor-pointer hover:scale-[1.02] transition-transform" onClick={() => window.open(msg.media_url, '_blank')} />
+                                      {/* Media Rendering */}
+                                      {(msg.type === 'image' || msg.message_type === 'image') && getMediaUrl(msg) && (
+                                        <div className="rounded-lg overflow-hidden mb-2 ring-1 ring-[#E2E8F0] bg-black/5">
+                                          <img
+                                            src={getMediaUrl(msg)}
+                                            alt="Media"
+                                            className="max-h-80 w-full object-contain cursor-pointer hover:opacity-90 transition-opacity"
+                                            onClick={() => window.open(getMediaUrl(msg), '_blank')}
+                                          />
                                         </div>
                                       )}
-                                      {msg.body || msg.content}
+
+
+                                      {(msg.type === 'video' || msg.message_type === 'video') && getMediaUrl(msg) && (
+                                        <div className="rounded-lg overflow-hidden mb-2 ring-1 ring-[#E2E8F0] bg-black/5">
+                                          <video
+                                            src={getMediaUrl(msg)}
+                                            controls
+                                            className="max-h-80 w-full"
+                                          />
+                                        </div>
+                                      )}
+
+
+                                      {(msg.type === 'audio' || msg.message_type === 'audio') && getMediaUrl(msg) && (
+                                        <div className={cn(
+                                          "mb-2 p-2 rounded-xl flex items-center gap-3 min-w-[240px]",
+                                          isOutbound ? "bg-white/10" : "bg-[#F1F5F9]"
+                                        )}>
+                                          <div className={cn(
+                                            "w-8 h-8 rounded-full flex items-center justify-center shrink-0",
+                                            isOutbound ? "bg-white/20 text-white" : "bg-white text-[#2563EB] shadow-sm"
+                                          )}
+                                            onClick={() => handleAudioSpeedToggle(msg.id, document.getElementById(`audio-${msg.id}`) as HTMLAudioElement)}
+                                          >
+                                            <span className="text-[10px] font-bold">
+                                              {audioSpeeds[msg.id] ? `${audioSpeeds[msg.id]}x` : '1x'}
+                                            </span>
+                                          </div>
+                                          <audio
+                                            id={`audio-${msg.id}`}
+                                            src={getMediaUrl(msg)}
+                                            controls
+                                            className="h-8 flex-1"
+                                            controlsList="nodownload noplaybackrate"
+                                          />
+                                        </div>
+                                      )}
+
+
+                                      {(msg.type === 'document' || msg.message_type === 'document') && getMediaUrl(msg) && (
+                                        <div
+                                          className={cn(
+                                            "mb-2 p-3 rounded-xl flex items-center gap-3 border cursor-pointer transition-all hover:scale-[1.01]",
+                                            isOutbound
+                                              ? "bg-white/10 border-white/20 hover:bg-white/20"
+                                              : "bg-[#F8FAFC] border-[#E2E8F0] hover:bg-white"
+                                          )}
+                                          onClick={() => window.open(getMediaUrl(msg), '_blank')}
+                                        >
+                                          <div className={cn(
+                                            "w-10 h-10 rounded-lg flex items-center justify-center shrink-0",
+                                            isOutbound ? "bg-white text-[#2563EB]" : "bg-[#EFF6FF] text-[#2563EB]"
+                                          )}>
+                                            <FileText className="w-6 h-6" />
+                                          </div>
+                                          <div className="flex-1 min-w-0">
+                                            <p className={cn(
+                                              "text-xs font-bold truncate",
+                                              isOutbound ? "text-white" : "text-[#0F172A]"
+                                            )}>
+                                              {msg.content || 'Documento'}
+                                            </p>
+                                            <p className={cn(
+                                              "text-[9px] uppercase tracking-wider font-medium opacity-70",
+                                              isOutbound ? "text-white" : "text-[#64748B]"
+                                            )}>
+                                              PDF / Documento • Abrir
+                                            </p>
+                                          </div>
+                                          <Download className={cn("w-4 h-4", isOutbound ? "text-white/60" : "text-[#94A3B8]")} />
+                                        </div>
+                                      )}
+
+                                      {/* Text Content */}
+                                      <div className="whitespace-pre-wrap leading-relaxed break-words">
+                                        {msg.body || msg.content}
+                                      </div>
                                     </div>
                                     <div className={cn(
                                       "flex items-center gap-2 mt-1 self-end",

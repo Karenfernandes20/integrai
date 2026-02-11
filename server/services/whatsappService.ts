@@ -3,6 +3,7 @@ import { incrementUsage } from './limitService';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { normalizePhone } from '../utils/phoneUtils';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -77,7 +78,7 @@ export async function sendWhatsAppMessage({
         evolution_url = compData.evolution_url;
         const baseUrl = (evolution_url || process.env.EVOLUTION_API_URL || "https://freelasdekaren-evolution-api.nhvvzr.easypanel.host").replace(/\/$/, "");
 
-        const cleanPhone = phone.replace(/\D/g, "");
+        const cleanPhone = normalizePhone(phone);
         console.log(`[sendWhatsAppMessage] Sending to ${cleanPhone} via instance ${evolution_instance}. Media: ${mediaUrl ? 'YES' : 'NO'}`);
 
         let targetUrl = '';

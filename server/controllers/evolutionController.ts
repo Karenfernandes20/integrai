@@ -1,6 +1,7 @@
 import { Request, Response } from "express";
 import { pool } from "../db";
 import { logEvent } from "../logger";
+import { normalizePhone, extractPhoneFromJid } from "../utils/phoneUtils";
 
 /**
  * Evolution API controller
@@ -674,12 +675,13 @@ export const sendEvolutionMessage = async (req: Request, res: Response) => {
         // Insert message WITH USER_ID and company_id, handling race condition with webhook
         // If webhook inserted first (user_id=null), this will update it.
         const insertedMsg = await pool.query(
-          `INSERT INTO whatsapp_messages (conversation_id, direction, content, sent_at, status, external_id, user_id, company_id) 
-           VALUES ($1, $2, $3, NOW(), $4, $5, $6, $7) 
+          `INSERT INTO whatsapp_messages (conversation_id, direction, content, sent_at, status, external_id, user_id, company_id, sent_by_user_id, sent_by_user_name) 
+           VALUES ($1, $2, $3, NOW(), $4, $5, $6, $7, $8, $9) 
            ON CONFLICT (external_id) DO UPDATE 
-           SET user_id = EXCLUDED.user_id, company_id = EXCLUDED.company_id 
+           SET user_id = EXCLUDED.user_id, company_id = EXCLUDED.company_id, 
+               sent_by_user_id = EXCLUDED.sent_by_user_id, sent_by_user_name = EXCLUDED.sent_by_user_name 
            RETURNING *`,
-          [conversationId, 'outbound', messageContent, 'sent', externalMessageId, user.id, resolvedCompanyId]
+          [conversationId, 'outbound', messageContent, 'sent', externalMessageId, user.id, resolvedCompanyId, user.id, user.full_name]
         );
 
         const row = insertedMsg.rows[0];
@@ -823,8 +825,8 @@ export const sendEvolutionMedia = async (req: Request, res: Response) => {
         const externalMessageId = data?.key?.id;
 
         const insertedMsg = await pool.query(
-          'INSERT INTO whatsapp_messages (conversation_id, direction, content, sent_at, status, external_id, user_id, message_type, media_url, company_id) VALUES ($1, $2, $3, NOW(), $4, $5, $6, $7, $8, $9) ON CONFLICT DO NOTHING RETURNING *',
-          [conversationId, 'outbound', content, 'sent', externalMessageId, user.id, mediaType, (media.startsWith('http') ? media : null), resolvedCompanyId]
+          'INSERT INTO whatsapp_messages (conversation_id, direction, content, sent_at, status, external_id, user_id, message_type, media_url, company_id, sent_by_user_id, sent_by_user_name) VALUES ($1, $2, $3, NOW(), $4, $5, $6, $7, $8, $9, $10, $11) ON CONFLICT DO NOTHING RETURNING *',
+          [conversationId, 'outbound', content, 'sent', externalMessageId, user.id, mediaType, (media.startsWith('http') ? media : null), resolvedCompanyId, user.id, user.full_name]
         );
 
         // Increment Usage
@@ -1210,9 +1212,9 @@ export const syncEvolutionContacts = async (req: Request, res: Response) => {
 
               for (const field of potentialFields) {
                 if (typeof field === 'string' && field) {
-                  const clean = field.split('@')[0].split(':')[0];
-                  if (/^\d+$/.test(clean) && clean.length >= 7 && clean.length <= 16) {
-                    candidate = clean;
+                  const cleaned = normalizePhone(field);
+                  if (cleaned && cleaned.length >= 7) {
+                    candidate = cleaned;
                     break;
                   }
                 }
@@ -1289,6 +1291,8 @@ export const syncEvolutionContacts = async (req: Request, res: Response) => {
     localQuery += ` ORDER BY name ASC`;
     const finalContacts = await pool?.query(localQuery, localParams);
 
+    // Proactively trigger profile picture sync in background (fire and forget)
+    // We don't await this to return the contact list immediately
     return res.json(finalContacts?.rows || []);
 
   } catch (error: any) {
@@ -1357,20 +1361,35 @@ export const getEvolutionContactsLive = async (req: Request, res: Response) => {
       return res.status(502).json({ error: "Live fetch failed from all endpoints", details: lastError });
     }
 
-    // Return mapped simple objects
-    const mapped = contactsList.map(c => {
+    // Return mapped simple objects with database caching for pictures
+    const mapped = await Promise.all(contactsList.map(async (c) => {
       const jid = c.id || c.remoteJid || c.jid;
-      // Basic clean: handle suffixes like :1
-      const phone = jid ? jid.split('@')[0].split(':')[0] : (c.phone || c.number || "");
+      const phone = extractPhoneFromJid(jid) || normalizePhone(c.phone || c.number || "");
+      let profile_pic_url = c.profilePictureUrl || c.profilePicture;
+
+      // If API didn't return a pic, try to find it in our local DB
+      if (!profile_pic_url && pool && phone) {
+        try {
+          const dbCheck = await pool.query(
+            "SELECT profile_pic_url FROM whatsapp_contacts WHERE (phone = $1 OR jid = $2) AND company_id = $3 LIMIT 1",
+            [phone, jid, config.company_id]
+          );
+          if (dbCheck.rows.length > 0 && dbCheck.rows[0].profile_pic_url) {
+            profile_pic_url = dbCheck.rows[0].profile_pic_url;
+          }
+        } catch (e) { /* ignore cache miss */ }
+      }
+
       return {
         id: jid || phone,
         name: c.name || c.pushName || c.notify || phone,
         phone: phone,
-        profile_pic_url: c.profilePictureUrl || c.profilePicture
+        profile_pic_url: profile_pic_url
       };
-    }).filter(c => c.phone && /^\d+$/.test(c.phone)); // Filter valid numeric phones
+    }));
 
-    return res.json(mapped);
+    const filtered = mapped.filter(c => c.phone && c.phone.length >= 7);
+    return res.json(filtered);
 
   } catch (error: any) {
     console.error("Error fetching live contacts:", error);
@@ -1390,10 +1409,10 @@ export const createEvolutionContact = async (req: Request, res: Response) => {
       return res.status(400).json({ error: "Name and Phone are required" });
     }
 
-    // Validate phone format - remove non-digits
-    const cleanPhone = phone.replace(/\D/g, "");
+    // Validate phone format
+    const cleanPhone = normalizePhone(phone);
     if (!cleanPhone || cleanPhone.length < 10) {
-      return res.status(400).json({ error: "Invalid phone number" });
+      return res.status(400).json({ error: "Telefone inválido. Use formato com DDD." });
     }
 
     const jid = `${cleanPhone}@s.whatsapp.net`;
@@ -1948,49 +1967,75 @@ export const syncAllProfilePics = async (req: Request, res: Response) => {
     const user = (req as any).user;
     const companyId = user?.company_id;
 
-    // Fetch conversations without profile pics
-    let query = "SELECT external_id, phone FROM whatsapp_conversations WHERE (profile_pic_url IS NULL OR profile_pic_url = '') AND instance = $1";
-    const params = [EVOLUTION_INSTANCE];
-
-    if (user.role !== 'SUPERADMIN' || companyId) {
-      query += " AND (company_id = $2 OR company_id IS NULL)";
-      params.push(companyId);
-    }
+    // Fetch both conversations and contacts without profile pics for the current instance/company
+    let query = `
+      SELECT DISTINCT jid_or_phone, external_id, phone, is_group 
+      FROM (
+        SELECT external_id as jid_or_phone, external_id, phone, is_group FROM whatsapp_conversations 
+        WHERE (profile_pic_url IS NULL OR profile_pic_url = '') AND instance = $1 AND company_id = $2
+        UNION
+        SELECT jid as jid_or_phone, jid as external_id, phone, false as is_group FROM whatsapp_contacts 
+        WHERE (profile_pic_url IS NULL OR profile_pic_url = '') AND instance = $1 AND company_id = $2
+      ) sub
+    `;
+    const params = [EVOLUTION_INSTANCE, companyId];
 
     const { rows } = await pool.query(query, params);
 
     let count = 0;
     const baseUrl = EVOLUTION_API_URL.replace(/\/$/, "");
 
-    // Process in background and return immediate status if there are many, or wait if few
-    res.json({ success: true, message: `Syncing ${rows.length} profile pictures in background...`, totalFound: rows.length });
+    // Process in background and return immediate status
+    res.json({ success: true, message: `Sincronizando ${rows.length} fotos de perfil em segundo plano...`, totalFound: rows.length });
 
     // Process in background
     (async () => {
-      for (const conv of rows) {
+      console.log(`[SyncPics] Starting sync for ${rows.length} items on instance ${EVOLUTION_INSTANCE}`);
+      for (const item of rows) {
         try {
-          const phone = conv.external_id || conv.phone;
+          const target = item.jid_or_phone || item.external_id || item.phone;
+          if (!target) continue;
+
+          console.log(`[SyncPics] Fetching pic for ${target}...`);
           const response = await fetch(`${baseUrl}/chat/fetchProfilePictureUrl/${EVOLUTION_INSTANCE}`, {
             method: "POST",
             headers: { "Content-Type": "application/json", "apikey": EVOLUTION_API_KEY },
-            body: JSON.stringify({ number: phone })
+            body: JSON.stringify({ number: target })
           });
 
           if (response.ok) {
             const data = await response.json();
-            const picUrl = data.profilePictureUrl || data.url;
+            let picUrl = data.profilePictureUrl || data.url;
+
+            // Fallback for groups if fetchProfilePictureUrl didn't return a URL
+            if (!picUrl && item.is_group) {
+              console.log(`[SyncPics] Fallback to findGroup for group ${target}`);
+              const gRes = await fetch(`${baseUrl}/group/findGroup/${EVOLUTION_INSTANCE}?groupJid=${target}`, {
+                headers: { "apikey": EVOLUTION_API_KEY }
+              });
+              if (gRes.ok) {
+                const gData = await gRes.json();
+                picUrl = gData.profilePictureUrl || gData.pic || gData.picture;
+              }
+            }
+
             if (picUrl) {
               await Promise.all([
-                pool.query("UPDATE whatsapp_conversations SET profile_pic_url = $1 WHERE external_id = $2 AND instance = $3", [picUrl, conv.external_id, EVOLUTION_INSTANCE]),
-                pool.query("UPDATE whatsapp_contacts SET profile_pic_url = $1 WHERE jid = $2 AND instance = $3", [picUrl, conv.external_id, EVOLUTION_INSTANCE])
+                pool.query("UPDATE whatsapp_conversations SET profile_pic_url = $1 WHERE (external_id = $2 OR phone = $3) AND company_id = $4", [picUrl, item.external_id, item.phone, companyId]),
+                pool.query("UPDATE whatsapp_contacts SET profile_pic_url = $1 WHERE (jid = $2 OR phone = $3) AND company_id = $4", [picUrl, item.external_id, item.phone, companyId])
               ]);
               count++;
+              console.log(`[SyncPics] ✅ Updated pic for ${target}`);
+            } else {
+              console.log(`[SyncPics] ℹ️ No pic found for ${target}`);
             }
+          } else {
+            console.warn(`[SyncPics] ⚠️ API returned ${response.status} for ${target}`);
           }
-          // Small delay to be polite to the API
-          await new Promise(resolve => setTimeout(resolve, 500));
+          // Small delay to be polite to the API and avoid being flagged
+          await new Promise(resolve => setTimeout(resolve, 800));
         } catch (err) {
-          console.error(`Error syncing pic for ${conv.external_id}:`, err);
+          console.error(`[SyncPics] Error syncing pic for ${item.jid_or_phone}:`, err);
         }
       }
       console.log(`[SyncPics] Completed. Synced ${count} out of ${rows.length}.`);
@@ -2050,6 +2095,13 @@ export const refreshConversationMetadata = async (req: Request, res: Response) =
           await pool.query('UPDATE whatsapp_conversations SET contact_name = $1, group_name = $1 WHERE id = $2', [subject, conversationId]);
           console.log(`[Refresh] Updated group name: ${subject}`);
           nameFound = true;
+        }
+        // Extract picture if available in group metadata
+        const pic = gData.profilePictureUrl || gData.pic || gData.picture;
+        if (pic && !updatedPic) {
+          updatedPic = pic;
+          await pool.query('UPDATE whatsapp_conversations SET profile_pic_url = $1 WHERE id = $2', [pic, conversationId]);
+          console.log(`[Refresh] Updated group pic from metadata: ${pic}`);
         }
       } else {
         console.warn(`[Refresh] Failed to fetch group info: ${gRes.status}`);

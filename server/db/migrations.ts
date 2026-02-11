@@ -405,6 +405,33 @@ const runWhatsappMigrations = async () => {
                 CREATE UNIQUE INDEX IF NOT EXISTS idx_whatsapp_contacts_jid_instance 
                 ON whatsapp_contacts (jid, instance);
             `);
+
+            // 3. Add missing columns for enhanced contact management
+            await pool.query(`
+                ALTER TABLE whatsapp_contacts 
+                ADD COLUMN IF NOT EXISTS phone VARCHAR(20),
+                ADD COLUMN IF NOT EXISTS email VARCHAR(255),
+                ADD COLUMN IF NOT EXISTS company_id INTEGER REFERENCES companies(id) ON DELETE CASCADE;
+            `);
+
+            // 4. Populate phone from jid if empty
+            await pool.query(`
+                UPDATE whatsapp_contacts 
+                SET phone = split_part(jid, '@', 1) 
+                WHERE phone IS NULL OR phone = '';
+            `);
+
+            // 5. Create index on phone for faster searches
+            await pool.query(`
+                CREATE INDEX IF NOT EXISTS idx_whatsapp_contacts_phone 
+                ON whatsapp_contacts (phone);
+            `);
+
+            // 6. Create index on company_id for multi-tenancy
+            await pool.query(`
+                CREATE INDEX IF NOT EXISTS idx_whatsapp_contacts_company 
+                ON whatsapp_contacts (company_id);
+            `);
         } catch (e) {
             console.error("Warning: Could not enforce unique constraint on whatsapp_contacts:", e);
         }

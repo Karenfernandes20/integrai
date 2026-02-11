@@ -407,10 +407,14 @@ const startServer = async () => {
                 END $$;
             `);
 
-          // Add new unique constraint
+          // Add new unique constraint (Strict Instance Separation)
           await pool.query(`
                 ALTER TABLE whatsapp_conversations DROP CONSTRAINT IF EXISTS whatsapp_conversations_external_id_company_id_key;
-                ALTER TABLE whatsapp_conversations ADD CONSTRAINT whatsapp_conversations_external_id_company_id_key UNIQUE (external_id, company_id);
+                -- Ensure old constraint is gone
+                ALTER TABLE whatsapp_conversations DROP CONSTRAINT IF EXISTS whatsapp_conversations_external_id_instance_company_id_key;
+                
+                -- Add CORRECT constraint: remote_jid + instance + company_id
+                ALTER TABLE whatsapp_conversations ADD CONSTRAINT whatsapp_conversations_external_id_instance_company_id_key UNIQUE (external_id, instance, company_id);
             `);
 
           console.log("Unification migrations completed successfully.");

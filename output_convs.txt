@@ -1,0 +1,24 @@
+﻿Connected
+Indexes for whatsapp_conversations:
+[
+  {
+    "indexname": "whatsapp_conversations_pkey",
+    "indexdef": "CREATE UNIQUE INDEX whatsapp_conversations_pkey ON public.whatsapp_conversations USING btree (id)"
+  },
+  {
+    "indexname": "whatsapp_conversations_external_id_instance_key",
+    "indexdef": "CREATE UNIQUE INDEX whatsapp_conversations_external_id_instance_key ON public.whatsapp_conversations USING btree (external_id, instance)"
+  },
+  {
+    "indexname": "idx_whatsapp_conv_company",
+    "indexdef": "CREATE INDEX idx_whatsapp_conv_company ON public.whatsapp_conversations USING btree (company_id)"
+  },
+  {
+    "indexname": "idx_whatsapp_conv_external",
+    "indexdef": "CREATE INDEX idx_whatsapp_conv_external ON public.whatsapp_conversations USING btree (external_id)"
+  },
+  {
+    "indexname": "idx_conversations_instance_status_date",
+    "indexdef": "CREATE INDEX idx_conversations_instance_status_date ON public.whatsapp_conversations USING btree (instance, status, created_at, closed_at)"
+  }
+]

@@ -73,9 +73,14 @@ router.post('/users/:id/reset-password', authenticateToken, authorizeRole(['SUPE
 
 // Evolution routes
 import { getEvolutionQrCode, setEvolutionWebhook, getEvolutionWebhook, deleteEvolutionInstance, sendEvolutionMessage, getEvolutionConnectionState, getEvolutionContacts, createEvolutionContact, updateEvolutionContact, deleteEvolutionContact, editEvolutionMessage, syncEvolutionContacts, handleEvolutionWebhook, getEvolutionContactsLive, deleteEvolutionMessage, getEvolutionConfig, getEvolutionMedia, getEvolutionProfilePic, syncAllProfilePics, sendEvolutionMedia, refreshConversationMetadata, deleteMessage, searchEverything, sendEvolutionReaction, getSystemWhatsappStatus } from './controllers/evolutionController';
+
+// Contacts routes
+import { getContacts, getContact, createContact, updateContact, deleteContact, searchContacts } from './controllers/contactController';
+
 router.get('/evolution/search', authenticateToken, searchEverything);
 router.get('/evolution/status', authenticateToken, getEvolutionConnectionState);
 router.get('/system/whatsapp/status', authenticateToken, getSystemWhatsappStatus); // New Global Status
+router.get('/evolution/media/:messageId', authenticateToken, getEvolutionMedia);
 router.get('/evolution/contacts', authenticateToken, getEvolutionContacts);
 router.post('/evolution/contacts', authenticateToken, createEvolutionContact);
 router.get('/evolution/contacts/live', authenticateToken, getEvolutionContactsLive);
@@ -337,6 +342,14 @@ router.get('/crm/follow-ups/stats', authenticateToken, getFollowUpStats);
 router.post('/crm/follow-ups', authenticateToken, createFollowUp);
 router.put('/crm/follow-ups/:id', authenticateToken, updateFollowUp);
 router.delete('/crm/follow-ups/:id', authenticateToken, deleteFollowUp);
+
+// Contacts Routes (WhatsApp Contacts Management)
+router.get('/contacts', authenticateToken, getContacts);
+router.get('/contacts/search', authenticateToken, searchContacts);
+router.get('/contacts/:id', authenticateToken, getContact);
+router.post('/contacts', authenticateToken, createContact);
+router.put('/contacts/:id', authenticateToken, updateContact);
+router.delete('/contacts/:id', authenticateToken, deleteContact);
 
 // Professionals Routes
 router.get('/crm/professionals', authenticateToken, getProfessionals);

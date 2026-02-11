@@ -558,9 +558,26 @@ export const getCrmDashboardStats = async (req: Request, res: Response) => {
             return companyId ? `${prefix}company_id = $1` : '1=1';
         };
 
+        let dateStart = startDate ? String(startDate) : null;
+        let dateEnd = endDate ? String(endDate) : null;
+
+        // Logic for period defaults: 30 days if empty
+        if (!dateStart && !dateEnd) {
+            const now = new Date();
+            const past = new Date();
+            past.setDate(now.getDate() - 30);
+            dateStart = past.toISOString().split('T')[0];
+            dateEnd = now.toISOString().split('T')[0];
+        } else if (!dateStart) {
+            const end = new Date(dateEnd!);
+            const past = new Date(end);
+            past.setDate(end.getDate() - 30);
+            dateStart = past.toISOString().split('T')[0];
+        } else if (!dateEnd) {
+            dateEnd = new Date().toISOString().split('T')[0];
+        }
+
         const activeParams = companyId ? [companyId] : [];
-        const dateStart = startDate ? String(startDate) : new Date().toISOString().split('T')[0];
-        const dateEnd = endDate ? String(endDate) : new Date().toISOString().split('T')[0];
 
         // Params padronizados para queries
         // $1 = companyId (se existir) ou ignore

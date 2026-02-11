@@ -106,11 +106,11 @@ export function PlanUsage() {
                     <CardHeader>
                         <div className="flex items-center justify-between">
                             <div>
-                                <CardTitle className="text-lg">Limites do Plano: {data.plan_name}</CardTitle>
+                                <CardTitle className="text-lg">Limites do Plano: {data.plan_name || 'N/A'}</CardTitle>
                                 <CardDescription>Consumo de recursos neste mês.</CardDescription>
                             </div>
                             <Badge variant="outline" className="text-sm px-3 py-1 font-medium bg-primary/10 border-primary/20 text-primary">
-                                {data.plan_name.toUpperCase()}
+                                {data.plan_name?.toUpperCase() || 'SEM PLANO'}
                             </Badge>
                         </div>
                     </CardHeader>

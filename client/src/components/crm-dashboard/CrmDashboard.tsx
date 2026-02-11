@@ -16,14 +16,37 @@ import { CommunityStats } from "../CommunityStats";
 
 
 
+import { DashboardDateFilter } from "../DashboardDateFilter";
+
 interface CrmDashboardProps {
     company: CompanySummary;
 }
 
 export const CrmDashboard = ({ company }: CrmDashboardProps) => {
-    const [dateRange, setDateRange] = useState<any>(null); // Placeholder for date state
+    // Persistent date state
+    const [dateRange, setDateRange] = useState<{ start: string; end: string }>(() => {
+        const saved = localStorage.getItem('dashboard_date_range');
+        if (saved) {
+            try {
+                return JSON.parse(saved);
+            } catch (e) {
+                return { start: "", end: "" };
+            }
+        }
+        return { start: "", end: "" };
+    });
+
     const [dashboardData, setDashboardData] = useState<any>(null);
     const [loading, setLoading] = useState(false);
+
+    // Save to localStorage when changed
+    useEffect(() => {
+        if (dateRange.start || dateRange.end) {
+            localStorage.setItem('dashboard_date_range', JSON.stringify(dateRange));
+        } else {
+            localStorage.removeItem('dashboard_date_range');
+        }
+    }, [dateRange]);
 
     useEffect(() => {
         const fetchDashboard = async () => {
@@ -71,7 +94,7 @@ export const CrmDashboard = ({ company }: CrmDashboardProps) => {
         setLoading(true);
         fetchDashboard();
 
-        const interval = setInterval(fetchDashboard, 10000); // Polling every 10s
+        const interval = setInterval(fetchDashboard, 15000); // Polling every 15s
         return () => clearInterval(interval);
     }, [company.id, dateRange]);
 
@@ -111,24 +134,14 @@ export const CrmDashboard = ({ company }: CrmDashboardProps) => {
                 </div>
 
                 <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
-                    {/* Filters preserved... */}
-                    <div className="flex items-center gap-1 sm:gap-2 bg-background p-1 rounded-md border shadow-sm w-full sm:w-auto justify-between sm:justify-start">
+                    <DashboardDateFilter
+                        initialStart={dateRange.start}
+                        initialEnd={dateRange.end}
+                        onApply={(start, end) => setDateRange({ start, end })}
+                        onClear={() => setDateRange({ start: "", end: "" })}
+                    />
 
-                        <div className="flex items-center gap-1 mx-0 sm:mx-2 shrink-0">
-                            <input
-                                type="date"
-                                className="h-8 w-[90px] sm:w-auto text-[10px] sm:text-xs border rounded px-1 sm:px-2 bg-transparent"
-                                value={dateRange?.start || ''}
-                                onChange={(e) => setDateRange(prev => ({ ...prev, start: e.target.value }))}
-                            />
-                            <span className="text-xs text-muted-foreground">-</span>
-                            <input
-                                type="date"
-                                className="h-8 w-[90px] sm:w-auto text-[10px] sm:text-xs border rounded px-1 sm:px-2 bg-transparent"
-                                value={dateRange?.end || ''}
-                                onChange={(e) => setDateRange(prev => ({ ...prev, end: e.target.value }))}
-                            />
-                        </div>
+                    <div className="flex items-center gap-1 sm:gap-2 bg-background p-1 rounded-md border shadow-sm shrink-0">
 
                         <Select defaultValue="all">
                             <SelectTrigger className="flex-1 sm:w-[140px] h-8 text-xs">
