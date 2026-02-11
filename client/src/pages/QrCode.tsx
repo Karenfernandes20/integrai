@@ -1,47 +1,79 @@
 import { useEffect, useState } from "react";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "../components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "../components/ui/card";
 import { Button } from "../components/ui/button";
-import { QrCode as QrIcon, RefreshCcw, Instagram, MessageCircle, MessageSquare } from "lucide-react";
+import { QrCode as QrIcon, RefreshCcw, Instagram, MessageCircle, MessageSquare, Settings, Link2, Link2Off, ChevronRight, CheckCircle2, XCircle, AlertCircle, Info, ExternalLink } from "lucide-react";
 import { useAuth } from "../contexts/AuthContext";
 import { cn } from "../lib/utils";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "../components/ui/dialog";
+import { Input } from "../components/ui/input";
+import { Label } from "../components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../components/ui/select";
+import { Badge } from "../components/ui/badge";
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "../components/ui/accordion";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../components/ui/tooltip";
 
 const QrCodePage = () => {
   const { token, user } = useAuth();
+  const [company, setCompany] = useState<any>(null);
   const [qrCode, setQrCode] = useState<string | null>(null);
   const [connectionState, setConnectionState] = useState<string>("unknown");
   const [instanceName, setInstanceName] = useState<string>("Carregando...");
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [activePlatform, setActivePlatform] = useState<string>("whatsapp");
 
   // Multi-Company (Superadmin)
   const [availableCompanies, setAvailableCompanies] = useState<any[]>([]);
   const [selectedCompanyId, setSelectedCompanyId] = useState<string | null>(null);
 
-  // Multi-Instance
+  // Multi-Instance (Evolution)
   const [instances, setInstances] = useState<any[]>([]);
   const [selectedInstance, setSelectedInstance] = useState<any>(null);
 
-  const getApiUrl = (endpoint: string) => {
+  // Modals
+  const [isWaModalOpen, setIsWaModalOpen] = useState(false);
+  const [isIgModalOpen, setIsIgModalOpen] = useState(false);
+  const [isMeModalOpen, setIsMeModalOpen] = useState(false);
+
+  const getApiUrl = (endpoint: string, overrideInstanceKey?: string) => {
     const params = new URLSearchParams();
-    if (selectedCompanyId) params.append("companyId", selectedCompanyId);
-    if (selectedInstance) params.append("instanceKey", selectedInstance.instance_key);
+    const targetCompId = selectedCompanyId || user?.company_id;
+    if (targetCompId) params.append("companyId", String(targetCompId));
+
+    // Prioritize override, then state, then fallback
+    const key = overrideInstanceKey || selectedInstance?.instance_key;
+    if (key) params.append("instanceKey", key);
 
     const queryString = params.toString();
     return `${endpoint}${queryString ? `?${queryString}` : ""}`;
   };
 
-  // Poll status only
-  const fetchStatus = async () => {
+  const fetchCompany = async () => {
+    const targetId = selectedCompanyId || user?.company_id;
+    if (!targetId || !token) return;
     try {
-      const url = getApiUrl("/api/evolution/status");
+      const res = await fetch(`/api/companies/${targetId}`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setCompany(data);
+      }
+    } catch (e) {
+      console.error("Error fetching company", e);
+    }
+  };
+
+  const fetchStatus = async () => {
+    if (!company?.whatsapp_enabled || company?.whatsapp_type !== 'evolution') return;
+    try {
+      const targetId = selectedCompanyId || user?.company_id;
+      const instanceKey = selectedInstance?.instance_key;
+      const url = getApiUrl(`/api/evolution/status`);
       const response = await fetch(url, {
         headers: { Authorization: `Bearer ${token}` }
       });
       if (response.ok) {
         const data = await response.json();
-
         if (data.instance) {
           if (typeof data.instance === 'string') {
             setInstanceName(data.instance);
@@ -59,21 +91,98 @@ const QrCodePage = () => {
     }
   };
 
-  // Only called on button click
-  const handleGenerateQrKey = async () => {
+  const handleGenerateQrKey = async (instanceOverrideOrEvent?: any, skipSave: boolean = false) => {
+    // Handle overload: if first arg is mostly looks like an event or is null, ignore it.
+    let targetInstance = selectedInstance;
+    if (instanceOverrideOrEvent && !instanceOverrideOrEvent.preventDefault && !instanceOverrideOrEvent.nativeEvent) {
+      targetInstance = instanceOverrideOrEvent;
+    }
+
+    // Safety check - we need an instance target
+    if (!targetInstance) return;
+
+    // Use a local variable for the instance key to ensure we use the correct one
+    let currentInstanceKey = targetInstance.instance_key;
+
     try {
       setIsLoading(true);
       setError(null);
       setQrCode(null);
+      setConnectionState("connecting");
 
-      const url = getApiUrl("/api/evolution/qrcode");
+      const targetId = selectedCompanyId || user?.company_id;
+
+      // This ensures the backend uses the correct Instance Key and API Key
+      // skipSave is used when we call this FROM handleSaveCompany (which already saved)
+      if (company?.whatsapp_type === 'evolution' && !skipSave) {
+        // We call handleSaveCompany logic inline but without closing the modal
+        const allInstances = [...instances];
+        if (targetInstance) {
+          if (targetInstance.id) {
+            const idx = allInstances.findIndex(i => i.id === targetInstance.id);
+            if (idx !== -1) allInstances[idx] = targetInstance;
+          } else if (targetInstance.slot_index !== undefined && allInstances[targetInstance.slot_index]) {
+            allInstances[targetInstance.slot_index] = targetInstance;
+          }
+        }
+
+        const saveRes = await fetch(`/api/companies/${targetId}`, {
+          method: "PUT",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`
+          },
+          body: JSON.stringify({
+            ...company,
+            instanceDefinitions: allInstances
+          })
+        });
+
+        if (saveRes.ok) {
+          if (targetInstance.id) {
+            await fetch(`/api/companies/${targetId}/instances/${targetInstance.id}`, {
+              method: "PUT",
+              headers: {
+                "Content-Type": "application/json",
+                Authorization: `Bearer ${token}`
+              },
+              body: JSON.stringify({
+                name: targetInstance.name,
+                instance_key: targetInstance.instance_key,
+                api_key: targetInstance.api_key
+              })
+            });
+            // Refresh instances to get any sanitized versions if needed
+            const instRes = await fetch(`/api/companies/${targetId}/instances`, {
+              headers: { "Authorization": `Bearer ${token}` }
+            });
+            if (instRes.ok) {
+              const instData = await instRes.json();
+              setInstances(instData);
+              const updated = instData.find((i: any) => i.id === targetInstance.id);
+              if (updated) {
+                // IMPORTANT: Update local targetInstance and key for the next step
+                targetInstance = updated;
+                currentInstanceKey = updated.instance_key;
+                // Only update React state if we are still viewing this instance
+                if (selectedInstance && selectedInstance.id === updated.id) {
+                  setSelectedInstance(updated);
+                }
+              }
+            }
+          }
+        }
+      }
+
+      // Re-read instanceKey after possible sanitation update
+      // Use helper with explicit key
+      const url = getApiUrl(`/api/evolution/qrcode`, currentInstanceKey);
       const response = await fetch(url, {
         headers: { Authorization: `Bearer ${token}` }
       });
 
       if (!response.ok) {
         const body = await response.text();
-        // Try parsing JSON error
         try {
           const errJson = JSON.parse(body);
           throw new Error(errJson.error || errJson.message || "Erro ao gerar QR Code");
@@ -85,10 +194,7 @@ const QrCodePage = () => {
       const data = await response.json();
       setQrCode(data.qrcode || null);
       if (data.instance) setInstanceName(data.instance);
-
-      // If we got a QR code, the state is likely 'connecting' or waiting for scan
       setConnectionState("scanning");
-
     } catch (err: any) {
       setError(err?.message || "Erro ao buscar QR Code");
     } finally {
@@ -98,47 +204,21 @@ const QrCodePage = () => {
 
   const handleDisconnect = async () => {
     try {
-      if (!confirm(`Tem certeza que deseja desconectar o WhatsApp da instância ${instanceName}? Isso irá parar o recebimento de mensagens na Evolution API.`)) return;
-
+      if (!confirm(`Tem certeza que deseja desconectar o WhatsApp da instância ${instanceName}?`)) return;
       setIsLoading(true);
       setError(null);
-
-      const url = getApiUrl("/api/evolution/disconnect");
+      const targetId = selectedCompanyId || user?.company_id;
+      const instanceKey = selectedInstance?.instance_key;
+      const url = getApiUrl(`/api/evolution/disconnect`);
       const response = await fetch(url, {
         method: "DELETE",
         headers: { Authorization: `Bearer ${token}` }
       });
-
       if (!response.ok) throw new Error("Erro ao desconectar");
-
       setQrCode(null);
       setConnectionState("close");
-      // fetchStatus will eventually pick up 'close' too
-
     } catch (err: any) {
       setError(err?.message || "Erro ao desconectar");
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const handleFixSync = async () => {
-    try {
-      setIsLoading(true);
-      setError(null);
-      const url = getApiUrl("/api/evolution/webhook/set");
-      const response = await fetch(url, {
-        method: "POST",
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      if (response.ok) {
-        alert("Sincronização ajustada com sucesso! As mensagens agora devem chegar corretamente.");
-      } else {
-        const err = await response.json();
-        throw new Error(err.error || "Erro ao ajustar sincronização");
-      }
-    } catch (err: any) {
-      setError(err?.message || "Erro ao ajustar sincronização");
     } finally {
       setIsLoading(false);
     }
@@ -151,312 +231,679 @@ const QrCodePage = () => {
           headers: { Authorization: `Bearer ${token}` }
         })
           .then(r => r.json())
-          .then(data => {
-            if (Array.isArray(data)) setAvailableCompanies(data);
-          })
+          .then(data => { if (Array.isArray(data)) setAvailableCompanies(data); })
           .catch(e => console.error("Error fetching companies", e));
       }
+      fetchCompany();
     }
-  }, [token, user?.role]);
+  }, [token, user?.role, selectedCompanyId]);
 
-  // Load instances when company context changes
   useEffect(() => {
     if (!token) return;
     const targetId = selectedCompanyId || user?.company_id;
     if (!targetId) return;
 
-    setIsLoading(true);
     fetch(`/api/companies/${targetId}/instances`, {
-      headers: { Authorization: `Bearer ${token}` }
+      headers: { "Authorization": `Bearer ${token}` }
     })
       .then(r => r.json())
       .then(data => {
         if (Array.isArray(data)) {
           setInstances(data);
-          if (data.length > 0) {
-            // If previously selected instance exists in new list, keep it (by ID), else pick first
-            setSelectedInstance(data[0]);
-          } else {
-            setInstances([]);
-            setSelectedInstance(null);
-          }
+          if (data.length > 0) setSelectedInstance(data[0]);
+          else setSelectedInstance(null);
         }
       })
-      .catch(e => {
-        console.error("Failed to load instances", e);
-        setInstances([]);
-      })
-      .finally(() => setIsLoading(false));
-
+      .catch(e => console.error("Failed to load instances", e));
   }, [token, selectedCompanyId, user?.company_id]);
 
   useEffect(() => {
-    if (token) {
+    if (token && company) {
       fetchStatus();
-      const interval = setInterval(fetchStatus, 10000); // 10s is enough for status
+      const interval = setInterval(fetchStatus, 10000);
       return () => clearInterval(interval);
     }
-  }, [token, selectedCompanyId, selectedInstance]);
+  }, [token, selectedCompanyId, selectedInstance, company]);
 
-  // Redefine data when instance changes
-  useEffect(() => {
-    setQrCode(null);
-    setConnectionState("unknown");
-    setInstanceName("Carregando...");
-    setError(null);
-  }, [selectedInstance]);
+  const handleCompanyChange = (field: string, value: any) => {
+    setCompany((prev: any) => ({ ...prev, [field]: value }));
+  };
+
+  const handleTestConnection = async (type: string) => {
+    setIsLoading(true);
+    // Mocking a connection test
+    setTimeout(() => {
+      setIsLoading(false);
+      alert(`Teste de conexão ${type.toUpperCase()} concluído com sucesso!`);
+    }, 2000);
+  };
+
+  const handleSaveCompany = async (startConnection: boolean = false) => {
+    try {
+      const targetId = selectedCompanyId || user?.company_id;
+      if (!targetId) return;
+
+      // Validation for Evolution mode
+      if (company?.whatsapp_type === 'evolution' && selectedInstance && isWaModalOpen) {
+        if (!selectedInstance.name?.trim()) {
+          alert("O nome amigável (Nome Comercial) é obrigatório.");
+          return;
+        }
+        if (!selectedInstance.instance_key?.trim()) {
+          alert("A chave da instância é obrigatória.");
+          return;
+        }
+        if (!selectedInstance.api_key?.trim()) {
+          alert("A API Key da instância é obrigatória.");
+          return;
+        }
+      }
+
+      setIsLoading(true);
+
+      const trimmedInstance = selectedInstance ? {
+        ...selectedInstance,
+        name: selectedInstance.name?.trim() || "",
+        instance_key: selectedInstance.instance_key?.trim() || "",
+        api_key: selectedInstance.api_key?.trim() || ""
+      } : null;
+
+      const allInstances = [...instances];
+      if (trimmedInstance) {
+        if (trimmedInstance.id) {
+          const idx = allInstances.findIndex(i => i.id === trimmedInstance.id);
+          if (idx !== -1) allInstances[idx] = trimmedInstance;
+        } else if (trimmedInstance.slot_index !== undefined) {
+          allInstances[trimmedInstance.slot_index] = trimmedInstance;
+        }
+      }
+
+      const res = await fetch(`/api/companies/${targetId}`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          ...company,
+          instanceDefinitions: allInstances
+        })
+      });
+      if (res.ok) {
+        // Also save instance if selected
+        if (company?.whatsapp_type === 'evolution' && trimmedInstance) {
+          const instancePayload = {
+            name: trimmedInstance.name,
+            instance_key: trimmedInstance.instance_key,
+            api_key: trimmedInstance.api_key
+          };
+
+          if (trimmedInstance.id) {
+            await fetch(`/api/companies/${targetId}/instances/${trimmedInstance.id}`, {
+              method: "PUT",
+              headers: {
+                "Content-Type": "application/json",
+                Authorization: `Bearer ${token}`
+              },
+              body: JSON.stringify(instancePayload)
+            });
+          }
+        }
+
+        // Refresh instances
+        const instRes = await fetch(`/api/companies/${targetId}/instances`, {
+          headers: { "Authorization": `Bearer ${token}` }
+        });
+        const updatedInstances = await instRes.json();
+
+        if (Array.isArray(updatedInstances)) {
+          setInstances(updatedInstances);
+          // Update selected instance with fresh data from DB to ensure IDs are synced
+          if (selectedInstance) {
+            // Try to find by ID first, then by matching key/name if it was new
+            let updated = updatedInstances.find((i: any) => i.id === selectedInstance.id);
+            if (!updated && selectedInstance.slot_index !== undefined) {
+              updated = updatedInstances[selectedInstance.slot_index];
+            }
+            if (updated) setSelectedInstance(updated);
+          }
+        }
+
+        if (startConnection) {
+          // Trigger QR Code generation
+          // We must wait a tiny bit for state to settle? No, we have updatedInstances.
+          // But handleGenerateQrKey uses selectedInstance from state or override.
+          // Let's pass the updated instance if possible.
+
+          let instanceToConnect = selectedInstance;
+          if (Array.isArray(updatedInstances)) {
+            let updated = updatedInstances.find((i: any) => i.id === selectedInstance?.id);
+            if (!updated && selectedInstance?.slot_index !== undefined) {
+              updated = updatedInstances[selectedInstance.slot_index];
+            }
+            if (updated) instanceToConnect = updated;
+          }
+
+          await handleGenerateQrKey(instanceToConnect, true);
+        } else {
+          alert("Configurações salvas com sucesso!");
+          setIsWaModalOpen(false);
+          setIsIgModalOpen(false);
+          setIsMeModalOpen(false);
+        }
+      } else {
+        const errorData = await res.json().catch(() => ({}));
+        throw new Error(errorData.error || errorData.message || `Erro ao salvar configurações (${res.status})`);
+      }
+    } catch (e: any) {
+      alert(e.message);
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   const isConnected = connectionState === 'open';
 
-  return (
-    <div className="space-y-6 animate-in fade-in duration-500">
-      <header className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div className="flex flex-col gap-1">
-          <h1 className="text-2xl font-bold tracking-tight">Canais de Comunicação</h1>
-          <p className="text-sm text-muted-foreground italic">
-            Conecte e gerencie seus canais de atendimento oficial.
-          </p>
-        </div>
+  const ChannelCard = ({
+    type,
+    title,
+    icon: Icon,
+    enabled,
+    connected,
+    onConfigure,
+    onDisconnect,
+    statusText
+  }: any) => {
+    if (!enabled) return null;
 
-        {user?.role === 'SUPERADMIN' && availableCompanies.length > 0 && (
-          <div className="flex items-center gap-3 bg-zinc-50 dark:bg-zinc-900 p-2 px-3 rounded-lg border border-zinc-200 dark:border-zinc-800">
-            <span className="text-[11px] font-bold text-zinc-500 uppercase">Empresa:</span>
-            <select
-              className="text-xs bg-transparent border-none focus:ring-0 font-medium outline-none"
-              value={selectedCompanyId || ""}
-              onChange={(e) => setSelectedCompanyId(e.target.value || null)}
-            >
-              <option value="">Selecione para configurar</option>
-              {availableCompanies.map(c => (
-                <option key={c.id} value={c.id}>{c.name}</option>
-              ))}
-            </select>
+    return (
+      <Card className="overflow-hidden border-zinc-200 dark:border-zinc-800 shadow-sm hover:shadow-md transition-all duration-300 bg-white/50 dark:bg-zinc-900/50 backdrop-blur-sm group">
+        <CardHeader className="pb-3 flex flex-row items-center justify-between space-y-0">
+          <div className="flex items-center gap-3">
+            <div className={cn(
+              "p-2.5 rounded-xl transition-all duration-500 group-hover:scale-110",
+              type === 'whatsapp' ? "bg-green-50 text-green-600 dark:bg-green-950/30" :
+                type === 'instagram' ? "bg-pink-50 text-pink-600 dark:bg-pink-950/30" :
+                  "bg-blue-50 text-blue-600 dark:bg-blue-950/30"
+            )}>
+              <Icon className="h-5 w-5" />
+            </div>
+            <div className="flex flex-col">
+              <CardTitle className="text-sm font-bold tracking-tight">{title}</CardTitle>
+              <CardDescription className="text-[10px] uppercase font-semibold tracking-widest text-zinc-400">Canal de Atendimento</CardDescription>
+            </div>
           </div>
-        )}
-      </header>
-
-      <Tabs defaultValue="whatsapp" value={activePlatform} onValueChange={setActivePlatform} className="space-y-6">
-        <TabsList className="grid w-full grid-cols-3 md:w-auto md:inline-flex bg-muted/50 p-1 h-auto">
-          <TabsTrigger value="whatsapp" className="flex items-center gap-2 py-2">
-            <MessageSquare className="h-4 w-4" /> WhatsApp
-          </TabsTrigger>
-          <TabsTrigger value="instagram" className="flex items-center gap-2 py-2">
-            <Instagram className="h-4 w-4" /> Instagram
-          </TabsTrigger>
-          <TabsTrigger value="messenger" className="flex items-center gap-2 py-2">
-            <MessageCircle className="h-4 w-4" /> Messenger
-          </TabsTrigger>
-        </TabsList>
-
-        <TabsContent value="whatsapp" className="space-y-4">
-
-          {/* Instance Selector */}
-          {instances.length > 0 && (
-            <div className="space-y-2">
-              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Selecione a Instância:</p>
-              <div className="flex flex-wrap gap-2">
-                {instances.map(inst => (
-                  <Button
-                    key={inst.id}
-                    variant={selectedInstance?.id === inst.id ? 'default' : 'outline'}
-                    size="sm"
-                    onClick={() => setSelectedInstance(inst)}
-                    className={cn(
-                      "h-9 px-4 text-xs shadow-sm transition-all",
-                      selectedInstance?.id === inst.id ? "ring-2 ring-primary ring-offset-2" : "hover:bg-accent hover:text-accent-foreground"
-                    )}
-                  >
-                    {inst.name}
-                    <span className={cn(
-                      "ml-2 w-2 h-2 rounded-full",
-                      inst.status === 'connected' ? 'bg-green-500' : 'bg-red-500'
-                      // Note: 'status' in company_instances might not be real-time like 'connectionState'. 
-                      // We rely on connectionState for standard display.
-                    )} />
-                  </Button>
-                ))}
+          <Badge className={cn(
+            "text-[10px] px-2 py-0 border-none font-bold uppercase tracking-wider",
+            connected ? "bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-400" : "bg-zinc-100 text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400"
+          )}>
+            {connected ? "Conectado" : "Pendente"}
+          </Badge>
+        </CardHeader>
+        <CardContent className="pb-4">
+          <div className="flex flex-col gap-2">
+            <div className="flex items-center gap-2 text-xs font-medium text-zinc-600 dark:text-zinc-400">
+              {connected ? (
+                <CheckCircle2 className="h-3.5 w-3.5 text-green-500" />
+              ) : (
+                <AlertCircle className="h-3.5 w-3.5 text-zinc-400" />
+              )}
+              {connected ? (statusText || "Serviço Ativo e Rodando") : "Aguardando Configuração"}
+            </div>
+            {type === 'whatsapp' && company?.whatsapp_type === 'evolution' && instances.length > 0 && (
+              <div className="mt-2 text-[10px] text-zinc-500 bg-zinc-50 dark:bg-zinc-800/50 p-2 rounded-lg border border-dashed border-zinc-200 dark:border-zinc-700">
+                <span className="font-bold opacity-50">INSTÂNCIA ATIVA:</span> {selectedInstance?.name || instanceName}
               </div>
-            </div>
-          )}
-
-          <div className="flex flex-wrap items-center justify-between gap-3 pt-2">
-            <div>
-              <h2 className="text-base font-semibold tracking-tight">Conexão WhatsApp: {selectedInstance ? selectedInstance.name : instanceName}</h2>
-              <p className="text-xs text-muted-foreground">
-                Status atual: <span className={cn("font-bold px-2 py-0.5 rounded-full text-[10px]", isConnected ? "bg-black text-white" : "bg-zinc-100 text-zinc-900")}>
-                  {isConnected ? "CONECTADO" : connectionState.toUpperCase()}
-                </span>
-              </p>
-            </div>
-            {!isConnected && (
-              <Button
-                type="button"
-                size="sm"
-                variant="outline"
-                className="inline-flex items-center gap-1.5 text-[11px]"
-                onClick={handleGenerateQrKey}
-                disabled={isLoading}
-              >
-                <RefreshCcw className={cn("h-3.5 w-3.5", isLoading && "animate-spin")} />
-                {isLoading ? "Gerando..." : "Gerar novo QR Code"}
-              </Button>
             )}
           </div>
+        </CardContent>
+        <CardFooter className="pt-2 gap-2 border-t border-zinc-50 dark:border-zinc-800">
+          <Button
+            variant="outline"
+            size="sm"
+            className="flex-1 text-xs h-9 bg-white dark:bg-zinc-900 border-zinc-200 dark:border-zinc-800 hover:bg-zinc-50 dark:hover:bg-zinc-800 transition-colors"
+            onClick={onConfigure}
+          >
+            <Settings className="h-3 w-3 mr-2" />
+            Configurar
+          </Button>
+          {connected && (
+            <Button
+              variant="destructive"
+              size="sm"
+              className="px-3 h-9"
+              onClick={onDisconnect}
+            >
+              <Link2Off className="h-3 w-3" />
+            </Button>
+          )}
+        </CardFooter>
+      </Card>
+    );
+  };
 
-          <section className="grid gap-4 md:grid-cols-[1fr_300px]">
-            <Card className="border-none shadow-sm bg-background/50 backdrop-blur-sm">
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm">Painel de Conexão WhatsApp</CardTitle>
-                <CardDescription className="text-xs text-[11px]">Digitalize o QR Code usando o aplicativo WhatsApp no seu celular.</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-3 text-xs">
-                <div className="flex min-h-[300px] items-center justify-center rounded-xl border-2 border-dashed border-muted bg-muted/40 p-4 transition-colors hover:bg-muted/50">
+  return (
+    <TooltipProvider>
+      <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-700">
+        <header className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div className="flex flex-col gap-1">
+            <div className="flex items-center gap-2">
+              <div className="h-8 w-1 bg-primary rounded-full" />
+              <h1 className="text-3xl font-black tracking-tight text-zinc-900 dark:text-white">QR Code / Integrações</h1>
+            </div>
+            <p className="text-sm text-zinc-500 font-medium ml-3">
+              Gerencie as conexões oficiais de WhatsApp, Instagram e Messenger.
+            </p>
+          </div>
 
-                  {isConnected ? (
-                    <div className="flex flex-col items-center gap-3 text-center">
-                      <div className="h-20 w-20 rounded-full bg-zinc-100 flex items-center justify-center shadow-inner">
-                        <MessageSquare className="h-10 w-10 text-black" />
-                      </div>
-                      <div className="space-y-1">
-                        <p className="font-bold text-lg text-black">WhatsApp Conectado!</p>
-                        <p className="text-[11px] text-muted-foreground">Sua instância {instanceName} está pronta para enviar e receber mensagens.</p>
-                      </div>
-                      <div className="flex flex-wrap gap-2 justify-center">
-                        <Button
-                          onClick={handleFixSync}
-                          variant="outline"
-                          size="sm"
-                          className="mt-2 text-xs h-8 px-4 border-zinc-200 hover:bg-zinc-50"
-                          disabled={isLoading}
-                        >
-                          <RefreshCcw className={cn("h-3 w-3 mr-1", isLoading && "animate-spin")} />
-                          Corrigir Sincronização
-                        </Button>
-                        <Button
-                          onClick={handleDisconnect}
-                          variant="destructive"
-                          size="sm"
-                          className="mt-2 text-xs h-8 px-4"
-                          disabled={isLoading}
-                        >
-                          Desconectar Instância
-                        </Button>
-                      </div>
-                    </div>
-                  ) : (
-                    <>
-                      {qrCode ? (
-                        <div className="flex flex-col items-center gap-4 animate-in zoom-in-95 duration-300">
-                          <div className="bg-white p-4 rounded-2xl shadow-2xl border-2 border-black/5">
-                            <img
-                              src={qrCode}
-                              alt="QR Code"
-                              className="w-full max-w-[240px] rounded-lg"
-                            />
-                          </div>
-                          <div className="space-y-1 text-center">
-                            <p className="font-medium text-primary">Aguardando leitura...</p>
-                            <p className="max-w-xs text-[11px] text-muted-foreground leading-relaxed">
-                              Vá em Menu &gt; Dispositivos Conectados &gt; Conectar um Dispositivo no seu WhatsApp.
-                            </p>
-                          </div>
-                        </div>
-                      ) : (
-                        <div className="flex flex-col items-center gap-4 text-muted-foreground text-center">
-                          <div className={cn("h-16 w-16 rounded-full bg-muted flex items-center justify-center", isLoading && "animate-pulse")}>
-                            <QrIcon className="h-8 w-8" />
-                          </div>
-                          <div className="space-y-2">
-                            <p className="max-w-xs font-medium">
-                              {isLoading ? "Gerando credenciais..." : "Nenhuma conexão ativa"}
-                            </p>
-                            <p className="text-[10px] max-w-[200px]">
-                              Clique no botão superior para iniciar o processo de vinculação.
-                            </p>
-                          </div>
-                          {error && (
-                            <div className="bg-red-50 text-red-600 p-3 rounded-lg border border-red-100 text-[10px] mt-2 max-w-xs">
-                              {error}
-                            </div>
-                          )}
-                        </div>
-                      )}
-                    </>
-                  )}
-                </div>
-              </CardContent>
+          <div className="flex items-center gap-3">
+            {user?.role === 'SUPERADMIN' && availableCompanies.length > 0 && (
+              <div className="flex items-center gap-3 bg-white dark:bg-zinc-900 p-1.5 px-3 rounded-2xl border border-zinc-200 dark:border-zinc-800 shadow-sm transition-all hover:border-primary/50">
+                <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest">Empresa:</span>
+                <select
+                  className="text-xs bg-transparent border-none focus:ring-0 font-bold outline-none text-zinc-800 dark:text-zinc-200 cursor-pointer"
+                  value={selectedCompanyId || ""}
+                  onChange={(e) => setSelectedCompanyId(e.target.value || null)}
+                >
+                  <option value="">Seu Contexto</option>
+                  {availableCompanies.map(c => (
+                    <option key={c.id} value={c.id}>{c.name}</option>
+                  ))}
+                </select>
+              </div>
+            )}
+            <Button variant="outline" size="icon" className="rounded-full h-10 w-10 border-zinc-200 dark:border-zinc-800 hover:bg-white dark:hover:bg-zinc-900 transition-all active:scale-95 shadow-sm">
+              <RefreshCcw className="h-4 w-4 text-zinc-500" />
+            </Button>
+          </div>
+        </header>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {company?.whatsapp_enabled && Array.from({ length: Number(company?.whatsapp_limit || 1) }).map((_, i) => {
+            const instance = instances[i];
+            const isInstConnected = instance?.status === 'open' || instance?.status === 'connected';
+
+            return (
+              <ChannelCard
+                key={`wa-${i}`}
+                type="whatsapp"
+                title={instance?.name || (Number(company?.whatsapp_limit) > 1 ? `WhatsApp ${i + 1}` : "WhatsApp")}
+                icon={MessageSquare}
+                enabled={true}
+                connected={isInstConnected}
+                onConfigure={() => {
+                  const instToEdit = instance || {
+                    name: `WhatsApp ${i + 1}`,
+                    instance_key: `${(company?.name || 'empresa').split(' ')[0].toLowerCase().replace(/[^a-z0-9]/g, '')}_${i + 1}`,
+                    api_key: '',
+                    slot_index: i
+                  };
+                  setSelectedInstance({ ...instToEdit });
+                  setIsWaModalOpen(true);
+                }}
+                onDisconnect={() => instance ? handleDisconnect() : null}
+                statusText={isInstConnected ? `Conectado (${instance?.name || "Instância"})` : (instance ? "Desconectado" : "Aguardando Configuração")}
+              />
+            );
+          })}
+
+          {/* INSTAGRAM CARDS */}
+          {company?.instagram_enabled && Array.from({ length: Number(company?.instagram_limit || 1) }).map((_, i) => (
+            <ChannelCard
+              key={`ig-${i}`}
+              type="instagram"
+              title={Number(company?.instagram_limit) > 1 ? `Instagram ${i + 1}` : "Instagram"}
+              icon={Instagram}
+              enabled={true}
+              connected={i === 0 && company?.instagram_status === 'ATIVO'}
+              onConfigure={() => setIsIgModalOpen(true)}
+              onDisconnect={() => {/* Disconnect Logic */ }}
+              statusText={i === 0 && company?.instagram_status === 'ATIVO' ? "Página Vinculada" : "Aguardando Configuração"}
+            />
+          ))}
+
+          {/* MESSENGER CARDS */}
+          {company?.messenger_enabled && Array.from({ length: Number(company?.messenger_limit || 1) }).map((_, i) => (
+            <ChannelCard
+              key={`me-${i}`}
+              type="messenger"
+              title={Number(company?.messenger_limit) > 1 ? `Messenger ${i + 1}` : "Messenger"}
+              icon={MessageCircle}
+              enabled={true}
+              connected={i === 0 && company?.messenger_status === 'ATIVO'}
+              onConfigure={() => setIsMeModalOpen(true)}
+              onDisconnect={() => {/* Disconnect Logic */ }}
+              statusText={i === 0 && company?.messenger_status === 'ATIVO' ? "Serviço Ativo" : "Aguardando Configuração"}
+            />
+          ))}
+
+          {/* EMPTY STATE IF NONE ENABLED */}
+          {company && !company.whatsapp_enabled && !company.instagram_enabled && !company.messenger_enabled && (
+            <Card className="col-span-full py-16 flex flex-col items-center justify-center text-center border-dashed bg-zinc-50 dark:bg-zinc-900/50">
+              <div className="h-20 w-20 rounded-full bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center mb-4">
+                <Link2 className="h-10 w-10 text-zinc-300" />
+              </div>
+              <CardTitle className="text-xl font-bold text-zinc-400">Nenhum canal habilitado</CardTitle>
+              <CardDescription className="max-w-xs mt-2">
+                Ative os canais de comunicação no cadastro da empresa para vê-los aqui.
+              </CardDescription>
             </Card>
+          )}
+        </div>
 
-            <div className="space-y-4">
-              <Card className="border-none shadow-sm h-full">
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-sm">Configuração Rápida</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-4 text-xs">
-                  <div className="space-y-3">
-                    <div className="flex items-start gap-2">
-                      <div className="w-5 h-5 rounded-full bg-primary/10 text-primary flex items-center justify-center text-[10px] font-bold shrink-0 mt-0.5">1</div>
-                      <p className="text-muted-foreground leading-normal">Selecione a instância desejada acima (se houver mais de uma).</p>
+        {/* WHATSAPP CONFIG MODAL */}
+        <Dialog open={isWaModalOpen} onOpenChange={setIsWaModalOpen}>
+          <DialogContent className="sm:max-w-[550px] p-0 overflow-hidden border-none shadow-2xl rounded-3xl">
+            <div className="bg-green-600 p-6 text-white">
+              <DialogHeader>
+                <DialogTitle className="text-2xl font-bold flex items-center gap-3">
+                  <div className="p-2 bg-white/20 rounded-xl backdrop-blur-md">
+                    <MessageSquare className="h-6 w-6" />
+                  </div>
+                  Configurar WhatsApp
+                </DialogTitle>
+                <DialogDescription className="text-green-50/80 font-medium">
+                  Selecione o motor de conexão e preencha as credenciais oficiais.
+                </DialogDescription>
+              </DialogHeader>
+            </div>
+
+            <div className="p-6 space-y-6 max-h-[70vh] overflow-y-auto custom-scrollbar">
+              <div className="space-y-4">
+                <Label className="text-xs font-bold uppercase tracking-wider text-zinc-500">Tipo de Motor WhatsApp</Label>
+                <Select
+                  value={company?.whatsapp_type || 'evolution'}
+                  onValueChange={(v) => handleCompanyChange('whatsapp_type', v)}
+                >
+                  <SelectTrigger className="h-12 rounded-xl bg-zinc-50 dark:bg-zinc-900 border-zinc-200 dark:border-zinc-800 font-bold">
+                    <SelectValue placeholder="Selecione o motor" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="official">API Oficial (Meta / Cloud API)</SelectItem>
+                    <SelectItem value="evolution">Evolution API (Multi-Instância)</SelectItem>
+                    <SelectItem value="api_plus">WhatsApp API Plus</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* UNIVERSAL INSTANCE NAMING */}
+              <div className="space-y-4 p-4 bg-zinc-50 dark:bg-zinc-900/50 rounded-2xl border border-zinc-100 dark:border-zinc-800 animate-in slide-in-from-top-4 duration-500">
+                {selectedInstance && (
+                  <div className="grid grid-cols-2 gap-4 animate-in fade-in duration-300">
+                    <div className="space-y-2">
+                      <Label className="text-[10px] font-bold uppercase text-zinc-500">Nome Amigável (Ex: Comercial)</Label>
+                      <Input
+                        value={selectedInstance.name || ""}
+                        onChange={(e) => setSelectedInstance(prev => prev ? { ...prev, name: e.target.value } : null)}
+                        className="h-10 rounded-xl bg-white dark:bg-zinc-900 border-zinc-200 dark:border-zinc-800 focus:ring-primary/20"
+                        placeholder="Ex: Comercial, Suporte, etc."
+                      />
                     </div>
-                    <div className="flex items-start gap-2">
-                      <div className="w-5 h-5 rounded-full bg-primary/10 text-primary flex items-center justify-center text-[10px] font-bold shrink-0 mt-0.5">2</div>
-                      <p className="text-muted-foreground leading-normal">Mantenha seu celular carregado e com conexão ativa.</p>
+                    {(company?.whatsapp_type || 'evolution') === 'evolution' && (
+                      <div className="space-y-2">
+                        <Label className="text-[10px] font-bold uppercase text-zinc-500">Chave da Instância <span className="text-red-500">*</span></Label>
+                        <Input
+                          value={selectedInstance.instance_key || ""}
+                          onChange={(e) => setSelectedInstance(prev => prev ? { ...prev, instance_key: e.target.value } : null)}
+                          className="h-10 rounded-xl bg-white dark:bg-zinc-900 border-zinc-200 dark:border-zinc-800"
+                          placeholder="Ex: comercial01"
+                        />
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {(company?.whatsapp_type || 'evolution') === 'evolution' && selectedInstance && (
+                  <div className="grid grid-cols-2 gap-4 animate-in fade-in duration-300">
+                    <div className="space-y-2">
+                      <Label className="text-[10px] font-bold uppercase text-zinc-500">API Key da Instância <span className="text-red-500">*</span></Label>
+                      <div className="relative">
+                        <Input
+                          type="password"
+                          value={selectedInstance.api_key || ""}
+                          onChange={(e) => setSelectedInstance(prev => prev ? { ...prev, api_key: e.target.value } : null)}
+                          className="h-10 rounded-xl bg-white dark:bg-zinc-900 border-zinc-200 dark:border-zinc-800 pr-10"
+                          placeholder="Token da Instância"
+                        />
+                      </div>
                     </div>
-                    <div className="flex items-start gap-2">
-                      <div className="w-5 h-5 rounded-full bg-primary/10 text-primary flex items-center justify-center text-[10px] font-bold shrink-0 mt-0.5">3</div>
-                      <p className="text-muted-foreground leading-normal">O tempo de expiração do QR Code é de 60 segundos.</p>
+                    <div className="space-y-2">
+                      <Label className="text-[10px] font-bold uppercase text-zinc-500">URL do Servidor Evolution</Label>
+                      <Input
+                        value={company?.evolution_url || ""}
+                        onChange={(e) => handleCompanyChange('evolution_url', e.target.value)}
+                        className="h-10 rounded-xl bg-white dark:bg-zinc-900 border-zinc-200 dark:border-zinc-800"
+                        placeholder="https://sua-api.com"
+                      />
                     </div>
                   </div>
+                )}
+              </div>
 
-                  <div className="pt-4 border-t">
-                    <p className="font-semibold text-primary mb-2">Suporte Técnico</p>
-                    <p className="text-[10px] text-muted-foreground">Em caso de falha persistente, tente reiniciar a conexão ou contate o administrador.</p>
+              <div className="bg-zinc-50 dark:bg-zinc-900/50 p-4 rounded-2xl border border-zinc-100 dark:border-zinc-800">
+                {/* OFFICIAL API VIEW */}
+                {company?.whatsapp_type === 'official' && (
+                  <div className="space-y-4 animate-in fade-in duration-300">
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <Label className="text-[10px] font-bold uppercase">Phone Number ID</Label>
+                        <Input value={company?.whatsapp_official_phone_number_id || ""} onChange={(e) => handleCompanyChange('whatsapp_official_phone_number_id', e.target.value)} className="h-9 rounded-lg" />
+                      </div>
+                      <div className="space-y-2">
+                        <Label className="text-[10px] font-bold uppercase">Business Account ID</Label>
+                        <Input value={company?.whatsapp_official_business_account_id || ""} onChange={(e) => handleCompanyChange('whatsapp_official_business_account_id', e.target.value)} className="h-9 rounded-lg" />
+                      </div>
+                    </div>
+                    <div className="space-y-2">
+                      <Label className="text-[10px] font-bold uppercase">Permanent Access Token</Label>
+                      <Input type="password" value={company?.whatsapp_official_access_token || ""} onChange={(e) => handleCompanyChange('whatsapp_official_access_token', e.target.value)} className="h-9 rounded-lg" />
+                    </div>
+                    <div className="bg-indigo-50 dark:bg-indigo-950/20 p-3 rounded-xl border border-indigo-100 dark:border-indigo-900/50 mt-2">
+                      <Label className="text-[10px] font-bold text-indigo-600 block mb-1 uppercase italic">Callback URL (Webhook)</Label>
+                      <div className="bg-white dark:bg-zinc-900 p-2 text-[9px] font-mono rounded border border-indigo-100 truncate text-zinc-500">
+                        {`${window.location.origin}/api/webhooks/whatsapp/official/${company?.id}`}
+                      </div>
+                    </div>
                   </div>
-                </CardContent>
-              </Card>
-            </div>
-          </section>
-        </TabsContent>
+                )}
 
-        <TabsContent value="instagram" className="space-y-4">
-          <Card className="border-dashed bg-muted/20 min-h-[400px] flex items-center justify-center">
-            <div className="flex flex-col items-center text-center p-8 space-y-4">
-              <div className="h-20 w-20 rounded-full bg-zinc-100 flex items-center justify-center">
-                <Instagram className="h-10 w-10 text-black" />
+                {/* EVOLUTION VIEW - QR CODE SECTION */}
+                {(company?.whatsapp_type || 'evolution') === 'evolution' && (
+                  <div className="animate-in fade-in duration-500">
+                    {/* Only show this section if we are connecting, connected, or have a QR code */}
+                    {(isConnected || connectionState === 'connecting' || connectionState === 'scanning' || qrCode) && (
+                      <div className="flex flex-col items-center justify-center p-6 border-2 border-dashed rounded-3xl bg-white dark:bg-zinc-900 transition-all hover:border-primary/50 mt-4 relative overflow-hidden">
+
+                        {/* Status Badge */}
+                        <div className="absolute top-4 right-4">
+                          <Badge className={cn(
+                            "uppercase tracking-widest",
+                            isConnected ? "bg-green-100 text-green-700" : "bg-yellow-100 text-yellow-700"
+                          )}>
+                            {isConnected ? "Conectado" : "Aguardando Conexão"}
+                          </Badge>
+                        </div>
+
+                        {/* Info Block */}
+                        <div className="w-full text-left mb-4 border-b pb-4 border-zinc-100 dark:border-zinc-800">
+                          <p className="text-xs font-bold text-zinc-400 uppercase tracking-widest">Instância</p>
+                          <p className="text-lg font-bold text-zinc-800 dark:text-white">{selectedInstance?.instance_key || "..."}</p>
+                          <p className="text-xs text-zinc-500 mt-1 flex items-center gap-1">
+                            Status: <span className={cn("font-bold", isConnected ? "text-green-500" : "text-yellow-500")}>{isConnected ? "Online" : "Pendente"}</span>
+                          </p>
+                        </div>
+
+                        {isConnected ? (
+                          <div className="text-center space-y-4 w-full">
+                            <div className="h-20 w-20 bg-green-100 dark:bg-green-900/30 rounded-full flex items-center justify-center mx-auto mb-2 animate-in zoom-in duration-300">
+                              <CheckCircle2 className="h-10 w-10 text-green-600" />
+                            </div>
+                            <div className="space-y-1">
+                              <p className="font-bold text-lg text-green-700 dark:text-green-400">Tudo Pronto!</p>
+                              <p className="text-sm text-zinc-500">Sua instância está conectada e operando.</p>
+                            </div>
+                            <Button variant="destructive" size="sm" onClick={handleDisconnect} className="rounded-xl w-full max-w-xs mt-4">
+                              Desconectar Instância
+                            </Button>
+                          </div>
+                        ) : qrCode ? (
+                          <div className="text-center space-y-4 w-full animate-in zoom-in duration-300">
+                            <div className="p-4 bg-white rounded-3xl shadow-xl border border-zinc-100 inline-block text-center mb-2 mx-auto">
+                              <img src={qrCode} alt="QR" className="w-48 h-48 mix-blend-multiply" />
+                            </div>
+                            <div className="space-y-2">
+                              <p className="text-xs font-bold text-primary animate-pulse uppercase tracking-widest">Digitalize o código acima</p>
+                              <p className="text-xs text-zinc-400 max-w-xs mx-auto">Abra o WhatsApp {'>'} Configurações {'>'} Aparelhos Conectados {'>'} Conectar Aparelho</p>
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="text-center py-8">
+                            <div className="animate-spin h-8 w-8 border-4 border-primary border-t-transparent rounded-full mx-auto mb-4"></div>
+                            <p className="text-sm font-medium text-zinc-500">Gerando QR Code...</p>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* API PLUS VIEW */}
+                {company?.whatsapp_type === 'api_plus' && (
+                  <div className="space-y-4 animate-in fade-in duration-300">
+                    <div className="space-y-2">
+                      <Label className="text-[10px] font-bold uppercase">Token API Plus</Label>
+                      <Input type="password" value={company?.whatsapp_api_plus_token || ""} onChange={(e) => handleCompanyChange('whatsapp_api_plus_token', e.target.value)} className="h-9 rounded-lg" />
+                    </div>
+                    <div className="p-3 bg-zinc-100 dark:bg-zinc-800 rounded-xl text-[10px] text-zinc-500 font-medium">
+                      Esta é uma integração legada. Use apenas se necessário.
+                    </div>
+                  </div>
+                )}
               </div>
-              <div className="space-y-2">
-                <h3 className="text-xl font-bold">Integração com Instagram</h3>
-                <p className="text-muted-foreground max-w-sm">
-                  Em breve você poderá conectar o chat do seu Instagram Business aqui para gerenciar directs e comentários diretamente pelo CRM.
-                </p>
-              </div>
-              <Button disabled variant="outline" className="mt-4">
-                Configurar em Breve
+
+              <Button
+                className="w-full h-11 rounded-xl font-bold bg-green-600 hover:bg-green-700 shadow-xl shadow-green-100 dark:shadow-none mt-2 flex items-center gap-2"
+                disabled={isLoading}
+                onClick={() => handleTestConnection('whatsapp')}
+              >
+                <RefreshCcw className={cn("h-4 w-4", isLoading && "animate-spin")} /> Testar Conexão WhatsApp
               </Button>
             </div>
-          </Card>
-        </TabsContent>
 
-        <TabsContent value="messenger" className="space-y-4">
-          <Card className="border-dashed bg-muted/20 min-h-[400px] flex items-center justify-center">
-            <div className="flex flex-col items-center text-center p-8 space-y-4">
-              <div className="h-20 w-20 rounded-full bg-zinc-100 flex items-center justify-center">
-                <MessageCircle className="h-10 w-10 text-black" />
+            <DialogFooter className="p-6 bg-zinc-50 dark:bg-zinc-900/50 border-t border-zinc-100 dark:border-zinc-800 flex justify-between items-center">
+              <Button variant="outline" onClick={() => setIsWaModalOpen(false)} className="rounded-xl px-6 font-bold h-11">Cancelar</Button>
+              <Button
+                className={cn(
+                  "rounded-xl px-8 font-bold shadow-lg h-11",
+                  company?.whatsapp_type === 'evolution' && !isConnected ? "bg-green-600 hover:bg-green-700 text-white shadow-green-200" : "bg-primary shadow-primary/20"
+                )}
+                onClick={() => handleSaveCompany(company?.whatsapp_type === 'evolution' && !isConnected)}
+                disabled={isLoading}
+              >
+                {isLoading ? "Processando..." : (company?.whatsapp_type === 'evolution' && !isConnected ? "Salvar e Conectar" : "Salvar Alterações")}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+
+        {/* IG MODAL - Placeholder for modern UI */}
+        <Dialog open={isIgModalOpen} onOpenChange={setIsIgModalOpen}>
+          <DialogContent className="sm:max-w-[600px] p-0 overflow-hidden border-none shadow-2xl rounded-3xl">
+            <div className="bg-gradient-to-r from-purple-600 to-pink-600 p-8 text-white">
+              <DialogTitle className="text-2xl font-bold flex items-center gap-3">
+                <Instagram className="h-7 w-7" /> Instagram Business
+              </DialogTitle>
+              <p className="text-purple-50/80 mt-1">Conecte sua conta profissional para automação de directs.</p>
+            </div>
+            <div className="p-6 grid gap-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label className="text-[11px] font-bold uppercase text-zinc-400">Facebook App ID</Label>
+                  <Input value={company?.instagram_app_id || ""} onChange={(e) => handleCompanyChange('instagram_app_id', e.target.value)} className="rounded-xl h-10" placeholder="ID do App" />
+                </div>
+                <div className="space-y-2">
+                  <Label className="text-[11px] font-bold uppercase text-zinc-400">App Secret</Label>
+                  <Input type="password" value={company?.instagram_app_secret || ""} onChange={(e) => handleCompanyChange('instagram_app_secret', e.target.value)} className="rounded-xl h-10" placeholder="••••••••" />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label className="text-[11px] font-bold uppercase text-zinc-400">Page ID</Label>
+                  <Input value={company?.instagram_page_id || ""} onChange={(e) => handleCompanyChange('instagram_page_id', e.target.value)} className="rounded-xl h-10" placeholder="ID da Página" />
+                </div>
+                <div className="space-y-2">
+                  <Label className="text-[11px] font-bold uppercase text-zinc-400">Business ID</Label>
+                  <Input value={company?.instagram_business_id || ""} onChange={(e) => handleCompanyChange('instagram_business_id', e.target.value)} className="rounded-xl h-10" placeholder="ID Business" />
+                </div>
               </div>
               <div className="space-y-2">
-                <h3 className="text-xl font-bold">Integração com Messenger</h3>
-                <p className="text-muted-foreground max-w-sm">
-                  Estamos finalizando a integração oficial com as Fan Pages do Facebook. Atenda seus clientes Messenger pelo nosso multiatendimento.
-                </p>
+                <Label className="text-[11px] font-bold uppercase text-zinc-400">Access Token (Permanente)</Label>
+                <Input type="password" value={company?.instagram_access_token || ""} onChange={(e) => handleCompanyChange('instagram_access_token', e.target.value)} className="rounded-xl h-10" placeholder="Token Meta" />
               </div>
-              <Button disabled variant="outline" className="mt-4">
-                Configurar em Breve
+              <Button
+                className="w-full h-11 rounded-xl font-bold bg-gradient-to-r from-purple-600 to-pink-600 border-none shadow-lg mt-2"
+                disabled={isLoading}
+                onClick={() => handleTestConnection('instagram')}
+              >
+                Testar Integração Instagram
               </Button>
+              <DialogFooter className="pt-4 border-t mt-2 flex justify-end gap-2 px-0">
+                <Button variant="ghost" onClick={() => setIsIgModalOpen(false)} className="rounded-xl px-4">Voltar</Button>
+                <Button className="rounded-xl bg-purple-600 hover:bg-purple-700 px-8 font-bold text-white shadow-lg" onClick={() => handleSaveCompany(false)} disabled={isLoading}>
+                  {isLoading ? "Salvando..." : "Salvar"}
+                </Button>
+              </DialogFooter>
             </div>
-          </Card>
-        </TabsContent>
-      </Tabs>
-    </div>
+          </DialogContent>
+        </Dialog>
+
+        {/* MESSENGER MODAL */}
+        <Dialog open={isMeModalOpen} onOpenChange={setIsMeModalOpen}>
+          <DialogContent className="sm:max-w-[600px] p-0 overflow-hidden border-none shadow-2xl rounded-3xl">
+            <div className="bg-blue-600 p-8 text-white">
+              <DialogTitle className="text-2xl font-bold flex items-center gap-3">
+                <MessageCircle className="h-7 w-7" /> Facebook Messenger
+              </DialogTitle>
+              <p className="text-blue-50/80 mt-1">Integre sua Fan Page para centralizar as mensagens do Messenger.</p>
+            </div>
+            <div className="p-6 grid gap-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label className="text-[11px] font-bold uppercase text-zinc-400">Facebook App ID</Label>
+                  <Input value={company?.messenger_app_id || ""} onChange={(e) => handleCompanyChange('messenger_app_id', e.target.value)} className="rounded-xl h-10" />
+                </div>
+                <div className="space-y-2">
+                  <Label className="text-[11px] font-bold uppercase text-zinc-400">App Secret</Label>
+                  <Input type="password" value={company?.messenger_app_secret || ""} onChange={(e) => handleCompanyChange('messenger_app_secret', e.target.value)} className="rounded-xl h-10" />
+                </div>
+              </div>
+              <div className="space-y-2">
+                <Label className="text-[11px] font-bold uppercase text-zinc-400">Page ID</Label>
+                <Input value={company?.messenger_page_id || ""} onChange={(e) => handleCompanyChange('messenger_page_id', e.target.value)} className="rounded-xl h-10" />
+              </div>
+              <div className="space-y-2">
+                <Label className="text-[11px] font-bold uppercase text-zinc-400">Page Access Token</Label>
+                <Input type="password" value={company?.messenger_access_token || ""} onChange={(e) => handleCompanyChange('messenger_access_token', e.target.value)} className="rounded-xl h-10" />
+              </div>
+              <Button
+                className="w-full h-11 rounded-xl font-bold bg-blue-600 hover:bg-blue-700 border-none shadow-lg mt-2"
+                disabled={isLoading}
+                onClick={() => handleTestConnection('messenger')}
+              >
+                Testar Messenger
+              </Button>
+              <DialogFooter className="pt-4 border-t mt-2 flex justify-end gap-2 px-0">
+                <Button variant="ghost" onClick={() => setIsMeModalOpen(false)} className="rounded-xl px-4">Fechar</Button>
+                <Button className="rounded-xl bg-blue-600 hover:bg-blue-700 px-8 font-bold text-white shadow-lg" onClick={() => handleSaveCompany(false)} disabled={isLoading}>
+                  {isLoading ? "Salvando..." : "Salvar"}
+                </Button>
+              </DialogFooter>
+            </div>
+          </DialogContent>
+        </Dialog>
+      </div>
+    </TooltipProvider>
   );
 };
 

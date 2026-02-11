@@ -72,7 +72,7 @@ const TasksPage = () => {
         status: "pending",
         due_date: "",
         due_time: "10:00",
-        responsible_id: ""
+        responsible_id: "none"
     });
 
     const [showHistory, setShowHistory] = useState(false);
@@ -92,7 +92,7 @@ const TasksPage = () => {
             status: task.status,
             due_date: task.due_date ? format(new Date(task.due_date), 'yyyy-MM-dd') : "",
             due_time: task.due_date ? format(new Date(task.due_date), 'HH:mm') : "10:00",
-            responsible_id: task.responsible_id ? task.responsible_id.toString() : ""
+            responsible_id: task.responsible_id ? task.responsible_id.toString() : "none"
         });
         setShowModal(true);
     };
@@ -154,7 +154,7 @@ const TasksPage = () => {
         const payload = {
             ...formData,
             due_date: formData.due_date ? `${formData.due_date}T${formData.due_time}:00` : null,
-            responsible_id: formData.responsible_id ? parseInt(formData.responsible_id) : null
+            responsible_id: (formData.responsible_id && formData.responsible_id !== "none") ? parseInt(formData.responsible_id) : null
         };
 
         try {
@@ -299,7 +299,7 @@ const TasksPage = () => {
                         setEditingTask(null);
                         setFormData({
                             title: "", description: "", priority: "medium", status: "pending",
-                            due_date: "", due_time: "10:00", responsible_id: ""
+                            due_date: "", due_time: "10:00", responsible_id: "none"
                         });
                         setShowModal(true);
                     }} className="gap-2 shadow-strong">
@@ -438,7 +438,7 @@ const TasksPage = () => {
                                                             status: task.status,
                                                             due_date: task.due_date ? format(new Date(task.due_date), 'yyyy-MM-dd') : "",
                                                             due_time: task.due_date ? format(new Date(task.due_date), 'HH:mm') : "10:00",
-                                                            responsible_id: task.responsible_id ? task.responsible_id.toString() : ""
+                                                            responsible_id: task.responsible_id ? task.responsible_id.toString() : "none"
                                                         });
                                                         setShowModal(true);
                                                     }} className="gap-2">
@@ -541,7 +541,7 @@ const TasksPage = () => {
                                         <SelectValue placeholder="Opcional" />
                                     </SelectTrigger>
                                     <SelectContent>
-                                        <SelectItem value="">Sem responsável</SelectItem>
+                                        <SelectItem value="none">Sem responsável</SelectItem>
                                         {users.map(u => (
                                             <SelectItem key={u.id} value={u.id.toString()}>{u.full_name}</SelectItem>
                                         ))}

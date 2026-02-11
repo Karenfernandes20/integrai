@@ -127,9 +127,9 @@ export function PlanUsage() {
                         <div className="space-y-2">
                             <div className="flex justify-between text-sm">
                                 <span className="font-medium text-muted-foreground">Usuários</span>
-                                <span>{data.usage.users_count} / {data.max_users}</span>
+                                <span>{data.usage.users_count} / {data.max_users || 'Ilimitado'}</span>
                             </div>
-                            <Progress value={usagePercent(data.usage.users_count, data.max_users)} className="h-2" />
+                            <Progress value={data.max_users ? usagePercent(data.usage.users_count, data.max_users) : 0} className="h-2" />
                         </div>
                         {/* Features GRID */}
                         <div className="grid grid-cols-2 gap-4 pt-4 border-t">

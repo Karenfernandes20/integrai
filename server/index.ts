@@ -204,24 +204,54 @@ const startServer = async () => {
         await pool.query(`ALTER TABLE whatsapp_conversations ADD COLUMN IF NOT EXISTS last_instance_key TEXT;`);
         await pool.query(`ALTER TABLE whatsapp_contacts ADD COLUMN IF NOT EXISTS phone TEXT;`);
 
-        // Instagram Integration Migrations
-        console.log("Running Instagram Integration migrations...");
+        // Instagram & Communication Channels Integration Migrations
+        console.log("Running Extended Communication Channels migrations...");
         await pool.query(`
             ALTER TABLE companies
+            ADD COLUMN IF NOT EXISTS whatsapp_enabled BOOLEAN DEFAULT FALSE,
+            ADD COLUMN IF NOT EXISTS messenger_enabled BOOLEAN DEFAULT FALSE,
             ADD COLUMN IF NOT EXISTS instagram_enabled BOOLEAN DEFAULT FALSE,
+            
+            -- WhatsApp Official
+            ADD COLUMN IF NOT EXISTS whatsapp_type VARCHAR(50) DEFAULT 'evolution',
+            ADD COLUMN IF NOT EXISTS whatsapp_official_phone VARCHAR(50),
+            ADD COLUMN IF NOT EXISTS whatsapp_official_phone_number_id VARCHAR(100),
+            ADD COLUMN IF NOT EXISTS whatsapp_official_business_account_id VARCHAR(100),
+            ADD COLUMN IF NOT EXISTS whatsapp_official_access_token TEXT,
+            ADD COLUMN IF NOT EXISTS whatsapp_official_api_version VARCHAR(20) DEFAULT 'v21.0',
+            ADD COLUMN IF NOT EXISTS whatsapp_official_webhook_token VARCHAR(100),
+            ADD COLUMN IF NOT EXISTS evolution_url TEXT,
+            
+            -- WhatsApp API Plus
+            ADD COLUMN IF NOT EXISTS whatsapp_api_plus_token TEXT,
+            
+            -- Instagram (Already partially exists, but ensuring completeness)
             ADD COLUMN IF NOT EXISTS instagram_app_id VARCHAR(255),
             ADD COLUMN IF NOT EXISTS instagram_app_secret VARCHAR(255),
             ADD COLUMN IF NOT EXISTS instagram_page_id VARCHAR(255),
             ADD COLUMN IF NOT EXISTS instagram_business_id VARCHAR(255),
             ADD COLUMN IF NOT EXISTS instagram_access_token TEXT,
             ADD COLUMN IF NOT EXISTS instagram_token_expires_at TIMESTAMP,
-            ADD COLUMN IF NOT EXISTS instagram_status VARCHAR(20) DEFAULT 'INATIVO';
+            ADD COLUMN IF NOT EXISTS instagram_status VARCHAR(20) DEFAULT 'INATIVO',
+            ADD COLUMN IF NOT EXISTS instagram_webhook_token VARCHAR(100),
+            
+            -- Messenger
+            ADD COLUMN IF NOT EXISTS messenger_app_id VARCHAR(100),
+            ADD COLUMN IF NOT EXISTS messenger_app_secret VARCHAR(100),
+            ADD COLUMN IF NOT EXISTS messenger_page_id VARCHAR(100),
+            ADD COLUMN IF NOT EXISTS messenger_access_token TEXT,
+            ADD COLUMN IF NOT EXISTS messenger_webhook_token VARCHAR(100),
+            ADD COLUMN IF NOT EXISTS messenger_status VARCHAR(20) DEFAULT 'INATIVO',
+            ADD COLUMN IF NOT EXISTS whatsapp_limit INTEGER DEFAULT 1,
+            ADD COLUMN IF NOT EXISTS instagram_limit INTEGER DEFAULT 1,
+            ADD COLUMN IF NOT EXISTS messenger_limit INTEGER DEFAULT 1;
         `);
         await pool.query(`
             ALTER TABLE whatsapp_conversations
             ADD COLUMN IF NOT EXISTS channel VARCHAR(50) DEFAULT 'whatsapp',
             ADD COLUMN IF NOT EXISTS instagram_user_id VARCHAR(255),
-            ADD COLUMN IF NOT EXISTS instagram_username VARCHAR(255);
+            ADD COLUMN IF NOT EXISTS instagram_username VARCHAR(255),
+            ADD COLUMN IF NOT EXISTS messenger_user_id VARCHAR(255);
         `);
 
 
@@ -231,6 +261,73 @@ const startServer = async () => {
             ALTER TABLE whatsapp_messages
             ADD COLUMN IF NOT EXISTS channel VARCHAR(50) DEFAULT 'whatsapp',
             ADD COLUMN IF NOT EXISTS instagram_message_id VARCHAR(255);
+        `);
+
+        // Chatbot V2 Migrations
+        console.log("Running Chatbot V2 migrations...");
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS chatbots (
+                id SERIAL PRIMARY KEY,
+                company_id INTEGER REFERENCES companies(id) ON DELETE CASCADE,
+                name VARCHAR(255) NOT NULL,
+                description TEXT,
+                status VARCHAR(50) DEFAULT 'draft',
+                active_version_id INTEGER,
+                created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+                updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+            );
+            ALTER TABLE chatbots ADD COLUMN IF NOT EXISTS description TEXT;
+
+            CREATE TABLE IF NOT EXISTS chatbot_versions (
+                id SERIAL PRIMARY KEY,
+                chatbot_id INTEGER REFERENCES chatbots(id) ON DELETE CASCADE,
+                version_number INTEGER NOT NULL,
+                flow_json JSONB NOT NULL DEFAULT '{}',
+                is_published BOOLEAN DEFAULT false,
+                created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+            );
+
+            -- Add circular reference if not exists
+            DO $$ 
+            BEGIN
+              IF NOT EXISTS (SELECT 1 FROM information_schema.constraint_column_usage WHERE constraint_name = 'chatbots_active_version_id_fkey') THEN
+                ALTER TABLE chatbots ADD CONSTRAINT chatbots_active_version_id_fkey 
+                FOREIGN KEY (active_version_id) REFERENCES chatbot_versions(id) ON DELETE SET NULL;
+              END IF;
+            END $$;
+
+            CREATE TABLE IF NOT EXISTS chatbot_sessions (
+                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                chatbot_id INTEGER REFERENCES chatbots(id) ON DELETE CASCADE,
+                contact_key VARCHAR(100) NOT NULL,
+                instance_key VARCHAR(100) NOT NULL,
+                current_node_id VARCHAR(100),
+                variables JSONB DEFAULT '{}',
+                last_activity TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+                created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+                UNIQUE(chatbot_id, contact_key, instance_key)
+            );
+
+            CREATE TABLE IF NOT EXISTS chatbot_logs (
+                id SERIAL PRIMARY KEY,
+                chatbot_id INTEGER REFERENCES chatbots(id) ON DELETE CASCADE,
+                contact_key VARCHAR(100),
+                instance_key VARCHAR(100),
+                node_id VARCHAR(100),
+                payload_received TEXT,
+                response_sent TEXT,
+                error_message TEXT,
+                created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+            );
+
+            CREATE TABLE IF NOT EXISTS chatbot_instances (
+                id SERIAL PRIMARY KEY,
+                chatbot_id INTEGER REFERENCES chatbots(id) ON DELETE CASCADE,
+                instance_key VARCHAR(255) NOT NULL,
+                is_active BOOLEAN DEFAULT true,
+                created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+                UNIQUE(chatbot_id, instance_key)
+            );
         `);
 
         // Legal Pages Migrations

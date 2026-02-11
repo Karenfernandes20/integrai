@@ -49,13 +49,31 @@ export function CompanyFormDrawer({ open, onOpenChange, editingCompany, token, o
         plan_id: "",
         due_date: "",
         max_instances: "1",
+        whatsapp_enabled: true,
         instagram_enabled: false,
+        messenger_enabled: false,
         instagram_app_id: "",
         instagram_app_secret: "",
         instagram_page_id: "",
         instagram_business_id: "",
         instagram_access_token: "",
         instagram_status: "",
+        whatsapp_type: 'evolution',
+        whatsapp_official_phone: "",
+        whatsapp_official_phone_number_id: "",
+        whatsapp_official_business_account_id: "",
+        whatsapp_official_access_token: "",
+        whatsapp_official_api_version: "v18.0",
+        whatsapp_official_webhook_token: "",
+        whatsapp_api_plus_token: "",
+        messenger_app_id: "",
+        messenger_app_secret: "",
+        messenger_page_id: "",
+        messenger_access_token: "",
+        messenger_webhook_token: "",
+        whatsapp_limit: "1",
+        instagram_limit: "1",
+        messenger_limit: "1",
         instances: [{ id: 'inst-1', name: "Instância 1", instance_key: "", api_key: "" }]
     });
 
@@ -75,12 +93,32 @@ export function CompanyFormDrawer({ open, onOpenChange, editingCompany, token, o
                 due_date: editingCompany.due_date ? new Date(editingCompany.due_date).toISOString().split('T')[0] : "",
                 max_instances: editingCompany.max_instances ? String(editingCompany.max_instances) : "1",
                 instagram_enabled: editingCompany.instagram_enabled || false,
+                whatsapp_enabled: editingCompany.whatsapp_enabled ?? true,
+                messenger_enabled: editingCompany.messenger_enabled || false,
                 instagram_app_id: editingCompany.instagram_app_id || "",
                 instagram_app_secret: editingCompany.instagram_app_secret || "",
                 instagram_page_id: editingCompany.instagram_page_id || "",
                 instagram_business_id: editingCompany.instagram_business_id || "",
                 instagram_access_token: editingCompany.instagram_access_token || "",
                 instagram_status: editingCompany.instagram_status || "",
+                // WhatsApp Extended
+                whatsapp_type: editingCompany.whatsapp_type || 'evolution',
+                whatsapp_official_phone: editingCompany.whatsapp_official_phone || "",
+                whatsapp_official_phone_number_id: editingCompany.whatsapp_official_phone_number_id || "",
+                whatsapp_official_business_account_id: editingCompany.whatsapp_official_business_account_id || "",
+                whatsapp_official_access_token: editingCompany.whatsapp_official_access_token || "",
+                whatsapp_official_api_version: editingCompany.whatsapp_official_api_version || "v18.0",
+                whatsapp_official_webhook_token: editingCompany.whatsapp_official_webhook_token || "",
+                whatsapp_api_plus_token: editingCompany.whatsapp_api_plus_token || "",
+                // Messenger
+                messenger_app_id: editingCompany.messenger_app_id || "",
+                messenger_app_secret: editingCompany.messenger_app_secret || "",
+                messenger_page_id: editingCompany.messenger_page_id || "",
+                messenger_access_token: editingCompany.messenger_access_token || "",
+                messenger_webhook_token: editingCompany.messenger_webhook_token || "",
+                whatsapp_limit: String(editingCompany.whatsapp_limit || "1"),
+                instagram_limit: String(editingCompany.instagram_limit || "1"),
+                messenger_limit: String(editingCompany.messenger_limit || "1"),
                 instances: [] // Will be populated by fetchInstances
             });
         } else {
@@ -97,13 +135,31 @@ export function CompanyFormDrawer({ open, onOpenChange, editingCompany, token, o
                 plan_id: "",
                 due_date: "",
                 max_instances: "1",
+                whatsapp_enabled: true,
                 instagram_enabled: false,
+                messenger_enabled: false,
                 instagram_app_id: "",
                 instagram_app_secret: "",
                 instagram_page_id: "",
                 instagram_business_id: "",
                 instagram_access_token: "",
                 instagram_status: "",
+                whatsapp_type: 'evolution',
+                whatsapp_official_phone: "",
+                whatsapp_official_phone_number_id: "",
+                whatsapp_official_business_account_id: "",
+                whatsapp_official_access_token: "",
+                whatsapp_official_api_version: "v18.0",
+                whatsapp_official_webhook_token: "",
+                whatsapp_api_plus_token: "",
+                messenger_app_id: "",
+                messenger_app_secret: "",
+                messenger_page_id: "",
+                messenger_access_token: "",
+                messenger_webhook_token: "",
+                whatsapp_limit: "1",
+                instagram_limit: "1",
+                messenger_limit: "1",
                 instances: [{ id: 'inst-1', name: "Instância 1", instance_key: "", api_key: "" }]
             });
         }
@@ -250,15 +306,35 @@ export function CompanyFormDrawer({ open, onOpenChange, editingCompany, token, o
             if (formValues.evolution_instance) formData.append("evolution_instance", formValues.evolution_instance);
             if (formValues.evolution_apikey) formData.append("evolution_apikey", formValues.evolution_apikey);
 
-            // Instagram fields
+            // Communication Channels
+            formData.append("whatsapp_enabled", String(formValues.whatsapp_enabled));
             formData.append("instagram_enabled", String(formValues.instagram_enabled));
-            if (formValues.instagram_enabled) {
-                if (formValues.instagram_app_id) formData.append("instagram_app_id", formValues.instagram_app_id);
-                if (formValues.instagram_app_secret) formData.append("instagram_app_secret", formValues.instagram_app_secret);
-                if (formValues.instagram_page_id) formData.append("instagram_page_id", formValues.instagram_page_id);
-                if (formValues.instagram_business_id) formData.append("instagram_business_id", formValues.instagram_business_id);
-                if (formValues.instagram_access_token) formData.append("instagram_access_token", formValues.instagram_access_token);
-            }
+            formData.append("messenger_enabled", String(formValues.messenger_enabled));
+
+            // WhatsApp Official / Plus
+            formData.append("whatsapp_type", formValues.whatsapp_type || 'evolution');
+            if (formValues.whatsapp_official_phone) formData.append("whatsapp_official_phone", formValues.whatsapp_official_phone);
+            if (formValues.whatsapp_official_phone_number_id) formData.append("whatsapp_official_phone_number_id", formValues.whatsapp_official_phone_number_id);
+            if (formValues.whatsapp_official_business_account_id) formData.append("whatsapp_official_business_account_id", formValues.whatsapp_official_business_account_id);
+            if (formValues.whatsapp_official_access_token) formData.append("whatsapp_official_access_token", formValues.whatsapp_official_access_token);
+            if (formValues.whatsapp_api_plus_token) formData.append("whatsapp_api_plus_token", formValues.whatsapp_api_plus_token);
+
+            // Instagram
+            if (formValues.instagram_app_id) formData.append("instagram_app_id", formValues.instagram_app_id);
+            if (formValues.instagram_app_secret) formData.append("instagram_app_secret", formValues.instagram_app_secret);
+            if (formValues.instagram_page_id) formData.append("instagram_page_id", formValues.instagram_page_id);
+            if (formValues.instagram_business_id) formData.append("instagram_business_id", formValues.instagram_business_id);
+            if (formValues.instagram_access_token) formData.append("instagram_access_token", formValues.instagram_access_token);
+
+            // Messenger
+            if (formValues.messenger_app_id) formData.append("messenger_app_id", formValues.messenger_app_id);
+            if (formValues.messenger_app_secret) formData.append("messenger_app_secret", formValues.messenger_app_secret);
+            if (formValues.messenger_page_id) formData.append("messenger_page_id", formValues.messenger_page_id);
+            if (formValues.messenger_access_token) formData.append("messenger_access_token", formValues.messenger_access_token);
+
+            formData.append("whatsapp_limit", formValues.whatsapp_limit || "1");
+            formData.append("instagram_limit", formValues.instagram_limit || "1");
+            formData.append("messenger_limit", formValues.messenger_limit || "1");
 
             // Instance Definitions
             formData.append("instanceDefinitions", JSON.stringify(formValues.instances));
@@ -357,91 +433,66 @@ export function CompanyFormDrawer({ open, onOpenChange, editingCompany, token, o
                             </Select>
                         </div>
 
-                        <Separator className="my-2" />
-
-                        <div className="space-y-4">
-                            <h4 className="text-sm font-medium">Configurações Evolution</h4>
-                            <div className="flex items-center gap-3 border rounded-xl p-4 bg-primary/5 border-primary/10 mb-4 transition-all hover:bg-primary/10">
-                                <div className="space-y-1 flex-1">
-                                    <Label className="text-xs font-bold text-primary uppercase tracking-wider">Máximo de Conexões (Slots)</Label>
-                                    <p className="text-[10px] text-muted-foreground">Defina o limite de instâncias WhatsApp para esta empresa.</p>
-                                </div>
-                                <Input
-                                    type="number"
-                                    name="max_instances"
-                                    value={formValues.max_instances}
-                                    onChange={handleChange}
-                                    className="w-24 h-10 text-center font-bold text-lg bg-white shadow-sm border-primary/20"
-                                    min="1"
-                                />
-                            </div>
-
-                            <div className="space-y-4 max-h-[400px] overflow-y-auto pr-2 custom-scrollbar">
-                                {formValues.instances.map((inst: any, index: number) => (
-                                    <div key={inst.id || index} className="p-4 rounded-xl border border-slate-200 bg-white space-y-3 relative group transition-all hover:border-primary/30 hover:shadow-md">
-                                        <div className="flex items-center justify-between mb-1">
-                                            <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-1.5">
-                                                <div className="w-1.5 h-1.5 rounded-full bg-primary" />
-                                                Configuração #{index + 1}
-                                            </span>
-                                        </div>
-                                        <div className="grid grid-cols-2 gap-3">
-                                            <div className="space-y-1.5">
-                                                <Label className="text-[10px] font-bold text-slate-500 uppercase">Nome Amigável</Label>
-                                                <Input
-                                                    value={inst.name}
-                                                    onChange={(e) => handleInstanceChange(index, 'name', e.target.value)}
-                                                    placeholder="Ex: Comercial 01"
-                                                    className="h-9 text-xs bg-slate-50/50 focus:bg-white"
-                                                />
-                                            </div>
-                                            <div className="space-y-1.5">
-                                                <Label className="text-[10px] font-bold text-slate-500 uppercase">Instance Key</Label>
-                                                <Input
-                                                    value={inst.instance_key}
-                                                    onChange={(e) => handleInstanceChange(index, 'instance_key', e.target.value)}
-                                                    placeholder="key_da_instancia"
-                                                    className="h-9 text-[11px] font-mono bg-slate-50/50 focus:bg-white"
-                                                />
-                                            </div>
-                                        </div>
-                                        <div className="space-y-1.5">
-                                            <Label className="text-[10px] font-bold text-slate-500 uppercase">API Key (Opcional)</Label>
-                                            <Input
-                                                value={inst.api_key}
-                                                onChange={(e) => handleInstanceChange(index, 'api_key', e.target.value)}
-                                                placeholder="Global ou Específica"
-                                                type="password"
-                                                className="h-9 text-[11px] font-mono bg-slate-50/50 focus:bg-white"
-                                            />
-                                        </div>
-                                    </div>
-                                ))}
-                            </div>
-                        </div>
 
                         <Separator className="my-2" />
 
                         <div className="space-y-4">
-                            <h4 className="text-sm font-medium">Integração e Assinatura</h4>
-                            <div className="flex items-center space-x-2">
-                                <Checkbox id="ig_enabled" checked={formValues.instagram_enabled} onCheckedChange={(c) => setFormValues(p => ({ ...p, instagram_enabled: !!c }))} />
-                                <Label htmlFor="ig_enabled" className="text-sm cursor-pointer">Habilitar Instagram</Label>
-                                {formValues.instagram_status === 'ATIVO' && <Badge className="bg-green-600 text-[10px] h-5">Ativo</Badge>}
+                            <h4 className="text-sm font-medium">Canais de Comunicação</h4>
+                            <div className="grid grid-cols-3 gap-2 bg-slate-50 p-3 rounded-lg border border-slate-100">
+                                <div className="flex flex-col items-center gap-2 p-2 hover:bg-white hover:shadow-sm rounded transition-all cursor-pointer">
+                                    <Checkbox id="wa_enabled" checked={formValues.whatsapp_enabled ?? true} onCheckedChange={(c) => setFormValues(p => ({ ...p, whatsapp_enabled: !!c }))} />
+                                    <Label htmlFor="wa_enabled" className="text-[10px] font-bold uppercase cursor-pointer">WhatsApp</Label>
+                                </div>
+                                <div className="flex flex-col items-center gap-2 p-2 hover:bg-white hover:shadow-sm rounded transition-all cursor-pointer">
+                                    <Checkbox id="ig_enabled" checked={formValues.instagram_enabled} onCheckedChange={(c) => setFormValues(p => ({ ...p, instagram_enabled: !!c }))} />
+                                    <Label htmlFor="ig_enabled" className="text-[10px] font-bold uppercase cursor-pointer">Instagram</Label>
+                                </div>
+                                <div className="flex flex-col items-center gap-2 p-2 hover:bg-white hover:shadow-sm rounded transition-all cursor-pointer">
+                                    <Checkbox id="me_enabled" checked={formValues.messenger_enabled} onCheckedChange={(c) => setFormValues(p => ({ ...p, messenger_enabled: !!c }))} />
+                                    <Label htmlFor="me_enabled" className="text-[10px] font-bold uppercase cursor-pointer">Messenger</Label>
+                                </div>
                             </div>
 
-                            {formValues.instagram_enabled && (
-                                <div className="pl-6 border-l-2 space-y-3 mt-2">
+                            <div className="grid grid-cols-3 gap-2 mt-2">
+                                {formValues.whatsapp_enabled && (
                                     <div className="space-y-1">
-                                        <Label className="text-[10px]">Page ID</Label>
-                                        <Input name="instagram_page_id" placeholder="Page ID" value={formValues.instagram_page_id} onChange={handleChange} className="h-8 text-xs" />
+                                        <Label className="text-[10px] font-bold text-slate-400 uppercase">Qtd WhatsApp</Label>
+                                        <Input
+                                            type="number"
+                                            min="1"
+                                            value={formValues.whatsapp_limit}
+                                            onChange={(e) => setFormValues(p => ({ ...p, whatsapp_limit: e.target.value }))}
+                                            className="h-8 text-xs text-center font-bold"
+                                        />
                                     </div>
+                                )}
+                                {formValues.instagram_enabled && (
                                     <div className="space-y-1">
-                                        <Label className="text-[10px]">Access Token</Label>
-                                        <Input name="instagram_access_token" placeholder="Access Token" type="password" value={formValues.instagram_access_token} onChange={handleChange} className="h-8 text-xs" />
+                                        <Label className="text-[10px] font-bold text-slate-400 uppercase">Qtd Instagram</Label>
+                                        <Input
+                                            type="number"
+                                            min="1"
+                                            value={formValues.instagram_limit}
+                                            onChange={(e) => setFormValues(p => ({ ...p, instagram_limit: e.target.value }))}
+                                            className="h-8 text-xs text-center font-bold"
+                                        />
                                     </div>
-                                </div>
-                            )}
+                                )}
+                                {formValues.messenger_enabled && (
+                                    <div className="space-y-1">
+                                        <Label className="text-[10px] font-bold text-slate-400 uppercase">Qtd Messenger</Label>
+                                        <Input
+                                            type="number"
+                                            min="1"
+                                            value={formValues.messenger_limit}
+                                            onChange={(e) => setFormValues(p => ({ ...p, messenger_limit: e.target.value }))}
+                                            className="h-8 text-xs text-center font-bold"
+                                        />
+                                    </div>
+                                )}
+                            </div>
+
+                            <h4 className="text-sm font-medium mt-6">Assinatura</h4>
 
                             <div className="grid grid-cols-2 gap-4">
                                 <div className="space-y-2">

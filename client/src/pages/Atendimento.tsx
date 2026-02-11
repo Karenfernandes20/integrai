@@ -2529,13 +2529,8 @@ const AtendimentoPage = () => {
               </span>
             </div>
 
-            {/* Tags & Instance */}
+            {/* Tags Only in Middle Area */}
             <div className="flex items-center gap-1.5 overflow-hidden my-0.5">
-              {conv.instance_friendly_name && (
-                <span className="px-1.5 py-0.5 rounded-md text-[9px] font-bold bg-slate-800 text-slate-400 uppercase tracking-wider border border-slate-700/50">
-                  {conv.instance_friendly_name}
-                </span>
-              )}
               {/* Simplified Tags for Card */}
               {conv.tags && conv.tags.length > 0 && (
                 <span className="flex gap-1">
@@ -2546,9 +2541,9 @@ const AtendimentoPage = () => {
               )}
             </div>
 
-            <div className="flex justify-between items-center mt-0.5">
+            <div className="flex justify-between items-end mt-0.5">
               <p className={cn(
-                "text-[13px] leading-snug truncate max-w-[90%]",
+                "text-[13px] leading-snug truncate max-w-[75%]",
                 isSelected ? "text-slate-400" : "text-slate-500 group-hover:text-slate-400"
               )}>
                 {/* Sender Prefix */}
@@ -2556,68 +2551,76 @@ const AtendimentoPage = () => {
                 {conv.last_message || <span className="italic opacity-50 flex items-center gap-1"><Sparkles className="w-3 h-3" /> Iniciar conversa...</span>}
               </p>
 
-              {/* Quick Action Trigger */}
-              <div className={cn(
-                "opacity-0 transition-opacity group-hover:opacity-100",
-                isSelected ? "opacity-100" : ""
-              )}>
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-7 w-7 text-slate-500 hover:text-slate-100 hover:bg-slate-800 rounded-lg"
-                      onClick={(e) => e.stopPropagation()}
-                    >
-                      <MoreHorizontal className="h-4 w-4" />
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end" className="bg-[#1e293b] border-slate-700 text-slate-200 w-52 shadow-2xl z-[100]">
-                    <DropdownMenuItem
-                      onClick={(e) => { e.stopPropagation(); setSelectedConversation(conv); handleRenameContact(); }}
-                      className="gap-2 focus:bg-slate-800 focus:text-slate-100 cursor-pointer"
-                    >
-                      <Pencil className="h-3.5 w-3.5 text-slate-400" /> Renomear Contato
-                    </DropdownMenuItem>
+              <div className="flex flex-col items-end gap-1 shrink-0">
+                {conv.instance_friendly_name && (
+                  <span className="px-1.5 py-0.5 rounded-[4px] text-[7.5px] font-bold bg-blue-500/10 text-blue-400 border border-blue-500/20 uppercase tracking-widest mb-0.5 shadow-sm">
+                    {conv.instance_friendly_name}
+                  </span>
+                )}
 
-                    {(!conv.status || conv.status === 'PENDING') && (
-                      <DropdownMenuItem
-                        onClick={(e) => { e.stopPropagation(); handleStartAtendimento(conv); }}
-                        className="gap-2 focus:bg-emerald-500/10 focus:text-emerald-400 cursor-pointer text-emerald-500"
+                {/* Quick Action Trigger */}
+                <div className={cn(
+                  "opacity-0 transition-opacity group-hover:opacity-100",
+                  isSelected ? "opacity-100" : ""
+                )}>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-7 w-7 text-slate-500 hover:text-slate-100 hover:bg-slate-800 rounded-lg"
+                        onClick={(e) => e.stopPropagation()}
                       >
-                        <Play className="h-3.5 w-3.5" /> Iniciar Atendimento
-                      </DropdownMenuItem>
-                    )}
-
-                    {conv.status === 'OPEN' && (
-                      <>
-                        <DropdownMenuItem
-                          onClick={(e) => { e.stopPropagation(); handleReturnToPending(conv); }}
-                          className="gap-2 focus:bg-amber-500/10 focus:text-amber-400 cursor-pointer text-amber-500"
-                        >
-                          <ArrowLeft className="h-3.5 w-3.5" /> Devolver para Fila
-                        </DropdownMenuItem>
-                        <DropdownMenuItem
-                          onClick={(e) => { e.stopPropagation(); handleCloseAtendimento(conv); }}
-                          className="gap-2 focus:bg-red-500/10 focus:text-red-400 cursor-pointer text-red-500"
-                        >
-                          <XCircle className="h-3.5 w-3.5" /> Encerrar Atendimento
-                        </DropdownMenuItem>
-                      </>
-                    )}
-
-                    {conv.status === 'CLOSED' && (
+                        <MoreHorizontal className="h-4 w-4" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end" className="bg-[#1e293b] border-slate-700 text-slate-200 w-52 shadow-2xl z-[100]">
                       <DropdownMenuItem
-                        onClick={(e) => { e.stopPropagation(); handleReopenAtendimento(conv); }}
-                        className="gap-2 focus:bg-emerald-500/10 focus:text-emerald-400 cursor-pointer text-emerald-500"
+                        onClick={(e) => { e.stopPropagation(); setSelectedConversation(conv); handleRenameContact(); }}
+                        className="gap-2 focus:bg-slate-800 focus:text-slate-100 cursor-pointer"
                       >
-                        <RotateCcw className="h-3.5 w-3.5" /> Reabrir Conversa
+                        <Pencil className="h-3.5 w-3.5 text-slate-400" /> Renomear Contato
                       </DropdownMenuItem>
-                    )}
+
+                      {(!conv.status || conv.status === 'PENDING') && (
+                        <DropdownMenuItem
+                          onClick={(e) => { e.stopPropagation(); handleStartAtendimento(conv); }}
+                          className="gap-2 focus:bg-emerald-500/10 focus:text-emerald-400 cursor-pointer text-emerald-500"
+                        >
+                          <Play className="h-3.5 w-3.5" /> Iniciar Atendimento
+                        </DropdownMenuItem>
+                      )}
+
+                      {conv.status === 'OPEN' && (
+                        <>
+                          <DropdownMenuItem
+                            onClick={(e) => { e.stopPropagation(); handleReturnToPending(conv); }}
+                            className="gap-2 focus:bg-amber-500/10 focus:text-amber-400 cursor-pointer text-amber-500"
+                          >
+                            <ArrowLeft className="h-3.5 w-3.5" /> Devolver para Fila
+                          </DropdownMenuItem>
+                          <DropdownMenuItem
+                            onClick={(e) => { e.stopPropagation(); handleCloseAtendimento(conv); }}
+                            className="gap-2 focus:bg-red-500/10 focus:text-red-400 cursor-pointer text-red-500"
+                          >
+                            <XCircle className="h-3.5 w-3.5" /> Encerrar Atendimento
+                          </DropdownMenuItem>
+                        </>
+                      )}
+
+                      {conv.status === 'CLOSED' && (
+                        <DropdownMenuItem
+                          onClick={(e) => { e.stopPropagation(); handleReopenAtendimento(conv); }}
+                          className="gap-2 focus:bg-emerald-500/10 focus:text-emerald-400 cursor-pointer text-emerald-500"
+                        >
+                          <RotateCcw className="h-3.5 w-3.5" /> Reabrir Conversa
+                        </DropdownMenuItem>
+                      )}
 
 
-                  </DropdownMenuContent>
-                </DropdownMenu>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </div>
               </div>
             </div>
           </div>
@@ -3233,9 +3236,14 @@ const AtendimentoPage = () => {
                                       {msg.body || msg.content}
                                     </div>
                                     <div className={cn(
-                                      "flex items-center gap-1.5 mt-1 self-end",
+                                      "flex items-center gap-2 mt-1 self-end",
                                       isOutbound ? "justify-end" : "justify-start"
                                     )}>
+                                      {msg.instance_friendly_name && (
+                                        <span className="text-[7px] font-black uppercase tracking-tighter bg-white/10 px-1 py-0 rounded border border-white/5 opacity-40">
+                                          {msg.instance_friendly_name}
+                                        </span>
+                                      )}
                                       <span className="text-[10px] opacity-60 font-mono tracking-tighter">
                                         {new Date(msg.sent_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                                       </span>

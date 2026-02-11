@@ -59,7 +59,7 @@ router.get('/companies/:id/users', authenticateToken, authorizeRole(['SUPERADMIN
 router.get('/companies/:id/instances', authenticateToken, getCompanyInstances); // New
 router.put('/companies/:id/instances/:instanceId', authenticateToken, updateCompanyInstance); // New
 router.post('/companies', authenticateToken, authorizeRole(['SUPERADMIN']), upload.single('logo'), createCompany);
-router.put('/companies/:id', authenticateToken, authorizeRole(['SUPERADMIN']), upload.single('logo'), updateCompany);
+router.put('/companies/:id', authenticateToken, upload.single('logo'), updateCompany);
 router.delete('/companies/:id', authenticateToken, authorizeRole(['SUPERADMIN']), deleteCompany);
 
 // User routes (Protected)

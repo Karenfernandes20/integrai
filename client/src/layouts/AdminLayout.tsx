@@ -166,7 +166,7 @@ export const AdminLayout = () => {
 
             <main className={cn(
               "flex-1 bg-gradient-to-b from-background via-background to-primary-soft/10",
-              isAtendimento ? "p-0 overflow-hidden h-[calc(100dvh-4rem)]" : "px-4 pb-8 pt-4"
+              (isAtendimento || location.pathname.startsWith("/app/agenda")) ? "p-0 overflow-hidden h-[calc(100dvh-4rem)]" : "px-4 pb-8 pt-4"
             )}>
               {status?.overdue && user?.role !== 'SUPERADMIN' ? (
                 <div className="flex flex-col items-center justify-center h-full text-center space-y-6 p-8">
@@ -194,7 +194,8 @@ export const AdminLayout = () => {
                 <div className={cn(
                   "mx-auto flex flex-col h-full",
                   isAtendimento ? "max-w-full gap-0" :
-                    location.pathname.startsWith("/app/crm") ? "max-w-full gap-4 p-4" : "max-w-6xl gap-6"
+                    location.pathname.startsWith("/app/crm") ? "max-w-full gap-4 p-4" :
+                      location.pathname.startsWith("/app/agenda") ? "max-w-full gap-0 p-0 sm:p-1" : "max-w-6xl gap-6"
                 )}>
                   <Outlet />
                 </div>

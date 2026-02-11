@@ -8,7 +8,9 @@ import { pool } from '../db';
 
 export const getChatbots = async (req: Request, res: Response) => {
     try {
-        const companyId = (req as any).user.company_id;
+        const companyId = (req as any).user?.company_id;
+        if (!companyId) return res.status(403).json({ error: 'ID de empresa não encontrado na sessão.' });
+
         const result = await pool!.query(
             `SELECT c.*, 
                 (SELECT COUNT(*) FROM chatbot_instances ci WHERE ci.chatbot_id = c.id AND ci.is_active = true) as active_instances_count
@@ -26,14 +28,17 @@ export const getChatbots = async (req: Request, res: Response) => {
 
 export const createChatbot = async (req: Request, res: Response) => {
     try {
-        const companyId = (req as any).user.company_id;
+        const companyId = (req as any).user?.company_id;
+        if (!companyId) return res.status(403).json({ error: 'ID de empresa não encontrado na sessão.' });
+
         const { name, description } = req.body;
+        console.log(`[Create Chatbot] Company: ${companyId}, Name: ${name}`);
 
         const result = await pool!.query(
-            `INSERT INTO chatbots (company_id, name, status) 
-             VALUES ($1, $2, 'draft') 
+            `INSERT INTO chatbots (company_id, name, description, status) 
+             VALUES ($1, $2, $3, 'draft') 
              RETURNING *`,
-            [companyId, name]
+            [companyId, name, description || null]
         );
 
         const chatbotId = result.rows[0].id;
@@ -52,27 +57,31 @@ export const createChatbot = async (req: Request, res: Response) => {
             [chatbotId, initialFlow]
         );
 
+        console.log(`[Create Chatbot] Success: Bot ID ${chatbotId}`);
         res.status(201).json(result.rows[0]);
     } catch (error: any) {
-        console.error("Error creating chatbot:", error);
+        console.error("[Create Chatbot] FAILED:", error);
         res.status(500).json({ error: error.message });
     }
 };
 
 export const updateChatbot = async (req: Request, res: Response) => {
     try {
-        const companyId = (req as any).user.company_id;
+        const companyId = (req as any).user?.company_id;
+        if (!companyId) return res.status(403).json({ error: 'ID de empresa não encontrado na sessão.' });
+
         const { id } = req.params;
-        const { name, status } = req.body;
+        const { name, description, status } = req.body;
 
         const result = await pool!.query(
             `UPDATE chatbots SET 
                 name = COALESCE($1, name),
-                status = COALESCE($2, status),
+                description = COALESCE($2, description),
+                status = COALESCE($3, status),
                 updated_at = NOW()
-             WHERE id = $3 AND company_id = $4
+             WHERE id = $4 AND company_id = $5
              RETURNING *`,
-            [name, status, id, companyId]
+            [name, description, status, id, companyId]
         );
 
         if (result.rows.length === 0) return res.status(404).json({ error: 'Chatbot not found' });
@@ -122,13 +131,21 @@ export const getFlow = async (req: Request, res: Response) => {
 
 export const saveFlow = async (req: Request, res: Response) => {
     try {
-        const companyId = (req as any).user.company_id;
+        const companyId = (req as any).user?.company_id;
+        if (!companyId) return res.status(403).json({ error: 'ID de empresa não encontrado na sessão.' });
+
         const { id } = req.params;
         const { flow } = req.body;
 
+        console.log(`[Save Flow] Bot: ${id}, Company: ${companyId}`);
+        console.log(`[Save Flow] Nodes: ${flow?.nodes?.length}, Edges: ${flow?.edges?.length}`);
+
         // Verify ownership
         const botCheck = await pool!.query("SELECT id FROM chatbots WHERE id = $1 AND company_id = $2", [id, companyId]);
-        if (botCheck.rows.length === 0) return res.status(404).json({ error: 'Chatbot not found' });
+        if (botCheck.rows.length === 0) {
+            console.error(`[Save Flow] Bot ${id} not found for company ${companyId}`);
+            return res.status(404).json({ error: 'Chatbot not found' });
+        }
 
         // Get current version count
         const vCheck = await pool!.query("SELECT MAX(version_number) as max_v FROM chatbot_versions WHERE chatbot_id = $1", [id]);

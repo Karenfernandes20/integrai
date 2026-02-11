@@ -99,7 +99,12 @@ const STATUS_CONFIG: Record<string, { label: string, color: string, bg: string, 
 
 // --- SUBCOMPONENT: EVENT CARD ---
 
-const EventCard = ({ event, onClick }: { event: AgendaEvent, onClick: (e: AgendaEvent) => void }) => {
+const EventCard = ({ event, onClick, leftOffset = 0, widthPercent = 100 }: {
+    event: AgendaEvent,
+    onClick: (e: AgendaEvent) => void,
+    leftOffset?: number,
+    widthPercent?: number
+}) => {
     const startDate = new Date(event.start);
     const endDate = new Date(event.end);
 
@@ -116,7 +121,7 @@ const EventCard = ({ event, onClick }: { event: AgendaEvent, onClick: (e: Agenda
     return (
         <div
             className={cn(
-                "absolute left-1 right-1 rounded-md border-l-[4px] shadow-sm text-xs cursor-pointer transition-all hover:scale-[1.02] hover:shadow-md hover:z-20 overflow-hidden flex flex-col group bg-white",
+                "absolute rounded-md border-l-[3px] shadow-sm text-xs cursor-pointer transition-all hover:scale-[1.02] hover:shadow-md hover:z-20 overflow-hidden flex flex-col group bg-white",
                 style.bg,
                 style.border, // Left border color
                 "border-t border-r border-b border-slate-200 dark:border-transparent"
@@ -124,25 +129,36 @@ const EventCard = ({ event, onClick }: { event: AgendaEvent, onClick: (e: Agenda
             style={{
                 top: `${top}px`,
                 height: `${height}px`,
-                minHeight: '22px'
+                minHeight: '22px',
+                left: `calc(${leftOffset}% + 1px)`,
+                width: `calc(${widthPercent}% - 2px)`
             }}
             onClick={(e) => { e.stopPropagation(); onClick(event); }}
         >
             <div className="p-0.5 px-1.5 flex flex-col h-full relative">
                 {/* Header */}
-                <div className="flex justify-between items-start gap-1 w-full relative z-10">
-                    <span className={cn("font-bold truncate leading-tight text-[9px]", style.color)}>
-                        {event.client}
-                    </span>
-                    {event.status === 'confirmed' && <CheckCircle2 size={10} className="text-emerald-500 shrink-0" />}
+                <div className="flex flex-col gap-0 w-full relative z-10">
+                    <div className="flex justify-between items-center gap-1 w-full">
+                        <span className={cn("font-bold truncate leading-tight text-[8px]", style.color)}>
+                            {event.client}
+                        </span>
+                        <div className={cn("w-1.5 h-1.5 rounded-full shrink-0 border border-white/50", style.color.replace('text-', 'bg-'))} title={style.label}></div>
+                    </div>
                 </div>
 
                 {/* Time & Badges (Visible if height permits) */}
                 {height > 22 && (
-                    <div className="mt-0.5 flex items-center justify-between text-[8px] text-slate-500 font-medium leading-none">
-                        <span className="flex items-center gap-1 opacity-80" style={{ fontSize: '8px' }}>
-                            {format(startDate, 'HH:mm')}
-                        </span>
+                    <div className="mt-0.5 flex items-center justify-between text-[7px] text-slate-500 font-medium leading-none">
+                        <div className="flex items-center gap-1">
+                            <span className="flex items-center gap-0.5 opacity-80" style={{ fontSize: '7px' }}>
+                                <Clock size={8} /> {format(startDate, 'HH:mm')}
+                            </span>
+                            {height > 35 && (
+                                <span className={cn("px-1 rounded-sm text-[6px] font-bold uppercase tracking-tighter ml-1", style.bg, style.color)} style={{ border: '1px solid currentColor' }}>
+                                    {style.label}
+                                </span>
+                            )}
+                        </div>
                         {event.insurance && height > 35 && (
                             <Badge variant="secondary" className="text-[7px] h-3 px-1 border-none uppercase font-black opacity-70 scale-75 origin-right">{event.insurance.substring(0, 3)}</Badge>
                         )}
@@ -151,8 +167,8 @@ const EventCard = ({ event, onClick }: { event: AgendaEvent, onClick: (e: Agenda
 
                 {/* Responsible (Visible if tall) */}
                 {height > 45 && (
-                    <div className="mt-auto pt-0.5 flex items-center gap-1 text-[8px] text-slate-400 truncate border-t border-black/5 leading-none">
-                        <User size={10} /> {event.responsible}
+                    <div className="mt-auto pt-0.5 flex items-center gap-1 text-[7px] text-slate-400 truncate border-t border-black/5 leading-none">
+                        <User size={8} /> {event.responsible}
                     </div>
                 )}
             </div>
@@ -354,29 +370,29 @@ const ClinicalAgenda = () => {
 
     // -- Render --
     return (
-        <div className="h-[calc(100vh-8rem)] flex flex-col bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 overflow-hidden font-sans">
+        <div className="flex-1 h-full flex flex-col bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 overflow-hidden font-sans">
 
             {/* 1. TOP HEADER */}
-            <header className="h-16 border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 flex items-center justify-between px-4 shrink-0 z-20 shadow-sm">
-                <div className="flex items-center gap-4 overflow-hidden">
-                    <div className="flex bg-slate-100 dark:bg-slate-800 rounded-lg p-1 shrink-0">
+            <header className="h-12 border-b bg-white dark:bg-slate-900 flex items-center justify-between px-2 shrink-0 z-20 shadow-sm gap-2">
+                <div className="flex items-center gap-2 min-w-0">
+                    <div className="flex bg-slate-100 dark:bg-slate-800 rounded-lg p-0.5 shrink-0">
                         <Button variant="ghost" size="icon" className="h-7 w-7" onClick={handlePrev}><ChevronLeft size={16} /></Button>
                         <Button variant="ghost" size="sm" className="h-7 px-2 text-xs font-bold" onClick={() => setDate(new Date())}>Hoje</Button>
                         <Button variant="ghost" size="icon" className="h-7 w-7" onClick={handleNext}><ChevronRight size={16} /></Button>
                     </div>
-                    <h1 className="text-lg font-bold capitalize flex items-center gap-2 truncate min-w-0">
-                        <CalendarIcon className="text-blue-600 w-5 h-5 shrink-0" />
+                    <h1 className="text-sm sm:text-base font-bold capitalize flex items-center gap-1 truncate min-w-0">
+                        <CalendarIcon className="text-blue-600 w-4 h-4 shrink-0" />
                         <span className="truncate whitespace-nowrap">
-                            {format(date, "EEEE, d 'de' MMMM", { locale: ptBR })}
+                            {format(date, "EEE, d 'de' MMM", { locale: ptBR })}
                         </span>
-                        <span className="text-slate-400 font-normal text-sm shrink-0">{format(date, "yyyy")}</span>
+                        <span className="text-slate-400 font-normal text-[10px] shrink-0">{format(date, "yyyy")}</span>
                     </h1>
                 </div>
 
                 <div className="flex items-center gap-3">
                     {/* Professional Filter */}
                     <Select value={selectedProfessional} onValueChange={setSelectedProfessional}>
-                        <SelectTrigger className="w-[180px] h-9 text-xs font-bold bg-slate-50 border-slate-200">
+                        <SelectTrigger className="w-[140px] h-8 text-xs font-bold bg-slate-50 border-slate-200">
                             <div className="flex items-center gap-2 truncate">
                                 <User size={14} className="text-slate-400" />
                                 <SelectValue placeholder="Profissional" />
@@ -395,11 +411,11 @@ const ClinicalAgenda = () => {
                                 key={m}
                                 onClick={() => setView(m)}
                                 className={cn(
-                                    "px-3 py-1 text-xs font-bold rounded-md transition-all capitalize whitespace-nowrap",
+                                    "px-2 py-0.5 text-[10px] font-bold rounded-md transition-all capitalize whitespace-nowrap",
                                     view === m ? "bg-white dark:bg-slate-700 shadow-sm text-blue-600 border border-slate-200 dark:border-transparent" : "text-slate-500 hover:text-slate-800 dark:hover:text-slate-200"
                                 )}
                             >
-                                {m === 'day' ? 'Dia' : m === 'week' ? 'Semana' : 'Mês'}
+                                {m === 'day' ? 'Dia' : m === 'week' ? 'Sem.' : 'Mês'}
                             </button>
                         ))}
                     </div>
@@ -407,10 +423,10 @@ const ClinicalAgenda = () => {
                     <Button variant="ghost" size="icon" className="h-9 w-9 text-slate-400 hover:text-blue-600" onClick={() => fetchAppointments()} disabled={loading}>
                         <RefreshCw size={18} className={loading ? "animate-spin" : ""} />
                     </Button>
-                    <Button className="bg-blue-600 hover:bg-blue-700 text-white gap-2 shadow-lg shadow-blue-500/20" onClick={handleNewAppointment}>
-                        <Plus size={16} /> <span className="hidden sm:inline">Novo Agendamento</span>
+                    <Button className="h-8 bg-blue-600 hover:bg-blue-700 text-white gap-1 px-2 text-xs shadow-lg shadow-blue-500/20" onClick={handleNewAppointment}>
+                        <Plus size={14} /> <span className="hidden lg:inline">Novo Agendamento</span>
                     </Button>
-                    <Button variant="ghost" size="icon"><Settings size={18} className="text-slate-400" /></Button>
+                    <Button variant="ghost" size="icon" className="h-8 w-8"><Settings size={16} className="text-slate-400" /></Button>
                 </div>
             </header>
 
@@ -487,6 +503,7 @@ const ClinicalAgenda = () => {
                                                                 handleEventClick(event);
                                                             }}
                                                         >
+                                                            <div className={cn("w-1.5 h-1.5 rounded-full shrink-0", style.color.replace('text-', 'bg-'))}></div>
                                                             <span className="text-[9px] font-bold opacity-70 tabular-nums">{format(new Date(event.start), 'HH:mm')}</span>
                                                             <span className="truncate">{event.client}</span>
                                                         </div>
@@ -509,32 +526,32 @@ const ClinicalAgenda = () => {
                     // --- DAY & WEEK VIEW (Time Grid) ---
                     // UNIFIED SCROLL AREA for Sync
                     <ScrollArea className="flex-1 bg-white dark:bg-slate-950">
-                        <div className="min-w-[800px] relative flex flex-col">
+                        <div className="min-w-full relative flex flex-col">
 
                             {/* STICKY HEADER ROW */}
                             <div className="sticky top-0 z-40 flex h-14 bg-slate-50/95 dark:bg-slate-900/90 backdrop-blur-sm border-b border-slate-200 dark:border-slate-800 shadow-sm">
                                 {/* Corner Spacer (Sticky Left) */}
-                                <div className="w-14 shrink-0 border-r border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 sticky left-0 z-50"></div>
+                                <div className="w-10 shrink-0 border-r border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 sticky left-0 z-50"></div>
 
                                 {/* Column Headers */}
                                 <div className="flex-1 flex">
                                     {view === 'day' ? (
                                         // RESOURCE VIEW: Professional Columns
                                         (professionals.length > 0 ? professionals : [{ id: 0, name: 'Geral', color: '#6366f1' }]).map(prof => (
-                                            <div key={prof.id} className="flex-1 min-w-[150px] p-2 text-center border-r border-slate-200 dark:border-slate-800 last:border-r-0 flex items-center justify-center gap-3">
-                                                <Avatar className="w-8 h-8 border-2 border-white shadow-sm ring-1 ring-slate-100">
+                                            <div key={prof.id} className="flex-1 min-w-[50px] p-0.5 text-center border-r border-slate-200 dark:border-slate-800 last:border-r-0 flex flex-col items-center justify-center">
+                                                <Avatar className="w-4 h-4 border border-white shadow-sm">
                                                     <AvatarImage src={prof.avatar} />
-                                                    <AvatarFallback className="bg-blue-100 text-blue-700 font-bold text-xs">{prof.name.substring(0, 2).toUpperCase()}</AvatarFallback>
+                                                    <AvatarFallback className="bg-blue-100 text-blue-700 font-bold text-[7px]">{prof.name.substring(0, 2).toUpperCase()}</AvatarFallback>
                                                 </Avatar>
-                                                <span className="text-sm font-bold truncate max-w-full text-slate-700 dark:text-slate-300">{prof.name}</span>
+                                                <span className="text-[9px] font-bold truncate max-w-full text-slate-700 dark:text-slate-300 px-0.5">{prof.name}</span>
                                             </div>
                                         ))
                                     ) : view === 'week' ? (
                                         // WEEK VIEW: Day Columns
                                         eachDayOfInterval({ start: startOfWeek(date, { weekStartsOn: 0 }), end: endOfWeek(date, { weekStartsOn: 0 }) }).map(day => (
-                                            <div key={day.toISOString()} className={cn("flex-1 min-w-[120px] p-2 text-center border-r border-slate-200 dark:border-slate-800 flex flex-col items-center justify-center hover:bg-slate-50 transition-colors cursor-pointer", isToday(day) && "bg-blue-50/40")}>
-                                                <span className={cn("text-[10px] uppercase font-bold tracking-wider", isToday(day) ? "text-blue-600" : "text-slate-400")}>{format(day, 'EEE', { locale: ptBR })}</span>
-                                                <div className={cn("text-lg font-black leading-none", isToday(day) ? "text-blue-600" : "text-slate-700 dark:text-slate-300")}>
+                                            <div key={day.toISOString()} className={cn("flex-1 min-w-[40px] p-0.5 text-center border-r border-slate-200 dark:border-slate-800 flex flex-col items-center justify-center hover:bg-slate-50 transition-colors cursor-pointer", isToday(day) && "bg-blue-50/40")}>
+                                                <span className={cn("text-[7px] uppercase font-bold tracking-wider", isToday(day) ? "text-blue-600" : "text-slate-400")}>{format(day, 'EEE', { locale: ptBR })}</span>
+                                                <div className={cn("text-[10px] font-black leading-none", isToday(day) ? "text-blue-600" : "text-slate-700 dark:text-slate-300")}>
                                                     {format(day, 'd')}
                                                 </div>
                                             </div>
@@ -547,7 +564,7 @@ const ClinicalAgenda = () => {
                             <div className="flex relative" style={{ height: (END_HOUR - START_HOUR + 1) * 60 * PIXELS_PER_MINUTE }}>
 
                                 {/* Time ColumnLabels (Sticky Left) */}
-                                <div className="w-14 shrink-0 border-r border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 sticky left-0 z-30">
+                                <div className="w-10 shrink-0 border-r border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 sticky left-0 z-30">
                                     {hours.map(h => (
                                         <div
                                             key={h}
@@ -570,17 +587,49 @@ const ClinicalAgenda = () => {
                                         />
                                     ))}
 
-                                    {/* Current Time Indicator Line */}
-                                    {isToday(date) && (
-                                        <div
-                                            className="absolute w-full border-t-2 border-red-500 z-20 pointer-events-none opacity-60 flex items-center shadow-[0_0_10px_rgba(239,68,68,0.5)]"
-                                            style={{
-                                                top: ((new Date().getHours() - START_HOUR) * 60 + new Date().getMinutes()) * PIXELS_PER_MINUTE
-                                            }}
-                                        >
-                                            <div className="w-2.5 h-2.5 bg-red-500 rounded-full -ml-[5px] shadow-sm"></div>
-                                        </div>
-                                    )}
+                                    {/* Current Time Indicator Line - Removed for a cleaner look as requested */}
+                                    {/* 
+                                    {(() => {
+                                        const now = new Date();
+                                        const isVisible = view === 'day' ? isToday(date) : true;
+                                        
+                                        if (!isVisible) return null;
+
+                                        const topPos = ((now.getHours() - START_HOUR) * 60 + now.getMinutes()) * PIXELS_PER_MINUTE;
+                                        if (topPos < 0 || topPos > (END_HOUR - START_HOUR + 1) * 60 * PIXELS_PER_MINUTE) return null;
+
+                                        if (view === 'day') {
+                                            return (
+                                                <div
+                                                    className="absolute w-full border-t-2 border-red-500 z-20 pointer-events-none opacity-60 flex items-center shadow-[0_0_10px_rgba(239,68,68,0.3)]"
+                                                    style={{ top: topPos }}
+                                                >
+                                                    <div className="w-2 h-2 bg-red-500 rounded-full -ml-[4px] shadow-sm"></div>
+                                                </div>
+                                            );
+                                        } else if (view === 'week') {
+                                            const weekStart = startOfWeek(date, { weekStartsOn: 0 });
+                                            const days = eachDayOfInterval({ start: weekStart, end: endOfWeek(date, { weekStartsOn: 0 }) });
+                                            const todayIndex = days.findIndex(d => isSameDay(d, now));
+                                            
+                                            if (todayIndex === -1) return null;
+
+                                            return (
+                                                <div
+                                                    className="absolute border-t-2 border-red-500 z-20 pointer-events-none opacity-60 flex items-center shadow-[0_0_10px_rgba(239,68,68,0.3)]"
+                                                    style={{ 
+                                                        top: topPos,
+                                                        left: `${todayIndex * (100 / 7)}%`,
+                                                        width: `${100 / 7}%`
+                                                    }}
+                                                >
+                                                    <div className="w-2 h-2 bg-red-500 rounded-full -ml-[4px] shadow-sm"></div>
+                                                </div>
+                                            );
+                                        }
+                                        return null;
+                                    })()}
+                                    */}
 
                                     {/* EVENTS RENDERING */}
                                     {view === 'day' ? (
@@ -603,7 +652,63 @@ const ClinicalAgenda = () => {
                                                         width: `${100 / (professionals.length || 1)}%`
                                                     }}
                                                 >
-                                                    {colEvents.map(event => <EventCard key={event.id} event={event} onClick={handleEventClick} />)}
+                                                    {(() => {
+                                                        if (colEvents.length === 0) return null;
+
+                                                        // 1. Sort by start time
+                                                        const sorted = [...colEvents].sort((a, b) => new Date(a.start).getTime() - new Date(b.start).getTime());
+
+                                                        // 2. Group into clusters of overlapping events
+                                                        const clusters: AgendaEvent[][] = [];
+                                                        sorted.forEach(event => {
+                                                            let added = false;
+                                                            for (const cluster of clusters) {
+                                                                if (cluster.some(e => {
+                                                                    const s1 = new Date(e.start).getTime();
+                                                                    const e1 = new Date(e.end).getTime();
+                                                                    const s2 = new Date(event.start).getTime();
+                                                                    const e2 = new Date(event.end).getTime();
+                                                                    return (s1 < e2 && s2 < e1); // Overlap check
+                                                                })) {
+                                                                    cluster.push(event);
+                                                                    added = true;
+                                                                    break;
+                                                                }
+                                                            }
+                                                            if (!added) clusters.push([event]);
+                                                        });
+
+                                                        // 3. Render events within each cluster
+                                                        return clusters.map(cluster => {
+                                                            const subColumns: AgendaEvent[][] = [];
+                                                            cluster.forEach(event => {
+                                                                let placed = false;
+                                                                const eventStart = new Date(event.start).getTime();
+                                                                for (let i = 0; i < subColumns.length; i++) {
+                                                                    const lastInCol = subColumns[i][subColumns[i].length - 1];
+                                                                    if (new Date(lastInCol.end).getTime() <= eventStart) {
+                                                                        subColumns[i].push(event);
+                                                                        placed = true;
+                                                                        break;
+                                                                    }
+                                                                }
+                                                                if (!placed) subColumns.push([event]);
+                                                            });
+
+                                                            const totalCols = subColumns.length;
+                                                            return subColumns.map((subCol, subColIndex) =>
+                                                                subCol.map(event => (
+                                                                    <EventCard
+                                                                        key={event.id}
+                                                                        event={event}
+                                                                        onClick={handleEventClick}
+                                                                        leftOffset={(subColIndex * 100) / totalCols}
+                                                                        widthPercent={100 / totalCols}
+                                                                    />
+                                                                ))
+                                                            );
+                                                        });
+                                                    })()}
 
                                                     {/* Clickable slots for creation could go here */}
                                                 </div>
@@ -623,7 +728,60 @@ const ClinicalAgenda = () => {
                                                         width: `${100 / 7}%`
                                                     }}
                                                 >
-                                                    {colEvents.map(event => <EventCard key={event.id} event={event} onClick={handleEventClick} />)}
+                                                    {(() => {
+                                                        if (colEvents.length === 0) return null;
+
+                                                        // Sort, cluster and position logic
+                                                        const sorted = [...colEvents].sort((a, b) => new Date(a.start).getTime() - new Date(b.start).getTime());
+                                                        const clusters: AgendaEvent[][] = [];
+                                                        sorted.forEach(event => {
+                                                            let added = false;
+                                                            for (const cluster of clusters) {
+                                                                if (cluster.some(e => {
+                                                                    const s1 = new Date(e.start).getTime();
+                                                                    const e1 = new Date(e.end).getTime();
+                                                                    const s2 = new Date(event.start).getTime();
+                                                                    const e2 = new Date(event.end).getTime();
+                                                                    return (s1 < e2 && s2 < e1);
+                                                                })) {
+                                                                    cluster.push(event);
+                                                                    added = true;
+                                                                    break;
+                                                                }
+                                                            }
+                                                            if (!added) clusters.push([event]);
+                                                        });
+
+                                                        return clusters.map(cluster => {
+                                                            const subColumns: AgendaEvent[][] = [];
+                                                            cluster.forEach(event => {
+                                                                let placed = false;
+                                                                const eventStart = new Date(event.start).getTime();
+                                                                for (let i = 0; i < subColumns.length; i++) {
+                                                                    const lastInCol = subColumns[i][subColumns[i].length - 1];
+                                                                    if (new Date(lastInCol.end).getTime() <= eventStart) {
+                                                                        subColumns[i].push(event);
+                                                                        placed = true;
+                                                                        break;
+                                                                    }
+                                                                }
+                                                                if (!placed) subColumns.push([event]);
+                                                            });
+
+                                                            const totalCols = subColumns.length;
+                                                            return subColumns.map((subCol, subColIndex) =>
+                                                                subCol.map(event => (
+                                                                    <EventCard
+                                                                        key={event.id}
+                                                                        event={event}
+                                                                        onClick={handleEventClick}
+                                                                        leftOffset={(subColIndex * 100) / totalCols}
+                                                                        widthPercent={100 / totalCols}
+                                                                    />
+                                                                ))
+                                                            );
+                                                        });
+                                                    })()}
                                                 </div>
                                             )
                                         })
@@ -731,10 +889,7 @@ const ClinicalAgenda = () => {
                                 <Label className="text-xs font-bold uppercase text-slate-400 tracking-wider">Status do Agendamento</Label>
                                 <Select defaultValue={selectedEvent.status}>
                                     <SelectTrigger className={cn("w-full font-bold h-10 border-0 ring-1 ring-slate-200", STATUS_CONFIG[selectedEvent.status.toLowerCase()]?.bg)}>
-                                        <div className="flex items-center gap-2">
-                                            <div className={cn("w-2 h-2 rounded-full bg-current", STATUS_CONFIG[selectedEvent.status.toLowerCase()]?.color)}></div>
-                                            <SelectValue />
-                                        </div>
+                                        <SelectValue />
                                     </SelectTrigger>
                                     <SelectContent>
                                         {Object.entries(STATUS_CONFIG).map(([key, cfg]) => (

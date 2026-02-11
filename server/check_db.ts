@@ -1,28 +1,21 @@
-import dotenv from 'dotenv';
-import path from 'path';
-dotenv.config({ path: path.resolve(__dirname, '../.env') });
 
-const checkDb = async () => {
-    // Dynamic import to allow dotenv to load first
-    const { pool } = await import('./db');
+import 'dotenv/config';
+import pkg from 'pg';
+const { Pool } = pkg;
+const databaseUrl = process.env.DATABASE_URL;
 
+async function check() {
+    const pool = new Pool({ connectionString: databaseUrl, ssl: { rejectUnauthorized: false } });
     try {
-        if (!pool) {
-            console.log('No pool');
-            return;
-        }
-        const resConvs = await pool.query('SELECT * FROM whatsapp_conversations');
-        const resMsgs = await pool.query('SELECT * FROM whatsapp_messages');
+        const res = await pool.query("SELECT table_name FROM information_schema.tables WHERE table_schema = 'public'");
+        console.log("Tables:", res.rows.map(r => r.table_name).join(', '));
 
-        console.log('Conversations count:', resConvs.rowCount);
-        console.log('Conversations rows:', resConvs.rows);
-        console.log('Messages count:', resMsgs.rowCount);
-
+        const chatbots = await pool.query("SELECT * FROM information_schema.columns WHERE table_name = 'chatbots'");
+        console.log("Chatbots columns:", chatbots.rows.map(r => r.column_name).join(', '));
     } catch (e) {
         console.error(e);
     } finally {
-        if (pool) await pool.end();
+        await pool.end();
     }
-};
-
-checkDb();
+}
+check();

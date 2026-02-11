@@ -47,6 +47,13 @@ export const getEvolutionConfig = async (user: any, source: string = 'unknown', 
       // 1. If strict instance requested, try to find it
       if (targetInstanceKey) {
         const instRes = await pool.query('SELECT instance_key, api_key FROM company_instances WHERE instance_key = $1 AND company_id = $2', [targetInstanceKey, resolvedCompanyId]);
+
+        // Also get the URL from company
+        const urlRes = await pool.query('SELECT evolution_url FROM companies WHERE id = $1', [resolvedCompanyId]);
+        if (urlRes.rows.length > 0 && urlRes.rows[0].evolution_url) {
+          config.url = urlRes.rows[0].evolution_url.replace(/['"]/g, "").replace(/\/$/, "");
+        }
+
         if (instRes.rows.length > 0) {
           const row = instRes.rows[0];
           config.instance = row.instance_key.replace(/\s+/g, '_').replace(/[^a-zA-Z0-9_-]/g, '');
@@ -57,15 +64,19 @@ export const getEvolutionConfig = async (user: any, source: string = 'unknown', 
           }
 
           config.company_id = resolvedCompanyId;
-          console.log(`[Evolution Config] RESOLVED SPECIFIC INSTANCE: ${config.instance} for Company ${resolvedCompanyId}`);
+          console.log(`[Evolution Config] RESOLVED SPECIFIC INSTANCE: ${config.instance} for Company ${resolvedCompanyId} at ${config.url}`);
           return config;
         }
       }
 
       // 2. Fallback to main company config
-      const compRes = await pool.query('SELECT name, evolution_instance, evolution_apikey FROM companies WHERE id = $1', [resolvedCompanyId]);
+      const compRes = await pool.query('SELECT name, evolution_instance, evolution_apikey, evolution_url FROM companies WHERE id = $1', [resolvedCompanyId]);
       if (compRes.rows.length > 0) {
-        const { name, evolution_instance, evolution_apikey } = compRes.rows[0];
+        const { name, evolution_instance, evolution_apikey, evolution_url } = compRes.rows[0];
+
+        if (evolution_url) {
+          config.url = evolution_url.replace(/['"]/g, "").replace(/\/$/, "");
+        }
 
         if (targetInstanceKey && evolution_instance !== targetInstanceKey) {
           console.warn(`[Evolution Config] Requested instance ${targetInstanceKey} not found for company ${resolvedCompanyId}. Falling back to main: ${evolution_instance}`);
@@ -88,14 +99,17 @@ export const getEvolutionConfig = async (user: any, source: string = 'unknown', 
       }
     } else if (isMasterUser) {
       // Superadmin without company context: fallback to Integrai (usually ID 1)
-      const masterRes = await pool.query('SELECT evolution_instance, evolution_apikey FROM companies WHERE id = 1 LIMIT 1');
+      const masterRes = await pool.query('SELECT evolution_instance, evolution_apikey, evolution_url FROM companies WHERE id = 1 LIMIT 1');
       if (masterRes.rows.length > 0) {
+        if (masterRes.rows[0].evolution_url) {
+          config.url = masterRes.rows[0].evolution_url.replace(/['"]/g, "").replace(/\/$/, "");
+        }
         config.instance = masterRes.rows[0].evolution_instance || "integrai";
         if (masterRes.rows[0].evolution_apikey && masterRes.rows[0].evolution_apikey.length > 10) {
           config.apikey = masterRes.rows[0].evolution_apikey;
         }
         config.company_id = 1;
-        console.log(`[Evolution Config] MASTER FALLBACK (ID:1) -> Instance: ${config.instance}`);
+        console.log(`[Evolution Config] MASTER FALLBACK (ID:1) -> Instance: ${config.instance} at ${config.url}`);
       }
     }
 
@@ -161,17 +175,19 @@ export const getEvolutionQrCode = async (req: Request, res: Response) => {
 
     if (!response.ok) {
       const errorText = await response.text();
+      console.log(`[Evolution] QR Code Fetch Failed. Status: ${response.status}`, errorText.slice(0, 200));
+
       // Auto-Create Logic if 404
-      if (response.status === 404 && (errorText.includes("does not exist") || errorText.includes("not found"))) {
-        console.log(`[Evolution] Instance ${sanitizedInstance} not found. Attempting to create it...`);
+      if (response.status === 404) {
+        console.log(`[Evolution] Instance ${sanitizedInstance} not found (404). Attempting to create it...`);
 
         const createUrl = `${EVOLUTION_API_URL.replace(/\/$/, "")}/instance/create`;
         const createRes = await fetch(createUrl, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
-            // For creation, we MUST use the GLOBAL key if available, as it has perms to create
-            apikey: process.env.EVOLUTION_API_KEY || EVOLUTION_API_KEY
+            // For creation, we try the provided key first (if user provided Global Key), then fallback
+            apikey: EVOLUTION_API_KEY || process.env.EVOLUTION_API_KEY || GLOBAL_API_KEY
           },
           body: JSON.stringify({
             instanceName: sanitizedInstance,
@@ -936,86 +952,142 @@ export const syncEvolutionContacts = async (req: Request, res: Response) => {
         const config = await getEvolutionConfig(user, 'syncContacts', targetCompanyId, instKey);
         const EVOLUTION_API_URL = config.url?.replace(/\/$/, "");
         const EVOLUTION_API_KEY = config.apikey?.trim();
-        const EVOLUTION_INSTANCE = config.instance;
 
-        if (!EVOLUTION_API_URL || !EVOLUTION_API_KEY || !EVOLUTION_INSTANCE) {
+        // Candidates: Sanitized (from config) AND Raw (from DB)
+        // We use a Set to avoid duplicates
+        const candidateInstances = new Set<string>();
+        if (config.instance) candidateInstances.add(config.instance);
+        if (instKey && instKey !== 'undefined') candidateInstances.add(instKey); // Raw from DB
+
+        // Also try simple variations if needed (e.g. trimming)
+        if (instKey) candidateInstances.add(instKey.trim());
+
+        // CRITICAL: Fetch RAW instance names from DB to ensure case-sensitivity (Evolution API is case sensitive for instance names)
+        // 1. From Company Main Settings
+        try {
+          if (pool) {
+            if (resolvedCompanyId) {
+              const rawComp = await pool.query('SELECT evolution_instance FROM companies WHERE id = $1', [resolvedCompanyId]);
+              if (rawComp.rows.length > 0 && rawComp.rows[0].evolution_instance) {
+                candidateInstances.add(rawComp.rows[0].evolution_instance);
+              }
+            }
+            // 2. From Company Instances (if instKey looks like ID or just to be sure)
+            if (instKey && instKey.startsWith('id:')) {
+              const idPart = instKey.split(':')[1];
+              const rawInst = await pool.query('SELECT instance_key FROM company_instances WHERE id = $1', [idPart]);
+              if (rawInst.rows.length > 0 && rawInst.rows[0].instance_key) {
+                candidateInstances.add(rawInst.rows[0].instance_key);
+              }
+            } else if (instKey && resolvedCompanyId) {
+              // Try to find by insensitive match to get the RAW case
+              const rawInst = await pool.query('SELECT instance_key FROM company_instances WHERE LOWER(instance_key) = LOWER($1) AND company_id = $2', [instKey, resolvedCompanyId]);
+              if (rawInst.rows.length > 0) {
+                candidateInstances.add(rawInst.rows[0].instance_key);
+              }
+            }
+          }
+        } catch (e) {
+          console.warn("[Sync] Failed to fetch raw instance names:", e);
+        }
+
+        if (!EVOLUTION_API_URL || !EVOLUTION_API_KEY || candidateInstances.size === 0) {
           console.warn(`[Sync] Skipping instance ${instKey || 'Default'}: Config missing.`);
           continue;
         }
 
-        // --- Connection Check ---
-        try {
-          const checkUrl = `${EVOLUTION_API_URL}/instance/connectionState/${EVOLUTION_INSTANCE}`;
-          const checkRes = await fetch(checkUrl, {
-            method: 'GET',
-            headers: { "apikey": EVOLUTION_API_KEY }
-          });
-          if (checkRes.ok) {
-            const checkData = await checkRes.json();
-            const state = (checkData?.instance?.state || checkData?.state || 'unknown');
-            if (state !== 'open') {
-              console.warn(`[Sync] Skipping instance ${EVOLUTION_INSTANCE} because it is not OPEN (State: ${state})`);
-              errorDetails.push(`Instance ${EVOLUTION_INSTANCE} is ${state}`);
-              continue;
-            }
-          }
-        } catch (connErr) {
-          console.warn(`[Sync] Failed to check connection for ${EVOLUTION_INSTANCE}:`, connErr);
-          // We proceed anyway in case the check failed but API works, but log it
-        }
-        // ------------------------
-
-        console.log(`[Sync] Instance: ${EVOLUTION_INSTANCE} (Key: ***${EVOLUTION_API_KEY.slice(-4)})`);
-
-        // Endpoints to try
-        const endpoints = [
-          { url: `${EVOLUTION_API_URL}/chat/fetchContacts/${EVOLUTION_INSTANCE}`, method: 'GET' },
-          { url: `${EVOLUTION_API_URL}/chat/fetchContacts/${EVOLUTION_INSTANCE}`, method: 'POST', body: { where: {} } },
-          { url: `${EVOLUTION_API_URL}/contact/fetchContacts/${EVOLUTION_INSTANCE}`, method: 'GET' },
-          { url: `${EVOLUTION_API_URL}/contact/find/${EVOLUTION_INSTANCE}`, method: 'POST', body: { where: {} } },
-          { url: `${EVOLUTION_API_URL}/chat/findContacts/${EVOLUTION_INSTANCE}`, method: 'POST', body: { where: {} } }
-        ];
+        console.log(`[Sync] Processing instance key variations: ${Array.from(candidateInstances).join(', ')}`);
 
         let contactsList: any[] = [];
         let success = false;
         let lastError = "";
 
-        for (const ep of endpoints) {
+        // Iterate over candidate instances (sanitized vs raw)
+        for (const currentInstance of candidateInstances) {
+          if (success) break;
+
+          // --- Connection Check (Optional, per candidate) ---
           try {
-            console.log(`[Sync] Trying ${ep.method} to ${ep.url}`);
-            const fetchOptions: any = {
-              method: ep.method,
-              headers: {
-                "Content-Type": "application/json",
-                "apikey": EVOLUTION_API_KEY
+            const checkUrl = `${EVOLUTION_API_URL}/instance/connectionState/${currentInstance}`;
+            const checkRes = await fetch(checkUrl, {
+              method: 'GET',
+              headers: { "apikey": EVOLUTION_API_KEY }
+            });
+            if (checkRes.ok) {
+              const checkData = await checkRes.json();
+              const state = (checkData?.instance?.state || checkData?.state || 'unknown');
+              if (state !== 'open') {
+                console.warn(`[Sync] Skipping candidate ${currentInstance} because it is not OPEN (State: ${state})`);
+                // Don't error out immediately, other candidates might work
               }
-            };
-            if (ep.method === 'POST') {
-              fetchOptions.body = JSON.stringify(ep.body || {});
             }
+          } catch (e) { /* ignore check error */ }
+          // ------------------------
 
-            const response = await fetch(ep.url, fetchOptions);
+          // Endpoints to try
+          const endpoints = [
+            { url: `${EVOLUTION_API_URL}/contact/find/${currentInstance}`, method: 'POST', body: { where: {} } }, // Primary V2
+            { url: `${EVOLUTION_API_URL}/contact/fetchContacts/${currentInstance}`, method: 'GET' }, // V1/V2
+            { url: `${EVOLUTION_API_URL}/chat/fetchContacts/${currentInstance}`, method: 'GET' }, // Chats
+            { url: `${EVOLUTION_API_URL}/chat/fetchContacts/${currentInstance}`, method: 'POST', body: { where: {} } },
+            { url: `${EVOLUTION_API_URL}/chat/findContacts/${currentInstance}`, method: 'POST', body: { where: {} } }
+          ];
 
-            const contentType = response.headers.get("content-type");
-            if (response.ok && contentType && contentType.includes("application/json")) {
-              const rawData = await response.json();
-              contactsList = Array.isArray(rawData) ? rawData : (rawData.data || rawData.contacts || rawData.results || []);
-              success = true;
-              console.log(`[Sync] Success via ${ep.url} (${ep.method}). Items: ${contactsList.length}`);
-              break;
-            } else {
-              const bodyText = await response.text().catch(() => "N/A");
-              lastError = `Status ${response.status} | Body: ${bodyText.substring(0, 50)}`;
-              console.warn(`[Sync] Endpoint failed ${ep.url} (${ep.method}): ${lastError}`);
+          for (const ep of endpoints) {
+            try {
+              console.log(`[Sync] Trying ${ep.method} to ${ep.url}`);
+              const fetchOptions: any = {
+                method: ep.method,
+                headers: {
+                  "Content-Type": "application/json",
+                  "apikey": EVOLUTION_API_KEY,
+                  "Authorization": `Bearer ${EVOLUTION_API_KEY}` // Try both
+                }
+              };
+              if (ep.method === 'POST') {
+                fetchOptions.body = JSON.stringify(ep.body || {});
+              }
+
+              const response = await fetch(ep.url, fetchOptions);
+              const contentType = response.headers.get("content-type");
+
+              if (response.ok && contentType && contentType.includes("application/json")) {
+                const rawData = await response.json();
+                // Handle various wrapper formats
+                const list = Array.isArray(rawData) ? rawData : (rawData.data || rawData.contacts || rawData.results || []);
+
+                if (Array.isArray(list) && list.length > 0) {
+                  contactsList = list;
+                  success = true;
+                  console.log(`[Sync] Success via ${ep.url}. Items: ${contactsList.length}`);
+                  break;
+                } else {
+                  // Empty list is technical success but maybe try other endpoints for more data?
+                  // For now, if we get OK but empty, we might continue unless it's the only source.
+                  // Let's accept it if it's an array.
+                  if (Array.isArray(list)) {
+                    contactsList = list;
+                    // Don't break yet? No, if we found "empty" contacts maybe we should look elsewhere?
+                    // But usually /contact/find is authoritative. 
+                    // Let's break if we found ANY data, otherwise continue
+                    // logic: if (list.length > 0) success=true; break;
+                    // Modified:
+                  }
+                  lastError = "Empty list returned";
+                }
+              } else {
+                const bodyText = await response.text().catch(() => "N/A");
+                lastError = `Status ${response.status}`;
+                // console.warn(`[Sync] Endpoint failed ${ep.url}: ${lastError}`);
+              }
+            } catch (err: any) {
+              lastError = err.message;
             }
-          } catch (err: any) {
-            lastError = err.message;
-            console.warn(`[Sync] Error calling ${ep.url}: ${err.message}`);
           }
         }
 
-        if (!success) {
-          errorDetails.push(`Instance ${EVOLUTION_INSTANCE}: ${lastError}`);
+        if (!success && contactsList.length === 0) {
+          errorDetails.push(`Instance ${instKey}: ${lastError}`);
           continue; // Try next instance
         }
 
@@ -1028,7 +1100,7 @@ export const syncEvolutionContacts = async (req: Request, res: Response) => {
 
             for (const contact of contactsList) {
               const rawId = contact.id || contact.remoteJid || contact.jid;
-              if (!rawId || contact.isGroup || rawId.endsWith('@g.us')) {
+              if (!rawId || (contact.isGroup) || (typeof rawId === 'string' && rawId.endsWith('@g.us'))) {
                 continue;
               }
 
@@ -1055,6 +1127,10 @@ export const syncEvolutionContacts = async (req: Request, res: Response) => {
               const pushName = contact.pushName || contact.notify;
               const profilePic = contact.profilePictureUrl || contact.profilePicture;
 
+              // Use the instance name that SUCCEEDED (we don't track which one in look check, but we can default to instKey or first candidate)
+              // Better to use instKey (DB key) for consistency
+              const instanceToSave = instKey || config.instance;
+
               await client.query(`
                 INSERT INTO whatsapp_contacts (jid, phone, name, push_name, profile_pic_url, instance, updated_at, company_id)
                 VALUES ($1, $2, $3, $4, $5, $6, NOW(), $7)
@@ -1066,14 +1142,14 @@ export const syncEvolutionContacts = async (req: Request, res: Response) => {
                   phone = EXCLUDED.phone,
                   instance = EXCLUDED.instance,
                   updated_at = NOW()
-              `, [jid, candidate, name, pushName || null, profilePic || null, EVOLUTION_INSTANCE, resolvedCompanyId]);
+              `, [jid, candidate, name, pushName || null, profilePic || null, instanceToSave, resolvedCompanyId]);
             }
             await client.query('COMMIT');
             processedCount++;
           } catch (dbErr) {
             await client.query('ROLLBACK');
-            console.error(`[Sync] DB Error for ${EVOLUTION_INSTANCE}:`, dbErr);
-            errorDetails.push(`DB Error ${EVOLUTION_INSTANCE}: ${(dbErr as any).message}`);
+            console.error(`[Sync] DB Error for ${instKey}:`, dbErr);
+            errorDetails.push(`DB Error ${instKey}: ${(dbErr as any).message}`);
           } finally {
             client.release();
           }

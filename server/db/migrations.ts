@@ -821,6 +821,17 @@ const runWhatsappMigrations = async () => {
             console.error("Error applying N8N migration:", e);
         }
 
+        // --- Multi-Channel Limits ---
+        console.log("Applying Multi-Channel Limits Migration...");
+        try {
+            await pool.query(`ALTER TABLE companies ADD COLUMN IF NOT EXISTS whatsapp_limit INTEGER DEFAULT 1`);
+            await pool.query(`ALTER TABLE companies ADD COLUMN IF NOT EXISTS instagram_limit INTEGER DEFAULT 1`);
+            await pool.query(`ALTER TABLE companies ADD COLUMN IF NOT EXISTS messenger_limit INTEGER DEFAULT 1`);
+            console.log("Multi-channel limit columns added.");
+        } catch (e) {
+            console.error("Error applying Multi-channel limits migration:", e);
+        }
+
         console.log("Workflows migrations finished.");
         console.log("Universal Audit logs migration finished.");
         console.log("AI Agents migrations finished.");

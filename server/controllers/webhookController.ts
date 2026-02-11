@@ -301,8 +301,11 @@ export const handleWebhook = async (req: Request, res: Response) => {
             // Resolve Company and Instance ID
             let meta = instanceMetaCache.get(instance);
             if (!meta) {
-                // 1. Check Multi-Instance Table (Preferred)
-                const instanceLookup = await pool.query('SELECT id, company_id, name FROM company_instances WHERE instance_key = $1', [instance]);
+                // 1. Check Multi-Instance Table (Preferred) - Check both Key and Name
+                const instanceLookup = await pool.query(
+                    'SELECT id, company_id, name FROM company_instances WHERE LOWER(instance_key) = LOWER($1) OR LOWER(name) = LOWER($1)',
+                    [instance]
+                );
                 if (instanceLookup.rows.length > 0) {
                     const row = instanceLookup.rows[0];
                     meta = {

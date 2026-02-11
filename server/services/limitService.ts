@@ -5,6 +5,13 @@ import { logEvent } from '../logger';
 export type ResourceType = 'users' | 'ai_agents' | 'automations' | 'messages' | 'queues' | 'campaigns' | 'schedules' | 'internal_chat' | 'external_api' | 'kanban';
 
 export const checkLimit = async (companyId: number, resource: ResourceType): Promise<boolean> => {
+    console.log(`[LimitService] Checking limit for company ${companyId}, resource: ${resource}`);
+    // User requested no limits for users - moved to top for absolute bypass
+    if (resource === 'users') {
+        console.log(`[LimitService] User limit BYPASS triggered for company ${companyId}`);
+        return true;
+    }
+
     if (!pool) return false;
     try {
         // Superadmin bypass (optional, but implemented at controller usually. Here we strictly check limits for the given companyId)
@@ -34,13 +41,6 @@ export const checkLimit = async (companyId: number, resource: ResourceType): Pro
 
         // 3. Check Count-Based Limits
 
-        if (resource === 'users') {
-            const currentUsers = await pool.query('SELECT COUNT(*) FROM app_users WHERE company_id = $1 AND is_active = true', [companyId]);
-            const count = parseInt(currentUsers.rows[0].count);
-            // Treat null as unlimited
-            if (plan.max_users === null) return true;
-            return count < plan.max_users;
-        }
 
         if (resource === 'ai_agents') {
             const currentAgents = await pool.query('SELECT COUNT(*) FROM ai_agents WHERE company_id = $1 AND status = \'active\'', [companyId]);
@@ -157,7 +157,7 @@ export const getPlanStatus = async (companyId: number) => {
         usage: {
             users: {
                 current: parseInt(usersRes.rows[0].count),
-                max: plan.max_users
+                max: null // Force unlimited in the UI/Status
             },
             ai_agents: {
                 current: parseInt(agentsRes.rows[0].count),

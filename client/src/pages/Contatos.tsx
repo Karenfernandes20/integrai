@@ -81,7 +81,7 @@ const BotaoSincronizarContatos = ({
                 <SelectContent>
                     <SelectItem value="all">Todas as Instâncias</SelectItem>
                     {instances.map((inst) => (
-                        <SelectItem key={inst.id} value={inst.instance_key}>
+                        <SelectItem key={inst.id} value={inst.instance_key || `id:${inst.id}`}>
                             {inst.name}
                         </SelectItem>
                     ))}

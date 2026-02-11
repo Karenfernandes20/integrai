@@ -68,7 +68,7 @@ export const createUser = async (req: Request, res: Response) => {
       // If user is adding user to their own company or superadmin adding to another
       const allowed = await checkLimit(company_id, 'users');
       if (!allowed) {
-        return res.status(403).json({ error: 'Limite de usuários atingido para este plano.' });
+        return res.status(403).json({ error: `Limite de usuários atingido para este plano. (Status: ${allowed}, CoId: ${company_id})` });
       }
     }
 

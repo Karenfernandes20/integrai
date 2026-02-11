@@ -244,7 +244,7 @@ const SmartAgenda = () => {
             // Fix: Create Date objects from local string to handle timezone conversion correctly
             const startDate = new Date(`${formData.date}T${formData.start_time}:00`);
             const endDate = new Date(`${formData.date}T${formData.end_time}:00`);
-            
+
             const payload = {
                 title: formData.title,
                 ...formData,
@@ -489,9 +489,9 @@ const SmartAgenda = () => {
                             <div className="overflow-x-auto custom-scrollbar">
                                 <div className={cn(
                                     "min-w-full",
-                                    view === 'week' ? (isMobile ? "min-w-[600px]" : "min-w-[900px]") :
-                                        view === 'month' ? (isMobile ? "min-w-[500px]" : "min-w-[750px]") :
-                                            (isMobile ? "min-w-[300px]" : "")
+                                    view === 'week' ? (isMobile ? "min-w-[400px]" : "min-w-full") :
+                                        view === 'month' ? (isMobile ? "min-w-[350px]" : "min-w-full") :
+                                            (isMobile ? "min-w-[250px]" : "min-w-full")
                                 )}>
                                     {view === 'month' ? (
                                         // MONTH VIEW - Calendar Style
@@ -579,19 +579,19 @@ const SmartAgenda = () => {
                                             {/* Header Row */}
                                             <div className={cn(
                                                 "grid border-b bg-slate-50",
-                                                view === 'day' ? "grid-cols-[50px_1fr] sm:grid-cols-[60px_1fr]" : "grid-cols-[50px_repeat(7,1fr)] sm:grid-cols-[60px_repeat(7,1fr)]"
+                                                view === 'day' ? "grid-cols-[40px_1fr]" : "grid-cols-[40px_repeat(7,1fr)]"
                                             )}>
-                                                <div className="p-1 sm:p-2 border-r" />
+                                                <div className="p-0.5 border-r" />
                                                 {weekDays.map((day, idx) => (
                                                     <div key={idx} className={cn(
                                                         "p-2 text-center border-r last:border-r-0",
                                                         isToday(day) && "bg-emerald-50"
                                                     )}>
-                                                        <div className="text-[10px] sm:text-xs font-medium text-slate-500 uppercase">
+                                                        <div className="text-[9px] sm:text-[10px] font-medium text-slate-500 uppercase">
                                                             {format(day, 'EEE', { locale: ptBR })}
                                                         </div>
                                                         <div className={cn(
-                                                            "text-base sm:text-lg font-bold mt-0.5",
+                                                            "text-sm sm:text-base font-bold mt-0.5",
                                                             isToday(day) ? "text-emerald-600" : "text-slate-700"
                                                         )}>
                                                             {format(day, 'd')}
@@ -604,11 +604,11 @@ const SmartAgenda = () => {
                                             {timeSlots.map(hour => (
                                                 <div key={hour} className={cn(
                                                     "grid border-b min-h-[80px]",
-                                                    view === 'day' ? "grid-cols-[50px_1fr] sm:grid-cols-[60px_1fr]" : "grid-cols-[50px_repeat(7,1fr)] sm:grid-cols-[60px_repeat(7,1fr)]"
+                                                    view === 'day' ? "grid-cols-[40px_1fr]" : "grid-cols-[40px_repeat(7,1fr)]"
                                                 )}>
                                                     {/* Time Label */}
-                                                    <div className="p-1 sm:p-2 text-right border-r bg-slate-50/50">
-                                                        <span className="text-[10px] sm:text-sm font-medium text-slate-500">
+                                                    <div className="p-0.5 text-right border-r bg-slate-50/50">
+                                                        <span className="text-[9px] font-medium text-slate-500">
                                                             {hour}:00
                                                         </span>
                                                     </div>
@@ -646,11 +646,17 @@ const SmartAgenda = () => {
                                                                             getStatusColor(event.status)
                                                                         )}
                                                                     >
-                                                                        <div className="font-bold truncate">{event.client}</div>
-                                                                        <div className="text-xs opacity-80 truncate">{event.title}</div>
-                                                                        <div className="flex items-center gap-1 mt-1 text-[10px] opacity-70">
-                                                                            <Clock size={10} />
-                                                                            <span>{format(event.start, 'HH:mm')}</span>
+                                                                        <div className="flex justify-between items-center gap-1">
+                                                                            <div className="text-[11px] font-bold truncate">{event.client}</div>
+                                                                            <div className={cn("w-1.5 h-1.5 rounded-full shrink-0 border border-white/30 bg-current")} title={event.status}></div>
+                                                                        </div>
+                                                                        <div className="text-[10px] opacity-80 truncate">{event.title}</div>
+                                                                        <div className="flex items-center justify-between mt-1 text-[9px] opacity-70">
+                                                                            <div className="flex items-center gap-1">
+                                                                                <Clock size={10} />
+                                                                                <span>{format(event.start, 'HH:mm')}</span>
+                                                                            </div>
+                                                                            <span className="text-[7px] font-bold uppercase tracking-tighter opacity-80">{event.status}</span>
                                                                         </div>
 
                                                                         {/* Quick Actions - Show on Hover */}
