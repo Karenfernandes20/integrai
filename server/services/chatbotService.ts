@@ -144,8 +144,55 @@ const executeNode = async (botId: number, session: any, flow: FlowJson, messageT
             break;
 
         case 'action':
-            // Perform action (stub for now)
+            // Perform action
             console.log(`Executing action: ${currentNode.data.action}`);
+            if (currentNode.data.action === 'send_to_queue' && currentNode.data.queueId) {
+                const queueRes = await pool!.query(
+                    `SELECT id, company_id, is_active
+                     FROM company_queues
+                     WHERE id = $1`,
+                    [currentNode.data.queueId]
+                );
+
+                if (queueRes.rows.length > 0 && queueRes.rows[0].is_active) {
+                    const queue = queueRes.rows[0];
+                    const convRes = await pool!.query(
+                        `SELECT id, company_id
+                         FROM whatsapp_conversations
+                         WHERE phone = $1
+                           AND company_id = $2
+                         ORDER BY last_message_at DESC NULLS LAST
+                         LIMIT 1`,
+                        [session.contact_key, queue.company_id]
+                    );
+
+                    if (convRes.rows.length > 0) {
+                        const conversationId = convRes.rows[0].id;
+                        await pool!.query(
+                            `UPDATE whatsapp_conversations
+                             SET queue_id = $1, updated_at = NOW()
+                             WHERE id = $2`,
+                            [queue.id, conversationId]
+                        );
+
+                        try {
+                            const io = (global as any).io;
+                            if (io) {
+                                const qMeta = await pool!.query('SELECT name, color, is_active FROM company_queues WHERE id = $1', [queue.id]);
+                                io.to(`company_${queue.company_id}`).emit('conversation:update', {
+                                    id: conversationId,
+                                    queue_id: queue.id,
+                                    queue_name: qMeta.rows[0]?.name,
+                                    queue_color: qMeta.rows[0]?.color,
+                                    queue_is_active: qMeta.rows[0]?.is_active,
+                                });
+                            }
+                        } catch (socketErr) {
+                            console.warn('[ChatbotService] Could not emit queue update socket event:', socketErr);
+                        }
+                    }
+                }
+            }
             const aEdge = flow.edges.find(e => e.source === currentNode!.id);
             if (aEdge) {
                 nextNodeId = aEdge.target;

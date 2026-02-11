@@ -271,3 +271,65 @@ export const returnToPending = async (req: AuthenticatedRequest, res: Response) 
         return res.status(500).json({ error: "Internal Server Error" });
     }
 };
+
+export const assignConversationQueue = async (req: AuthenticatedRequest, res: Response) => {
+    try {
+        if (!pool) return res.status(500).json({ error: "DB not configured" });
+
+        const { id } = req.params;
+        const { queue_id } = req.body;
+        const companyId = req.user.company_id;
+
+        const convRes = await pool.query(
+            'SELECT id, company_id FROM whatsapp_conversations WHERE id = $1',
+            [id]
+        );
+        if (convRes.rows.length === 0) return res.status(404).json({ error: 'Conversation not found' });
+
+        const conv = convRes.rows[0];
+        if (req.user.role !== 'SUPERADMIN' && conv.company_id && Number(conv.company_id) !== Number(companyId)) {
+            return res.status(403).json({ error: 'Permissão negada.' });
+        }
+
+        let queuePayload: any = { queue_id: null, queue_name: null, queue_color: null, queue_is_active: null };
+
+        if (queue_id) {
+            const queueRes = await pool.query(
+                `SELECT id, company_id, name, color, is_active
+                 FROM company_queues
+                 WHERE id = $1`,
+                [queue_id]
+            );
+            if (queueRes.rows.length === 0) return res.status(404).json({ error: 'Fila não encontrada' });
+
+            const queue = queueRes.rows[0];
+            if (Number(queue.company_id) !== Number(conv.company_id)) {
+                return res.status(403).json({ error: 'Fila não pertence à empresa da conversa.' });
+            }
+            if (!queue.is_active) {
+                return res.status(400).json({ error: 'Não é possível atribuir uma fila inativa.' });
+            }
+            queuePayload = {
+                queue_id: queue.id,
+                queue_name: queue.name,
+                queue_color: queue.color,
+                queue_is_active: queue.is_active,
+            };
+        }
+
+        await pool.query(
+            'UPDATE whatsapp_conversations SET queue_id = $1, updated_at = NOW() WHERE id = $2',
+            [queuePayload.queue_id, id]
+        );
+
+        req.app.get('io')?.to(`company_${conv.company_id}`).emit('conversation:update', {
+            id,
+            ...queuePayload,
+        });
+
+        return res.json({ status: 'success', ...queuePayload });
+    } catch (e) {
+        console.error('Error assigning queue:', e);
+        return res.status(500).json({ error: 'Internal Server Error' });
+    }
+};

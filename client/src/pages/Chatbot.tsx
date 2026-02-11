@@ -247,16 +247,34 @@ import { Node, Edge } from '../components/chatbot/types';
 import { BotInstancesDialog } from '../components/chatbot/BotInstancesDialog';
 
 const BotEditor = ({ botId, onBack }: { botId: number, onBack: () => void }) => {
-    const { token } = useAuth();
+    const { token, user } = useAuth();
     const { toast } = useToast();
     const [nodes, setNodes] = useState<Node[]>([]);
     const [edges, setEdges] = useState<Edge[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [isInstancesOpen, setIsInstancesOpen] = useState(false);
+    const [activeQueues, setActiveQueues] = useState<Array<{ id: number; name: string; color: string }>>([]);
 
     useEffect(() => {
         fetchFlow();
     }, [botId]);
+
+    useEffect(() => {
+        const fetchQueues = async () => {
+            try {
+                if (!token || !user?.company_id) return;
+                const res = await fetch(`/api/queues/active?companyId=${user.company_id}`, {
+                    headers: { Authorization: `Bearer ${token}` }
+                });
+                if (!res.ok) return;
+                const data = await res.json();
+                setActiveQueues(Array.isArray(data) ? data : []);
+            } catch (error) {
+                console.error('Erro ao carregar filas ativas do chatbot', error);
+            }
+        };
+        fetchQueues();
+    }, [token, user?.company_id]);
 
     const fetchFlow = async () => {
         try {
@@ -380,6 +398,7 @@ const BotEditor = ({ botId, onBack }: { botId: number, onBack: () => void }) => 
                     initialNodes={nodes}
                     initialEdges={edges}
                     onSave={handleSave}
+                    activeQueues={activeQueues}
                 />
             </div>
 

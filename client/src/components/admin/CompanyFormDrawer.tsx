@@ -11,6 +11,7 @@ import { Badge } from "../ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select";
 import { useToast } from "../../hooks/use-toast";
 import { Company } from "./types";
+import { CompanyQueueManager } from "./CompanyQueueManager";
 
 const companySchema = z.object({
     name: z.string().min(1, "Nome é obrigatório."),
@@ -514,6 +515,13 @@ export function CompanyFormDrawer({ open, onOpenChange, editingCompany, token, o
                         </div>
 
                         <Separator className="my-2" />
+
+                        {editingCompany && (
+                            <>
+                                <CompanyQueueManager companyId={Number(editingCompany.id)} token={token} />
+                                <Separator className="my-2" />
+                            </>
+                        )}
 
                         <div className="space-y-2">
                             <Label>Logo da Empresa</Label>

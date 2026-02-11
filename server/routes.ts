@@ -29,7 +29,8 @@ import { authenticateToken, authorizeRole, authorizePermission } from './middlew
 import { rateLimit } from './middleware/rateLimitMiddleware';
 import { PERMISSIONS } from './config/roles';
 import { getCompanies, createCompany, updateCompany, deleteCompany, getCompanyUsers, getCompany, getCompanyInstances, updateCompanyInstance } from './controllers/companyController';
-import { startConversation, closeConversation, updateContactNameWithAudit, deleteConversation, returnToPending } from './controllers/conversationController';
+import { startConversation, closeConversation, updateContactNameWithAudit, deleteConversation, returnToPending, assignConversationQueue } from './controllers/conversationController';
+import { listCompanyQueues, createCompanyQueue, updateCompanyQueue, listActiveQueues } from './controllers/companyQueueController';
 import { getFollowUps, createFollowUp, updateFollowUp, deleteFollowUp, getFollowUpStats } from './controllers/followUpController';
 
 
@@ -58,6 +59,10 @@ router.get('/companies/:id', authenticateToken, getCompany);
 router.get('/companies/:id/users', authenticateToken, authorizeRole(['SUPERADMIN']), getCompanyUsers);
 router.get('/companies/:id/instances', authenticateToken, getCompanyInstances); // New
 router.put('/companies/:id/instances/:instanceId', authenticateToken, updateCompanyInstance); // New
+router.get('/companies/:id/queues', authenticateToken, listCompanyQueues);
+router.post('/companies/:id/queues', authenticateToken, createCompanyQueue);
+router.put('/companies/:id/queues/:queueId', authenticateToken, updateCompanyQueue);
+router.get('/queues/active', authenticateToken, listActiveQueues);
 router.post('/companies', authenticateToken, authorizeRole(['SUPERADMIN']), upload.single('logo'), createCompany);
 router.put('/companies/:id', authenticateToken, upload.single('logo'), updateCompany);
 router.delete('/companies/:id', authenticateToken, authorizeRole(['SUPERADMIN']), deleteCompany);
@@ -160,6 +165,7 @@ router.get('/crm/dashboard', authenticateToken, getCrmDashboardStats);
 router.post('/crm/conversations/:id/start', authenticateToken, startConversation);
 router.post('/crm/conversations/:id/close', authenticateToken, closeConversation);
 router.post('/crm/conversations/:id/pending', authenticateToken, returnToPending);
+router.put('/crm/conversations/:id/queue', authenticateToken, assignConversationQueue);
 router.put('/crm/conversations/:id/name', authenticateToken, updateContactNameWithAudit);
 router.delete('/crm/conversations/:id', authenticateToken, deleteConversation);
 
