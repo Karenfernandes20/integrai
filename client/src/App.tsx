@@ -65,6 +65,7 @@ import FinanceiroPage from "./pages/Financeiro";
 import UsuariosPage from "./pages/Usuarios";
 import CidadesPage from "./pages/Cidades";
 import QrCodePage from "./pages/QrCode";
+import InstanceDiagnostics from "./pages/InstanceDiagnostics";
 import ConfiguracoesPage from "./pages/Configuracoes";
 import ForgotPasswordPage from "./pages/ForgotPassword";
 import ResetPasswordPage from "./pages/ResetPassword";
@@ -166,6 +167,7 @@ const App = () => (
                   <Route path="cidades" element={<CidadesPage />} />
                   <Route path="estoque" element={<EstoquePage />} />
                   <Route path="qr-code" element={<QrCodePage />} />
+                  <Route path="diagnosticos/instancia" element={<InstanceDiagnostics />} />
                   <Route path="chatbot" element={<ChatbotPage />} />
                   <Route path="ia" element={<ChatbotPage />} />
                   <Route path="configuracoes" element={<ConfiguracoesPage />} />

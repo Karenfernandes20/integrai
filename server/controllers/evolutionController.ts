@@ -342,44 +342,145 @@ export const getEvolutionQrCode = async (req: Request, res: Response) => {
 export const deleteEvolutionInstance = async (req: Request, res: Response) => {
   const targetCompanyId = req.query.companyId as string;
   const targetInstanceKey = req.query.instanceKey as string;
-  const config = await getEvolutionConfig((req as any).user, 'disconnect', targetCompanyId, targetInstanceKey);
-  const EVOLUTION_API_URL = config.url;
-  const EVOLUTION_API_KEY = config.apikey;
-  const EVOLUTION_INSTANCE = config.instance;
+  const user = (req as any).user;
 
   try {
-    if (!EVOLUTION_API_URL || !EVOLUTION_API_KEY) {
-      return res.status(500).json({ error: "Evolution API not configured" });
+    console.log(`[Disconnect] Request for company ${targetCompanyId}, instance key "${targetInstanceKey}"`);
+
+    // Fetch instance data directly first
+    if (!pool) {
+      return res.status(500).json({ error: "Database not configured" });
     }
 
-    const url = `${EVOLUTION_API_URL.replace(/\/$/, "")}/instance/logout/${EVOLUTION_INSTANCE}`;
+    const instRes = await pool.query(
+      'SELECT id, name, instance_key, api_key, company_id FROM company_instances WHERE instance_key = $1 AND company_id = $2',
+      [targetInstanceKey, Number(targetCompanyId)]
+    );
 
-    const response = await fetch(url, {
-      method: "DELETE",
-      headers: {
-        "Content-Type": "application/json",
-        apikey: EVOLUTION_API_KEY,
-      },
+    console.log(`[Disconnect] Instance lookup result:`, instRes.rows);
+
+    if (instRes.rows.length === 0) {
+      return res.status(404).json({ error: `Instance "${targetInstanceKey}" not found for company ${targetCompanyId}` });
+    }
+
+    const instance = instRes.rows[0];
+    console.log(`[Disconnect] Found instance:`, {
+      id: instance.id,
+      name: instance.name,
+      api_key_exists: !!instance.api_key,
+      api_key_length: instance.api_key?.length || 0
     });
 
-    if (!response.ok) {
-      // Se der erro 404, pode ser que já esteja desconectado, então tratamos como sucesso ou erro leve
-      if (response.status === 404) {
-        return res.status(200).json({ message: "Instance was already disconnected" });
-      }
-
-      const text = await response.text().catch(() => undefined);
-      return res.status(response.status).json({
-        error: "Failed to disconnect instance",
-        status: response.status,
-        body: text,
+    if (!instance.api_key || instance.api_key.length < 10) {
+      return res.status(400).json({
+        error: "Instance API Key not configured",
+        details: `Instance "${instance.name}" (${instance.instance_key}) does not have a valid API Key configured`
       });
     }
 
-    const data = await response.json();
-    return res.status(200).json(data);
+    // Get company URL
+    const companyRes = await pool.query('SELECT evolution_url FROM companies WHERE id = $1', [Number(targetCompanyId)]);
+    let evolutionUrl = process.env.EVOLUTION_API_URL || "https://evolution.integrai.com.br";
+
+    if (companyRes.rows.length > 0 && companyRes.rows[0].evolution_url) {
+      evolutionUrl = companyRes.rows[0].evolution_url;
+    }
+
+    evolutionUrl = evolutionUrl.replace(/['"]/g, "").replace(/\/$/, "");
+
+    const config = {
+      url: evolutionUrl,
+      apikey: instance.api_key,
+      instance: instance.instance_key
+    };
+
+    console.log(`[Disconnect] Resolved config:`, {
+      instance: config.instance,
+      url: config.url,
+      apikey_length: config.apikey.length
+    });
+
+    if (!config.url || !config.apikey) {
+      return res.status(500).json({ error: "Evolution API not configured" });
+    }
+
+    if (!config.instance) {
+      return res.status(400).json({ error: "Instance name not found or invalid" });
+    }
+
+    const url = `${config.url}/instance/logout/${config.instance}`;
+    console.log(`[Disconnect] Calling Evolution API: ${url}`);
+
+    // Try with instance API key first
+    let response = await fetch(url, {
+      method: "DELETE",
+      headers: {
+        "Content-Type": "application/json",
+        apikey: config.apikey,
+      },
+    });
+
+    console.log(`[Disconnect] Evolution API response status: ${response.status}`);
+
+    // If 401 Unauthorized, try with global API key as fallback
+    if (response.status === 401) {
+      console.log(`[Disconnect] Instance API Key unauthorized, trying with global key...`);
+
+      const globalKey = process.env.EVOLUTION_API_KEY; // Assuming GLOBAL_API_KEY is process.env.EVOLUTION_API_KEY
+      if (globalKey && globalKey !== config.apikey) {
+        response = await fetch(url, {
+          method: "DELETE",
+          headers: {
+            "Content-Type": "application/json",
+            apikey: globalKey,
+          },
+        });
+        console.log(`[Disconnect] Global key attempt status: ${response.status}`);
+      }
+    }
+
+    if (!response.ok) {
+      if (response.status === 404) {
+        console.log(`[Disconnect] Instance ${config.instance} already disconnected (404)`);
+        // Update DB status to disconnected
+        await pool.query('UPDATE company_instances SET status = $1 WHERE id = $2', ['disconnected', instance.id]);
+        return res.status(200).json({ message: "Instance was already disconnected", status: "success" });
+      }
+
+      const text = await response.text().catch(() => "No response body");
+      console.error(`[Disconnect] Failed with status ${response.status}: ${text}`);
+
+      let errorMessage = "Failed to disconnect instance from Evolution API";
+
+      // Add specific message for 401
+      if (response.status === 401) {
+        errorMessage = "API Key não tem permissão para desconectar esta instância. Verifique se a API Key está correta.";
+      } else {
+        // Try to parse error details
+        try {
+          const errorData = JSON.parse(text);
+          errorMessage = errorData.message || errorData.error || errorMessage;
+        } catch (e) {
+          // If not JSON, use text directly if it's meaningful
+          if (text && text.length > 0 && text.length < 200) {
+            errorMessage = text;
+          }
+        }
+      }
+
+      return res.status(response.status).json({
+        error: errorMessage,
+        status: response.status,
+        url: url,
+        instance: config.instance
+      });
+    }
+
+    const data = await response.json().catch(() => ({ success: true }));
+    console.log(`[Disconnect] Success! Response:`, data);
+    return res.status(200).json({ message: "Instance disconnected successfully", data });
   } catch (error: any) {
-    console.error("Erro ao desconectar instância Evolution:", error);
+    console.error("[Disconnect] Error:", error);
     return res.status(500).json({
       error: "Internal server error while disconnecting instance",
       details: error?.message || String(error)
@@ -2436,13 +2537,13 @@ export const getSystemWhatsappStatus = async (req: Request, res: Response) => {
           await pool!.query(
             `INSERT INTO company_instances (company_id, instance_key, api_key, status, phone, created_at, updated_at)
                   VALUES ($1, $2, $3, $4, $5, NOW(), NOW())
-                  ON CONFLICT (instance_key) DO UPDATE SET status = $4, updated_at = NOW()`,
+                  ON CONFLICT (instance_key) DO UPDATE SET status = $4`,
             [companyId, instance, apikey, finalStatus, 'Importado']
           );
         } else if (!targetInstance.is_legacy_check && targetInstance.status !== finalStatus) {
           // UPDATE Logic
           console.log(`[SystemStatus] Updating DB for ${instance}: ${targetInstance.status} -> ${finalStatus}`);
-          await pool!.query("UPDATE company_instances SET status = $1, updated_at = NOW() WHERE instance_key = $2", [finalStatus, instance]);
+          await pool!.query("UPDATE company_instances SET status = $1 WHERE instance_key = $2", [finalStatus, instance]);
         }
       }
 

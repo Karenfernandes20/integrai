@@ -197,13 +197,14 @@ export const getBotInstances = async (req: Request, res: Response) => {
         const result = await pool!.query(`
             SELECT 
                 ci.instance_key,
-                ci.instance_friendly_name,
+                ci.name as instance_friendly_name,
                 COALESCE(bi.active, false) as is_connected
             FROM company_instances ci
             LEFT JOIN bot_instances bi ON bi.instance_key = ci.instance_key AND bi.bot_id = $2
             WHERE ci.company_id = $1
         `, [companyId, id]);
 
+        console.log(`[getBotInstances] Found ${result.rows.length} instances for bot ${id}, company ${companyId}`);
         res.json(result.rows);
     } catch (error: any) {
         console.error("Error getting bot instances:", error);

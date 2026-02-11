@@ -132,6 +132,9 @@ export const handleWebhook = async (req: Request, res: Response) => {
     (async () => {
         try {
             const body = req.body;
+            console.log('🔔 [WEBHOOK] RECEBIDO EM:', new Date().toLocaleString('pt-BR'));
+            console.log('🔔 [WEBHOOK] Tipo:', body?.type || body?.event);
+            console.log('🔔 [WEBHOOK] Instância:', body?.instance || body?.instanceName);
             if (!body) return;
 
             // ... logging logic ...
@@ -165,17 +168,34 @@ export const handleWebhook = async (req: Request, res: Response) => {
             }
 
             // CONNECTION UPDATE HANDLING
-            if (normalizedType === 'CONNECTION_UPDATE') {
-                const state = data?.state || body.state;
-                const rawNumber = data?.number || body.number;
+            // Evolution V2: event="CONNECTION_UPDATE", data={ state: "open"|"close"|"connecting", statusReason: number }
+            if (normalizedType === 'CONNECTION_UPDATE' || normalizedType === 'INSTANCE_UPDATE') {
+                const stateData = data || body;
+                const state = stateData.state || stateData.status;
+                const rawNumber = stateData.number;
                 const cleanNumber = rawNumber ? rawNumber.split(':')[0] : null;
 
+                const dbStatus = state === 'open' ? 'connected' : (state === 'close' ? 'disconnected' : (state || 'disconnected'));
+
                 if (instance && pool) {
+                    // Update DB
                     await pool.query(
-                        'UPDATE company_instances SET status = $1, phone = COALESCE($2, phone) WHERE instance_key = $3 OR name = $3',
-                        [state === 'open' ? 'connected' : (state || 'disconnected'), cleanNumber, instance]
+                        'UPDATE company_instances SET status = $1, phone = COALESCE($2, phone) WHERE instance_key = $3',
+                        [dbStatus, cleanNumber, instance]
                     );
-                    console.log(`[Webhook] Instance ${instance} connection status updated to ${state} (${cleanNumber})`);
+
+                    console.log(`[Webhook] Instance ${instance} connection status updated to ${dbStatus} (${state})`);
+
+                    // Emit Socket Event
+                    const io = req.app.get('io');
+                    if (io) {
+                        io.emit('instance:status', {
+                            instanceKey: instance,
+                            status: dbStatus,
+                            state: state
+                        });
+                        console.log(`[Webhook] Emitted instance:status for ${instance}`);
+                    }
                 }
                 return;
             }

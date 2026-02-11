@@ -83,6 +83,36 @@ router.post('/evolution/contacts/sync', authenticateToken, syncEvolutionContacts
 router.put('/evolution/contacts/:id', authenticateToken, updateEvolutionContact);
 router.delete('/evolution/contacts/:id', authenticateToken, deleteEvolutionContact);
 router.delete('/evolution/disconnect', authenticateToken, deleteEvolutionInstance);
+router.put('/evolution/instance/:companyId/:instanceKey/api-key', authenticateToken, async (req: Request, res: Response) => {
+  try {
+    const { companyId, instanceKey } = req.params;
+    const { apiKey } = req.body;
+
+    if (!apiKey || apiKey.trim().length < 10) {
+      return res.status(400).json({ error: 'API Key must be at least 10 characters' });
+    }
+
+    // Update the instance with new API key
+    const result = await pool!.query(
+      'UPDATE company_instances SET api_key = $1 WHERE instance_key = $2 AND company_id = $3 RETURNING id, name, instance_key',
+      [apiKey.trim(), instanceKey, Number(companyId)]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: `Instance "${instanceKey}" not found for company ${companyId}` });
+    }
+
+    console.log(`[API KEY UPDATE] Instance ${instanceKey} API key updated successfully`);
+    res.json({
+      success: true,
+      message: `API Key updated for instance "${result.rows[0].name}"`,
+      instance: result.rows[0]
+    });
+  } catch (e: any) {
+    console.error('[API KEY UPDATE ERROR]', e);
+    res.status(500).json({ error: `Failed to update API key: ${e.message}` });
+  }
+});
 router.post('/evolution/messages/send', authenticateToken, rateLimit({ windowMs: 60000, max: 20 }), sendEvolutionMessage);
 router.post('/evolution/messages/media', authenticateToken, sendEvolutionMedia);
 router.post('/evolution/messages/react', authenticateToken, sendEvolutionReaction);
@@ -95,6 +125,53 @@ router.get('/evolution/debug/mapping', async (req, res) => {
   try {
     const result = await pool!.query('SELECT id, name, evolution_instance FROM companies');
     res.json(result.rows);
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+router.get('/evolution/debug/instance/:companyId/:instanceKey', authenticateToken, async (req: Request, res: Response) => {
+  try {
+    const { companyId, instanceKey } = req.params;
+
+    // Check instance in company_instances table
+    const instRes = await pool!.query(
+      'SELECT id, name, instance_key, api_key, status, created_at FROM company_instances WHERE instance_key = $1 AND company_id = $2',
+      [instanceKey, Number(companyId)]
+    );
+
+    if (instRes.rows.length === 0) {
+      return res.status(404).json({ error: `Instance "${instanceKey}" not found for company ${companyId}` });
+    }
+
+    const instance = instRes.rows[0];
+
+    // Check company evolution_url
+    const compRes = await pool!.query('SELECT evolution_url, evolution_instance FROM companies WHERE id = $1', [Number(companyId)]);
+    const company = compRes.rows[0];
+
+    res.json({
+      instance_found: true,
+      instance: {
+        id: instance.id,
+        name: instance.name,
+        instance_key: instance.instance_key,
+        api_key_exists: !!instance.api_key,
+        api_key_length: instance.api_key?.length || 0,
+        api_key_last_4: instance.api_key ? `...${instance.api_key.slice(-4)}` : 'N/A',
+        status: instance.status,
+        created_at: instance.created_at
+      },
+      company: {
+        evolution_url: company?.evolution_url || 'Default (from env)',
+        evolution_instance: company?.evolution_instance || 'N/A',
+      },
+      diagnostic: {
+        has_api_key: instance.api_key && instance.api_key.length > 10,
+        api_key_valid: instance.api_key && instance.api_key.length >= 10,
+        problem: !instance.api_key || instance.api_key.length < 10 ? 'API Key is missing or invalid' : 'OK'
+      }
+    });
   } catch (e: any) {
     res.status(500).json({ error: e.message });
   }
@@ -137,6 +214,9 @@ router.get('/evolution/webhook/get', authenticateToken, getEvolutionWebhook);
 router.post('/evolution/webhook/set', authenticateToken, setEvolutionWebhook);
 router.post('/evolution/webhook/:type', handleWebhook);
 router.post('/evolution/webhook', handleWebhook);
+// Alternative webhook routes for compatibility
+router.post('/webhooks/whatsapp', handleWebhook);
+router.post('/webhooks/whatsapp/:type', handleWebhook);
 router.get('/evolution/webhook-debug', debugWebhookPayloads);
 router.get('/evolution/conversations', authenticateToken, getConversations);
 router.post('/evolution/conversations/:conversationId/refresh', authenticateToken, refreshConversationMetadata);

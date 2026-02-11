@@ -83,6 +83,7 @@ import {
 import { io } from "socket.io-client";
 import { TagManager } from "../components/TagManager";
 import { ContactDetailsPanel } from "../components/ContactDetailsPanel";
+import { InstanceTag } from "../components/InstanceTag";
 import type { FormEvent } from "react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";

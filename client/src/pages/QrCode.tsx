@@ -3,6 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter }
 import { Button } from "../components/ui/button";
 import { QrCode as QrIcon, RefreshCcw, Instagram, MessageCircle, MessageSquare, Settings, Link2, Link2Off, ChevronRight, CheckCircle2, XCircle, AlertCircle, Info, ExternalLink } from "lucide-react";
 import { useAuth } from "../contexts/AuthContext";
+import { io } from "socket.io-client";
 import { cn } from "../lib/utils";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "../components/ui/dialog";
 import { Input } from "../components/ui/input";
@@ -117,7 +118,7 @@ const QrCodePage = () => {
         // Build a proper allInstances array
         const maxSlots = Number(company?.whatsapp_limit || 1);
         const allInstances: any[] = [];
-        
+
         for (let i = 0; i < maxSlots; i++) {
           const existingInst = instances[i];
           // If we're editing this slot and it matches, use the updated version
@@ -204,27 +205,128 @@ const QrCodePage = () => {
     }
   };
 
-  const handleDisconnect = async () => {
+  const handleDisconnect = async (instance?: any) => {
     try {
-      if (!confirm(`Tem certeza que deseja desconectar o WhatsApp da instância ${instanceName}?`)) return;
+      const targetInstance = instance || selectedInstance;
+      if (!targetInstance) {
+        setError("Nenhuma instância selecionada para desconectar");
+        return;
+      }
+
+      if (!confirm(`Tem certeza que deseja desconectar "${targetInstance.name || targetInstance.instance_key}"?`)) return;
+
       setIsLoading(true);
       setError(null);
       const targetId = selectedCompanyId || user?.company_id;
-      const instanceKey = selectedInstance?.instance_key;
-      const url = getApiUrl(`/api/evolution/disconnect`);
+
+      if (!targetId) {
+        throw new Error("Company ID não disponível");
+      }
+
+      console.log("[QrCode] Disconnecting instance:", {
+        companyId: targetId,
+        instanceKey: targetInstance.instance_key,
+        instanceId: targetInstance.id
+      });
+
+      // Build URL with both companyId and instanceKey
+      const params = new URLSearchParams();
+      params.append("companyId", String(targetId));
+      params.append("instanceKey", targetInstance.instance_key);
+      const url = `/api/evolution/disconnect?${params.toString()}`;
+
+      console.log("[Disconnect] Calling:", url);
+
       const response = await fetch(url, {
         method: "DELETE",
         headers: { Authorization: `Bearer ${token}` }
       });
-      if (!response.ok) throw new Error("Erro ao desconectar");
+
+      if (!response.ok) {
+        const body = await response.text();
+        let errorMsg = "Erro ao desconectar da instância";
+        try {
+          const jsonBody = JSON.parse(body);
+          errorMsg = jsonBody.error || jsonBody.message || errorMsg;
+        } catch (e) {
+          errorMsg = body || errorMsg;
+        }
+        console.error("[Disconnect] Error response:", { status: response.status, body });
+        throw new Error(errorMsg);
+      }
+
+      console.log("[Disconnect] Success! Response OK");
+
+      // Refresh instances to get updated status
+      const instRes = await fetch(`/api/companies/${targetId}/instances?sync=true`, {
+        headers: { "Authorization": `Bearer ${token}` }
+      });
+
+      if (instRes.ok) {
+        const updatedInstances = await instRes.json();
+        console.log("[Disconnect] Updated instances:", updatedInstances);
+        if (Array.isArray(updatedInstances)) {
+          setInstances(updatedInstances);
+          // Update selected instance
+          const updated = updatedInstances.find((i: any) => i.id === targetInstance.id);
+          if (updated) {
+            console.log("[Disconnect] Updated selected instance:", updated);
+            setSelectedInstance(updated);
+          }
+        }
+      }
+
       setQrCode(null);
-      setConnectionState("close");
+      setConnectionState("disconnected");
+      alert("Instância desconectada com sucesso!");
     } catch (err: any) {
+      console.error("[Disconnect Error]:", err);
       setError(err?.message || "Erro ao desconectar");
+      alert(err?.message || "Erro ao desconectar");
     } finally {
       setIsLoading(false);
     }
   };
+
+  // WebSocket Listener for Real-Time Status
+  useEffect(() => {
+    const socket = io();
+
+    socket.on('instance:status', (data: any) => {
+      console.log('[QrCode] Socket instance update (Real-Time):', data);
+
+      const { instanceKey, status, state } = data;
+
+      // Update global instances list
+      setInstances(prev => prev.map(inst => {
+        if (inst.instance_key === instanceKey || inst.name === instanceKey) {
+          const newStatus = status; // 'connected' | 'disconnected'
+          console.log(`[QrCode] TROPICAL UPDATING INSTANCE ${inst.instance_key} -> ${newStatus}`);
+          return { ...inst, status: newStatus };
+        }
+        return inst;
+      }));
+
+      // Update active selected instance state if matches
+      // Use callback to access current selectedInstance
+      setSelectedInstance(current => {
+        if (current && (current.instance_key === instanceKey || current.name === instanceKey)) {
+          const newStatus = status;
+          // Also update connectionState (visual state for scanning/etc)
+          if (newStatus === 'connected') setConnectionState('open');
+          else if (newStatus === 'disconnected') setConnectionState('close');
+          else setConnectionState(state || 'unknown');
+
+          return { ...current, status: newStatus };
+        }
+        return current;
+      });
+    });
+
+    return () => {
+      socket.disconnect();
+    };
+  }, []);
 
   useEffect(() => {
     if (token) {
@@ -313,15 +415,15 @@ const QrCodePage = () => {
       // Build a proper allInstances array that includes all current instances
       const allInstances: any[] = [];
       const maxSlots = Number(company?.whatsapp_limit || 1);
-      
+
       for (let i = 0; i < maxSlots; i++) {
         const existingInst = instances[i];
         // If we're editing this slot and it matches, use the updated version
         const isEditingThisSlot = trimmedInstance && (
-          (!trimmedInstance.id && trimmedInstance.slot_index === i) || 
+          (!trimmedInstance.id && trimmedInstance.slot_index === i) ||
           (trimmedInstance.id && existingInst?.id === trimmedInstance.id)
         );
-        
+
         if (isEditingThisSlot) {
           console.log(`[QrCode] Adding edited instance at index ${i}:`, trimmedInstance);
           allInstances.push(trimmedInstance);
@@ -362,9 +464,9 @@ const QrCodePage = () => {
             api_key: trimmedInstance.api_key
           };
 
-          console.log("[QrCode] Saving individual instance:", { 
-            instanceId: trimmedInstance.id, 
-            payload: { ...instancePayload, api_key: '***' } 
+          console.log("[QrCode] Saving individual instance:", {
+            instanceId: trimmedInstance.id,
+            payload: { ...instancePayload, api_key: '***' }
           });
 
           if (trimmedInstance.id) {
@@ -581,7 +683,7 @@ const QrCodePage = () => {
                   setSelectedInstance({ ...instToEdit });
                   setIsWaModalOpen(true);
                 }}
-                onDisconnect={() => instance ? handleDisconnect() : null}
+                onDisconnect={() => instance ? handleDisconnect(instance) : null}
                 statusText={isInstConnected ? `Conectado (${instance?.name || "Instância"})` : (instance ? "Desconectado" : "Aguardando Configuração")}
               />
             );
@@ -750,58 +852,82 @@ const QrCodePage = () => {
                 {/* EVOLUTION VIEW - QR CODE SECTION */}
                 {(company?.whatsapp_type || 'evolution') === 'evolution' && (
                   <div className="animate-in fade-in duration-500">
-                    {/* Only show this section if we are connecting, connected, or have a QR code */}
-                    {(isConnected || connectionState === 'connecting' || connectionState === 'scanning' || qrCode) && (
-                      <div className="flex flex-col items-center justify-center p-6 border-2 border-dashed rounded-3xl bg-white dark:bg-zinc-900 transition-all hover:border-primary/50 mt-4 relative overflow-hidden">
+                    {/* VALIDATION: Only show QR section if instance is properly configured */}
+                    {selectedInstance?.instance_key && selectedInstance?.api_key && (
+                      <>
+                        {/* Only show QR code area if we are connecting, connected, or have a QR code */}
+                        {(isConnected || connectionState === 'connecting' || connectionState === 'scanning' || qrCode) && (
+                          <div className="flex flex-col items-center justify-center p-6 border-2 border-dashed rounded-3xl bg-white dark:bg-zinc-900 transition-all hover:border-primary/50 mt-4 relative overflow-hidden">
 
-                        {/* Status Badge */}
-                        <div className="absolute top-4 right-4">
-                          <Badge className={cn(
-                            "uppercase tracking-widest",
-                            isConnected ? "bg-green-100 text-green-700" : "bg-yellow-100 text-yellow-700"
-                          )}>
-                            {isConnected ? "Conectado" : "Aguardando Conexão"}
-                          </Badge>
-                        </div>
+                            {/* Status Badge */}
+                            <div className="absolute top-4 right-4">
+                              <Badge className={cn(
+                                "uppercase tracking-widest",
+                                isConnected ? "bg-green-100 text-green-700" : "bg-yellow-100 text-yellow-700"
+                              )}>
+                                {isConnected ? "Conectado" : "Aguardando Conexão"}
+                              </Badge>
+                            </div>
 
-                        {/* Info Block */}
-                        <div className="w-full text-left mb-4 border-b pb-4 border-zinc-100 dark:border-zinc-800">
-                          <p className="text-xs font-bold text-zinc-400 uppercase tracking-widest">Instância</p>
-                          <p className="text-lg font-bold text-zinc-800 dark:text-white">{selectedInstance?.instance_key || "..."}</p>
-                          <p className="text-xs text-zinc-500 mt-1 flex items-center gap-1">
-                            Status: <span className={cn("font-bold", isConnected ? "text-green-500" : "text-yellow-500")}>{isConnected ? "Online" : "Pendente"}</span>
-                          </p>
-                        </div>
+                            {/* Info Block */}
+                            <div className="w-full text-left mb-4 border-b pb-4 border-zinc-100 dark:border-zinc-800">
+                              <p className="text-xs font-bold text-zinc-400 uppercase tracking-widest">Instância</p>
+                              <p className="text-lg font-bold text-zinc-800 dark:text-white">{selectedInstance?.instance_key || "..."}</p>
+                              <p className="text-xs text-zinc-500 mt-1 flex items-center gap-1">
+                                Status: <span className={cn("font-bold", isConnected ? "text-green-500" : "text-yellow-500")}>{isConnected ? "Online" : "Pendente"}</span>
+                              </p>
+                            </div>
 
-                        {isConnected ? (
-                          <div className="text-center space-y-4 w-full">
-                            <div className="h-20 w-20 bg-green-100 dark:bg-green-900/30 rounded-full flex items-center justify-center mx-auto mb-2 animate-in zoom-in duration-300">
-                              <CheckCircle2 className="h-10 w-10 text-green-600" />
-                            </div>
-                            <div className="space-y-1">
-                              <p className="font-bold text-lg text-green-700 dark:text-green-400">Tudo Pronto!</p>
-                              <p className="text-sm text-zinc-500">Sua instância está conectada e operando.</p>
-                            </div>
-                            <Button variant="destructive" size="sm" onClick={handleDisconnect} className="rounded-xl w-full max-w-xs mt-4">
-                              Desconectar Instância
-                            </Button>
-                          </div>
-                        ) : qrCode ? (
-                          <div className="text-center space-y-4 w-full animate-in zoom-in duration-300">
-                            <div className="p-4 bg-white rounded-3xl shadow-xl border border-zinc-100 inline-block text-center mb-2 mx-auto">
-                              <img src={qrCode} alt="QR" className="w-48 h-48 mix-blend-multiply" />
-                            </div>
-                            <div className="space-y-2">
-                              <p className="text-xs font-bold text-primary animate-pulse uppercase tracking-widest">Digitalize o código acima</p>
-                              <p className="text-xs text-zinc-400 max-w-xs mx-auto">Abra o WhatsApp {'>'} Configurações {'>'} Aparelhos Conectados {'>'} Conectar Aparelho</p>
-                            </div>
-                          </div>
-                        ) : (
-                          <div className="text-center py-8">
-                            <div className="animate-spin h-8 w-8 border-4 border-primary border-t-transparent rounded-full mx-auto mb-4"></div>
-                            <p className="text-sm font-medium text-zinc-500">Gerando QR Code...</p>
+                            {isConnected ? (
+                              <div className="text-center space-y-4 w-full">
+                                <div className="h-20 w-20 bg-green-100 dark:bg-green-900/30 rounded-full flex items-center justify-center mx-auto mb-2 animate-in zoom-in duration-300">
+                                  <CheckCircle2 className="h-10 w-10 text-green-600" />
+                                </div>
+                                <div className="space-y-1">
+                                  <p className="font-bold text-lg text-green-700 dark:text-green-400">Tudo Pronto!</p>
+                                  <p className="text-sm text-zinc-500">Sua instância está conectada e operando.</p>
+                                </div>
+                                <Button variant="destructive" size="sm" onClick={handleDisconnect} className="rounded-xl w-full max-w-xs mt-4">
+                                  Desconectar Instância
+                                </Button>
+                              </div>
+                            ) : qrCode ? (
+                              <div className="text-center space-y-4 w-full animate-in zoom-in duration-300">
+                                <div className="p-4 bg-white rounded-3xl shadow-xl border border-zinc-100 inline-block text-center mb-2 mx-auto">
+                                  <img src={qrCode} alt="QR" className="w-48 h-48 mix-blend-multiply" />
+                                </div>
+                                <div className="space-y-2">
+                                  <p className="text-xs font-bold text-primary animate-pulse uppercase tracking-widest">Digitalize o código acima</p>
+                                  <p className="text-xs text-zinc-400 max-w-xs mx-auto">Abra o WhatsApp {'>'} Configurações {'>'} Aparelhos Conectados {'>'} Conectar Aparelho</p>
+                                </div>
+                              </div>
+                            ) : (
+                              <div className="text-center py-8">
+                                <div className="animate-spin h-8 w-8 border-4 border-primary border-t-transparent rounded-full mx-auto mb-4"></div>
+                                <p className="text-sm font-medium text-zinc-500">Gerando QR Code...</p>
+                              </div>
+                            )}
                           </div>
                         )}
+                      </>
+                    )}
+
+                    {/* Instruction message if not configured yet */}
+                    {(!selectedInstance?.instance_key || !selectedInstance?.api_key) && (
+                      <div className="mt-4 p-4 bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-900 rounded-xl">
+                        <div className="flex items-start gap-3">
+                          <Info className="h-5 w-5 text-blue-600 flex-shrink-0 mt-0.5" />
+                          <div className="space-y-1">
+                            <p className="text-sm font-bold text-blue-900 dark:text-blue-300">Configure a instância primeiro</p>
+                            <p className="text-xs text-blue-700 dark:text-blue-400">
+                              Preencha os campos obrigatórios acima:<br />
+                              • <strong>Nome Amigável</strong> (Ex: Recepção, Comercial)<br />
+                              • <strong>Chave da Instância</strong> (Ex: integrai)<br />
+                              • <strong>API Key da Instância</strong><br />
+                              Depois clique em "Salvar e Conectar" para gerar o QR Code.
+                            </p>
+                          </div>
+                        </div>
                       </div>
                     )}
                   </div>
