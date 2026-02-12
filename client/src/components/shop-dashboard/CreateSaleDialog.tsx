@@ -157,12 +157,18 @@ export function CreateSaleDialog({ open, onOpenChange, onSuccess }: CreateSaleDi
             return;
         }
 
+        // Ensure qty doesn't exceed limit
+        if (qty <= 0) {
+            toast({ title: "Quantidade inválida", description: "A quantidade deve ser maior que zero.", variant: "destructive" });
+            return;
+        }
+
         const newItem: CartItem = {
             inventory_id: product.id,
             name: product.name,
-            quantity: qty,
+            quantity: Math.min(qty, product.quantity), // Cap at available stock
             unit_price: Number(product.sale_price),
-            total: Number(product.sale_price) * qty
+            total: Number(product.sale_price) * Math.min(qty, product.quantity)
         };
 
         setCart([...cart, newItem]);
@@ -319,8 +325,13 @@ export function CreateSaleDialog({ open, onOpenChange, onSuccess }: CreateSaleDi
                                         <Input
                                             type="number"
                                             min="1"
+                                            max={selectedProduct ? products.find(p => p.id.toString() === selectedProduct)?.quantity || 1 : 1}
                                             value={qty}
-                                            onChange={e => setQty(Number(e.target.value))}
+                                            onChange={e => {
+                                                const val = Number(e.target.value);
+                                                const maxStock = selectedProduct ? products.find(p => p.id.toString() === selectedProduct)?.quantity || 1 : 1;
+                                                setQty(Math.min(Math.max(1, val), maxStock));
+                                            }}
                                             className="h-10 text-center font-bold"
                                         />
                                     </div>

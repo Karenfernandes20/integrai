@@ -65,23 +65,42 @@ const RelatoriosPage = () => {
             let res;
             if (activeTab === 'dre') {
                 res = await fetch(`/api/reports/dre?${query}`, { headers: { Authorization: `Bearer ${token}` } });
-                if (res.ok) setDreData(await res.json());
+                if (res.ok) {
+                    const data = await res.json();
+                    console.log('[Relatórios] DRE data:', data);
+                    setDreData(data);
+                }
             } else if (activeTab === 'breakdown') {
                 res = await fetch(`/api/reports/breakdown?${query}`, { headers: { Authorization: `Bearer ${token}` } });
-                if (res.ok) setBreakdownData(await res.json());
+                if (res.ok) {
+                    const data = await res.json();
+                    console.log('[Relatórios] Breakdown data:', data);
+                    setBreakdownData(data);
+                }
             } else if (activeTab === 'indicators') {
                 res = await fetch(`/api/reports/indicators`, { headers: { Authorization: `Bearer ${token}` } });
-                if (res.ok) setIndicatorsData(await res.json());
+                if (res.ok) {
+                    const data = await res.json();
+                    console.log('[Relatórios] Indicators data:', data);
+                    setIndicatorsData(data);
+                }
             } else if (activeTab === 'operational') {
                 res = await fetch(`/api/reports/operational?${query}`, { headers: { Authorization: `Bearer ${token}` } });
-                if (res.ok) setOperationalData(await res.json());
+                if (res.ok) {
+                    const data = await res.json();
+                    console.log('[Relatórios] Operational data:', data);
+                    setOperationalData(data);
+                }
             }
 
             if (res && !res.ok) {
+                const errorData = await res.json().catch(() => ({ error: 'Erro desconhecido' }));
+                console.error('[Relatórios] Error response:', { status: res.status, data: errorData });
+
                 if (res.status === 403) {
                     throw new Error("Acesso negado. Você não tem permissão para visualizar este relatório.");
                 }
-                throw new Error("Falha ao carregar dados do servidor.");
+                throw new Error(errorData.error || "Falha ao carregar dados do servidor.");
             }
 
         } catch (error: any) {

@@ -252,6 +252,19 @@ export default function MetasPage() {
             const data = await res.json();
             if (!res.ok) throw new Error(data.error || 'Erro ao criar meta');
             toast({ title: 'Meta criada com sucesso!' });
+            // Reset form
+            setGoalForm({
+                name: '',
+                type: 'revenue' as GoalType,
+                targetValue: '',
+                startDate: toDateInput(firstDayMonth),
+                endDate: toDateInput(lastDayMonth),
+                scope: 'company' as GoalScope,
+                sellerId: '',
+                channel: '',
+                productId: '',
+                category: ''
+            });
             setIsGoalModalOpen(false);
             fetchOverview();
         } catch (e: any) {
@@ -261,9 +274,18 @@ export default function MetasPage() {
 
     const handleDistribute = async () => {
         if (!instanceId) return;
-        if (!manualMode && !distributeForm.totalTarget) {
+        if (!distributeForm.totalTarget) {
             toast({ title: 'Informe a meta total', variant: 'destructive' });
             return;
+        }
+
+        // Validate manual distributions if in manual mode
+        if (manualMode) {
+            const hasEmpty = manualDistributions.some(d => !d.targetValue || Number(d.targetValue) <= 0);
+            if (hasEmpty) {
+                toast({ title: 'Distribuição inválida', description: 'Todas as metas individuais devem ter valores maiores que zero.', variant: 'destructive' });
+                return;
+            }
         }
 
         try {
@@ -286,6 +308,14 @@ export default function MetasPage() {
             const data = await res.json();
             if (!res.ok) throw new Error(data.error || 'Erro ao distribuir metas');
             toast({ title: 'Metas individuais criadas', description: `${data.created} metas geradas.` });
+            // Reset form
+            setDistributeForm({
+                totalTarget: '',
+                startDate: toDateInput(firstDayMonth),
+                endDate: toDateInput(lastDayMonth),
+                commissionRate: ''
+            });
+            setManualMode(false);
             setIsDistributeModalOpen(false);
             fetchOverview();
         } catch (e: any) {
