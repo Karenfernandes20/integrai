@@ -1,0 +1,87 @@
+Checking SHOP Data...
+
+--- INVENTORY (Last 5) ---
+[
+  {
+    "id": 3,
+    "name": "camisa ",
+    "quantity": "4.000",
+    "sale_price": "20.00",
+    "status": "active"
+  },
+  {
+    "id": 2,
+    "name": "Calça jeans mule 40",
+    "quantity": "3.000",
+    "sale_price": "80.00",
+    "status": "active"
+  },
+  {
+    "id": 1,
+    "name": "blusa virginia preta P",
+    "quantity": "5.000",
+    "sale_price": "50.00",
+    "status": "active"
+  }
+]
+--- COMPANIES ---
+[
+  {
+    "id": 17,
+    "name": "Leo",
+    "operation_type": "clientes"
+  },
+  {
+    "id": 32,
+    "name": "Loja Leo",
+    "operation_type": "loja"
+  },
+  {
+    "id": 30,
+    "name": "Karen Agenda",
+    "operation_type": "clinica"
+  },
+  {
+    "id": 1,
+    "name": "Empresa Principal",
+    "operation_type": "clientes"
+  },
+  {
+    "id": 21,
+    "name": "Karen",
+    "operation_type": "pacientes"
+  }
+]
+--- INSTANCES ---
+[
+  {
+    "id": 2,
+    "company_id": 21,
+    "name": "Karen",
+    "status": "disconnected"
+  },
+  {
+    "id": 1,
+    "company_id": 21,
+    "name": "integrai",
+    "status": "connected"
+  },
+  {
+    "id": 20,
+    "company_id": 31,
+    "name": "Gerencial",
+    "status": "connected"
+  },
+  {
+    "id": 37,
+    "company_id": 31,
+    "name": "Recepção",
+    "status": "connected"
+  },
+  {
+    "id": 38,
+    "company_id": 32,
+    "name": "Leo empresa",
+    "status": "connected"
+  }
+]

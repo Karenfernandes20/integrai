@@ -6,6 +6,8 @@ import { processChatbotMessage } from '../services/chatbotService';
 import { ensureQueueSchema, getOrCreateQueueId } from './queueController';
 import { normalizePhone, extractPhoneFromJid, isGroupJid } from '../utils/phoneUtils';
 import { downloadMediaFromEvolution } from '../services/mediaService';
+import { returnToPending } from './conversationController';
+import { handleWhaticketGreeting } from '../services/whaticketService';
 import { getEvolutionConfig } from './evolutionController';
 
 // Tipo simplificado da mensagem
@@ -211,7 +213,7 @@ export const handleWebhook = async (req: Request, res: Response) => {
 
             // ... rest of the function ...
 
-            // Accept various message event patterns (be exhaustive)
+            // Accept message and group/chat update event patterns
             const isMessageEvent = [
                 'MESSAGES_UPSERT', 'MESSAGES.UPSERT',
                 'MESSAGE_UPSERT', 'MESSAGE.UPSERT',
@@ -224,11 +226,40 @@ export const handleWebhook = async (req: Request, res: Response) => {
                 'SEND_MESSAGE', 'SEND.MESSAGE'
             ].includes(normalizedType);
 
-            if (!isMessageEvent) {
+            const isGroupOrChatUpdate = [
+                'GROUPS_UPDATE', 'GROUPS.UPDATE',
+                'GROUP_UPDATE', 'GROUP.UPDATE',
+                'CHATS_UPDATE', 'CHATS.UPDATE',
+                'CHATS_UPSERT', 'CHATS.UPSERT'
+            ].includes(normalizedType);
+
+            if (!isMessageEvent && !isGroupOrChatUpdate) {
                 // Silently ignore other events but log them for trace
-                const ignitionEvents = ['CONNECTION_UPDATE', 'PRESENCE_UPDATE', 'TYPEING_START', 'CHATS_UPSERT', 'CHATS_UPDATE'];
+                const ignitionEvents = ['CONNECTION_UPDATE', 'PRESENCE_UPDATE', 'TYPEING_START'];
                 if (!ignitionEvents.includes(normalizedType)) {
-                    console.log(`[Webhook] Ignoring non-message event: ${normalizedType}`);
+                    console.log(`[Webhook] Ignoring non-essential event: ${normalizedType}`);
+                }
+                return;
+            }
+
+            // If it's a group/chat update, we handle it and return
+            if (isGroupOrChatUpdate) {
+                const updateData = Array.isArray(data) ? data[0] : data;
+                const updateJid = updateData?.id || updateData?.remoteJid || updateData?.jid;
+                const updateName = updateData?.subject || updateData?.name || updateData?.title;
+
+                if (updateJid && updateJid.endsWith('@g.us') && updateName && pool) {
+                    console.log(`[Webhook] Updating group name for ${updateJid} to ${updateName}`);
+                    await pool.query(
+                        'UPDATE whatsapp_conversations SET group_name = $1, contact_name = $1, is_group = true WHERE external_id = $2',
+                        [updateName, updateJid]
+                    );
+
+                    // Emit socket update so frontend refreshes name
+                    const io = req.app.get('io');
+                    if (io) {
+                        io.emit('conversation:updated', { external_id: updateJid, group_name: updateName });
+                    }
                 }
                 return;
             }
@@ -412,7 +443,9 @@ export const handleWebhook = async (req: Request, res: Response) => {
                 if (!rawSource && normalizedType.includes('SEND')) rawSource = 'api';
                 if (!rawSource) rawSource = 'unknown';
 
-                if (['ios', 'android', 'web', 'whatsapp_mobile'].includes(rawSource)) {
+                if (['web', 'whatsapp_web'].includes(rawSource)) {
+                    messageSource = 'whatsapp_web';
+                } else if (['ios', 'android', 'whatsapp_mobile'].includes(rawSource)) {
                     messageSource = 'whatsapp_mobile';
                 } else {
                     messageSource = 'evolution_api';
@@ -422,7 +455,11 @@ export const handleWebhook = async (req: Request, res: Response) => {
             const phone = extractPhoneFromJid(remoteJid);
             // For groups, keep a group identifier in phone as well to avoid accidental private matching in old clients.
             const normalizedPhone = isGroup ? normalizedJid : normalizePhone(phone);
-            const name = msg.pushName || msg.pushname || phone;
+
+            // User Request: First time contact should show phone number. 
+            // We save pushName in its own column but use phone for the 'name' initially.
+            const name = normalizedPhone;
+
             const groupNameFromPayload =
                 msg.groupName ||
                 msg.group_name ||
@@ -431,6 +468,8 @@ export const handleWebhook = async (req: Request, res: Response) => {
                 msg.chat?.subject ||
                 msg.chat?.name ||
                 msg.groupMetadata?.subject ||
+                msg.data?.subject ||
+                msg.data?.group_name ||
                 null;
             // isGroup already defined
 
@@ -462,19 +501,34 @@ export const handleWebhook = async (req: Request, res: Response) => {
             let groupName = null;
             if (isGroup) {
                 // Never use pushName (participant name) as the group title.
-                groupName = groupNameFromPayload || `Grupo ${phone.substring(0, 8)}...`;
-                console.log(`[Webhook] Detected GROUP message for JID: ${normalizedJid}`);
+                groupName = groupNameFromPayload;
+
+                if (!groupName) {
+                    console.log(`[Webhook] Group message received for ${normalizedJid} but NO SUBJECT in payload. Triggering background refresh.`);
+                    // Proactively try to get metadata in background
+                    const { refreshConversationMetadata } = require('./evolutionController');
+                    if (refreshConversationMetadata) {
+                        // We don't await this as it might be slow
+                        refreshConversationMetadata({ params: { conversationId: normalizedJid }, query: { companyId } } as any, { json: () => { } } as any).catch(() => { });
+                    }
+                }
+
+                console.log(`[Webhook] Detected GROUP message for JID: ${normalizedJid} | Name: ${groupName || 'PENDING REFRESH'}`);
             }
 
             // Upsert Contact to prevent loose contacts and handle name updates
             if (!isGroup && companyId) {
                 try {
+                    // Update Contact without overwriting a manually set name
                     await pool.query(`
                         INSERT INTO whatsapp_contacts (jid, phone, name, push_name, instance, updated_at, company_id)
                         VALUES ($1, $2, $3, $4, $5, NOW(), $6)
                         ON CONFLICT (jid, company_id) 
                         DO UPDATE SET 
-                            name = COALESCE(NULLIF(EXCLUDED.name, EXCLUDED.phone), whatsapp_contacts.name),
+                            name = CASE 
+                                WHEN whatsapp_contacts.name IS NULL OR whatsapp_contacts.name = '' OR whatsapp_contacts.name = whatsapp_contacts.phone THEN EXCLUDED.name
+                                ELSE whatsapp_contacts.name 
+                            END,
                             push_name = COALESCE(EXCLUDED.push_name, whatsapp_contacts.push_name),
                             phone = EXCLUDED.phone,
                             instance = EXCLUDED.instance,
@@ -485,70 +539,63 @@ export const handleWebhook = async (req: Request, res: Response) => {
                 }
             }
 
-            // --- UNIFIED CONVERSATION LINKING LOGIC ---
+            // --- UNIFIED CONVERSATION LINKING LOGIC (Anti-Duplication) ---
             let conversationId: number;
             let currentStatus: string = 'PENDING';
+            let isNewConversation = false;
+            let previousStatus = 'PENDING';
 
-            // STRICT GROUP HANDLING: Look up by external_id AND instance.
-            // This aligns with UNIQUE(external_id, instance, company_id).
-            let checkQuery = `
-                SELECT id, status, is_group, contact_name, group_name, profile_pic_url, external_id, instance 
-                FROM whatsapp_conversations 
-                WHERE company_id = $2 AND instance = $3 AND (external_id = $1`;
+            // 1. First Attempt: Match strictly by JID + Instance + Company (The Gold Standard)
+            let checkConv = await pool.query(
+                `SELECT id, status, is_group, contact_name, group_name, profile_pic_url, external_id, instance, phone 
+                 FROM whatsapp_conversations 
+                 WHERE company_id = $1 AND external_id = $2 AND instance = $3`,
+                [companyId, normalizedJid, instance]
+            );
 
-            const queryParams = [normalizedJid, companyId, instance];
-
-            if (!isGroup) {
-                // Legacy support for individual chats via phone
-                checkQuery += ` OR (phone = $4 AND is_group = false))`;
-                queryParams.push(normalizedPhone);
-            } else {
-                checkQuery += `)`;
-                // queryParams.push(null); // Not needed if we don't bind $4
+            // 2. Second Attempt (Individuals Only): Fallback to matching by cleaned Phone Number across ANY instance
+            // This prevents "Ghost Cards" or Duplicates when the same user appears on a different instance or with/without suffix
+            if (checkConv.rows.length === 0 && !isGroup) {
+                checkConv = await pool.query(
+                    `SELECT id, status, is_group, contact_name, group_name, profile_pic_url, external_id, instance, phone 
+                     FROM whatsapp_conversations 
+                     WHERE company_id = $1 AND is_group = false AND phone = $2
+                     ORDER BY last_message_at DESC LIMIT 1`,
+                    [companyId, normalizedPhone]
+                );
+                if (checkConv.rows.length > 0) {
+                    console.log(`[Webhook] Found conversation by phone match instead of JID/Instance for ${normalizedPhone}. Preventing duplication.`);
+                }
             }
 
-            // Execute query
-            let checkConv = await pool.query(checkQuery, queryParams);
-
-            // If found, we use it. Instance matches by definition.
+            // If found, we use it. 
             if (checkConv.rows.length > 0) {
+
                 const row = checkConv.rows[0];
                 conversationId = row.id;
+                previousStatus = row.status || 'PENDING';
                 currentStatus = row.status || 'PENDING';
                 let newStatus = currentStatus;
 
-                if (direction === 'inbound') {
-                    // Inbound messages always reopen CLOSED chats to PENDING
-                    if (currentStatus === 'CLOSED') newStatus = 'PENDING';
-                }
-                else if (direction === 'outbound') {
-                    // Start logic for User Request: Mobile-initiated -> PENDING
-                    const isMobile = messageSource === 'whatsapp_mobile';
-
-                    if (isMobile) {
-                        // If I initiate/reply on mobile, user wants it to be PENDING so they can 'open' it in system later
-                        // Applies if it's currently CLOSED.
-                        if (currentStatus === 'CLOSED') {
-                            newStatus = 'PENDING';
-                        }
-                        // If it's already OPEN, we keep it OPEN (assuming agent is working on it)
-                        // If it's PENDING, we keep it PENDING.
-                    } else {
-                        // API/System sent messages -> Auto Open
-                        if (currentStatus === 'CLOSED' || currentStatus === 'PENDING') {
-                            newStatus = 'OPEN';
-                        }
-                    }
-                }
+                // User Request: EVERY message (inbound or outbound) moves conversation to PENDING
+                // regardless of its current state, unless manually changed to OPEN/CLOSED in system.
+                newStatus = 'PENDING';
 
                 currentStatus = newStatus;
                 const shouldForceGroup = isGroup && row.is_group !== true;
                 const shouldUpdateGroupName = isGroup && !!groupNameFromPayload && row.group_name !== groupNameFromPayload;
-                if (newStatus !== row.status || (msg.pushName && !row.is_group && row.contact_name !== msg.pushName) || shouldForceGroup || shouldUpdateGroupName) {
+
+                // CRITICAL FIX: Ensure we don't use pushName (sender) for group titles
+                const isActuallyGroup = isGroup || row.is_group;
+
+                if (newStatus !== row.status || (!isActuallyGroup && msg.pushName && (row.contact_name === null || row.contact_name === '' || row.contact_name === row.phone)) || shouldForceGroup || shouldUpdateGroupName) {
                     pool.query(
                         `UPDATE whatsapp_conversations
                          SET status = $1,
-                             contact_name = COALESCE($2, contact_name),
+                             contact_name = CASE 
+                                 WHEN contact_name IS NULL OR contact_name = '' OR contact_name = phone THEN COALESCE($2, contact_name)
+                                 ELSE contact_name
+                             END,
                              is_group = CASE WHEN $4 THEN true ELSE is_group END,
                              group_name = CASE 
                                  WHEN $5 IS NOT NULL THEN $5
@@ -558,10 +605,10 @@ export const handleWebhook = async (req: Request, res: Response) => {
                          WHERE id = $3`,
                         [
                             newStatus,
-                            (msg.pushName && !row.is_group) ? msg.pushName : (isGroup && groupNameFromPayload ? groupNameFromPayload : null),
+                            isActuallyGroup ? (groupNameFromPayload || row.group_name || row.contact_name) : (msg.pushName || null),
                             conversationId,
                             shouldForceGroup,
-                            isGroup ? groupNameFromPayload : null
+                            isActuallyGroup ? (groupNameFromPayload || row.group_name || row.contact_name) : null
                         ]
                     ).catch(() => { });
                 }
@@ -579,15 +626,9 @@ export const handleWebhook = async (req: Request, res: Response) => {
                     return;
                 }
 
-                if (direction === 'outbound') {
-                    // New Conversation Logic
-                    // Mobile -> PENDING
-                    // System -> OPEN
-                    const isMobile = messageSource === 'whatsapp_mobile';
-                    currentStatus = isMobile ? 'PENDING' : 'OPEN';
-                } else {
-                    currentStatus = 'PENDING';
-                }
+                // User Request: Every new conversation starts as PENDING
+                isNewConversation = true;
+                currentStatus = 'PENDING';
 
                 const finalName = isGroup ? (groupName || `Grupo ${phone.substring(0, 8)}`) : name;
 
@@ -724,12 +765,12 @@ export const handleWebhook = async (req: Request, res: Response) => {
 
             console.log(`[Webhook] Preparing to save message: direction=${direction}, externalId=${externalId}, convId=${conversationId}, content="${content.substring(0, 30)}..."`);
 
-            // Insert Message into database with instance tracking
+            // Insert Message into database with instance tracking and source attribution
             const insertedMsg = await pool.query(
-                `INSERT INTO whatsapp_messages (conversation_id, direction, content, sent_at, status, external_id, message_type, media_url, user_id, sender_jid, sender_name, company_id, instance_id, instance_key, instance_name) 
-                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15) 
+                `INSERT INTO whatsapp_messages (conversation_id, direction, content, sent_at, status, external_id, message_type, media_url, user_id, sender_jid, sender_name, company_id, instance_id, instance_key, instance_name, message_source, message_origin) 
+                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17) 
                  ON CONFLICT (external_id) DO NOTHING RETURNING *`,
-                [conversationId, direction, content, sent_at.toISOString(), 'received', externalId, messageType, mediaUrl, null, senderJid, senderName, companyId, instanceId, instance, instanceDisplayName]
+                [conversationId, direction, content, sent_at.toISOString(), 'received', externalId, messageType, mediaUrl, null, senderJid, senderName, companyId, instanceId, instance, instanceDisplayName, messageSource, messageSource]
             );
 
             if (insertedMsg.rows.length > 0) {
@@ -744,6 +785,19 @@ export const handleWebhook = async (req: Request, res: Response) => {
                     phone,
                     details: { content: content.substring(0, 500), instance, externalId }
                 });
+
+                // Whaticket: handle greeting for new or reopened tickets
+                if (direction === 'inbound' && !isGroup) {
+                    const io = req.app.get('io');
+                    handleWhaticketGreeting(
+                        conversationId,
+                        companyId,
+                        phone,
+                        isNewConversation,
+                        previousStatus,
+                        io
+                    ).catch(e => console.error('[Whaticket Webhook] Error:', e));
+                }
             }
 
             // If duplicate message (conflict), we still want to emit conversation update
@@ -781,8 +835,8 @@ export const handleWebhook = async (req: Request, res: Response) => {
                             status: currentStatus,
                             sender_jid: existingMsg.sender_jid,
                             sender_name: existingMsg.sender_name,
-                            agent_name: existingMsg.agent_name || ((existingMsg.direction === 'outbound' && !existingMsg.user_id) ? (existingMsg.message_source === 'whatsapp_mobile' ? 'Celular' : 'Sistema') : null),
-                            message_origin: (existingMsg.direction === 'outbound' && !existingMsg.user_id) ? (existingMsg.message_source === 'whatsapp_mobile' ? 'whatsapp_mobile' : 'evolution_api') : 'system'
+                            agent_name: existingMsg.agent_name || existingMsg.sent_by_user_name || ((existingMsg.direction === 'outbound' && !existingMsg.user_id) ? (existingMsg.message_source === 'whatsapp_mobile' ? 'Celular' : (existingMsg.message_source === 'whatsapp_web' ? 'WhatsApp Web' : 'Sistema')) : null),
+                            message_origin: (existingMsg.direction === 'outbound' && !existingMsg.user_id) ? (existingMsg.message_source === 'whatsapp_mobile' ? 'whatsapp_mobile' : (existingMsg.message_source === 'whatsapp_web' ? 'whatsapp_web' : 'evolution_api')) : 'system'
                         };
                         console.log(`[Webhook] Emitting duplicate message to rooms ${room}, ${instanceRoom}, global | Direction: ${existingMsg.direction}`);
                         io.to(room).emit('message:received', payload);
@@ -861,8 +915,8 @@ export const handleWebhook = async (req: Request, res: Response) => {
                         sender_jid: insertedMsg.rows[0].sender_jid,
                         sender_name: insertedMsg.rows[0].sender_name,
                         message_source: messageSource,
-                        agent_name: (direction === 'outbound' && !insertedMsg.rows[0].user_id) ? (messageSource === 'whatsapp_mobile' ? 'WhatsApp' : (msg.agent_name || 'Sistema')) : null,
-                        message_origin: (direction === 'outbound' && !insertedMsg.rows[0].user_id) ? (messageSource === 'whatsapp_mobile' ? 'whatsapp_mobile' : 'evolution_api') : 'system'
+                        agent_name: insertedMsg.rows[0].sent_by_user_name || ((direction === 'outbound' && !insertedMsg.rows[0].user_id) ? (messageSource === 'whatsapp_mobile' ? 'Celular' : (messageSource === 'whatsapp_web' ? 'WhatsApp Web' : (msg.agent_name || 'Sistema'))) : null),
+                        message_origin: (direction === 'outbound' && !insertedMsg.rows[0].user_id) ? (messageSource === 'whatsapp_mobile' ? 'whatsapp_mobile' : (messageSource === 'whatsapp_web' ? 'whatsapp_web' : 'evolution_api')) : 'system'
                     };
                     console.log(`[Webhook] Emitting message to rooms ${room}, ${instanceRoom}, global | Direction: ${insertedMsg.rows[0].direction}`);
                     io.to(room).emit('message:received', payload);
@@ -1087,6 +1141,14 @@ export const getConversations = async (req: Request, res: Response) => {
                 THEN COALESCE(c.profile_pic_url, co.profile_pic_url)
               ELSE COALESCE(co.profile_pic_url, c.profile_pic_url)
             END as profile_pic_url,
+            -- Prioritize Saved Name from whatsapp_contacts (Manually set in CRM)
+            COALESCE(
+                CASE WHEN (c.is_group = true OR c.external_id LIKE '%@g.us') THEN NULLIF(TRIM(c.group_name), '') ELSE NULL END,
+                NULLIF(TRIM(co.name), ''), 
+                NULLIF(TRIM(c.contact_name), ''),
+                NULLIF(TRIM(co.push_name), ''),
+                c.phone
+            ) as display_name,
             CASE
               WHEN co.name IS NULL OR btrim(co.name) = '' THEN NULL
               WHEN co.name ~* 'https?://'
@@ -1099,7 +1161,9 @@ export const getConversations = async (req: Request, res: Response) => {
             co.push_name as contact_push_name,
             comp.name as company_name,
             COALESCE(ci.name, c.last_instance_key, c.instance) as instance_friendly_name,
+            ci.color as instance_color,
             q.name as queue_name,
+            q.color as queue_color,
             CASE WHEN c.status = 'OPEN' THEN au.full_name ELSE NULL END as assigned_user_name,
             COALESCE((
                 SELECT json_agg(json_build_object('id', t.id, 'name', t.name, 'color', t.color))
@@ -1164,14 +1228,23 @@ export const getConversations = async (req: Request, res: Response) => {
         const params: any[] = [];
 
         if (user.role !== 'SUPERADMIN') {
-            query += ` AND c.company_id = $1`;
+            query += ` AND c.company_id = $${params.length + 1}`;
             params.push(user.company_id);
+
+            // Whaticket: Queue filter for non-admins
+            if (user.role !== 'ADMIN') {
+                query += ` AND (
+                    c.queue_id IS NULL 
+                    OR c.queue_id IN (SELECT queue_id FROM whatsapp_queues_users WHERE user_id = $${params.length + 1})
+                    OR c.user_id = $${params.length + 1}
+                )`;
+                params.push(user.id);
+            }
         } else {
             if (companyId) {
-                query += ` AND c.company_id = $1`;
+                query += ` AND c.company_id = $${params.length + 1}`;
                 params.push(companyId);
             }
-            // Superadmin without companyId now sees all companies/instances
         }
 
         // Lenient filter for valid conversations
@@ -1381,7 +1454,8 @@ export const getMessages = async (req: Request, res: Response) => {
                             WHEN m.direction = 'outbound' AND m.user_id IS NULL THEN 'Agente de IA'
                             ELSE NULL 
                         END as agent_name,
-                        COALESCE(ci.name, m.instance_name, m.instance_key) as instance_friendly_name
+                        COALESCE(ci.name, m.instance_name, m.instance_key) as instance_friendly_name,
+                        ci.color as instance_color
                 FROM whatsapp_messages m 
                 LEFT JOIN app_users u ON m.user_id = u.id 
                 LEFT JOIN whatsapp_contacts wc ON (

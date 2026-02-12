@@ -290,13 +290,10 @@ export const updateCompany = async (req: Request, res: Response) => {
             whatsapp_limit, instagram_limit, messenger_limit
         } = req.body;
 
-        console.log(`[Update Company ${id}] Request by user ${req.user?.id} (${req.user?.role})`);
-        console.log(`[Update Company ${id}] Body keys:`, Object.keys(req.body));
-        console.log(`[Update Company ${id}] Evolution URL:`, req.body.evolution_url);
-        console.log(`[Update Company ${id}] Instance Definitions:`, JSON.stringify(req.body.instanceDefinitions, null, 2));
-
         const user = (req as any).user;
         const isSuperAdmin = user?.role === 'SUPERADMIN';
+
+        console.log(`[Update Company ${id}] Request by user ${user?.id} (${user?.role})`);
 
         // Security Check: Non-SuperAdmin can only update their own company
         if (!isSuperAdmin) {
@@ -501,7 +498,7 @@ export const updateCompany = async (req: Request, res: Response) => {
         // --- INSTANCE SYNC & DEFINITIONS ---
         try {
             // Fetch current instances
-            const currentInstRes = await pool.query('SELECT id, instance_key, name FROM company_instances WHERE company_id = $1 ORDER BY id ASC', [id]);
+            const currentInstRes = await pool.query('SELECT id, instance_key, name, color FROM company_instances WHERE company_id = $1 ORDER BY id ASC', [id]);
             const currentInsts = currentInstRes.rows;
 
             console.log(`[Update Company ${id}] Processing instances. Current: ${currentInsts.length}, Definitions: ${parsedDefs ? parsedDefs.length : 0}`);
@@ -537,12 +534,13 @@ export const updateCompany = async (req: Request, res: Response) => {
                             const keyToUse = (def.instance_key && def.instance_key.trim()) ? sanitizedKey : targetInst.instance_key;
                             const nameToUse = def.name || targetInst.name || `WhatsApp ${i + 1}`;
                             const apiKeyToUse = def.api_key !== undefined ? def.api_key : null;
+                            const colorToUse = def.color || targetInst.color || '#3b82f6';
 
-                            console.log(`[Update Company ${id}] Updating instance ${targetInst.id}: name=${nameToUse}, key=${keyToUse}`);
+                            console.log(`[Update Company ${id}] Updating instance ${targetInst.id}: name=${nameToUse}, key=${keyToUse}, color=${colorToUse}`);
 
                             await pool.query(
-                                `UPDATE company_instances SET name = $1, instance_key = $2, api_key = $3 WHERE id = $4`,
-                                [nameToUse, keyToUse, apiKeyToUse, targetInst.id]
+                                `UPDATE company_instances SET name = $1, instance_key = $2, api_key = $3, color = $4 WHERE id = $5`,
+                                [nameToUse, keyToUse, apiKeyToUse, colorToUse, targetInst.id]
                             );
                         } else {
                             // CREATE new instance only if has instance_key
@@ -554,10 +552,10 @@ export const updateCompany = async (req: Request, res: Response) => {
                             console.log(`[Update Company ${id}] Creating new instance: name=${def.name}, key=${sanitizedKey}`);
 
                             const createRes = await pool.query(
-                                `INSERT INTO company_instances (company_id, name, instance_key, api_key, status)
-                                 VALUES ($1, $2, $3, $4, 'disconnected')
-                                 RETURNING id, company_id, name, instance_key, api_key, status, created_at`,
-                                [id, def.name || `WhatsApp ${i + 1}`, sanitizedKey, def.api_key || null]
+                                `INSERT INTO company_instances (company_id, name, instance_key, api_key, status, color)
+                                 VALUES ($1, $2, $3, $4, 'disconnected', $5)
+                                 RETURNING id, company_id, name, instance_key, api_key, status, created_at, color`,
+                                [id, def.name || `WhatsApp ${i + 1}`, sanitizedKey, def.api_key || null, def.color || '#3b82f6']
                             );
 
                             if (createRes.rows.length > 0) {
@@ -572,15 +570,15 @@ export const updateCompany = async (req: Request, res: Response) => {
 
                             if (targetInst) {
                                 await pool.query(
-                                    `UPDATE company_instances SET name = $1, instance_key = $2, api_key = $3 WHERE id = $4`,
-                                    [finalName, retryKey, def.api_key || null, targetInst.id]
+                                    `UPDATE company_instances SET name = $1, instance_key = $2, api_key = $3, color = $4 WHERE id = $5`,
+                                    [finalName, retryKey, def.api_key || null, def.color || '#3b82f6', targetInst.id]
                                 );
                             } else {
                                 await pool.query(
-                                    `INSERT INTO company_instances (company_id, name, instance_key, api_key, status)
-                                     VALUES ($1, $2, $3, $4, 'disconnected')
-                                     RETURNING id, company_id, name, instance_key, api_key, status, created_at`,
-                                    [id, finalName, retryKey, def.api_key || null]
+                                    `INSERT INTO company_instances (company_id, name, instance_key, api_key, status, color)
+                                     VALUES ($1, $2, $3, $4, 'disconnected', $5)
+                                     RETURNING id, company_id, name, instance_key, api_key, status, created_at, color`,
+                                    [id, finalName, retryKey, def.api_key || null, def.color || '#3b82f6']
                                 );
                             }
                         } else {
@@ -821,7 +819,7 @@ export const getCompanyInstances = async (req: Request, res: Response) => {
         }
 
         const { sync } = req.query;
-        let result = await pool.query('SELECT id, company_id, name, instance_key, api_key, status, created_at FROM company_instances WHERE company_id = $1 ORDER BY created_at ASC, id ASC', [id]);
+        let result = await pool.query('SELECT id, company_id, name, instance_key, api_key, status, created_at, color FROM company_instances WHERE company_id = $1 ORDER BY created_at ASC, id ASC', [id]);
         let instances = result.rows;
 
         console.log(`[getCompanyInstances] Company ${id}: Found ${instances.length} instances in DB`);
@@ -835,7 +833,7 @@ export const getCompanyInstances = async (req: Request, res: Response) => {
                 const insertRes = await pool.query(`
                     INSERT INTO company_instances (company_id, name, instance_key, api_key, status)
                     VALUES ($1, 'Instância Principal', $2, $3, 'disconnected')
-                    RETURNING id, company_id, name, instance_key, api_key, status, created_at
+                    RETURNING id, company_id, name, instance_key, api_key, status, created_at, color
                 `, [id, comp.evolution_instance, comp.evolution_apikey || null]);
                 instances = insertRes.rows;
                 console.log(`[getCompanyInstances] Migrated legacy instance: ${comp.evolution_instance}`);
@@ -907,9 +905,9 @@ export const updateCompanyInstance = async (req: Request, res: Response) => {
             return res.status(403).json({ error: 'Unauthorized' });
         }
 
-        const { name, api_key, instance_key } = req.body;
+        const { name, api_key, instance_key, color } = req.body;
 
-        console.log(`[updateCompanyInstance] Updating instance ${instanceId} for company ${id}:`, { name, instance_key: instance_key ? '***' : undefined });
+        console.log(`[updateCompanyInstance] Updating instance ${instanceId} for company ${id}:`, { name, instance_key: instance_key ? '***' : undefined, color });
 
         // Uniqueness check for instance_key
         if (instance_key && instance_key.trim()) {
@@ -933,10 +931,11 @@ export const updateCompanyInstance = async (req: Request, res: Response) => {
             `UPDATE company_instances 
              SET name = COALESCE($1, name), 
                  instance_key = COALESCE($2, instance_key),
-                 api_key = $3
-             WHERE id = $4 AND company_id = $5 
-             RETURNING id, company_id, name, instance_key, api_key, status, created_at`,
-            [name || null, sanitizedKey || null, api_key || null, instanceId, id]
+                 api_key = $3,
+                 color = COALESCE($4, color)
+             WHERE id = $5 AND company_id = $6 
+             RETURNING id, company_id, name, instance_key, api_key, status, created_at, color`,
+            [name || null, sanitizedKey || null, api_key || null, color || null, instanceId, id]
         );
 
         if (result.rows.length === 0) {

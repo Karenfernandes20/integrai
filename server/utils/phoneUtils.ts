@@ -14,8 +14,8 @@ export function normalizePhone(phone: string | null | undefined): string {
     // 2. Handle empty or too short
     if (clean.length === 0) return "";
 
-    // 3. Brazilian specific normalization
-    // If it has 10 or 11 digits (DDD + number), prepend 55
+    // 3. Brazilian specific normalization: Fix 9th digit missing or DDD without 55
+    // Most common: DDD (2 digits) + 8 or 9 digits
     if (clean.length === 10 || clean.length === 11) {
         clean = "55" + clean;
     }
@@ -25,12 +25,12 @@ export function normalizePhone(phone: string | null | undefined): string {
         clean = "55" + clean.substring(1);
     }
 
-    // 5. If it's 13 digits and starts with 55, it's likely already correct
-    // But wait, some numbers in Brazil have 55 + 2 digits DDD + 9 digits number = 13 digits
-    // Some have 55 + 2 digits DDD + 8 digits number = 12 digits
+    // 5. Detect and fix 55 + DDD + 8 digits (missing 9 for mobile) 
+    // This is optional but helpful for older systems. For now, we prefer absolute consistency.
 
     return clean;
 }
+
 
 /**
  * Checks if a JID represents a WhatsApp Group.

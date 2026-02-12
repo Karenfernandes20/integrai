@@ -12,10 +12,15 @@ export const ensureQueueSchema = async () => {
             company_id INTEGER NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
             name TEXT NOT NULL,
             is_active BOOLEAN NOT NULL DEFAULT true,
+            color TEXT DEFAULT '#3b82f6',
             created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
             UNIQUE(company_id, name)
         );
     `);
+
+    await pool.query(`ALTER TABLE queues ADD COLUMN IF NOT EXISTS color TEXT DEFAULT '#3b82f6';`);
+    await pool.query(`ALTER TABLE queues ADD COLUMN IF NOT EXISTS greeting_message TEXT;`);
+    await pool.query(`ALTER TABLE queues ADD COLUMN IF NOT EXISTS out_of_hours_message TEXT;`);
 
     await pool.query(`CREATE INDEX IF NOT EXISTS idx_queues_company_active ON queues(company_id, is_active);`);
 
@@ -110,7 +115,9 @@ export const listQueues = async (req: Request, res: Response) => {
         if (!companyId) return res.status(400).json({ error: 'Company ID not found' });
 
         const result = await pool.query(
-            `SELECT id, company_id as "companyId", name, is_active as "isActive", created_at as "createdAt"
+            `SELECT id, company_id as "companyId", name, is_active as "isActive", 
+                    greeting_message as "greetingMessage", out_of_hours_message as "outOfHoursMessage",
+                    color, created_at as "createdAt"
              FROM queues
              WHERE company_id = $1
              ORDER BY name ASC`,
@@ -131,20 +138,52 @@ export const createQueue = async (req: Request, res: Response) => {
         const companyId = resolveCompanyId(req);
         if (!companyId) return res.status(400).json({ error: 'Company ID not found' });
 
-        const name = String(req.body?.name || '').trim();
+        const { name, greetingMessage, color } = req.body;
         if (!name) return res.status(400).json({ error: 'Nome da fila é obrigatório' });
 
         const result = await pool.query(
-            `INSERT INTO queues (company_id, name, is_active)
-             VALUES ($1, $2, true)
-             ON CONFLICT (company_id, name)
-             DO UPDATE SET is_active = true
-             RETURNING id, company_id as "companyId", name, is_active as "isActive", created_at as "createdAt"`,
-            [companyId, name]
+            `INSERT INTO queues (company_id, name, greeting_message, color, is_active)
+             VALUES ($1, $2, $3, $4, true)
+             RETURNING id, company_id as "companyId", name, is_active as "isActive", 
+                       greeting_message as "greetingMessage", color, created_at as "createdAt"`,
+            [companyId, name, greetingMessage, color || '#3b82f6']
         );
         res.status(201).json(result.rows[0]);
     } catch (error: any) {
         console.error('Error creating queue:', error);
+        res.status(500).json({ error: error.message });
+    }
+};
+
+export const updateQueue = async (req: Request, res: Response) => {
+    try {
+        const { id } = req.params;
+        const { name, greetingMessage, color, isActive } = req.body;
+
+        const result = await pool!.query(
+            `UPDATE queues 
+             SET name = COALESCE($1, name), 
+                 greeting_message = $2, 
+                 color = COALESCE($3, color),
+                 is_active = COALESCE($4, is_active)
+             WHERE id = $5 
+             RETURNING id, name, is_active as "isActive", greeting_message as "greetingMessage", color`,
+            [name, greetingMessage, color, isActive, id]
+        );
+
+        if (result.rows.length === 0) return res.status(404).json({ error: 'Queue not found' });
+        res.json(result.rows[0]);
+    } catch (error: any) {
+        res.status(500).json({ error: error.message });
+    }
+};
+
+export const deleteQueue = async (req: Request, res: Response) => {
+    try {
+        const { id } = req.params;
+        await pool!.query('DELETE FROM queues WHERE id = $1', [id]);
+        res.json({ success: true });
+    } catch (error: any) {
         res.status(500).json({ error: error.message });
     }
 };

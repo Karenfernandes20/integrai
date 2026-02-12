@@ -197,7 +197,7 @@ export const publishFlow = async (req: Request, res: Response) => {
         // 3. Update chatbot status and active_version_id
         await client.query(
             `UPDATE chatbots SET 
-                status = 'published',
+                status = 'active',
                 active_version_id = $1,
                 updated_at = NOW()
              WHERE id = $2`,

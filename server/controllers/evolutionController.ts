@@ -677,6 +677,9 @@ export const sendEvolutionMessage = async (req: Request, res: Response) => {
         const safePhone = targetPhone || "";
         const remoteJid = safePhone; // Already normalized above
         const messageIsGroup = remoteJid.endsWith('@g.us') || inferredGroup;
+        const user = (req as any).user;
+        const resolvedCompanyId = config.company_id;
+
         const conversationPhone = messageIsGroup ? remoteJid : safePhone;
         const resolvedGroupTitle = messageIsGroup
           ? (await resolveStoredGroupTitle(resolvedCompanyId, remoteJid)) || "Grupo"
@@ -684,9 +687,6 @@ export const sendEvolutionMessage = async (req: Request, res: Response) => {
 
         // Find or create conversation
         let conversationId: number;
-
-        const user = (req as any).user;
-        const resolvedCompanyId = config.company_id;
 
         // CHECK INSTANCE AND COMPANY isolation
         const checkConv = await pool.query(
@@ -1316,6 +1316,30 @@ export const syncEvolutionContacts = async (req: Request, res: Response) => {
               `SELECT jid, phone, name FROM whatsapp_contacts WHERE company_id = $1`,
               [resolvedCompanyId]
             );
+
+            // Get or Ensure LEADS stage exists for this specific company
+            let leadStageId = null;
+            const stageRes = await client.query(
+              "SELECT id FROM crm_stages WHERE company_id = $1 AND UPPER(name) = 'LEADS' LIMIT 1",
+              [resolvedCompanyId]
+            );
+            if (stageRes.rows.length > 0) {
+              leadStageId = stageRes.rows[0].id;
+            } else {
+              const newStage = await client.query(
+                "INSERT INTO crm_stages (name, position, company_id, color) VALUES ('LEADS', 0, $1, '#cbd5e1') RETURNING id",
+                [resolvedCompanyId]
+              );
+              leadStageId = newStage.rows[0].id;
+            }
+
+            // Fetch existing leads to avoid duplicates
+            const existingLeadsRes = await client.query(
+              "SELECT phone FROM crm_leads WHERE company_id = $1",
+              [resolvedCompanyId]
+            );
+            const existingLeadPhones = new Set(existingLeadsRes.rows.map(r => (r.phone || '').replace(/\D/g, '')));
+
             const existingByJid = new Map<string, string>();
             const existingByPhone = new Map<string, string>();
             for (const row of existingContactsRes.rows) {
@@ -1367,8 +1391,16 @@ export const syncEvolutionContacts = async (req: Request, res: Response) => {
                 ON CONFLICT (jid, company_id) 
                 DO UPDATE SET 
                   name = CASE
-                    WHEN EXCLUDED.name IS NULL OR btrim(EXCLUDED.name) = '' THEN whatsapp_contacts.name
-                    ELSE EXCLUDED.name
+                    -- Only overwrite if current name is empty, null, or just equal to the phone
+                    WHEN whatsapp_contacts.name IS NULL 
+                         OR btrim(whatsapp_contacts.name) = '' 
+                         OR whatsapp_contacts.name = whatsapp_contacts.phone 
+                         OR whatsapp_contacts.name = whatsapp_contacts.jid
+                    THEN CASE 
+                         WHEN EXCLUDED.name IS NULL OR btrim(EXCLUDED.name) = '' THEN whatsapp_contacts.name
+                         ELSE EXCLUDED.name
+                      END
+                    ELSE whatsapp_contacts.name
                   END,
                   push_name = EXCLUDED.push_name,
                   profile_pic_url = COALESCE(EXCLUDED.profile_pic_url, whatsapp_contacts.profile_pic_url),
@@ -1376,6 +1408,20 @@ export const syncEvolutionContacts = async (req: Request, res: Response) => {
                   instance = EXCLUDED.instance,
                   updated_at = NOW()
               `, [jid, candidate, finalName, pushName || null, profilePic || null, instanceToSave, resolvedCompanyId]);
+
+              // --- CRM INTEGRATION: Sync to Leads ---
+              if (leadStageId && !existingLeadPhones.has(candidate)) {
+                try {
+                  await client.query(`
+                    INSERT INTO crm_leads (name, phone, stage_id, origin, company_id, instance, created_at, updated_at)
+                    VALUES ($1, $2, $3, 'WhatsApp Sync', $4, $5, NOW(), NOW())
+                    ON CONFLICT (phone, company_id) DO NOTHING
+                  `, [finalName, candidate, leadStageId, resolvedCompanyId, instanceToSave]);
+                  existingLeadPhones.add(candidate);
+                } catch (crmErr) {
+                  console.error(`[Sync] CRM Lead Error for ${candidate}:`, crmErr);
+                }
+              }
             }
 
             await client.query(`
@@ -1451,6 +1497,116 @@ export const syncEvolutionContacts = async (req: Request, res: Response) => {
         details: error?.message
       });
     }
+  }
+};
+
+export const syncEvolutionGroups = async (req: Request, res: Response) => {
+  try {
+    if (!pool) return res.status(500).json({ error: "Database not configured" });
+
+    const user = (req as any).user;
+    const companyId = req.query.companyId || user.company_id;
+    const resolvedCompanyId = Number(companyId);
+
+    // Get instances for this company
+    const instancesRes = await pool.query(
+      "SELECT instance_key, api_key FROM company_instances WHERE company_id = $1 AND status = 'open'",
+      [resolvedCompanyId]
+    );
+
+    if (instancesRes.rows.length === 0) {
+      // Fallback: check the company table for legacy primary instance
+      const companyRes = await pool.query('SELECT evolution_instance, evolution_apikey FROM companies WHERE id = $1', [resolvedCompanyId]);
+      if (companyRes.rows[0]?.evolution_instance) {
+        instancesRes.rows.push({
+          instance_key: companyRes.rows[0].evolution_instance,
+          api_key: companyRes.rows[0].evolution_apikey
+        });
+      } else {
+        return res.status(404).json({ error: "Nenhuma instância ativa encontrada para esta empresa" });
+      }
+    }
+
+    // Get Evolution URL
+    const companyRes = await pool.query('SELECT evolution_url FROM companies WHERE id = $1', [resolvedCompanyId]);
+    const evolutionUrl = companyRes.rows[0]?.evolution_url || process.env.EVOLUTION_API_URL;
+
+    if (!evolutionUrl) {
+      return res.status(500).json({ error: "Evolution API URL não configurada" });
+    }
+
+    let totalSynced = 0;
+    const errorDetails: string[] = [];
+
+    for (const inst of instancesRes.rows) {
+      const { instance_key, api_key } = inst;
+      if (!instance_key) continue;
+
+      try {
+        console.log(`[SyncGroups] Fetching groups for instance ${instance_key}`);
+        const url = `${evolutionUrl.replace(/\/$/, '')}/group/fetchAllGroups/${instance_key}?getParticipants=false`;
+        const response = await fetch(url, {
+          method: 'GET',
+          headers: {
+            'Content-Type': 'application/json',
+            'apikey': api_key || process.env.EVOLUTION_API_KEY || ''
+          }
+        });
+
+        if (response.ok) {
+          const rawGroups = await response.json();
+          // Evolution sometimes returns groups in a 'data' property or directly as array
+          const groupsList = Array.isArray(rawGroups) ? rawGroups : (rawGroups.data || []);
+
+          if (Array.isArray(groupsList)) {
+            for (const group of groupsList) {
+              const jid = group.id || group.remoteJid || group.jid;
+              const name = group.subject || group.name || group.title;
+              const pic = group.profilePictureUrl || group.pic || group.picture;
+
+              if (!jid || !jid.endsWith('@g.us')) continue;
+
+              // Upsert into whatsapp_conversations
+              // We use a combination of external_id and company_id for the match if possible
+              // but the schema only has external_id as UNIQUE currently.
+              await pool.query(`
+                INSERT INTO whatsapp_conversations (
+                    external_id, phone, contact_name, group_name, is_group, instance, company_id, profile_pic_url, updated_at, status
+                ) VALUES ($1, $2, $3, $4, true, $5, $6, $7, NOW(), 'PENDING')
+                ON CONFLICT (external_id) 
+                DO UPDATE SET 
+                    group_name = EXCLUDED.group_name,
+                    contact_name = EXCLUDED.contact_name,
+                    is_group = true,
+                    profile_pic_url = COALESCE(EXCLUDED.profile_pic_url, whatsapp_conversations.profile_pic_url),
+                    instance = COALESCE(whatsapp_conversations.instance, EXCLUDED.instance),
+                    updated_at = NOW()
+                WHERE whatsapp_conversations.company_id = EXCLUDED.company_id
+              `, [jid, jid, name, name, instance_key, resolvedCompanyId, pic]);
+              totalSynced++;
+            }
+          }
+        } else {
+          const errText = await response.text();
+          console.warn(`[SyncGroups] Failed to fetch groups for ${instance_key}: ${response.status} - ${errText}`);
+          errorDetails.push(`Instância ${instance_key}: ${response.status}`);
+        }
+      } catch (err: any) {
+        console.error(`[SyncGroups] Error for instance ${instance_key}:`, err);
+        errorDetails.push(`Instância ${instance_key}: ${err.message}`);
+      }
+    }
+
+    res.json({
+      success: true,
+      message: `${totalSynced} grupos sincronizados com sucesso.`,
+      count: totalSynced,
+      errors: errorDetails.length > 0 ? errorDetails : undefined
+    });
+
+  } catch (error: any) {
+    console.error("[SyncGroups] Critical error:", error);
+    res.status(500).json({ error: "Erro interno no servidor ao sincronizar grupos" });
   }
 };
 
@@ -1764,20 +1920,26 @@ export const handleEvolutionWebhook = async (req: Request, res: Response) => {
             // 2. Contact is NOT SAVED in whatsapp_contacts (isSavedContact === false)
             if (!fromMe && !isSavedContact) {
               try {
-                // Find 'Leads' stage ID
-                const leadStageRes = await pool.query("SELECT id FROM crm_stages WHERE name = 'Leads' LIMIT 1");
+                const leadStageRes = await pool.query(
+                  "SELECT id FROM crm_stages WHERE name = 'Leads' AND company_id = $1 LIMIT 1",
+                  [resolvedCompanyId]
+                );
 
                 if (leadStageRes.rows.length > 0) {
                   const leadsStageId = leadStageRes.rows[0].id;
 
-                  // Check if lead exists by phone
-                  const checkLead = await pool.query("SELECT id FROM crm_leads WHERE phone = $1", [phone]);
+                  // Check if lead exists by phone AND company
+                  const checkLead = await pool.query(
+                    "SELECT id FROM crm_leads WHERE phone = $1 AND company_id = $2",
+                    [phone, resolvedCompanyId]
+                  );
 
                   if (checkLead.rows.length === 0) {
                     console.log(`[CRM] Auto-creating lead for UNSAVED contact ${phone}`);
                     await pool.query(
                       `INSERT INTO crm_leads (name, phone, stage_id, origin, company_id, instance, created_at, updated_at)
-                                 VALUES ($1, $2, $3, 'WhatsApp', $4, $5, NOW(), NOW())`,
+                                 VALUES ($1, $2, $3, 'WhatsApp', $4, $5, NOW(), NOW())
+                                 ON CONFLICT (phone, company_id) DO NOTHING`,
                       [pushName || phone, phone, leadsStageId, resolvedCompanyId, instance]
 
                     );

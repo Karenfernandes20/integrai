@@ -16,7 +16,7 @@ interface Bot {
     id: number;
     name: string;
     description: string;
-    status: 'active' | 'inactive' | 'draft';
+    status: 'active' | 'inactive' | 'draft' | 'published';
     active_instances_count: number;
     updated_at: string;
 }
@@ -98,7 +98,8 @@ const Chatbot = () => {
     };
 
     const toggleBotStatus = async (bot: Bot) => {
-        const newStatus = bot.status === 'active' ? 'inactive' : 'active';
+        const isBotActive = bot.status === 'active' || bot.status === 'published';
+        const newStatus = isBotActive ? 'inactive' : 'active';
         try {
             const res = await fetch(`/api/bots/${bot.id}`, {
                 method: 'PUT',
@@ -167,8 +168,8 @@ const Chatbot = () => {
                                                 <Edit className="mr-2 h-4 w-4" /> Editar Fluxo
                                             </DropdownMenuItem>
                                             <DropdownMenuItem onClick={() => toggleBotStatus(bot)}>
-                                                {bot.status === 'active' ? <Pause className="mr-2 h-4 w-4" /> : <Play className="mr-2 h-4 w-4" />}
-                                                {bot.status === 'active' ? 'Pausar' : 'Ativar'}
+                                                {(bot.status === 'active' || bot.status === 'published') ? <Pause className="mr-2 h-4 w-4" /> : <Play className="mr-2 h-4 w-4" />}
+                                                {(bot.status === 'active' || bot.status === 'published') ? 'Pausar' : 'Ativar'}
                                             </DropdownMenuItem>
                                             <DropdownMenuItem className="text-rose-600 focus:text-rose-600" onClick={() => handleDeleteBot(bot.id)}>
                                                 <Trash2 className="mr-2 h-4 w-4" /> Excluir
@@ -184,8 +185,8 @@ const Chatbot = () => {
                             <CardContent>
                                 <div className="flex items-center gap-4 text-sm text-slate-600">
                                     <div className="flex items-center gap-1.5">
-                                        <div className={`w-2 h-2 rounded-full ${bot.status === 'active' ? 'bg-emerald-500' : 'bg-slate-300'}`} />
-                                        {bot.status === 'active' ? 'Ativo' : 'Inativo'}
+                                        <div className={`w-2 h-2 rounded-full ${(bot.status === 'active' || bot.status === 'published') ? 'bg-emerald-500' : 'bg-slate-300'}`} />
+                                        {(bot.status === 'active' || bot.status === 'published') ? 'Ativo' : 'Inativo'}
                                     </div>
                                     <div className="flex items-center gap-1.5">
                                         <Network size={14} />

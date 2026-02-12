@@ -1,6 +1,7 @@
 import { pool } from '../db';
 import axios from 'axios';
 import { assignQueueToConversationByPhone } from '../controllers/queueController';
+import { getEvolutionConfig } from '../controllers/evolutionController';
 
 interface FlowNode {
     id: string;
@@ -47,17 +48,40 @@ const parseQueueRouting = (raw: any): Record<string, string> => {
 
 export const processChatbotMessage = async (instanceKey: string, contactPhone: string, messageText: string) => {
     try {
+        console.log(`[ChatbotService] START: Instance=${instanceKey}, Phone=${contactPhone}`);
+
+        // Case-insensitive match for instance & check status
         const botRes = await pool!.query(`
             SELECT c.id, c.active_version_id, v.flow_json, c.company_id
             FROM chatbots c
             JOIN chatbot_instances ci ON ci.chatbot_id = c.id
             JOIN chatbot_versions v ON v.id = c.active_version_id
-            WHERE ci.instance_key = $1 AND ci.is_active = true AND c.status = 'published'
+            WHERE LOWER(ci.instance_key) = LOWER($1) 
+              AND ci.is_active = true 
+              AND c.status IN ('published', 'active')
         `, [instanceKey]);
 
-        if (botRes.rows.length === 0) return;
+        if (botRes.rows.length === 0) {
+            console.log(`[ChatbotService] No active/published bot found for instance "${instanceKey}".`);
+
+            // Debugging: why wasn't it found?
+            const debugCheck = await pool!.query(`
+                SELECT ci.instance_key, ci.is_active, c.status, c.name 
+                FROM chatbot_instances ci
+                JOIN chatbots c ON c.id = ci.chatbot_id
+                WHERE LOWER(ci.instance_key) = LOWER($1)
+            `, [instanceKey]);
+
+            if (debugCheck.rows.length > 0) {
+                console.log(`[ChatbotService] DEBUG: Found potential matches, but conditions failed:`, debugCheck.rows);
+            } else {
+                console.log(`[ChatbotService] DEBUG: No rows in chatbot_instances for this key.`);
+            }
+            return;
+        }
 
         const bot = botRes.rows[0];
+        console.log(`[ChatbotService] Bot Matched: ID ${bot.id} (Company ${bot.company_id})`);
         const flow: FlowJson = bot.flow_json;
 
         let sessionRes = await pool!.query(`
@@ -111,7 +135,7 @@ const executeNode = async (
     switch (currentNode.type) {
         case 'message': {
             const text = replaceVariables(currentNode.data.content || '', session.variables || {});
-            await sendMessage(instanceKey, session.contact_key, text);
+            await sendMessage(instanceKey, session.contact_key, text, botCompanyId);
 
             await pool!.query(
                 'UPDATE chatbot_logs SET response_sent = $1 WHERE chatbot_id = $2 AND contact_key = $3 ORDER BY created_at DESC LIMIT 1',
@@ -140,7 +164,7 @@ const executeNode = async (
             if (!session.variables) session.variables = {};
 
             if (!session.variables[askedKey]) {
-                await sendMessage(instanceKey, session.contact_key, questionText);
+                await sendMessage(instanceKey, session.contact_key, questionText, botCompanyId);
                 session.variables[askedKey] = true;
                 session.variables[attemptsKey] = 0;
                 await pool!.query('UPDATE chatbot_sessions SET variables = $1, last_activity = NOW() WHERE id = $2', [session.variables, session.id]);
@@ -171,9 +195,9 @@ const executeNode = async (
                         if (botCompanyId) {
                             await assignQueueToConversationByPhone(botCompanyId, instanceKey, session.contact_key, fallbackQueue);
                         }
-                        await sendMessage(instanceKey, session.contact_key, `Encaminhando voce para a fila ${fallbackQueue}.`);
+                        await sendMessage(instanceKey, session.contact_key, `Encaminhando voce para a fila ${fallbackQueue}.`, botCompanyId);
                     } else {
-                        await sendMessage(instanceKey, session.contact_key, invalidMessage);
+                        await sendMessage(instanceKey, session.contact_key, invalidMessage, botCompanyId);
                         return;
                     }
                 }
@@ -214,7 +238,7 @@ const executeNode = async (
         }
 
         case 'handoff': {
-            await sendMessage(instanceKey, session.contact_key, 'Transferindo seu atendimento para um consultor humano...');
+            await sendMessage(instanceKey, session.contact_key, 'Transferindo seu atendimento para um consultor humano...', botCompanyId);
             await pool!.query('DELETE FROM chatbot_sessions WHERE id = $1', [session.id]);
             return;
         }
@@ -230,10 +254,16 @@ const executeNode = async (
     }
 };
 
-const sendMessage = async (instanceKey: string, phone: string, text: string) => {
+const sendMessage = async (instanceKey: string, phone: string, text: string, companyId?: number) => {
     try {
-        const apiUrl = (process.env.EVOLUTION_API_URL || '').replace(/\/$/, '');
-        const apiKey = process.env.EVOLUTION_API_KEY;
+        const config = await getEvolutionConfig({ company_id: companyId }, 'chatbot_service', companyId, instanceKey);
+        const apiUrl = config.url;
+        const apiKey = config.apikey;
+
+        if (!apiUrl || !apiKey) {
+            console.error(`[ChatbotService] Missing API config for company ${companyId}. URL: ${apiUrl}, Key: ${apiKey ? '***' : 'MISSING'}`);
+            return;
+        }
 
         await axios.post(`${apiUrl}/message/sendText/${instanceKey}`, {
             number: phone,
@@ -243,8 +273,8 @@ const sendMessage = async (instanceKey: string, phone: string, text: string) => 
         }, {
             headers: { apikey: apiKey }
         });
-    } catch (e) {
-        console.error('[ChatbotService] Failed to send message:', e);
+    } catch (e: any) {
+        console.error('[ChatbotService] Failed to send message:', e.response?.data || e.message);
     }
 };
 

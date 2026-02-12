@@ -146,7 +146,16 @@ export function ContactDetailsPanel({ isOpen, onClose, conversation, getDisplayN
                                 <div className="bg-[#202C33] p-3 rounded-lg flex flex-col gap-3">
                                     <div className="flex justify-between items-center bg-[#111B21] p-3 rounded border border-[#222E35]">
                                         <span className="text-sm text-[#8696A0]">Instância</span>
-                                        <span className="text-sm text-[#E9EDEF] font-medium">{conversation.instance_friendly_name || conversation.instance || "Padrão"}</span>
+                                        <span
+                                            className="text-[10px] px-2 py-0.5 rounded border font-bold uppercase tracking-wider"
+                                            style={{
+                                                backgroundColor: `${conversation.instance_color || '#3b82f6'}1A`,
+                                                color: conversation.instance_color || '#3b82f6',
+                                                borderColor: `${conversation.instance_color || '#3b82f6'}33`
+                                            }}
+                                        >
+                                            {conversation.instance_friendly_name || conversation.instance || "Padrão"}
+                                        </span>
                                     </div>
 
                                     <div className="flex justify-between items-center bg-[#111B21] p-3 rounded border border-[#222E35]">

@@ -30,7 +30,10 @@ import { rateLimit } from './middleware/rateLimitMiddleware';
 import { PERMISSIONS } from './config/roles';
 import { getCompanies, createCompany, updateCompany, deleteCompany, getCompanyUsers, getCompany, getCompanyInstances, updateCompanyInstance } from './controllers/companyController';
 import { startConversation, closeConversation, updateContactNameWithAudit, deleteConversation, returnToPending, transferConversationQueue } from './controllers/conversationController';
-import { listQueues, createQueue } from './controllers/queueController';
+import { listQueues, createQueue, updateQueue, deleteQueue } from './controllers/queueController';
+import { getQuickAnswers, createQuickAnswer, updateQuickAnswer, deleteQuickAnswer } from './controllers/whaticket/quickAnswerController';
+import { getUserQueues, setUserQueues } from './controllers/whaticket/userQueueController';
+import { getInternalMessages, sendInternalMessage, getUnreadInternalCount, markInternalAsRead } from './controllers/whaticket/internalChatController';
 import { getFollowUps, createFollowUp, updateFollowUp, deleteFollowUp, getFollowUpStats } from './controllers/followUpController';
 
 
@@ -73,7 +76,7 @@ router.post('/users/:id/reset-password', authenticateToken, authorizeRole(['SUPE
 
 
 // Evolution routes
-import { getEvolutionQrCode, setEvolutionWebhook, getEvolutionWebhook, deleteEvolutionInstance, sendEvolutionMessage, getEvolutionConnectionState, getEvolutionContacts, createEvolutionContact, updateEvolutionContact, deleteEvolutionContact, editEvolutionMessage, syncEvolutionContacts, handleEvolutionWebhook, getEvolutionContactsLive, deleteEvolutionMessage, getEvolutionConfig, getEvolutionMedia, getEvolutionProfilePic, syncAllProfilePics, sendEvolutionMedia, refreshConversationMetadata, deleteMessage, searchEverything, sendEvolutionReaction, getSystemWhatsappStatus } from './controllers/evolutionController';
+import { getEvolutionQrCode, setEvolutionWebhook, getEvolutionWebhook, deleteEvolutionInstance, sendEvolutionMessage, getEvolutionConnectionState, getEvolutionContacts, createEvolutionContact, updateEvolutionContact, deleteEvolutionContact, editEvolutionMessage, syncEvolutionContacts, syncEvolutionGroups, handleEvolutionWebhook, getEvolutionContactsLive, deleteEvolutionMessage, getEvolutionConfig, getEvolutionMedia, getEvolutionProfilePic, syncAllProfilePics, sendEvolutionMedia, refreshConversationMetadata, deleteMessage, searchEverything, sendEvolutionReaction, getSystemWhatsappStatus } from './controllers/evolutionController';
 
 // Contacts routes
 import { getContacts, getContact, createContact, updateContact, deleteContact, searchContacts } from './controllers/contactController';
@@ -225,6 +228,7 @@ router.post('/webhooks/whatsapp', handleWebhook);
 router.post('/webhooks/whatsapp/:type', handleWebhook);
 router.get('/evolution/webhook-debug', debugWebhookPayloads);
 router.get('/evolution/conversations', authenticateToken, getConversations);
+router.post('/evolution/groups/sync', authenticateToken, syncEvolutionGroups);
 router.post('/evolution/conversations/:conversationId/refresh', authenticateToken, refreshConversationMetadata);
 router.get('/evolution/messages/:conversationId', authenticateToken, getMessages);
 router.get('/evolution/media/:messageId', authenticateToken, getEvolutionMedia);
@@ -249,6 +253,26 @@ router.post('/crm/conversations/:id/pending', authenticateToken, returnToPending
 router.put('/crm/conversations/:id/queue', authenticateToken, transferConversationQueue);
 router.get('/queues', authenticateToken, listQueues);
 router.post('/queues', authenticateToken, authorizeRole(['ADMIN', 'SUPERADMIN']), createQueue);
+router.put('/queues/:id', authenticateToken, authorizeRole(['ADMIN', 'SUPERADMIN']), updateQueue);
+router.delete('/queues/:id', authenticateToken, authorizeRole(['ADMIN', 'SUPERADMIN']), deleteQueue);
+
+// User-Queue Association
+router.get('/whaticket/users/:userId/queues', authenticateToken, getUserQueues);
+router.post('/whaticket/users/:userId/queues', authenticateToken, authorizeRole(['ADMIN', 'SUPERADMIN']), setUserQueues);
+
+
+// Quick Answers Routes
+router.get('/whaticket/quick-answers', authenticateToken, getQuickAnswers);
+router.post('/whaticket/quick-answers', authenticateToken, createQuickAnswer);
+router.put('/whaticket/quick-answers/:id', authenticateToken, updateQuickAnswer);
+router.delete('/whaticket/quick-answers/:id', authenticateToken, authorizeRole(['ADMIN', 'SUPERADMIN']), deleteQuickAnswer);
+
+// Internal Chat Routes
+router.get('/whaticket/internal-chat/unread', authenticateToken, getUnreadInternalCount);
+router.get('/whaticket/internal-chat/:otherUserId', authenticateToken, getInternalMessages);
+router.post('/whaticket/internal-chat', authenticateToken, sendInternalMessage);
+router.post('/whaticket/internal-chat/:senderId/read', authenticateToken, markInternalAsRead);
+
 router.put('/crm/conversations/:id/name', authenticateToken, updateContactNameWithAudit);
 router.delete('/crm/conversations/:id', authenticateToken, deleteConversation);
 
@@ -737,5 +761,43 @@ router.get('/shop/goals/overview', authenticateToken, validateCompanyAndInstance
 router.get('/shop/goals/sellers', authenticateToken, validateCompanyAndInstance, getGoalSellers);
 router.post('/shop/goals', authenticateToken, validateCompanyAndInstance, createGoal);
 router.post('/shop/goals/distribute', authenticateToken, validateCompanyAndInstance, distributeRevenueGoalBySellers);
+
+// DEBUG CHATBOT
+router.post('/debug-activate-karen', async (req, res) => {
+  try {
+    await pool!.query(`
+            INSERT INTO chatbot_instances (chatbot_id, instance_key, is_active)
+            VALUES (2, 'karenloja', true)
+            ON CONFLICT (chatbot_id, instance_key) DO UPDATE SET is_active = true;
+        `);
+    res.json({ success: true, message: "Activated on karenloja" });
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+router.get('/debug-chatbot-status', async (req, res) => {
+  try {
+    const bots = await pool!.query(`
+            SELECT
+                c.id as bot_id,
+                c.name as bot_name,
+                c.status as bot_status,
+                ci.instance_key,
+                ci.is_active as instance_active,
+                comp.name as company_name,
+                comp.evolution_instance,
+                comp_inst.instance_key as real_instance_key,
+                comp_inst.status as real_status
+            FROM chatbots c
+            LEFT JOIN chatbot_instances ci ON ci.chatbot_id = c.id
+            LEFT JOIN companies comp ON comp.id = c.company_id
+            LEFT JOIN company_instances comp_inst ON comp_inst.company_id = c.company_id
+        `);
+    res.json(bots.rows);
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
 
 export default router;

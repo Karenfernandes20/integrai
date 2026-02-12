@@ -27,16 +27,39 @@ interface Sale {
 }
 
 export default function VendasLojaPage() {
-    const { token } = useAuth();
+    const { token, user } = useAuth();
     const [isCreateOpen, setIsCreateOpen] = useState(false);
     const [sales, setSales] = useState<Sale[]>([]);
     const [loading, setLoading] = useState(true);
+    const [instanceId, setInstanceId] = useState<number | null>(null);
+
+    const fetchInstance = async () => {
+        if (!token || !user?.company_id) return;
+        try {
+            const res = await fetch(`/api/companies/${user.company_id}/instances`, {
+                headers: { Authorization: `Bearer ${token}` }
+            });
+            if (res.ok) {
+                const instances = await res.json();
+                if (Array.isArray(instances) && instances.length > 0) {
+                    const connected = instances.find((i: any) => i.status === 'open' || i.status === 'connected');
+                    setInstanceId(Number((connected || instances[0]).id));
+                }
+            }
+        } catch (e) {
+            console.error("Failed to fetch instance", e);
+        }
+    };
 
     const fetchSales = async () => {
+        if (!instanceId) return;
         setLoading(true);
         try {
-            const res = await fetch('/api/shop/sales?limit=50', {
-                headers: { Authorization: `Bearer ${token}` }
+            const res = await fetch(`/api/shop/sales?limit=100&instance_id=${instanceId}`, {
+                headers: {
+                    Authorization: `Bearer ${token}`,
+                    'x-instance-id': String(instanceId)
+                }
             });
             if (res.ok) {
                 const data = await res.json();
@@ -50,8 +73,12 @@ export default function VendasLojaPage() {
     };
 
     useEffect(() => {
-        if (token) fetchSales();
-    }, [token]);
+        if (token && user?.company_id) fetchInstance();
+    }, [token, user?.company_id]);
+
+    useEffect(() => {
+        if (token && instanceId) fetchSales();
+    }, [token, instanceId]);
 
     const formatCurrency = (val: string | number) => {
         return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(Number(val));

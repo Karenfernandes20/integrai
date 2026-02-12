@@ -66,7 +66,7 @@ import { Input } from "../components/ui/input";
 import { Button } from "../components/ui/button";
 import { ScrollArea } from "../components/ui/scroll-area";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "../components/ui/tabs";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "../components/ui/dialog";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "../components/ui/sheet";
 import {
   DropdownMenu,
@@ -114,6 +114,8 @@ interface Conversation {
   last_message_source?: string;
   instance?: string;
   instance_friendly_name?: string;
+  instance_color?: string;
+  queue_color?: string;
   tags?: { id: number; name: string; color: string }[];
   user_name?: string;
   queue_name?: string | null;
@@ -141,6 +143,7 @@ interface Message {
   reply_to?: string;
   reply_to_content?: string;
   instance_friendly_name?: string;
+  instance_color?: string;
   reactions?: { emoji: string; senderId: string; fromMe: boolean; timestamp: number }[];
   external_id?: string;
   message_type?: string;
@@ -378,8 +381,25 @@ const AtendimentoPage = () => {
   useEffect(() => {
     if (token) {
       fetchClosingReasons();
+      fetchQueues();
     }
   }, [token]);
+
+  const fetchQueues = async () => {
+    if (!token) return;
+    try {
+      const res = await fetch("/api/queues", {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setQueues(Array.isArray(data) ? data : []);
+      }
+    } catch (e) {
+      console.error("Error fetching queues:", e);
+    }
+  };
+
 
   // Global search effect (Debounced)
   useEffect(() => {
@@ -443,6 +463,10 @@ const AtendimentoPage = () => {
   });
   const [isRelationshipModalOpen, setIsRelationshipModalOpen] = useState(false);
   const [isNewContactModalOpen, setIsNewContactModalOpen] = useState(false);
+  const [isTransferModalOpen, setIsTransferModalOpen] = useState(false);
+  const [queues, setQueues] = useState<QueueOption[]>([]);
+  const [transferringQueue, setTransferringQueue] = useState(false);
+
 
   const volumeRef = useRef(notificationVolume);
   const mutedRef = useRef(isNotificationMuted);
@@ -504,14 +528,22 @@ const AtendimentoPage = () => {
     return p.replace(/\D/g, '');
   };
 
-  // Robust normalization for matching (ignores 55 at start for BR numbers)
   const normalizePhoneForMatch = (p: string) => {
-    let digits = (p || '').replace(/\D/g, '');
+    if (!p) return '';
+    if (p.includes('@g.us')) return p;
+
+    // Take part before @ or : (handles 551199999999:1@s.whatsapp.net)
+    let base = p.split('@')[0].split(':')[0];
+
+    let digits = base.replace(/\D/g, '');
+
+    // BR Normalization: 55 + DDD (2) + Number (8 or 9) -> 12 or 13 digits
     if (digits.startsWith('55') && (digits.length === 12 || digits.length === 13)) {
       return digits.slice(2);
     }
     return digits;
   };
+
 
   // Notification Sound Function (iPhone 16 "Rebound" style synthesis)
   const playNotificationSound = async (isGroup?: boolean) => {
@@ -614,30 +646,42 @@ const AtendimentoPage = () => {
       return true;
     };
 
-    // Priority 1: Saved name from whatsapp_contacts join
+    // Priority 1: Explicit group name for groups (Subject)
+    if (conv.is_group && isUsableName(conv.group_name)) {
+      return String(conv.group_name).trim();
+    }
+
+    // Priority 2: Backend computed display_name (Which now prioritizes saved contacts for individuals)
+    const backendName = (conv as any).display_name;
+    if (isUsableName(backendName)) {
+      return String(backendName).trim();
+    }
+
+    // Priority 2: Saved name from whatsapp_contacts join
     if (isUsableName(conv.contact_saved_name)) {
       return String(conv.contact_saved_name).trim();
     }
 
-    // Priority 2: Check contacts database (saved in "Contatos" tab)
+    // Priority 3: Check contacts database (saved in "Contatos" tab)
     const raw = conv.phone.replace(/\D/g, "");
-    const fromDB = contactMap.get(raw);
+    // Try both absolute raw and potentially trimmed version
+    const fromDB = contactMap.get(raw) || (raw.startsWith('55') ? contactMap.get(raw.slice(2)) : contactMap.get('55' + raw));
     if (isUsableName(fromDB)) {
       return fromDB;
     }
 
-    // Priority 3: Name persisted in conversation
+    // Priority 4: Name persisted in conversation
     if (isUsableName(conv.contact_name)) {
       return String(conv.contact_name).trim();
     }
 
-    // Priority 4: Push Name from WhatsApp (name the person set on their WhatsApp)
-    const normalize = (s: string) => s ? s.replace(/\D/g, "") : "";
-    if (isUsableName(conv.contact_push_name) && normalize(conv.contact_push_name || '') !== normalize(conv.phone)) {
+    // Priority 5: Push Name from WhatsApp (name the person set on their WhatsApp)
+    const normalizeDigits = (s: string) => s ? s.replace(/\D/g, "") : "";
+    if (isUsableName(conv.contact_push_name) && normalizeDigits(conv.contact_push_name || '') !== normalizeDigits(conv.phone)) {
       return conv.contact_push_name;
     }
 
-    // Priority 5: Phone number (formatted)
+    // Priority 6: Phone number (formatted)
     return conv.phone?.replace(/\D/g, "") || "";
   }, [contactMap]);
 
@@ -1071,23 +1115,30 @@ const AtendimentoPage = () => {
       // 2. Atualiza a lista de conversas
       setConversations((prev) => {
         const msgPhoneMatch = normalizePhoneForMatch(newMessage.phone);
-        const existingIndex = prev.findIndex((c) => normalizePhoneForMatch(c.phone) === msgPhoneMatch || c.id == newMessage.conversation_id);
-        let conversationToUpdate: Conversation;
+        const msgIdMatch = String(newMessage.conversation_id);
 
+        const existingIndex = prev.findIndex((c) => {
+          const cPhoneMatch = normalizePhoneForMatch(c.phone);
+          return (cPhoneMatch === msgPhoneMatch && cPhoneMatch !== '') || String(c.id) === msgIdMatch;
+        });
+
+        let conversationToUpdate: Conversation;
         const isChatOpen = selectedConvRef.current?.phone === newMessage.phone;
 
         if (existingIndex >= 0) {
           const existing = prev[existingIndex];
+          console.log(`[Socket] Updating existing conversation card (Phone: ${existing.phone}, ID: ${existing.id})`);
 
           conversationToUpdate = {
             ...existing,
+            id: newMessage.conversation_id || existing.id, // Update temp ID if needed
             last_message: newMessage.content,
             last_message_at: newMessage.sent_at,
-            // Incrementa unread se chat não estiver aberto e for inbound
             unread_count: (existing.unread_count || 0) + (newMessage.direction === 'inbound' && !isChatOpen ? 1 : 0),
             status: newMessage.status || existing.status
           };
         } else {
+          console.log(`[Socket] Creating new conversation card (Phone: ${newMessage.phone}, ID: ${newMessage.conversation_id})`);
           conversationToUpdate = {
             id: newMessage.conversation_id,
             phone: newMessage.phone,
@@ -1107,16 +1158,16 @@ const AtendimentoPage = () => {
         // Create a Map to prevent duplicates (keyed by conversation ID)
         const conversationMap = new Map<string | number, Conversation>();
 
-        // Add all existing conversations except the one we're updating
+        // Add all existing conversations
         prev.forEach(c => {
-          if (existingIndex >= 0 && String(c.id) === String(prev[existingIndex].id)) {
-            // Skip the old version of the conversation we're updating
+          // If this is the one we're updating, skip it for now (we'll add the updated version later)
+          if (existingIndex >= 0 && (String(c.id) === String(prev[existingIndex].id) || normalizePhoneForMatch(c.phone) === msgPhoneMatch)) {
             return;
           }
           conversationMap.set(String(c.id), c);
         });
 
-        // Add the updated conversation
+        // Add the updated/new conversation
         conversationMap.set(String(conversationToUpdate.id), conversationToUpdate);
 
         // Convert back to array and sort by most recent message
@@ -1126,6 +1177,7 @@ const AtendimentoPage = () => {
 
         return updatedList;
       });
+
     });
 
     socket.on("message:media_update", (data: any) => {
@@ -1942,7 +1994,7 @@ const AtendimentoPage = () => {
     }
 
     const messageContent = contentToSend;
-    
+
 
     // 1. Validation (Strict)
     if (!pendingQuickAttachment && (!messageContent || !messageContent.trim())) {
@@ -2091,7 +2143,7 @@ const AtendimentoPage = () => {
                 id: convId || c.id,
                 last_message: messageContent,
                 last_message_at: new Date().toISOString(),
-                status: 'OPEN' as 'OPEN' // Force open status locally
+                status: 'PENDING' as 'PENDING' // User Request: All messages go to PENDING
               };
             }
             return c;
@@ -2115,7 +2167,7 @@ const AtendimentoPage = () => {
           id: convId || prev.id,
           last_message: messageContent,
           last_message_at: new Date().toISOString(),
-          status: 'OPEN' as 'OPEN'
+          status: 'PENDING' as 'PENDING'
         } : null);
       }
     } catch (err) {
@@ -2292,14 +2344,20 @@ const AtendimentoPage = () => {
     setNewContactPhone("");
   };
 
+  const SAO_PAULO_TZ = "America/Sao_Paulo";
+
   const formatTime = (dateString?: string) => {
     if (!dateString) return "";
-    return new Intl.DateTimeFormat("pt-BR", {
-      timeZone: SAO_PAULO_TZ,
-      hour: "2-digit",
-      minute: "2-digit",
-      hour12: false
-    }).format(new Date(dateString));
+    try {
+      return new Intl.DateTimeFormat("pt-BR", {
+        timeZone: SAO_PAULO_TZ,
+        hour: "2-digit",
+        minute: "2-digit",
+        hour12: false
+      }).format(new Date(dateString));
+    } catch (e) {
+      return "";
+    }
   };
 
   const toSPDateKey = (dateValue: Date | string) => {
@@ -2343,17 +2401,19 @@ const AtendimentoPage = () => {
     const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000);
 
     if (isSameDay(date, today)) {
-      return "HOJE";
+      return formatTime(dateString);
     } else if (isSameDay(date, yesterday)) {
-      return "ONTEM";
+      return "Ontem";
     } else {
       return new Intl.DateTimeFormat("pt-BR", {
         timeZone: SAO_PAULO_TZ,
         day: "2-digit",
-        month: "2-digit"
+        month: "2-digit",
+        year: "numeric"
       }).format(date);
     }
   };
+
 
   const onEmojiClick = (emojiData: EmojiClickData) => {
     if (!selectedConversation || selectedConversation.status !== 'OPEN' || isReadOnly) {
@@ -2363,17 +2423,23 @@ const AtendimentoPage = () => {
     setMessageInput((prev) => prev + emojiData.emoji);
   };
 
-  const getMessageSourceLabel = (msg: Message): { label: string; className: string } => {
+  const getMessageSourceLabel = (msg: Message): { label: string; className: string; instanceName?: string; instanceColor?: string } => {
     const origin = String(msg.message_origin || "").toLowerCase();
     const source = String(msg.message_source || "").toLowerCase();
     const systemUserName = (msg.agent_name || msg.sent_by_user_name || msg.user_name || "").trim();
     const hasSystemUserId = msg.user_id !== null && msg.user_id !== undefined && String(msg.user_id).trim() !== "";
 
+    const result = {
+      label: "",
+      className: "",
+      instanceName: msg.instance_friendly_name,
+      instanceColor: msg.instance_color
+    };
+
     if (hasSystemUserId || origin === "system_user") {
-      return {
-        label: systemUserName || "Usuário",
-        className: "text-[#64748B]"
-      };
+      result.label = systemUserName;
+      result.className = "text-[#64748B]";
+      return result;
     }
 
     const isWhatsAppWebOrApp =
@@ -2393,16 +2459,14 @@ const AtendimentoPage = () => {
       source === "system";
 
     if (isWhatsAppWebOrApp || (msg.direction === "inbound" && !isKnownApiOrigin)) {
-      return {
-        label: "WEB",
-        className: "text-[#64748B]"
-      };
+      result.label = "WEB";
+      result.className = "text-[#64748B]";
+      return result;
     }
 
-    return {
-      label: "API",
-      className: "text-[#1E3A8A]"
-    };
+    result.label = "API";
+    result.className = "text-[#1E3A8A]";
+    return result;
   };
 
   const handleAttachmentClick = () => {
@@ -2843,9 +2907,12 @@ const AtendimentoPage = () => {
         className={cn(
           "group relative flex flex-col p-3 cursor-pointer transition-all duration-200 border-l-[3px] rounded-lg",
           isSelected
-            ? `bg-[#EFF6FF] border-[#2563EB] shadow-sm`
+            ? `bg-[#EFF6FF] shadow-sm`
             : "bg-transparent border-transparent hover:bg-[#F8FAFC] hover:border-[#E2E8F0]"
         )}
+        style={{
+          borderLeftColor: conv.queue_color || conv.instance_color || (isSelected ? '#2563EB' : 'transparent')
+        }}
       >
         <div className="flex items-start gap-3 w-full">
           {/* Avatar Area */}
@@ -2897,8 +2964,15 @@ const AtendimentoPage = () => {
             </div>
 
             <div className="flex flex-wrap items-center gap-2 text-[10px]">
-              <span className="px-1.5 py-0.5 rounded-[4px] bg-[#ECFDF3] text-[#15803D] border border-[#BBF7D0] font-semibold">
-                Fila: {conv.queue_name || "Recepcao"}
+              <span
+                className="px-1.5 py-0.5 rounded-[4px] font-bold uppercase tracking-tight shadow-sm border"
+                style={{
+                  backgroundColor: `${conv.queue_color || '#16A34A'}1A`,
+                  color: conv.queue_color || '#16A34A',
+                  borderColor: `${conv.queue_color || '#16A34A'}33`
+                }}
+              >
+                Fila: {conv.queue_name || "Recepção"}
               </span>
               {conv.status === 'OPEN' && (
                 <span className="px-1.5 py-0.5 rounded-[4px] bg-[#EFF6FF] text-[#1D4ED8] border border-[#BFDBFE] font-semibold">
@@ -2918,11 +2992,12 @@ const AtendimentoPage = () => {
               </p>
 
               <div className="flex flex-col items-end gap-1 shrink-0">
-                {conv.instance_friendly_name && (
-                  <span className="px-1.5 py-0.5 rounded-[4px] text-[7.5px] font-bold bg-[#2563EB]/10 text-[#2563EB] border border-[#2563EB]/20 uppercase tracking-widest mb-0.5 shadow-sm">
-                    {conv.instance_friendly_name}
-                  </span>
-                )}
+                <InstanceTag
+                  instanceName={conv.instance_friendly_name}
+                  color={conv.instance_color}
+                  variant="compact"
+                  className="mb-0.5"
+                />
 
                 {/* Quick Action Trigger */}
                 <div className={cn(
@@ -2959,6 +3034,12 @@ const AtendimentoPage = () => {
 
                       {conv.status === 'OPEN' && (
                         <>
+                          <DropdownMenuItem
+                            onClick={(e) => { e.stopPropagation(); setSelectedConversation(conv); setIsTransferModalOpen(true); }}
+                            className="gap-2 focus:bg-[#2563EB]/10 focus:text-[#2563EB] cursor-pointer text-[#2563EB]"
+                          >
+                            <GitBranch className="h-3.5 w-3.5" /> Transferir Fila
+                          </DropdownMenuItem>
                           <DropdownMenuItem
                             onClick={(e) => { e.stopPropagation(); handleReturnToPending(conv); }}
                             className="gap-2 focus:bg-amber-100 focus:text-amber-600 cursor-pointer text-amber-600"
@@ -3022,6 +3103,36 @@ const AtendimentoPage = () => {
       </div>
     );
   };
+
+  const handleTransferQueue = async (queueId: number) => {
+    if (!selectedConversation) return;
+    setTransferringQueue(true);
+    try {
+      const res = await fetch(`/api/crm/conversations/${selectedConversation.id}/queue`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ queueId })
+      });
+
+      if (res.ok) {
+        toast.success("Conversa transferida com sucesso!");
+        setIsTransferModalOpen(false);
+        fetchConversations();
+      } else {
+        const err = await res.json();
+        toast.error(err.error || "Erro ao transferir");
+      }
+    } catch (e) {
+      console.error(e);
+      toast.error("Erro na transferência");
+    } finally {
+      setTransferringQueue(false);
+    }
+  };
+
 
   return (
     <div className="flex h-screen w-full overflow-hidden bg-[#F8FAFC] font-sans selection:bg-[#2563EB]/30 text-[#0F172A]" onClick={() => setShowEmojiPicker(false)}>
@@ -3382,7 +3493,12 @@ const AtendimentoPage = () => {
                     {selectedConversation.is_group && (
                       <Badge variant="outline" className="text-[7px] md:text-[9px] h-4 bg-[#2563EB]/10 text-[#2563EB] border-[#2563EB]/20 font-bold uppercase tracking-tighter">Grupo</Badge>
                     )}
-                    
+                    <InstanceTag
+                      instanceName={selectedConversation.instance_friendly_name}
+                      color={selectedConversation.instance_color}
+                      variant="compact"
+                    />
+
                   </div>
                   <div className="flex items-center gap-1 md:gap-2 text-[11px] md:text-xs">
                     <span className={cn(
@@ -3458,14 +3574,19 @@ const AtendimentoPage = () => {
                       <UserCircle className="h-4 w-4 text-[#64748B]" /> Editar Ficha
                     </DropdownMenuItem>
                     <DropdownMenuSeparator className="bg-[#E2E8F0]" />
+                    <DropdownMenuItem onClick={() => setIsTransferModalOpen(true)} className="gap-2 md:gap-3 py-2 md:py-2.5 focus:bg-[#F1F5F9] cursor-pointer font-medium text-xs md:text-sm">
+                      <GitBranch className="h-4 w-4 text-[#2563EB]" /> Transferir Fila
+                    </DropdownMenuItem>
+                    <DropdownMenuSeparator className="bg-[#E2E8F0]" />
                     {selectedConversation.status !== 'OPEN' ? (
                       <DropdownMenuItem onClick={() => handleStartAtendimento()} className="gap-3 py-2.5 focus:bg-[#16A34A]/10 text-[#16A34A] font-bold cursor-pointer">
                         <Zap className="h-4 w-4" /> Iniciar Atendimento
                       </DropdownMenuItem>
                     ) : (
                       <DropdownMenuItem onClick={() => handleCloseAtendimento()} className="gap-3 py-2.5 focus:bg-amber-100 text-amber-600 font-bold cursor-pointer">
-                        <CheckSquare className="h-4 w-4" /> Finalizar / Concluir
+                        <CheckSquare className="h-4 w-4" /> Encerrar Atendimento
                       </DropdownMenuItem>
+
                     )}
                   </DropdownMenuContent>
                 </DropdownMenu>
@@ -3577,8 +3698,8 @@ const AtendimentoPage = () => {
                               <div className={cn(
                                 "px-4 py-2 my-0.5 rounded-2xl text-sm transition-all relative overflow-hidden",
                                 isOutbound
-                                  ? "bg-[#2563EB] text-white shadow-sm shadow-[#2563EB]/20 rounded-tr-sm"
-                                  : "bg-white text-[#0F172A] border border-[#E2E8F0] rounded-tl-sm",
+                                  ? "bg-[#EAF2FF] text-[#0F172A] border border-[#DBEAFE] shadow-sm shadow-[#2563EB]/5 rounded-tr-sm"
+                                  : "bg-[#F8FAFC] text-[#0F172A] border border-[#E2E8F0] shadow-sm rounded-tl-sm",
                                 msg.status === 'DELETED' && "italic opacity-40 bg-[#F1F5F9] border-[#E2E8F0]"
                               )}>
                                 {/* Content Rendering (Text/Image/Audio/etc) - Simplified for brevity */}
@@ -3587,7 +3708,7 @@ const AtendimentoPage = () => {
                                     {msg.reply_to_content && (
                                       <div className={cn(
                                         "mb-2 p-2 rounded border-l-2 text-[11px] opacity-80 truncate max-w-[200px]",
-                                        isOutbound ? "bg-white/10 border-white/30" : "bg-[#F1F5F9] border-[#94A3B8]"
+                                        isOutbound ? "bg-[#DBEAFE]/40 border-[#2563EB]/20 text-[#1E3A8A]" : "bg-[#F1F5F9] border-[#94A3B8]"
                                       )}>
                                         {msg.reply_to_content}
                                       </div>
@@ -3620,11 +3741,11 @@ const AtendimentoPage = () => {
                                       {(msg.type === 'audio' || msg.message_type === 'audio') && getMediaUrl(msg) && (
                                         <div className={cn(
                                           "mb-2 p-2 rounded-xl flex items-center gap-3 min-w-[240px]",
-                                          isOutbound ? "bg-white/10" : "bg-[#F1F5F9]"
+                                          isOutbound ? "bg-[#DBEAFE]/30" : "bg-[#F1F5F9]"
                                         )}>
                                           <div className={cn(
                                             "w-8 h-8 rounded-full flex items-center justify-center shrink-0",
-                                            isOutbound ? "bg-white/20 text-white" : "bg-white text-[#2563EB] shadow-sm"
+                                            isOutbound ? "bg-[#2563EB]/10 text-[#2563EB]" : "bg-white text-[#2563EB] shadow-sm"
                                           )}
                                             onClick={() => handleAudioSpeedToggle(msg.id, document.getElementById(`audio-${msg.id}`) as HTMLAudioElement)}
                                           >
@@ -3648,32 +3769,32 @@ const AtendimentoPage = () => {
                                           className={cn(
                                             "mb-2 p-3 rounded-xl flex items-center gap-3 border cursor-pointer transition-all hover:scale-[1.01]",
                                             isOutbound
-                                              ? "bg-white/10 border-white/20 hover:bg-white/20"
+                                              ? "bg-[#DBEAFE]/20 border-[#DBEAFE] hover:bg-[#DBEAFE]/30"
                                               : "bg-[#F8FAFC] border-[#E2E8F0] hover:bg-white"
                                           )}
                                           onClick={() => window.open(getMediaUrl(msg), '_blank')}
                                         >
                                           <div className={cn(
                                             "w-10 h-10 rounded-lg flex items-center justify-center shrink-0",
-                                            isOutbound ? "bg-white text-[#2563EB]" : "bg-[#EFF6FF] text-[#2563EB]"
+                                            isOutbound ? "bg-[#2563EB]/10 text-[#2563EB]" : "bg-[#EFF6FF] text-[#2563EB]"
                                           )}>
                                             <FileText className="w-6 h-6" />
                                           </div>
                                           <div className="flex-1 min-w-0">
                                             <p className={cn(
                                               "text-xs font-bold truncate",
-                                              isOutbound ? "text-white" : "text-[#0F172A]"
+                                              isOutbound ? "text-[#0F172A]" : "text-[#0F172A]"
                                             )}>
                                               {msg.content || 'Documento'}
                                             </p>
                                             <p className={cn(
                                               "text-[9px] uppercase tracking-wider font-medium opacity-70",
-                                              isOutbound ? "text-white" : "text-[#64748B]"
+                                              isOutbound ? "text-[#64748B]" : "text-[#64748B]"
                                             )}>
                                               PDF / Documento • Abrir
                                             </p>
                                           </div>
-                                          <Download className={cn("w-4 h-4", isOutbound ? "text-white/60" : "text-[#94A3B8]")} />
+                                          <Download className={cn("w-4 h-4 text-[#94A3B8]")} />
                                         </div>
                                       )}
 
@@ -3689,20 +3810,22 @@ const AtendimentoPage = () => {
                                       {(() => {
                                         const sourceLabel = getMessageSourceLabel(msg);
                                         return (
-                                          <span className={cn("text-[10px] font-medium", sourceLabel.className)}>
-                                            {sourceLabel.label}
-                                          </span>
+                                          <div className="flex items-center gap-1.5 translate-y-[2px]">
+                                            <span className={cn("text-[8px] font-bold uppercase tracking-tight", sourceLabel.className)}>
+                                              {sourceLabel.label}
+                                            </span>
+                                          </div>
                                         );
                                       })()}
                                       <span className={cn(
                                         "text-[10px] opacity-60 font-mono tracking-tighter",
-                                        isOutbound ? "text-white" : "text-[#64748B]"
+                                        isOutbound ? "text-[#64748B]" : "text-[#64748B]"
                                       )}>
                                         {formatTime(msg.sent_at)}
                                       </span>
                                       {isOutbound && (
                                         <div className="flex">
-                                          <CheckCheck className={cn("w-3.5 h-3.5", msg.status === 'READ' ? "text-emerald-300" : "text-white/60")} />
+                                          <CheckCheck className={cn("w-3.5 h-3.5", msg.status === 'READ' ? "text-[#3B82F6]" : "text-[#94A3B8]")} />
                                         </div>
                                       )}
                                     </div>
@@ -3717,11 +3840,11 @@ const AtendimentoPage = () => {
                               )}>
                                 <button className={cn(
                                   "p-1 rounded-full",
-                                  isOutbound ? "hover:bg-[#2563EB]/20 text-white/60" : "hover:bg-[#F1F5F9] text-[#94A3B8]"
+                                  isOutbound ? "hover:bg-[#2563EB]/10 text-[#94A3B8] hover:text-[#2563EB]" : "hover:bg-[#F1F5F9] text-[#94A3B8]"
                                 )} onClick={() => setReplyingTo(msg)}><CornerUpLeft className="w-3.5 h-3.5" /></button>
                                 <button className={cn(
                                   "p-1 rounded-full",
-                                  isOutbound ? "hover:bg-red-500/20 text-white/60" : "hover:bg-red-100 text-red-500"
+                                  isOutbound ? "hover:bg-red-50 text-[#94A3B8] hover:text-red-500" : "hover:bg-red-100 text-red-500"
                                 )} onClick={() => handleSendReaction(msg, '❤️')}><Heart className="w-3.5 h-3.5" /></button>
                               </div>
                             </div>
@@ -3774,200 +3897,200 @@ const AtendimentoPage = () => {
 
                 {canRespondToConversation && (
                   <>
-                <div className="max-w-6xl mx-auto bg-white border border-[#E2E8F0] rounded-xl md:rounded-2xl p-1 md:p-2 pr-2 md:pr-4 shadow-sm">
-                  <div className="flex items-end gap-0.5 md:gap-2">
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button variant="ghost" size="icon" className="h-8 md:h-10 w-8 md:w-10 shrink-0 text-[#94A3B8] hover:text-[#2563EB] rounded-full">
-                          <Plus className="h-4 md:h-5 w-4 md:w-5" />
+                    <div className="max-w-6xl mx-auto bg-white border border-[#E2E8F0] rounded-xl md:rounded-2xl p-1 md:p-2 pr-2 md:pr-4 shadow-sm">
+                      <div className="flex items-end gap-0.5 md:gap-2">
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button variant="ghost" size="icon" className="h-8 md:h-10 w-8 md:w-10 shrink-0 text-[#94A3B8] hover:text-[#2563EB] rounded-full">
+                              <Plus className="h-4 md:h-5 w-4 md:w-5" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent side="top" align="start" className="bg-white border-[#E2E8F0] text-[#0F172A] w-40 md:w-48 mb-2 shadow-lg">
+                            <DropdownMenuItem onClick={handleAttachmentClick} className="gap-2 md:gap-3 py-2 md:py-2.5 cursor-pointer focus:bg-[#F1F5F9] text-xs md:text-sm"><Image className="h-4 w-4" /> Fotos & Vídeos</DropdownMenuItem>
+                            <DropdownMenuItem onClick={handleAttachmentClick} className="gap-2 md:gap-3 py-2 md:py-2.5 cursor-pointer focus:bg-[#F1F5F9] text-xs md:text-sm"><FileText className="h-4 w-4" /> Documentos</DropdownMenuItem>
+                            <DropdownMenuItem onClick={handleAttachmentClick} className="gap-2 md:gap-3 py-2 md:py-2.5 cursor-pointer focus:bg-[#F1F5F9] text-xs md:text-sm"><Mic className="h-4 w-4" /> Áudio</DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => { setAppointmentInitialData({ conversation_id: selectedConversation?.id, client_name: getDisplayName(selectedConversation), phone: selectedConversation?.phone }); setIsAppointmentModalOpen(true); }} className="gap-2 md:gap-3 py-2 md:py-2.5 cursor-pointer focus:bg-[#F1F5F9] text-[#2563EB] text-xs md:text-sm"><Calendar className="h-4 w-4" /> Enviar Horário / Agendar</DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+
+                        <Button variant="ghost" size="icon" className="h-8 md:h-10 w-8 md:w-10 shrink-0 text-[#94A3B8] hover:text-[#2563EB] rounded-full" onClick={() => setShowEmojiPicker(!showEmojiPicker)}>
+                          <Smile className="h-4 md:h-5 w-4 md:w-5" />
                         </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent side="top" align="start" className="bg-white border-[#E2E8F0] text-[#0F172A] w-40 md:w-48 mb-2 shadow-lg">
-                        <DropdownMenuItem onClick={handleAttachmentClick} className="gap-2 md:gap-3 py-2 md:py-2.5 cursor-pointer focus:bg-[#F1F5F9] text-xs md:text-sm"><Image className="h-4 w-4" /> Fotos & Vídeos</DropdownMenuItem>
-                        <DropdownMenuItem onClick={handleAttachmentClick} className="gap-2 md:gap-3 py-2 md:py-2.5 cursor-pointer focus:bg-[#F1F5F9] text-xs md:text-sm"><FileText className="h-4 w-4" /> Documentos</DropdownMenuItem>
-                        <DropdownMenuItem onClick={handleAttachmentClick} className="gap-2 md:gap-3 py-2 md:py-2.5 cursor-pointer focus:bg-[#F1F5F9] text-xs md:text-sm"><Mic className="h-4 w-4" /> Áudio</DropdownMenuItem>
-                        <DropdownMenuItem onClick={() => { setAppointmentInitialData({ conversation_id: selectedConversation?.id, client_name: getDisplayName(selectedConversation), phone: selectedConversation?.phone }); setIsAppointmentModalOpen(true); }} className="gap-2 md:gap-3 py-2 md:py-2.5 cursor-pointer focus:bg-[#F1F5F9] text-[#2563EB] text-xs md:text-sm"><Calendar className="h-4 w-4" /> Enviar Horário / Agendar</DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
 
-                    <Button variant="ghost" size="icon" className="h-8 md:h-10 w-8 md:w-10 shrink-0 text-[#94A3B8] hover:text-[#2563EB] rounded-full" onClick={() => setShowEmojiPicker(!showEmojiPicker)}>
-                      <Smile className="h-4 md:h-5 w-4 md:w-5" />
-                    </Button>
+                        {pendingQuickAttachment && (
+                          <div className="self-center max-w-[220px] md:max-w-[280px] px-2 py-1 rounded-lg border border-[#DBEAFE] bg-[#EFF6FF] text-[#1E3A8A] text-[10px] md:text-xs flex items-center gap-2">
+                            <span className="truncate font-medium">
+                              /{pendingQuickAttachment.key} ({pendingQuickAttachment.type})
+                            </span>
+                            <button
+                              type="button"
+                              className="text-[#1D4ED8] hover:text-[#1E3A8A]"
+                              onClick={() => setPendingQuickAttachment(null)}
+                              title="Remover anexo rápido"
+                            >
+                              <X className="h-3.5 w-3.5" />
+                            </button>
+                          </div>
+                        )}
 
-                    {pendingQuickAttachment && (
-                      <div className="self-center max-w-[220px] md:max-w-[280px] px-2 py-1 rounded-lg border border-[#DBEAFE] bg-[#EFF6FF] text-[#1E3A8A] text-[10px] md:text-xs flex items-center gap-2">
-                        <span className="truncate font-medium">
-                          /{pendingQuickAttachment.key} ({pendingQuickAttachment.type})
-                        </span>
-                        <button
-                          type="button"
-                          className="text-[#1D4ED8] hover:text-[#1E3A8A]"
-                          onClick={() => setPendingQuickAttachment(null)}
-                          title="Remover anexo rápido"
-                        >
-                          <X className="h-3.5 w-3.5" />
-                        </button>
-                      </div>
-                    )}
+                        <div className="flex-1 min-h-[36px] md:min-h-[40px] flex flex-col justify-center relative">
+                          <textarea
+                            ref={messageInputRef}
+                            rows={1}
+                            placeholder="Digite uma mensagem..."
+                            className="w-full bg-transparent border-none text-[#0F172A] placeholder:text-[#94A3B8] focus:ring-0 text-xs md:text-sm py-1.5 md:py-2.5 resize-none max-h-48 custom-scrollbar scroll-py-2"
+                            value={messageInput}
+                            onChange={(e) => {
+                              const value = e.target.value;
+                              setMessageInput(value);
+                              e.target.style.height = 'auto';
+                              e.target.style.height = e.target.scrollHeight + 'px';
 
-                    <div className="flex-1 min-h-[36px] md:min-h-[40px] flex flex-col justify-center relative">
-                      <textarea
-                        ref={messageInputRef}
-                        rows={1}
-                        placeholder="Digite uma mensagem..."
-                        className="w-full bg-transparent border-none text-[#0F172A] placeholder:text-[#94A3B8] focus:ring-0 text-xs md:text-sm py-1.5 md:py-2.5 resize-none max-h-48 custom-scrollbar scroll-py-2"
-                        value={messageInput}
-                        onChange={(e) => {
-                          const value = e.target.value;
-                          setMessageInput(value);
-                          e.target.style.height = 'auto';
-                          e.target.style.height = e.target.scrollHeight + 'px';
-
-                          if (!value.startsWith("/")) {
-                            setIsQuickMenuOpen(false);
-                            setQuickSearch("");
-                            return;
-                          }
-
-                          const slashQuery = value.slice(1);
-                          if (slashQuery.includes(" ")) {
-                            setIsQuickMenuOpen(false);
-                            return;
-                          }
-
-                          setQuickSearch(slashQuery.toLowerCase());
-                          setQuickSelectedIndex(0);
-                          setIsQuickMenuOpen(true);
-                        }}
-                        onKeyDown={(e) => {
-                          if (isQuickMenuOpen && filteredQuickMessages.length > 0) {
-                            if (e.key === 'ArrowDown') {
-                              e.preventDefault();
-                              setQuickSelectedIndex((prev) => Math.min(prev + 1, filteredQuickMessages.length - 1));
-                              return;
-                            }
-                            if (e.key === 'ArrowUp') {
-                              e.preventDefault();
-                              setQuickSelectedIndex((prev) => Math.max(prev - 1, 0));
-                              return;
-                            }
-                            if (e.key === 'Escape') {
-                              e.preventDefault();
-                              setIsQuickMenuOpen(false);
-                              return;
-                            }
-                            if (e.key === 'Enter' && !e.shiftKey) {
-                              e.preventDefault();
-                              const selectedQuick = filteredQuickMessages[quickSelectedIndex] || filteredQuickMessages[0];
-                              if (selectedQuick) {
-                                applyQuickMessage(selectedQuick);
+                              if (!value.startsWith("/")) {
+                                setIsQuickMenuOpen(false);
+                                setQuickSearch("");
                                 return;
                               }
-                            }
-                          }
 
-                          if (isQuickMenuOpen && e.key === 'Escape') {
-                            e.preventDefault();
-                            setIsQuickMenuOpen(false);
-                            return;
-                          }
+                              const slashQuery = value.slice(1);
+                              if (slashQuery.includes(" ")) {
+                                setIsQuickMenuOpen(false);
+                                return;
+                              }
 
-                          if (isQuickMenuOpen && e.key === 'Enter' && !e.shiftKey) {
-                            e.preventDefault();
-                            return;
-                          }
+                              setQuickSearch(slashQuery.toLowerCase());
+                              setQuickSelectedIndex(0);
+                              setIsQuickMenuOpen(true);
+                            }}
+                            onKeyDown={(e) => {
+                              if (isQuickMenuOpen && filteredQuickMessages.length > 0) {
+                                if (e.key === 'ArrowDown') {
+                                  e.preventDefault();
+                                  setQuickSelectedIndex((prev) => Math.min(prev + 1, filteredQuickMessages.length - 1));
+                                  return;
+                                }
+                                if (e.key === 'ArrowUp') {
+                                  e.preventDefault();
+                                  setQuickSelectedIndex((prev) => Math.max(prev - 1, 0));
+                                  return;
+                                }
+                                if (e.key === 'Escape') {
+                                  e.preventDefault();
+                                  setIsQuickMenuOpen(false);
+                                  return;
+                                }
+                                if (e.key === 'Enter' && !e.shiftKey) {
+                                  e.preventDefault();
+                                  const selectedQuick = filteredQuickMessages[quickSelectedIndex] || filteredQuickMessages[0];
+                                  if (selectedQuick) {
+                                    applyQuickMessage(selectedQuick);
+                                    return;
+                                  }
+                                }
+                              }
 
-                          if (e.key === 'Enter' && !e.shiftKey) {
-                            e.preventDefault();
-                            handleSendMessage();
-                          }
-                        }}
-                      />
+                              if (isQuickMenuOpen && e.key === 'Escape') {
+                                e.preventDefault();
+                                setIsQuickMenuOpen(false);
+                                return;
+                              }
 
-                      {isQuickMenuOpen && (
-                        <div ref={quickMenuRef} className="absolute left-0 right-0 bottom-full mb-2 rounded-xl border border-[#E2E8F0] bg-white shadow-xl z-40 max-h-56 overflow-y-auto">
-                          {filteredQuickMessages.length === 0 ? (
-                            <div className="px-3 py-2 text-xs text-[#94A3B8]">Nenhuma chave encontrada</div>
-                          ) : (
-                            filteredQuickMessages.map((item, idx) => (
-                              <button
-                                key={item.id}
-                                type="button"
-                                className={cn(
-                                  "w-full text-left px-3 py-2 border-b border-[#F1F5F9] last:border-b-0 text-xs md:text-sm",
-                                  idx === quickSelectedIndex ? "bg-[#EFF6FF] text-[#1D4ED8]" : "hover:bg-[#F8FAFC] text-[#0F172A]"
-                                )}
-                                onMouseEnter={() => setQuickSelectedIndex(idx)}
-                                onClick={() => applyQuickMessage(item)}
-                              >
-                                <div className="font-mono font-semibold">/{item.key}</div>
-                                <div className="text-[11px] text-[#64748B] truncate">
-                                  {item.type === 'text' ? item.content : (item.fileName || item.type)}
-                                </div>
-                              </button>
-                            ))
+                              if (isQuickMenuOpen && e.key === 'Enter' && !e.shiftKey) {
+                                e.preventDefault();
+                                return;
+                              }
+
+                              if (e.key === 'Enter' && !e.shiftKey) {
+                                e.preventDefault();
+                                handleSendMessage();
+                              }
+                            }}
+                          />
+
+                          {isQuickMenuOpen && (
+                            <div ref={quickMenuRef} className="absolute left-0 right-0 bottom-full mb-2 rounded-xl border border-[#E2E8F0] bg-white shadow-xl z-40 max-h-56 overflow-y-auto">
+                              {filteredQuickMessages.length === 0 ? (
+                                <div className="px-3 py-2 text-xs text-[#94A3B8]">Nenhuma chave encontrada</div>
+                              ) : (
+                                filteredQuickMessages.map((item, idx) => (
+                                  <button
+                                    key={item.id}
+                                    type="button"
+                                    className={cn(
+                                      "w-full text-left px-3 py-2 border-b border-[#F1F5F9] last:border-b-0 text-xs md:text-sm",
+                                      idx === quickSelectedIndex ? "bg-[#EFF6FF] text-[#1D4ED8]" : "hover:bg-[#F8FAFC] text-[#0F172A]"
+                                    )}
+                                    onMouseEnter={() => setQuickSelectedIndex(idx)}
+                                    onClick={() => applyQuickMessage(item)}
+                                  >
+                                    <div className="font-mono font-semibold">/{item.key}</div>
+                                    <div className="text-[11px] text-[#64748B] truncate">
+                                      {item.type === 'text' ? item.content : (item.fileName || item.type)}
+                                    </div>
+                                  </button>
+                                ))
+                              )}
+                            </div>
                           )}
                         </div>
-                      )}
-                    </div>
 
-                    <div className="flex items-center self-end mb-0 md:mb-1 gap-1 md:gap-2">
-                      {isRecording ? (
-                        <div className="flex items-center gap-2 md:gap-3 bg-[#FEE2E2] px-2 md:px-4 py-1 md:py-1.5 rounded-full border border-[#DC2626]/30 animate-in zoom-in-95 text-[9px] md:text-[11px]">
-                          <div className="flex items-center gap-2">
-                            <div className="w-1.5 h-1.5 md:w-2 md:h-2 rounded-full bg-[#DC2626] animate-pulse" />
-                            <span className="font-mono text-[#DC2626]">{formatDuration(recordingDuration)}</span>
-                          </div>
-                          <div className="flex gap-1 border-l border-[#DC2626]/20 pl-1 md:pl-2">
+                        <div className="flex items-center self-end mb-0 md:mb-1 gap-1 md:gap-2">
+                          {isRecording ? (
+                            <div className="flex items-center gap-2 md:gap-3 bg-[#FEE2E2] px-2 md:px-4 py-1 md:py-1.5 rounded-full border border-[#DC2626]/30 animate-in zoom-in-95 text-[9px] md:text-[11px]">
+                              <div className="flex items-center gap-2">
+                                <div className="w-1.5 h-1.5 md:w-2 md:h-2 rounded-full bg-[#DC2626] animate-pulse" />
+                                <span className="font-mono text-[#DC2626]">{formatDuration(recordingDuration)}</span>
+                              </div>
+                              <div className="flex gap-1 border-l border-[#DC2626]/20 pl-1 md:pl-2">
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-6 md:h-8 w-6 md:w-8 text-[#DC2626] hover:text-[#991b1b]"
+                                  onClick={cancelRecording}
+                                >
+                                  <Trash2 className="h-3 md:h-4 w-3 md:w-4" />
+                                </Button>
+                                <Button
+                                  size="icon"
+                                  className="h-6 md:h-8 w-6 md:w-8 bg-[#2563EB] hover:bg-[#1D4ED8] text-white rounded-full"
+                                  onClick={stopAndSendRecording}
+                                >
+                                  <Send className="h-3 md:h-4 w-3 md:w-4" />
+                                </Button>
+                              </div>
+                            </div>
+                          ) : (messageInput.trim() || pendingQuickAttachment) ? (
+                            <Button
+                              onClick={handleSendMessage}
+                              className="h-8 md:h-9 w-8 md:w-9 bg-[#2563EB] hover:bg-[#1D4ED8] text-white rounded-full p-0 shadow-sm shadow-[#2563EB]/20 shrink-0"
+                            >
+                              <Send className="h-3.5 md:h-4 w-3.5 md:w-4" />
+                            </Button>
+                          ) : (
                             <Button
                               variant="ghost"
                               size="icon"
-                              className="h-6 md:h-8 w-6 md:w-8 text-[#DC2626] hover:text-[#991b1b]"
-                              onClick={cancelRecording}
+                              className="h-8 md:h-10 w-8 md:w-10 text-[#94A3B8] hover:text-[#2563EB] rounded-full shrink-0"
+                              onClick={startRecording}
                             >
-                              <Trash2 className="h-3 md:h-4 w-3 md:w-4" />
+                              <Mic className="h-4 md:h-5 w-4 md:w-5" />
                             </Button>
-                            <Button
-                              size="icon"
-                              className="h-6 md:h-8 w-6 md:w-8 bg-[#2563EB] hover:bg-[#1D4ED8] text-white rounded-full"
-                              onClick={stopAndSendRecording}
-                            >
-                              <Send className="h-3 md:h-4 w-3 md:w-4" />
-                            </Button>
-                          </div>
+                          )}
                         </div>
-                      ) : (messageInput.trim() || pendingQuickAttachment) ? (
-                        <Button
-                          onClick={handleSendMessage}
-                          className="h-8 md:h-9 w-8 md:w-9 bg-[#2563EB] hover:bg-[#1D4ED8] text-white rounded-full p-0 shadow-sm shadow-[#2563EB]/20 shrink-0"
-                        >
-                          <Send className="h-3.5 md:h-4 w-3.5 md:w-4" />
-                        </Button>
-                      ) : (
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-8 md:h-10 w-8 md:w-10 text-[#94A3B8] hover:text-[#2563EB] rounded-full shrink-0"
-                          onClick={startRecording}
-                        >
-                          <Mic className="h-4 md:h-5 w-4 md:w-5" />
-                        </Button>
-                      )}
+                      </div>
                     </div>
-                  </div>
-                </div>
 
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  className="hidden"
-                  onChange={handleFileChange}
-                />
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      className="hidden"
+                      onChange={handleFileChange}
+                    />
 
-                {/* Typing Indicator */}
-                <div className="h-4 mt-2 px-8">
-                  {/* Logica de typing seria injetada aqui */}
-                </div>
+                    {/* Typing Indicator */}
+                    <div className="h-4 mt-2 px-8">
+                      {/* Logica de typing seria injetada aqui */}
+                    </div>
                   </>
                 )}
               </div>
@@ -4088,65 +4211,93 @@ const AtendimentoPage = () => {
           }
         }}
       >
-        <DialogContent className="sm:max-w-[520px] border border-[#E2E8F0] bg-white text-[#0F172A] shadow-lg">
-          <DialogHeader>
-            <DialogTitle>Encerrar atendimento</DialogTitle>
+        <DialogContent className="sm:max-w-[500px] border border-[#E2E8F0] bg-white text-[#0F172A] shadow-xl p-0 overflow-hidden">
+          <DialogHeader className="px-6 pt-6 pb-2">
+            <DialogTitle className="text-xl font-bold flex items-center gap-2">
+              <CheckSquare className="w-5 h-5 text-[#2563EB]" /> Finalizar Atendimento
+            </DialogTitle>
+            <DialogDescription className="text-[#64748B]">
+              Selecione o motivo do encerramento para concluir esta conversa.
+            </DialogDescription>
           </DialogHeader>
-          <div className="space-y-4 py-2">
-            <div className="space-y-2">
-              <label className="text-sm font-medium">Motivo de encerramento *</label>
+
+          <div className="px-6 py-2 space-y-4">
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#94A3B8]" />
               <Input
                 value={closingReasonSearch}
                 onChange={(e) => setClosingReasonSearch(e.target.value)}
-                placeholder="Buscar motivo..."
-              />
-              <select
-                className="w-full h-10 rounded-md border border-[#E2E8F0] bg-white px-3 text-sm outline-none focus:ring-2 focus:ring-[#2563EB]/30"
-                value={closingReasonId}
-                onChange={(e) => setClosingReasonId(e.target.value)}
-              >
-                <option value="">Selecione um motivo</option>
-                {filteredClosingReasons.map((reason) => (
-                  <option key={reason.id} value={String(reason.id)}>
-                    {reason.name} {reason.category ? `(${reason.category})` : ""}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div className="space-y-2">
-              <label className="text-sm font-medium">Observação (opcional)</label>
-              <textarea
-                className="w-full min-h-[96px] rounded-md border border-[#E2E8F0] bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-[#2563EB]/30 resize-y"
-                placeholder="Ex: Cliente pediu para retornar no próximo mês."
-                value={closingObservation}
-                onChange={(e) => setClosingObservation(e.target.value)}
-                maxLength={1000}
+                placeholder="Filtrar motivos..."
+                className="pl-9 bg-[#F8FAFC] border-[#E2E8F0] h-10 focus-visible:ring-[#2563EB]/20"
               />
             </div>
 
-            <div className="flex items-center justify-end gap-2 pt-2">
-              <Button
-                type="button"
-                variant="ghost"
-                disabled={isClosingSubmitting}
-                onClick={() => setIsClosingModalOpen(false)}
-              >
-                Cancelar
-              </Button>
-              <Button
-                type="button"
-                disabled={isClosingSubmitting}
-                onClick={handleConfirmCloseAtendimento}
-                className="bg-[#DC2626] hover:bg-[#b91c1c] text-white"
-              >
-                {isClosingSubmitting ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
-                Confirmar Encerramento
-              </Button>
+            <div className="grid grid-cols-1 gap-2 max-h-[350px] overflow-y-auto pr-1 custom-scrollbar pb-2">
+              {filteredClosingReasons.length === 0 ? (
+                <div className="text-center py-8 text-[#94A3B8] text-sm italic">
+                  Nenhum motivo encontrado.
+                </div>
+              ) : (
+                filteredClosingReasons.map((reason) => (
+                  <button
+                    key={reason.id}
+                    type="button"
+                    onClick={() => setClosingReasonId(String(reason.id))}
+                    className={cn(
+                      "w-full flex items-start gap-3 p-4 rounded-xl border-2 transition-all text-left group",
+                      closingReasonId === String(reason.id)
+                        ? "border-[#2563EB] bg-[#EFF6FF] shadow-sm"
+                        : "border-[#F1F5F9] bg-[#F8FAFC] hover:border-[#E2E8F0] hover:bg-white"
+                    )}
+                  >
+                    <div className={cn(
+                      "mt-1 w-4 h-4 rounded-full border-2 flex items-center justify-center shrink-0 transition-colors",
+                      closingReasonId === String(reason.id) ? "border-[#2563EB] bg-[#2563EB]" : "border-[#CBD5E1] group-hover:border-[#94A3B8]"
+                    )}>
+                      {closingReasonId === String(reason.id) && <div className="w-1.5 h-1.5 rounded-full bg-white" />}
+                    </div>
+                    <div className="flex flex-col gap-0.5">
+                      <span className={cn(
+                        "font-bold text-sm leading-tight",
+                        closingReasonId === String(reason.id) ? "text-[#1E40AF]" : "text-[#334155]"
+                      )}>
+                        {reason.name}
+                      </span>
+                      {reason.category && (
+                        <span className="text-[10px] uppercase font-bold tracking-wider text-[#94A3B8]">
+                          {reason.category}
+                        </span>
+                      )}
+                    </div>
+                  </button>
+                ))
+              )}
             </div>
+          </div>
+
+          <div className="px-6 py-4 bg-[#F8FAFC] border-t border-[#E2E8F0] flex items-center justify-between">
+            <Button
+              type="button"
+              variant="ghost"
+              disabled={isClosingSubmitting}
+              onClick={() => setIsClosingModalOpen(false)}
+              className="text-[#64748B] hover:text-[#0F172A]"
+            >
+              Cancelar
+            </Button>
+            <Button
+              type="button"
+              disabled={isClosingSubmitting || !closingReasonId}
+              onClick={handleConfirmCloseAtendimento}
+              className="bg-[#2563EB] hover:bg-[#1D4ED8] text-white px-8 font-bold shadow-lg shadow-[#2563EB]/20 h-11"
+            >
+              {isClosingSubmitting ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <CheckSquare className="w-4 h-4 mr-2" />}
+              Encerrar Conversa
+            </Button>
           </div>
         </DialogContent>
       </Dialog>
+
 
 
       {/* Relationship Dialog */}
@@ -4346,11 +4497,42 @@ const AtendimentoPage = () => {
           </div>
         </SheetContent>
       </Sheet>
+      {/* Modal Transferir Fila */}
+      <Dialog open={isTransferModalOpen} onOpenChange={setIsTransferModalOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Transferir para Fila</DialogTitle>
+          </DialogHeader>
+          <div className="grid gap-4 py-4">
+            <p className="text-sm text-muted-foreground">Escolha o departamento para onde esta conversa será movida.</p>
+            <div className="grid grid-cols-1 gap-2">
+              {queues.length === 0 ? (
+                <p className="text-sm text-amber-600">Nenhuma fila disponível para transferência.</p>
+              ) : (
+                queues.map(q => (
+                  <Button
+                    key={q.id}
+                    variant="outline"
+                    className="justify-start gap-3 h-12 hover:bg-[#F1F5F9] hover:text-[#2563EB] hover:border-[#2563EB]/30 transition-all font-semibold"
+                    onClick={() => handleTransferQueue(q.id)}
+                    disabled={transferringQueue || selectedConversation?.queue_id === q.id}
+                  >
+                    <div className="w-4 h-4 rounded-full" style={{ backgroundColor: (q as any).color || '#3b82f6' }} />
+                    {q.name}
+                    {selectedConversation?.queue_id === q.id && <span className="ml-auto text-[10px] uppercase opacity-50">(Fila atual)</span>}
+                  </Button>
+                ))
+              )}
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div >
   );
 };
 
 export default AtendimentoPage;
-  const SAO_PAULO_TZ = "America/Sao_Paulo";
+
+const SAO_PAULO_TZ = "America/Sao_Paulo";
 
 

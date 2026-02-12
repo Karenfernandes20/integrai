@@ -2,6 +2,7 @@
 import { Response } from 'express';
 import { pool } from '../db';
 import { RequestWithInstance } from '../middleware/validateCompanyAndInstance';
+import { logEvent } from '../logger';
 
 type GoalMetric = 'revenue' | 'sales_count' | 'product' | 'new_clients' | 'category' | 'avg_ticket';
 type GoalScope = 'company' | 'seller' | 'channel';
@@ -300,11 +301,21 @@ export const getSales = async (req: RequestWithInstance, res: Response) => {
 };
 
 export const createSale = async (req: RequestWithInstance, res: Response) => {
-    const client = await pool!.connect();
+    let client: any;
     try {
+        if (!pool) throw new Error('Database pool not found');
+        client = await pool.connect();
+
         const { company_id, id: user_id } = req.user;
-        const instance_id = req.instanceId;
-        const { client_id, items, payment_method, discount, channel, status } = req.body; // items: [{inventory_id, quantity, unit_price}]
+        const instance_id = req.instanceId as number;
+        const { client_id: inputClientId, items, payment_method, discount, channel, status } = req.body;
+
+        // Sanitize client_id
+        const client_id = inputClientId && inputClientId !== '0' && inputClientId !== 0 ? inputClientId : null;
+
+        if (!items || !Array.isArray(items) || items.length === 0) {
+            throw new Error('Lista de itens inválida ou vazia');
+        }
 
         await client.query('BEGIN');
 
@@ -313,13 +324,18 @@ export const createSale = async (req: RequestWithInstance, res: Response) => {
         const saleItems = [];
 
         for (const item of items) {
-            const subtotal = Number(item.quantity) * Number(item.unit_price);
+            const qty = Number(item.quantity);
+            const price = Number(item.unit_price);
+
+            if (qty <= 0) throw new Error(`Quantidade inválida para o item #${item.inventory_id}`);
+
+            const subtotal = qty * price;
             total_amount += subtotal;
-            saleItems.push({ ...item, total: subtotal });
+            saleItems.push({ ...item, quantity: qty, unit_price: price, total: subtotal });
 
             // Check stock
-            const stockCheck = await client.query('SELECT quantity, name FROM inventory WHERE id = $1', [item.inventory_id]);
-            if (stockCheck.rows.length === 0) throw new Error(`Product ${item.inventory_id} not found`);
+            const stockCheck = await client.query('SELECT id, quantity, name FROM inventory WHERE id = $1', [item.inventory_id]);
+            if (stockCheck.rows.length === 0) throw new Error(`Produto #${item.inventory_id} não encontrado no estoque.`);
             // if (stockCheck.rows[0].quantity < item.quantity) throw new Error(`Insufficient stock for ${stockCheck.rows[0].name}`);
         }
 
@@ -330,7 +346,18 @@ export const createSale = async (req: RequestWithInstance, res: Response) => {
             INSERT INTO sales (company_id, instance_id, client_id, user_id, total_amount, discount, final_amount, payment_method, channel, status)
             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
             RETURNING id
-        `, [company_id, instance_id, client_id, user_id, total_amount, discount || 0, final_amount, payment_method, channel || 'loja_fisica', status || 'completed']);
+        `, [
+            company_id,
+            instance_id,
+            client_id || null,
+            user_id,
+            total_amount,
+            discount || 0,
+            final_amount,
+            payment_method,
+            channel || 'loja_fisica',
+            status || 'completed'
+        ]);
 
         const saleId = saleRes.rows[0].id;
 
@@ -354,27 +381,77 @@ export const createSale = async (req: RequestWithInstance, res: Response) => {
         }
 
         // 4. Generate Receivable if necessary (if not paid instantly)
-        // Ignoring for now or can calculate based on payment_method logic
-        if (status === 'completed') {
+        if ((status || 'completed') === 'completed') {
             await client.query(`
                 INSERT INTO receivables (company_id, instance_id, sale_id, client_id, description, amount, due_date, paid_at, status, payment_method)
-                VALUES ($1, $2, $3, $4, 'Venda #' || $3, $5, NOW(), NOW(), 'paid', $6)
-             `, [company_id, instance_id, saleId, client_id, final_amount, payment_method]);
+                VALUES ($1, $2, $3, $4, 'Venda #' || $7, $5, NOW(), NOW(), 'paid', $6)
+             `, [company_id, instance_id, saleId, client_id || null, final_amount, payment_method, saleId]);
+
+            // 5. Sync with Financial Module (Financeiro > Receitas)
+            await client.query(`
+                INSERT INTO financial_transactions (
+                    description, 
+                    type, 
+                    amount, 
+                    status, 
+                    due_date, 
+                    issue_date, 
+                    paid_at, 
+                    category, 
+                    notes, 
+                    company_id
+                )
+                VALUES (
+                    'Venda Loja #' || $1, 
+                    'receivable', 
+                    $2, 
+                    'paid', 
+                    NOW(), 
+                    NOW(), 
+                    NOW(), 
+                    'Vendas', 
+                    'Venda realizada via Loja. Método: ' || $3, 
+                    $4
+                )
+            `, [saleId, final_amount, payment_method, company_id]);
         }
 
+        console.log('--- COMMITTING SALE ---');
         await client.query('COMMIT');
-        // Recompute goal progress affected by this period/status change.
-        refreshGoalsForWindow(company_id, instance_id, new Date(), new Date()).catch((e) =>
+
+        // Recompute goal progress
+        refreshGoalsForWindow(company_id as number, instance_id as number, new Date(), new Date()).catch((e) =>
             console.error('[SHOP][GOALS] Failed to refresh after createSale:', e)
         );
         res.status(201).json({ success: true, saleId });
 
     } catch (error: any) {
-        await client.query('ROLLBACK');
-        console.error('Create sale error:', error);
-        res.status(500).json({ error: error.message });
+        if (client) await client.query('ROLLBACK');
+        console.error('Create sale error details:', {
+            error: error.message,
+            stack: error.stack,
+            body: req.body,
+            user: req.user,
+            instanceId: req.instanceId
+        });
+        res.status(500).json({ error: error.message || 'Erro interno ao processar venda' });
+
+        // Log to system logs
+        logEvent({
+            eventType: 'system_error',
+            origin: 'system',
+            status: 'error',
+            message: `Erro ao criar venda: ${error.message}`,
+            companyId: req.user?.company_id,
+            details: {
+                stack: error.stack,
+                body: req.body,
+                user: req.user,
+                instanceId: req.instanceId
+            }
+        });
     } finally {
-        client.release();
+        if (client) client.release();
     }
 };
 

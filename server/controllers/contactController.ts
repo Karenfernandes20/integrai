@@ -9,6 +9,8 @@ export const getContacts = async (req: Request, res: Response) => {
         const companyId = user.company_id;
         const { instance_id } = req.query;
 
+        if (!pool) return res.status(500).json({ error: 'Banco de dados não configurado' });
+
         let query = `
             SELECT 
                 id, 
@@ -72,6 +74,8 @@ export const createContact = async (req: Request, res: Response) => {
         const user = (req as any).user;
         const companyId = user.company_id;
         const { name, phone, email, instance, profile_pic_url, push_name } = req.body;
+
+        if (!pool) return res.status(500).json({ error: 'Banco de dados não configurado' });
 
         // Validation
         if (!phone || phone.trim().length === 0) {
@@ -139,6 +143,8 @@ export const updateContact = async (req: Request, res: Response) => {
         const { id } = req.params;
         const { name, phone, email, profile_pic_url } = req.body;
 
+        if (!pool) return res.status(500).json({ error: 'Banco de dados não configurado' });
+
         // Check if contact exists and belongs to company
         const existing = await pool.query(
             `SELECT * FROM whatsapp_contacts WHERE id = $1 AND company_id = $2`,
@@ -188,6 +194,8 @@ export const updateContact = async (req: Request, res: Response) => {
         // Add id and company_id for WHERE clause
         values.push(id, companyId);
 
+        if (!pool) return res.status(500).json({ error: 'Banco de dados não configurado' });
+
         const query = `
             UPDATE whatsapp_contacts 
             SET ${updates.join(', ')}
@@ -196,6 +204,21 @@ export const updateContact = async (req: Request, res: Response) => {
         `;
 
         const result = await pool.query(query, values);
+
+        // PROPAGATE change to conversations table for this specific contact
+        if (name !== undefined) {
+            try {
+                await pool.query(
+                    `UPDATE whatsapp_conversations 
+               SET contact_name = $1 
+               WHERE company_id = $2 
+                 AND (external_id = $3 OR phone = $4)`,
+                    [name.trim(), companyId, existing.rows[0].jid, existing.rows[0].phone]
+                );
+            } catch (e) {
+                console.error('[Contacts] Failed to propagate name update to conversations:', e);
+            }
+        }
 
         console.log(`[Contacts] Updated contact ${id} for company ${companyId}`);
 
@@ -244,6 +267,8 @@ export const searchContacts = async (req: Request, res: Response) => {
         const user = (req as any).user;
         const companyId = user.company_id;
         const { q } = req.query;
+
+        if (!pool) return res.status(500).json({ error: 'Banco de dados não configurado' });
 
         if (!q || typeof q !== 'string' || q.trim().length === 0) {
             return res.status(400).json({ error: 'Query de busca é obrigatória' });

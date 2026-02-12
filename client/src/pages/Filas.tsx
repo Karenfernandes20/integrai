@@ -4,7 +4,9 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Plus, Search } from "lucide-react";
+import { Plus, Search, Pencil, Trash2 } from "lucide-react";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
 
 interface QueueItem {
@@ -12,6 +14,8 @@ interface QueueItem {
   companyId: number;
   name: string;
   isActive: boolean;
+  greetingMessage?: string | null;
+  color?: string;
   createdAt: string;
 }
 
@@ -22,7 +26,13 @@ const FilasPage = () => {
   const [items, setItems] = useState<QueueItem[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [query, setQuery] = useState("");
-  const [newQueueName, setNewQueueName] = useState("");
+
+  const [open, setOpen] = useState(false);
+  const [editing, setEditing] = useState<QueueItem | null>(null);
+  const [formName, setFormName] = useState("");
+  const [formGreeting, setFormGreeting] = useState("");
+  const [formColor, setFormColor] = useState("#3b82f6");
+  const [formIsActive, setFormIsActive] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
 
   const filteredItems = useMemo(() => {
@@ -52,37 +62,77 @@ const FilasPage = () => {
     loadQueues();
   }, [token]);
 
-  const handleCreateQueue = async () => {
+  const openCreate = () => {
+    setEditing(null);
+    setFormName("");
+    setFormGreeting("");
+    setFormColor("#3b82f6");
+    setFormIsActive(true);
+    setOpen(true);
+  };
+
+  const openEdit = (item: QueueItem) => {
+    setEditing(item);
+    setFormName(item.name);
+    setFormGreeting(item.greetingMessage || "");
+    setFormColor(item.color || "#3b82f6");
+    setFormIsActive(item.isActive);
+    setOpen(true);
+  };
+
+  const handleSave = async () => {
     if (!isAdmin) return;
-    const name = newQueueName.trim();
-    if (!name) {
-      toast.error("Informe o nome da fila");
-      return;
-    }
+    const name = formName.trim();
+    if (!name) return toast.error("Informe o nome da fila");
 
     setIsSaving(true);
     try {
-      const res = await fetch("/api/queues", {
-        method: "POST",
+      const url = editing ? `/api/queues/${editing.id}` : "/api/queues";
+      const method = editing ? "PUT" : "POST";
+
+      const res = await fetch(url, {
+        method,
         headers: {
           Authorization: `Bearer ${token}`,
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ name }),
+        body: JSON.stringify({
+          name,
+          greetingMessage: formGreeting,
+          color: formColor,
+          isActive: formIsActive
+        }),
       });
 
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
-        throw new Error(err?.error || "Falha ao criar fila");
+        throw new Error(err?.error || "Falha ao salvar fila");
       }
 
-      setNewQueueName("");
-      toast.success("Fila criada com sucesso");
+      toast.success(editing ? "Fila atualizada" : "Fila criada");
+      setOpen(false);
       loadQueues();
     } catch (error: any) {
-      toast.error(error?.message || "Erro ao criar fila");
+      toast.error(error?.message || "Erro ao salvar fila");
     } finally {
       setIsSaving(false);
+    }
+  };
+
+  const handleDelete = async (id: number) => {
+    if (!isAdmin) return;
+    if (!window.confirm("Deseja excluir esta fila? Todas as conversas vinculadas ficarão sem fila.")) return;
+
+    try {
+      const res = await fetch(`/api/queues/${id}`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) throw new Error("Falha ao excluir");
+      toast.success("Fila excluída");
+      loadQueues();
+    } catch (error: any) {
+      toast.error(error?.message || "Erro ao excluir");
     }
   };
 
@@ -93,27 +143,19 @@ const FilasPage = () => {
           <h1 className="text-2xl md:text-3xl font-bold tracking-tight">Filas</h1>
           <p className="text-sm text-muted-foreground">Gerencie as filas de atendimento da sua empresa.</p>
         </div>
+        {isAdmin && (
+          <Button onClick={openCreate} className="gap-2">
+            <Plus className="h-4 w-4" /> Nova Fila
+          </Button>
+        )}
       </div>
 
       <Card>
         <CardHeader>
-          <CardTitle>Fila de Atendimento</CardTitle>
-          <CardDescription>As conversas podem ser direcionadas automaticamente para uma fila.</CardDescription>
+          <CardTitle>Filas de Atendimento</CardTitle>
+          <CardDescription>Departamentos para onde as conversas são direcionadas.</CardDescription>
 
-          <div className="grid gap-3 md:grid-cols-[1fr_auto]">
-            <Input
-              placeholder="Nome da nova fila"
-              value={newQueueName}
-              onChange={(e) => setNewQueueName(e.target.value)}
-              disabled={!isAdmin || isSaving}
-            />
-            <Button onClick={handleCreateQueue} disabled={!isAdmin || isSaving} className="gap-2">
-              <Plus className="h-4 w-4" />
-              {isSaving ? "Salvando..." : "Nova Fila"}
-            </Button>
-          </div>
-
-          <div className="relative mt-1">
+          <div className="relative mt-2">
             <Search className="h-4 w-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
             <Input
               value={query}
@@ -131,24 +173,39 @@ const FilasPage = () => {
           ) : (
             <div className="overflow-auto rounded-md border">
               <table className="w-full text-sm">
-                <thead className="bg-muted/40">
+                <thead className="bg-muted/40 font-medium">
                   <tr>
-                    <th className="text-left p-3 font-semibold">Nome</th>
-                    <th className="text-left p-3 font-semibold">Status</th>
-                    <th className="text-left p-3 font-semibold">Criada em</th>
+                    <th className="text-left p-3">Cor</th>
+                    <th className="text-left p-3">Nome</th>
+                    <th className="text-left p-3">Saudação</th>
+                    <th className="text-left p-3">Status</th>
+                    <th className="text-right p-3">Ações</th>
                   </tr>
                 </thead>
                 <tbody>
                   {filteredItems.map((item) => (
                     <tr key={item.id} className="border-t">
+                      <td className="p-3">
+                        <div className="w-6 h-6 rounded-full" style={{ backgroundColor: item.color || '#3b82f6' }} />
+                      </td>
                       <td className="p-3 font-medium">{item.name}</td>
+                      <td className="p-3 truncate max-w-[300px] text-muted-foreground italic">
+                        {item.greetingMessage || "Sem saudação configurada"}
+                      </td>
                       <td className="p-3">
                         <Badge variant={item.isActive ? "default" : "secondary"}>
                           {item.isActive ? "Ativa" : "Inativa"}
                         </Badge>
                       </td>
-                      <td className="p-3 text-muted-foreground">
-                        {new Date(item.createdAt).toLocaleDateString("pt-BR")}
+                      <td className="p-3">
+                        <div className="flex items-center justify-end gap-2">
+                          <Button variant="ghost" size="icon" onClick={() => openEdit(item)}>
+                            <Pencil className="h-4 w-4" />
+                          </Button>
+                          <Button variant="ghost" size="icon" className="text-destructive" onClick={() => handleDelete(item.id)}>
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </div>
                       </td>
                     </tr>
                   ))}
@@ -158,8 +215,59 @@ const FilasPage = () => {
           )}
         </CardContent>
       </Card>
+
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent className="sm:max-w-[600px]">
+          <DialogHeader>
+            <DialogTitle>{editing ? "Editar Fila" : "Nova Fila"}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 pt-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Nome da Fila</label>
+                <Input value={formName} onChange={(e) => setFormName(e.target.value)} placeholder="Ex: Comercial, Suporte" />
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Cor</label>
+                <div className="flex gap-2">
+                  <Input type="color" value={formColor} onChange={(e) => setFormColor(e.target.value)} className="w-12 h-10 p-1" />
+                  <Input value={formColor} onChange={(e) => setFormColor(e.target.value)} className="flex-1" />
+                </div>
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Saudação Automática</label>
+              <Textarea
+                value={formGreeting}
+                onChange={(e) => setFormGreeting(e.target.value)}
+                placeholder="Exulado: Olá! Aguarde um momento que um de nossos atendentes irá te ajudar."
+                rows={4}
+              />
+              <p className="text-xs text-muted-foreground">Esta mensagem será enviada automaticamente quando o contato entrar na fila.</p>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                id="active"
+                checked={formIsActive}
+                onChange={(e) => setFormIsActive(e.target.checked)}
+                className="rounded border-gray-300"
+              />
+              <label htmlFor="active" className="text-sm">Fila Ativa</label>
+            </div>
+
+            <div className="flex justify-end gap-2 pt-4">
+              <Button variant="ghost" onClick={() => setOpen(false)}>Cancelar</Button>
+              <Button onClick={handleSave} disabled={isSaving}>{isSaving ? "Salvando..." : "Salvar"}</Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };
+
 
 export default FilasPage;

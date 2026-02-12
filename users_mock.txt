@@ -1,0 +1,8 @@
+[
+  {
+    "id": 40,
+    "email": "lojaleo@integrai.com",
+    "full_name": "Loja Leo Test",
+    "role": "ADMIN"
+  }
+]

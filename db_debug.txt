@@ -1,0 +1,94 @@
+Companies: [
+  {
+    "id": 1,
+    "name": "Empresa Principal",
+    "whatsapp_enabled": false,
+    "whatsapp_limit": 1,
+    "evolution_instance": "integrai"
+  },
+  {
+    "id": 21,
+    "name": "Karen",
+    "whatsapp_enabled": false,
+    "whatsapp_limit": 1,
+    "evolution_instance": "karen"
+  },
+  {
+    "id": 17,
+    "name": "Leo",
+    "whatsapp_enabled": false,
+    "whatsapp_limit": 1,
+    "evolution_instance": "Leonardo"
+  },
+  {
+    "id": 30,
+    "name": "Karen Agenda",
+    "whatsapp_enabled": false,
+    "whatsapp_limit": 1,
+    "evolution_instance": "40620381503A-478C-AE30-F9A83D239B9C"
+  },
+  {
+    "id": 31,
+    "name": "Karen Loja",
+    "whatsapp_enabled": false,
+    "whatsapp_limit": 2,
+    "evolution_instance": null
+  },
+  {
+    "id": 32,
+    "name": "Loja Leo",
+    "whatsapp_enabled": true,
+    "whatsapp_limit": 1,
+    "evolution_instance": "integraiempresa01@gmail.com"
+  }
+]
+Instances: [
+  {
+    "id": 37,
+    "company_id": 31,
+    "name": "Recepção",
+    "instance_key": "integrailoja"
+  },
+  {
+    "id": 2,
+    "company_id": 21,
+    "name": "Karen",
+    "instance_key": "karen"
+  },
+  {
+    "id": 5,
+    "company_id": 17,
+    "name": "Instância 1",
+    "instance_key": "integrai_17_1"
+  },
+  {
+    "id": 6,
+    "company_id": 1,
+    "name": "Instância 1",
+    "instance_key": "integrai_1_1"
+  },
+  {
+    "id": 1,
+    "company_id": 21,
+    "name": "integrai",
+    "instance_key": "integrai"
+  },
+  {
+    "id": 19,
+    "company_id": 30,
+    "name": "karen agenda",
+    "instance_key": "40620381503A-478C-AE30-F9A83D239B9C"
+  },
+  {
+    "id": 38,
+    "company_id": 32,
+    "name": "Leo empresa",
+    "instance_key": "leoloja"
+  },
+  {
+    "id": 20,
+    "company_id": 31,
+    "name": "Gerencial",
+    "instance_key": "karenloja"
+  }
+]

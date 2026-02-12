@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useMemo } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useAuth } from "../contexts/AuthContext";
 import {
     Search,
@@ -6,13 +6,8 @@ import {
     Paperclip,
     Send,
     CheckCheck,
-    Image,
     FileText,
     Mic,
-    Video,
-    MapPin,
-    Contact,
-    Sticker,
     MoreVertical,
     RefreshCw
 } from "lucide-react";
@@ -34,6 +29,7 @@ interface GroupConversation {
     last_message_at?: string;
     unread_count?: number;
     is_group: boolean;
+    computed_is_group?: boolean;
     profile_pic_url?: string;
 }
 
@@ -101,6 +97,7 @@ const GruposPage = () => {
     const [isLoadingMessages, setIsLoadingMessages] = useState(false);
     const [newMessage, setNewMessage] = useState("");
     const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+    const [isSyncingGroups, setIsSyncingGroups] = useState(false);
 
     const scrollRef = useRef<HTMLDivElement>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
@@ -122,7 +119,7 @@ const GruposPage = () => {
             });
             if (res.ok) {
                 const data = await res.json();
-                const groupsOnly = data.filter((c: any) => c.is_group === true);
+                const groupsOnly = data.filter((c: any) => c.is_group === true || c.computed_is_group === true);
                 setGroups(groupsOnly);
             }
         } catch (error) {
@@ -160,18 +157,14 @@ const GruposPage = () => {
 
         const groupsToRefresh = groups.filter(g => {
             const name = g.group_name || g.contact_name;
-            // Refresh if name is missing, generic "Grupo", matches phone, or matches generic pattern
             return !name || name === 'Grupo' || name === g.phone || /^Grupo \d+/.test(name) || /@g\.us$/.test(name) || !g.profile_pic_url;
         });
 
         if (groupsToRefresh.length === 0) return;
 
-        console.log(`[AutoRefresh] Found ${groupsToRefresh.length} groups to refresh.`);
-
         const processQueue = async () => {
             for (const group of groupsToRefresh) {
                 try {
-                    console.log(`[AutoRefresh] Refreshing group ${group.id}...`);
                     const res = await fetch(`/api/evolution/conversations/${group.id}/refresh`, {
                         method: "POST",
                         headers: { "Authorization": `Bearer ${token}` }
@@ -179,7 +172,6 @@ const GruposPage = () => {
 
                     if (res.ok) {
                         const data = await res.json();
-                        // Update local state immediately
                         setGroups(prev => prev.map(c =>
                             c.id === group.id ? { ...c, group_name: data.name, contact_name: data.name, profile_pic_url: data.pic } : c
                         ));
@@ -187,7 +179,6 @@ const GruposPage = () => {
                             setSelectedGroup(prev => prev ? { ...prev, group_name: data.name, contact_name: data.name, profile_pic_url: data.pic } : null);
                         }
                     }
-                    // Delay to prevent rate limits
                     await new Promise(r => setTimeout(r, 1000));
                 } catch (e) {
                     console.error(`[AutoRefresh] Failed to refresh group ${group.id}`, e);
@@ -196,8 +187,7 @@ const GruposPage = () => {
         };
 
         processQueue();
-
-    }, [groups.length]); // Only run when groups array length changes (initially loaded)
+    }, [groups.length]);
 
     useEffect(() => {
         fetchGroups();
@@ -233,6 +223,28 @@ const GruposPage = () => {
             socket.disconnect();
         };
     }, [token, user?.company_id]);
+
+    const handleSyncAllGroups = async () => {
+        setIsSyncingGroups(true);
+        const toastId = toast.loading("Sincronizando grupos da API...");
+        try {
+            const res = await fetch("/api/evolution/groups/sync", {
+                method: "POST",
+                headers: { "Authorization": `Bearer ${token}` }
+            });
+            if (res.ok) {
+                const data = await res.json();
+                toast.success(data.message || "Grupos sincronizados!", { id: toastId });
+                fetchGroups();
+            } else {
+                toast.error("Falha ao sincronizar", { id: toastId });
+            }
+        } catch (e) {
+            toast.error("Erro de conexão", { id: toastId });
+        } finally {
+            setIsSyncingGroups(false);
+        }
+    };
 
     const handleSendMessage = async (e?: React.FormEvent) => {
         if (e) e.preventDefault();
@@ -351,7 +363,6 @@ const GruposPage = () => {
             if (res.ok) {
                 const data = await res.json();
                 toast.success(`Atualizado: ${data.name || 'Sem nome'}`, { id: toastId });
-                // Local update
                 setGroups(prev => prev.map(c =>
                     c.id === selectedGroup.id ? { ...c, group_name: data.name, contact_name: data.name, profile_pic_url: data.pic } : c
                 ));
@@ -366,13 +377,24 @@ const GruposPage = () => {
 
     return (
         <div className="flex h-[calc(100vh-64px)] overflow-hidden bg-background">
-            {/* Sidebar - Group List */}
             <div className="w-[350px] flex-none border-r flex flex-col bg-card">
                 <div className="p-4 border-b space-y-4">
-                    <h2 className="text-xl font-bold flex items-center gap-2">
-                        <Users className="h-5 w-5" />
-                        Grupos
-                    </h2>
+                    <div className="flex items-center justify-between">
+                        <h2 className="text-xl font-bold flex items-center gap-2">
+                            <Users className="h-5 w-5" />
+                            Grupos
+                        </h2>
+                        <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={handleSyncAllGroups}
+                            disabled={isSyncingGroups}
+                            className="h-8 gap-2 border-primary/20 hover:bg-primary/5 text-primary"
+                        >
+                            <RefreshCw className={cn("h-3.5 w-3.5", isSyncingGroups && "animate-spin")} />
+                            Sincronizar
+                        </Button>
+                    </div>
                     <div className="relative">
                         <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
                         <Input
@@ -444,9 +466,7 @@ const GruposPage = () => {
                 </ScrollArea>
             </div>
 
-            {/* Main Chat Area */}
             <div className="flex-1 flex flex-col bg-[#efeae2] dark:bg-zinc-950 relative">
-                {/* Background Pattern Overlay */}
                 <div className="absolute inset-0 opacity-[0.05] dark:opacity-[0.03] pointer-events-none bg-[url('https://w0.peakpx.com/wallpaper/818/148/wallpaper-whatsapp-background.jpg')] bg-repeat"></div>
 
                 {!selectedGroup ? (
@@ -458,7 +478,6 @@ const GruposPage = () => {
                     </div>
                 ) : (
                     <>
-                        {/* Chat Header */}
                         <div className="h-16 flex-none bg-zinc-100 dark:bg-zinc-800 flex items-center justify-between px-4 border-b border-zinc-200 dark:border-zinc-700 relative z-10 shadow-sm">
                             <div className="flex items-center gap-3">
                                 <Avatar className="h-10 w-10">
@@ -480,10 +499,9 @@ const GruposPage = () => {
                             </div>
                         </div>
 
-                        {/* Message List */}
                         <div
                             ref={scrollRef}
-                            className="flex-1 overflow-y-auto p-4 flex flex-col gap-2 relative z-10 scrollbar-thin scrollbar-thumb-zinc-300 dark:scrollbar-thumb-zinc-800"
+                            className="flex-1 overflow-y-auto p-4 flex flex-col gap-2 relative z-10"
                         >
                             {isLoadingMessages ? (
                                 <div className="flex-1 flex items-center justify-center text-muted-foreground italic text-sm">
@@ -510,18 +528,14 @@ const GruposPage = () => {
                                                     : "bg-white dark:bg-[#202c33] text-zinc-900 dark:text-zinc-100 self-start mr-auto rounded-lg rounded-tl-none"
                                             )}
                                         >
-                                            {/* Render sender name for inbound group messages */}
                                             {msg.direction === 'inbound' && (
                                                 <span className="text-[10px] font-bold text-orange-600 dark:text-orange-400 mb-0.5 block">
                                                     {msg.sender_name || (msg.participant ? msg.participant.split('@')[0] : 'Desconhecido')}
                                                 </span>
                                             )}
 
-                                            {/* Render Content with Proxy */}
                                             {(() => {
                                                 const type = msg.message_type || 'text';
-
-                                                // Proxy URL
                                                 const proxyUrl = `/api/evolution/media/${msg.id}`;
 
                                                 if (type === 'image') {
@@ -537,13 +551,8 @@ const GruposPage = () => {
                                                     );
                                                 }
                                                 if (type === 'audio') {
-                                                    return (
-                                                        <div className="flex flex-col gap-1 min-w-[200px]">
-                                                            <AuthAudio src={proxyUrl} token={token || ""} />
-                                                        </div>
-                                                    )
+                                                    return <AuthAudio src={proxyUrl} token={token || ""} />;
                                                 }
-                                                // Simplified other types
                                                 if (['video', 'document', 'sticker'].includes(type) && msg.media_url) {
                                                     return (
                                                         <div className="flex items-center gap-2 p-1">
@@ -564,7 +573,6 @@ const GruposPage = () => {
                             )}
                         </div>
 
-                        {/* Input Area */}
                         <div className="h-16 flex-none bg-zinc-100 dark:bg-zinc-800 px-4 py-2 flex items-center gap-2 border-t border-zinc-200 dark:border-zinc-700 relative z-20 shadow-inner">
                             {showEmojiPicker && (
                                 <div className="absolute bottom-20 left-4 z-50 shadow-2xl">

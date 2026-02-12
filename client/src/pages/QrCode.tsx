@@ -152,7 +152,8 @@ const QrCodePage = () => {
               body: JSON.stringify({
                 name: targetInstance.name,
                 instance_key: targetInstance.instance_key,
-                api_key: targetInstance.api_key
+                api_key: targetInstance.api_key,
+                color: targetInstance.color
               })
             });
             // Refresh instances to get any sanitized versions if needed
@@ -409,7 +410,8 @@ const QrCodePage = () => {
         ...selectedInstance,
         name: selectedInstance.name?.trim() || "",
         instance_key: selectedInstance.instance_key?.trim() || "",
-        api_key: selectedInstance.api_key?.trim() || ""
+        api_key: selectedInstance.api_key?.trim() || "",
+        color: selectedInstance.color || "#3b82f6"
       } : null;
 
       // Build a proper allInstances array that includes all current instances
@@ -461,7 +463,8 @@ const QrCodePage = () => {
           const instancePayload = {
             name: trimmedInstance.name,
             instance_key: trimmedInstance.instance_key,
-            api_key: trimmedInstance.api_key
+            api_key: trimmedInstance.api_key,
+            color: trimmedInstance.color
           };
 
           console.log("[QrCode] Saving individual instance:", {
@@ -554,13 +557,21 @@ const QrCodePage = () => {
     connected,
     onConfigure,
     onDisconnect,
-    statusText
+    statusText,
+    color = '#3b82f6'
   }: any) => {
     if (!enabled) return null;
 
     return (
-      <Card className="overflow-hidden border-zinc-200 dark:border-zinc-800 shadow-sm hover:shadow-md transition-all duration-300 bg-white/50 dark:bg-zinc-900/50 backdrop-blur-sm group">
-        <CardHeader className="pb-3 flex flex-row items-center justify-between space-y-0">
+      <Card className="overflow-hidden border-zinc-200 dark:border-zinc-800 shadow-sm hover:shadow-md transition-all duration-300 bg-white/50 dark:bg-zinc-900/50 backdrop-blur-sm group relative">
+        {/* Color Stripe */}
+        {type === 'whatsapp' && (
+          <div
+            className="absolute left-0 top-0 bottom-0 w-1.5 transition-all duration-300 group-hover:w-2"
+            style={{ backgroundColor: color }}
+          />
+        )}
+        <CardHeader className="pb-3 flex flex-row items-center justify-between space-y-0 pl-6">
           <div className="flex items-center gap-3">
             <div className={cn(
               "p-2.5 rounded-xl transition-all duration-500 group-hover:scale-110",
@@ -673,12 +684,14 @@ const QrCodePage = () => {
                 icon={MessageSquare}
                 enabled={true}
                 connected={isInstConnected}
+                color={instance?.color || '#3b82f6'}
                 onConfigure={() => {
                   const instToEdit = instance || {
                     name: `WhatsApp ${i + 1}`,
                     instance_key: `${(company?.name || 'empresa').split(' ')[0].toLowerCase().replace(/[^a-z0-9]/g, '')}_${i + 1}`,
                     api_key: '',
-                    slot_index: i
+                    slot_index: i,
+                    color: '#3b82f6'
                   };
                   setSelectedInstance({ ...instToEdit });
                   setIsWaModalOpen(true);
@@ -794,8 +807,7 @@ const QrCodePage = () => {
                     )}
                   </div>
                 )}
-
-                {(company?.whatsapp_type || 'evolution') === 'evolution' && selectedInstance && (
+                {selectedInstance && (
                   <div className="grid grid-cols-2 gap-4 animate-in fade-in duration-300">
                     <div className="space-y-2">
                       <Label className="text-[10px] font-bold uppercase text-zinc-500">API Key da Instância <span className="text-red-500">*</span></Label>
@@ -810,16 +822,37 @@ const QrCodePage = () => {
                       </div>
                     </div>
                     <div className="space-y-2">
-                      <Label className="text-[10px] font-bold uppercase text-zinc-500">URL do Servidor Evolution</Label>
-                      <Input
-                        value={company?.evolution_url || ""}
-                        onChange={(e) => handleCompanyChange('evolution_url', e.target.value)}
-                        className="h-10 rounded-xl bg-white dark:bg-zinc-900 border-zinc-200 dark:border-zinc-800"
-                        placeholder="https://sua-api.com"
-                      />
+                      <Label className="text-[10px] font-bold uppercase text-zinc-500">Cor do Canal (Identificação)</Label>
+                      <div className="flex gap-2">
+                        <Input
+                          type="color"
+                          value={selectedInstance.color || "#3b82f6"}
+                          onChange={(e) => setSelectedInstance(prev => prev ? { ...prev, color: e.target.value } : null)}
+                          className="w-12 h-10 p-1 rounded-lg cursor-pointer bg-white dark:bg-zinc-900 border-zinc-200 dark:border-zinc-800"
+                        />
+                        <Input
+                          type="text"
+                          value={selectedInstance.color || "#3b82f6"}
+                          onChange={(e) => setSelectedInstance(prev => prev ? { ...prev, color: e.target.value } : null)}
+                          className="flex-1 h-10 rounded-xl bg-white dark:bg-zinc-900 border-zinc-200 dark:border-zinc-800 text-xs font-mono"
+                          placeholder="#000000"
+                        />
+                      </div>
                     </div>
                   </div>
                 )}
+              </div>
+
+              <div className="bg-zinc-50 dark:bg-zinc-900/50 p-4 rounded-2xl border border-zinc-100 dark:border-zinc-800 mt-4">
+                <div className="space-y-2">
+                  <Label className="text-[10px] font-bold uppercase text-zinc-500">URL do Servidor Evolution</Label>
+                  <Input
+                    value={company?.evolution_url || ""}
+                    onChange={(e) => handleCompanyChange('evolution_url', e.target.value)}
+                    className="h-10 rounded-xl bg-white dark:bg-zinc-900 border-zinc-200 dark:border-zinc-800"
+                    placeholder="https://sua-api.com"
+                  />
+                </div>
               </div>
 
               <div className="bg-zinc-50 dark:bg-zinc-900/50 p-4 rounded-2xl border border-zinc-100 dark:border-zinc-800">

@@ -9,15 +9,16 @@ import {
 
 interface InstanceTagProps {
     instanceName?: string;
+    color?: string;
     variant?: "default" | "compact";
     className?: string;
 }
 
 /**
  * Tag visual para exibir o nome comercial da instância WhatsApp
- * Usa: <InstanceTag instanceName={conversation.instance_friendly_name} />
+ * Usa: <InstanceTag instanceName={conversation.instance_friendly_name} color={conversation.instance_color} />
  */
-export function InstanceTag({ instanceName, variant = "default", className = "" }: InstanceTagProps) {
+export function InstanceTag({ instanceName, color, variant = "default", className = "" }: InstanceTagProps) {
     if (!instanceName) return null;
 
     const isCompact = variant === "compact";
@@ -28,14 +29,15 @@ export function InstanceTag({ instanceName, variant = "default", className = "" 
                 <TooltipTrigger asChild>
                     <Badge
                         variant="outline"
+                        style={{
+                            backgroundColor: `${color || '#3b82f6'}1A`,
+                            color: color || '#3b82f6',
+                            borderColor: `${color || '#3b82f6'}40`
+                        }}
                         className={`
               ${isCompact ? 'text-[9px] px-1.5 py-0 h-4' : 'text-[10px] px-2 py-0.5 h-5'} 
-              bg-gradient-to-r from-blue-500/10 to-indigo-500/10 
-              border-blue-500/30 
-              text-blue-400 
-              hover:bg-blue-500/20 
               transition-all 
-              font-medium 
+              font-extrabold
               uppercase 
               tracking-wider
               flex 
@@ -45,7 +47,7 @@ export function InstanceTag({ instanceName, variant = "default", className = "" 
             `}
                     >
                         <Smartphone className={`${isCompact ? 'h-2.5 w-2.5' : 'h-3 w-3'}`} />
-                        <span className="truncate max-w-[80px]">{instanceName}</span>
+                        <span className="truncate max-w-[120px]">{instanceName}</span>
                     </Badge>
                 </TooltipTrigger>
                 <TooltipContent side="top" className="text-xs">
