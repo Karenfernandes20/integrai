@@ -1,4 +1,4 @@
-
+﻿
 import { Request, Response } from 'express';
 import { pool } from '../db';
 
@@ -9,7 +9,7 @@ import { pool } from '../db';
 export const getChatbots = async (req: Request, res: Response) => {
     try {
         const companyId = (req as any).user?.company_id;
-        if (!companyId) return res.status(403).json({ error: 'ID de empresa não encontrado na sessão.' });
+        if (!companyId) return res.status(403).json({ error: 'ID de empresa nÃ£o encontrado na sessÃ£o.' });
 
         const result = await pool!.query(
             `SELECT c.*, 
@@ -29,7 +29,7 @@ export const getChatbots = async (req: Request, res: Response) => {
 export const createChatbot = async (req: Request, res: Response) => {
     try {
         const companyId = (req as any).user?.company_id;
-        if (!companyId) return res.status(403).json({ error: 'ID de empresa não encontrado na sessão.' });
+        if (!companyId) return res.status(403).json({ error: 'ID de empresa nÃ£o encontrado na sessÃ£o.' });
 
         const { name, description } = req.body;
         console.log(`[Create Chatbot] Company: ${companyId}, Name: ${name}`);
@@ -46,7 +46,7 @@ export const createChatbot = async (req: Request, res: Response) => {
         // Create initial version 
         const initialFlow = {
             nodes: [
-                { id: 'node-start', type: 'start', position: { x: 100, y: 100 }, data: { label: 'Início' } }
+                { id: 'node-start', type: 'start', position: { x: 100, y: 100 }, data: { label: 'InÃ­cio' } }
             ],
             edges: []
         };
@@ -68,7 +68,7 @@ export const createChatbot = async (req: Request, res: Response) => {
 export const updateChatbot = async (req: Request, res: Response) => {
     try {
         const companyId = (req as any).user?.company_id;
-        if (!companyId) return res.status(403).json({ error: 'ID de empresa não encontrado na sessão.' });
+        if (!companyId) return res.status(403).json({ error: 'ID de empresa nÃ£o encontrado na sessÃ£o.' });
 
         const { id } = req.params;
         const { name, description, status } = req.body;
@@ -132,7 +132,7 @@ export const getFlow = async (req: Request, res: Response) => {
 export const saveFlow = async (req: Request, res: Response) => {
     try {
         const companyId = (req as any).user?.company_id;
-        if (!companyId) return res.status(403).json({ error: 'ID de empresa não encontrado na sessão.' });
+        if (!companyId) return res.status(403).json({ error: 'ID de empresa nÃ£o encontrado na sessÃ£o.' });
 
         const { id } = req.params;
         const { flow } = req.body;
@@ -216,30 +216,109 @@ export const publishFlow = async (req: Request, res: Response) => {
 
 export const getInstances = async (req: Request, res: Response) => {
     try {
-        const companyId = (req as any).user.company_id;
+        const user = (req as any).user;
+        let companyId = user?.company_id ? Number(user.company_id) : null;
         const { id } = req.params;
 
-        const result = await pool!.query(`
+        if (!companyId) {
+            const ownerRes = await pool!.query('SELECT company_id FROM chatbots WHERE id = $1', [id]);
+            if (ownerRes.rows.length === 0) return res.status(404).json({ error: 'Chatbot not found' });
+            companyId = Number(ownerRes.rows[0].company_id);
+        }
+
+        const botCheck = await pool!.query(
+            'SELECT id FROM chatbots WHERE id = $1 AND company_id = $2',
+            [id, companyId]
+        );
+        if (botCheck.rows.length === 0) return res.status(404).json({ error: 'Chatbot not found' });
+
+        let result = await pool!.query(`
             SELECT 
                 ci.instance_key,
-                ci.instance_friendly_name,
+                COALESCE(ci.name, ci.instance_key) as instance_friendly_name,
                 COALESCE(bi.is_active, false) as is_connected
             FROM company_instances ci
             LEFT JOIN chatbot_instances bi ON bi.instance_key = ci.instance_key AND bi.chatbot_id = $2
             WHERE ci.company_id = $1
+            ORDER BY ci.created_at ASC, ci.id ASC
         `, [companyId, id]);
+
+        // Fallback for legacy companies that still only use companies.evolution_instance
+        if (result.rows.length === 0) {
+            const legacyRes = await pool!.query(
+                'SELECT evolution_instance, evolution_apikey FROM companies WHERE id = $1',
+                [companyId]
+            );
+
+            if (legacyRes.rows.length > 0 && legacyRes.rows[0].evolution_instance) {
+                const legacyKey = String(legacyRes.rows[0].evolution_instance).trim();
+
+                const seeded = await pool!.query(`
+                    INSERT INTO company_instances (company_id, name, instance_key, api_key, status)
+                    VALUES ($1, 'InstÃ¢ncia Principal', $2, $3, 'disconnected')
+                    ON CONFLICT (instance_key) DO NOTHING
+                    RETURNING id
+                `, [companyId, legacyKey, legacyRes.rows[0].evolution_apikey || null]);
+
+                if (seeded.rows.length === 0) {
+                    // Instance key already exists globally; return as virtual fallback for this company
+                    return res.json([{
+                        instance_key: legacyKey,
+                        instance_friendly_name: 'InstÃ¢ncia Principal',
+                        is_connected: false
+                    }]);
+                }
+
+                result = await pool!.query(`
+                    SELECT 
+                        ci.instance_key,
+                        COALESCE(ci.name, ci.instance_key) as instance_friendly_name,
+                        COALESCE(bi.is_active, false) as is_connected
+                    FROM company_instances ci
+                    LEFT JOIN chatbot_instances bi ON bi.instance_key = ci.instance_key AND bi.chatbot_id = $2
+                    WHERE ci.company_id = $1
+                    ORDER BY ci.created_at ASC, ci.id ASC
+                `, [companyId, id]);
+            }
+        }
 
         res.json(result.rows);
     } catch (error: any) {
+        console.error('Error getting chatbot instances:', error);
         res.status(500).json({ error: error.message });
     }
 };
 
 export const toggleInstance = async (req: Request, res: Response) => {
     try {
-        const companyId = (req as any).user.company_id;
+        const user = (req as any).user;
+        let companyId = user?.company_id ? Number(user.company_id) : null;
         const { id } = req.params;
         const { instance_key, active } = req.body;
+
+        if (!instance_key) {
+            return res.status(400).json({ error: 'instance_key is required' });
+        }
+
+        if (!companyId) {
+            const ownerRes = await pool!.query('SELECT company_id FROM chatbots WHERE id = $1', [id]);
+            if (ownerRes.rows.length === 0) return res.status(404).json({ error: 'Chatbot not found' });
+            companyId = Number(ownerRes.rows[0].company_id);
+        }
+
+        const botCheck = await pool!.query(
+            'SELECT id FROM chatbots WHERE id = $1 AND company_id = $2',
+            [id, companyId]
+        );
+        if (botCheck.rows.length === 0) return res.status(404).json({ error: 'Chatbot not found' });
+
+        const instanceCheck = await pool!.query(
+            'SELECT id FROM company_instances WHERE company_id = $1 AND instance_key = $2',
+            [companyId, instance_key]
+        );
+        if (instanceCheck.rows.length === 0) {
+            return res.status(403).json({ error: 'Instance does not belong to chatbot company' });
+        }
 
         if (active) {
             await pool!.query(`
@@ -259,3 +338,4 @@ export const toggleInstance = async (req: Request, res: Response) => {
         res.status(500).json({ error: error.message });
     }
 };
+

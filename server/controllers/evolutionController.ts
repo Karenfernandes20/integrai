@@ -125,6 +125,42 @@ export const getEvolutionConfig = async (user: any, source: string = 'unknown', 
   return config;
 };
 
+const isUsableGroupTitle = (value?: string | null): boolean => {
+  if (!value) return false;
+  const name = String(value).trim();
+  if (!name) return false;
+  if (/@g\.us$/i.test(name)) return false;
+  if (/@s\.whatsapp\.net$/i.test(name)) return false;
+  if (/^\d{8,16}$/.test(name)) return false;
+  return true;
+};
+
+const resolveStoredGroupTitle = async (
+  companyId: number | null,
+  remoteJid: string
+): Promise<string | null> => {
+  if (!pool || !companyId || !remoteJid) return null;
+  try {
+    const contactRes = await pool.query(
+      `SELECT name, push_name
+       FROM whatsapp_contacts
+       WHERE company_id = $1
+         AND (jid = $2 OR jid = REPLACE($2, '@g.us', '@s.whatsapp.net'))
+       ORDER BY updated_at DESC NULLS LAST, id DESC
+       LIMIT 1`,
+      [companyId, remoteJid]
+    );
+
+    const contactName = contactRes.rows[0]?.name;
+    const pushName = contactRes.rows[0]?.push_name;
+    if (isUsableGroupTitle(contactName)) return String(contactName).trim();
+    if (isUsableGroupTitle(pushName)) return String(pushName).trim();
+  } catch (err) {
+    console.warn("[Evolution] Failed to resolve stored group title:", err);
+  }
+  return null;
+};
+
 const WEBHOOK_EVENTS = [
   "MESSAGES_UPSERT",
   "MESSAGES_SET",
@@ -587,9 +623,11 @@ export const sendEvolutionMessage = async (req: Request, res: Response) => {
       return res.status(400).json({ error: "Message text cannot be empty" });
     }
 
+    const explicitGroupFlag = isGroup === true || isGroup === 'true';
+    const inferredGroup = explicitGroupFlag || (typeof targetPhone === 'string' && targetPhone.endsWith('@g.us'));
     // Ensure correct JID format
     if (targetPhone && !targetPhone.includes('@')) {
-      if (isGroup) {
+      if (inferredGroup) {
         targetPhone = `${targetPhone}@g.us`;
       } else {
         targetPhone = `${targetPhone}@s.whatsapp.net`;
@@ -638,6 +676,11 @@ export const sendEvolutionMessage = async (req: Request, res: Response) => {
         // Basic normalization of remoteJid
         const safePhone = targetPhone || "";
         const remoteJid = safePhone; // Already normalized above
+        const messageIsGroup = remoteJid.endsWith('@g.us') || inferredGroup;
+        const conversationPhone = messageIsGroup ? remoteJid : safePhone;
+        const resolvedGroupTitle = messageIsGroup
+          ? (await resolveStoredGroupTitle(resolvedCompanyId, remoteJid)) || "Grupo"
+          : null;
 
         // Find or create conversation
         let conversationId: number;
@@ -647,7 +690,7 @@ export const sendEvolutionMessage = async (req: Request, res: Response) => {
 
         // CHECK INSTANCE AND COMPANY isolation
         const checkConv = await pool.query(
-          'SELECT id, status, user_id FROM whatsapp_conversations WHERE external_id = $1 AND instance = $2 AND company_id = $3',
+          'SELECT id, status, user_id, is_group, group_name FROM whatsapp_conversations WHERE external_id = $1 AND instance = $2 AND company_id = $3',
           [remoteJid, EVOLUTION_INSTANCE, resolvedCompanyId]
         );
 
@@ -656,16 +699,35 @@ export const sendEvolutionMessage = async (req: Request, res: Response) => {
           // Update status to OPEN if it was PENDING/null, assign user if unassigned, and update last_message metadata
           await pool.query(
             `UPDATE whatsapp_conversations 
-             SET last_message = $1, last_message_at = NOW(), status = 'OPEN', user_id = COALESCE(user_id, $2), company_id = COALESCE(company_id, $3)
+             SET last_message = $1, last_message_at = NOW(), status = 'OPEN', user_id = COALESCE(user_id, $2), company_id = COALESCE(company_id, $3),
+                 is_group = CASE WHEN $5 THEN true ELSE is_group END,
+                 group_name = CASE
+                   WHEN $5 THEN COALESCE(NULLIF(group_name, external_id), $6, group_name, 'Grupo')
+                   ELSE group_name
+                 END,
+                 contact_name = CASE
+                   WHEN $5 THEN COALESCE(NULLIF(contact_name, external_id), $6, contact_name, 'Grupo')
+                   ELSE contact_name
+                 END
              WHERE id = $4`,
-            [messageContent, user.id, resolvedCompanyId, conversationId]
+            [messageContent, user.id, resolvedCompanyId, conversationId, messageIsGroup, resolvedGroupTitle]
           );
         } else {
           // Create new conversation as OPEN and assigned to the sender
           const newConv = await pool.query(
-            `INSERT INTO whatsapp_conversations (external_id, phone, contact_name, instance, status, user_id, last_message, last_message_at, company_id) 
-             VALUES ($1, $2, $3, $4, 'OPEN', $5, $6, NOW(), $7) RETURNING id`,
-            [remoteJid, safePhone, safePhone, EVOLUTION_INSTANCE, user.id, messageContent, resolvedCompanyId]
+            `INSERT INTO whatsapp_conversations (external_id, phone, contact_name, instance, status, user_id, last_message, last_message_at, company_id, is_group, group_name) 
+             VALUES ($1, $2, $3, $4, 'OPEN', $5, $6, NOW(), $7, $8, $9) RETURNING id`,
+            [
+              remoteJid,
+              conversationPhone,
+              messageIsGroup ? resolvedGroupTitle : conversationPhone,
+              EVOLUTION_INSTANCE,
+              user.id,
+              messageContent,
+              resolvedCompanyId,
+              messageIsGroup,
+              messageIsGroup ? resolvedGroupTitle : null
+            ]
           );
           conversationId = newConv.rows[0].id;
         }
@@ -697,8 +759,10 @@ export const sendEvolutionMessage = async (req: Request, res: Response) => {
           sent_at: row.sent_at || new Date().toISOString(),
           user_id: user.id,
           agent_name: user.full_name,
-          phone: safePhone,
-          remoteJid: remoteJid
+          phone: conversationPhone,
+          remoteJid: remoteJid,
+          is_group: messageIsGroup,
+          group_name: messageIsGroup ? resolvedGroupTitle : null
         };
 
         // Emit Socket to all users in the company
@@ -747,7 +811,7 @@ export const sendEvolutionMedia = async (req: Request, res: Response) => {
       }
     }
 
-    const { phone, media, mediaType, caption, fileName } = req.body;
+    const { phone, media, mediaType, caption, fileName, isGroup } = req.body;
 
     if (!phone || !media || !mediaType) {
       return res.status(400).json({ error: "Phone, media (base64/url) and mediaType are required" });
@@ -798,7 +862,16 @@ export const sendEvolutionMedia = async (req: Request, res: Response) => {
         const user = (req as any).user;
         // resolvedCompanyId already defined at top of function
         const safePhone = phone || "";
-        const remoteJid = safePhone.includes('@') ? safePhone : `${safePhone}@s.whatsapp.net`;
+        const explicitGroupFlag = isGroup === true || isGroup === 'true';
+        const inferredGroup = explicitGroupFlag || (typeof safePhone === 'string' && safePhone.endsWith('@g.us'));
+        const remoteJid = safePhone.includes('@')
+          ? safePhone
+          : (inferredGroup ? `${safePhone}@g.us` : `${safePhone}@s.whatsapp.net`);
+        const messageIsGroup = remoteJid.endsWith('@g.us') || inferredGroup;
+        const conversationPhone = messageIsGroup ? remoteJid : safePhone;
+        const resolvedGroupTitle = messageIsGroup
+          ? (await resolveStoredGroupTitle(resolvedCompanyId, remoteJid)) || "Grupo"
+          : null;
         const content = caption || `[${mediaType}]`;
 
         // Find or create conversation
@@ -811,13 +884,34 @@ export const sendEvolutionMedia = async (req: Request, res: Response) => {
         if (checkConv.rows.length > 0) {
           conversationId = checkConv.rows[0].id;
           await pool.query(
-            `UPDATE whatsapp_conversations SET last_message = $1, last_message_at = NOW(), status = 'OPEN', user_id = COALESCE(user_id, $2), company_id = COALESCE(company_id, $3) WHERE id = $4`,
-            [content, user.id, resolvedCompanyId, conversationId]
+            `UPDATE whatsapp_conversations 
+             SET last_message = $1, last_message_at = NOW(), status = 'OPEN', user_id = COALESCE(user_id, $2), company_id = COALESCE(company_id, $3),
+                 is_group = CASE WHEN $5 THEN true ELSE is_group END,
+                 group_name = CASE
+                   WHEN $5 THEN COALESCE(NULLIF(group_name, external_id), $6, group_name, 'Grupo')
+                   ELSE group_name
+                 END,
+                 contact_name = CASE
+                   WHEN $5 THEN COALESCE(NULLIF(contact_name, external_id), $6, contact_name, 'Grupo')
+                   ELSE contact_name
+                 END
+             WHERE id = $4`,
+            [content, user.id, resolvedCompanyId, conversationId, messageIsGroup, resolvedGroupTitle]
           );
         } else {
           const newConv = await pool.query(
-            `INSERT INTO whatsapp_conversations (external_id, phone, contact_name, instance, status, user_id, last_message, last_message_at, company_id) VALUES ($1, $2, $3, $4, 'OPEN', $5, $6, NOW(), $7) RETURNING id`,
-            [remoteJid, safePhone, safePhone, EVOLUTION_INSTANCE, user.id, content, resolvedCompanyId]
+            `INSERT INTO whatsapp_conversations (external_id, phone, contact_name, instance, status, user_id, last_message, last_message_at, company_id, is_group, group_name) VALUES ($1, $2, $3, $4, 'OPEN', $5, $6, NOW(), $7, $8, $9) RETURNING id`,
+            [
+              remoteJid,
+              conversationPhone,
+              messageIsGroup ? resolvedGroupTitle : conversationPhone,
+              EVOLUTION_INSTANCE,
+              user.id,
+              content,
+              resolvedCompanyId,
+              messageIsGroup,
+              messageIsGroup ? resolvedGroupTitle : null
+            ]
           );
           conversationId = newConv.rows[0].id;
         }
@@ -847,8 +941,10 @@ export const sendEvolutionMedia = async (req: Request, res: Response) => {
           agent_name: user.full_name,
           message_type: mediaType,
           media_url: media.startsWith('http') ? media : null,
-          phone: safePhone,
-          remoteJid: remoteJid
+          phone: conversationPhone,
+          remoteJid: remoteJid,
+          is_group: messageIsGroup,
+          group_name: messageIsGroup ? resolvedGroupTitle : null
         };
 
         const io = req.app.get('io');
@@ -1049,6 +1145,21 @@ export const syncEvolutionContacts = async (req: Request, res: Response) => {
     let processedCount = 0;
     let errorDetails: string[] = [];
 
+    const isLikelyDisplayName = (value: any, phoneDigits?: string) => {
+      const name = String(value || '').trim();
+      if (!name) return false;
+      if (name.length < 2 || name.length > 60) return false;
+      if (/\r|\n/.test(name)) return false;
+      if (/https?:\/\//i.test(name)) return false;
+      const normalizedPhone = String(phoneDigits || '').replace(/\D/g, '');
+      const normalizedNameDigits = name.replace(/\D/g, '');
+      if (normalizedPhone && normalizedNameDigits === normalizedPhone) return false;
+      if (/^\[[^\]]+\]$/.test(name)) return false; // e.g. [Imagem]
+      const wordCount = name.split(/\s+/).filter(Boolean).length;
+      if (wordCount > 6 && name.length > 28) return false; // likely sentence
+      return true;
+    };
+
     // 2. Iterate and Sync
     for (const instKey of instancesToProcess) {
       try {
@@ -1201,6 +1312,19 @@ export const syncEvolutionContacts = async (req: Request, res: Response) => {
             await client.query('BEGIN');
             const processedJids = new Set<string>();
 
+            const existingContactsRes = await client.query(
+              `SELECT jid, phone, name FROM whatsapp_contacts WHERE company_id = $1`,
+              [resolvedCompanyId]
+            );
+            const existingByJid = new Map<string, string>();
+            const existingByPhone = new Map<string, string>();
+            for (const row of existingContactsRes.rows) {
+              const rowName = String(row.name || '').trim();
+              if (!rowName) continue;
+              if (row.jid) existingByJid.set(String(row.jid), rowName);
+              if (row.phone) existingByPhone.set(String(row.phone).replace(/\D/g, ''), rowName);
+            }
+
             for (const contact of contactsList) {
               const rawId = contact.id || contact.remoteJid || contact.jid;
               if (!rawId || (contact.isGroup) || (typeof rawId === 'string' && rawId.endsWith('@g.us'))) {
@@ -1226,7 +1350,10 @@ export const syncEvolutionContacts = async (req: Request, res: Response) => {
               if (processedJids.has(jid)) continue;
               processedJids.add(jid);
 
-              const name = contact.name || contact.pushName || contact.notify || contact.verifiedName || candidate;
+              const candidateNames = [contact.name, contact.pushName, contact.notify, contact.verifiedName].map((n: any) => String(n || '').trim());
+              const preferredIncomingName = candidateNames.find((n: string) => isLikelyDisplayName(n, candidate)) || '';
+              const existingName = existingByJid.get(jid) || existingByPhone.get(candidate) || '';
+              const finalName = preferredIncomingName || existingName || candidate;
               const pushName = contact.pushName || contact.notify;
               const profilePic = contact.profilePictureUrl || contact.profilePicture;
 
@@ -1239,14 +1366,34 @@ export const syncEvolutionContacts = async (req: Request, res: Response) => {
                 VALUES ($1, $2, $3, $4, $5, $6, NOW(), $7)
                 ON CONFLICT (jid, company_id) 
                 DO UPDATE SET 
-                  name = EXCLUDED.name,
+                  name = CASE
+                    WHEN EXCLUDED.name IS NULL OR btrim(EXCLUDED.name) = '' THEN whatsapp_contacts.name
+                    ELSE EXCLUDED.name
+                  END,
                   push_name = EXCLUDED.push_name,
                   profile_pic_url = COALESCE(EXCLUDED.profile_pic_url, whatsapp_contacts.profile_pic_url),
                   phone = EXCLUDED.phone,
                   instance = EXCLUDED.instance,
                   updated_at = NOW()
-              `, [jid, candidate, name, pushName || null, profilePic || null, instanceToSave, resolvedCompanyId]);
+              `, [jid, candidate, finalName, pushName || null, profilePic || null, instanceToSave, resolvedCompanyId]);
             }
+
+            await client.query(`
+              UPDATE whatsapp_conversations c
+              SET contact_name = wc.name
+              FROM whatsapp_contacts wc
+              WHERE c.company_id = $1
+                AND wc.company_id = $1
+                AND (c.is_group IS NULL OR c.is_group = false)
+                AND wc.name IS NOT NULL
+                AND btrim(wc.name) <> ''
+                AND (
+                  wc.jid = c.external_id
+                  OR wc.jid = REPLACE(c.external_id, '@c.us', '@s.whatsapp.net')
+                  OR regexp_replace(COALESCE(wc.phone, ''), '\\D', '', 'g') = regexp_replace(COALESCE(c.phone, split_part(c.external_id, '@', 1)), '\\D', '', 'g')
+                )
+            `, [resolvedCompanyId]);
+
             await client.query('COMMIT');
             processedCount++;
           } catch (dbErr) {

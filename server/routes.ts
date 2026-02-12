@@ -29,7 +29,8 @@ import { authenticateToken, authorizeRole, authorizePermission } from './middlew
 import { rateLimit } from './middleware/rateLimitMiddleware';
 import { PERMISSIONS } from './config/roles';
 import { getCompanies, createCompany, updateCompany, deleteCompany, getCompanyUsers, getCompany, getCompanyInstances, updateCompanyInstance } from './controllers/companyController';
-import { startConversation, closeConversation, updateContactNameWithAudit, deleteConversation, returnToPending } from './controllers/conversationController';
+import { startConversation, closeConversation, updateContactNameWithAudit, deleteConversation, returnToPending, transferConversationQueue } from './controllers/conversationController';
+import { listQueues, createQueue } from './controllers/queueController';
 import { getFollowUps, createFollowUp, updateFollowUp, deleteFollowUp, getFollowUpStats } from './controllers/followUpController';
 
 
@@ -245,6 +246,9 @@ router.get('/crm/dashboard', authenticateToken, getCrmDashboardStats);
 router.post('/crm/conversations/:id/start', authenticateToken, startConversation);
 router.post('/crm/conversations/:id/close', authenticateToken, closeConversation);
 router.post('/crm/conversations/:id/pending', authenticateToken, returnToPending);
+router.put('/crm/conversations/:id/queue', authenticateToken, transferConversationQueue);
+router.get('/queues', authenticateToken, listQueues);
+router.post('/queues', authenticateToken, authorizeRole(['ADMIN', 'SUPERADMIN']), createQueue);
 router.put('/crm/conversations/:id/name', authenticateToken, updateContactNameWithAudit);
 router.delete('/crm/conversations/:id', authenticateToken, deleteConversation);
 
@@ -607,6 +611,32 @@ router.put('/config/templates/:id', authenticateToken, authorizeRole(['ADMIN', '
 router.delete('/config/templates/:id', authenticateToken, authorizeRole(['ADMIN', 'SUPERADMIN']), deleteTemplate);
 router.get('/config/templates/:id/history', authenticateToken, getTemplateHistory);
 
+// Closing Reasons
+import {
+  listClosingReasons,
+  createClosingReason,
+  updateClosingReason,
+  deleteClosingReason,
+  getClosingReasonsAnalytics
+} from './controllers/closingReasonController';
+router.get('/closing-reasons', authenticateToken, listClosingReasons);
+router.get('/closing-reasons/analytics', authenticateToken, getClosingReasonsAnalytics);
+router.post('/closing-reasons', authenticateToken, authorizeRole(['ADMIN', 'SUPERADMIN']), createClosingReason);
+router.put('/closing-reasons/:id', authenticateToken, authorizeRole(['ADMIN', 'SUPERADMIN']), updateClosingReason);
+router.delete('/closing-reasons/:id', authenticateToken, authorizeRole(['ADMIN', 'SUPERADMIN']), deleteClosingReason);
+
+// Quick Messages
+import {
+  listQuickMessages,
+  createQuickMessage,
+  updateQuickMessage,
+  deleteQuickMessage
+} from './controllers/quickMessageController';
+router.get('/quick-messages', authenticateToken, listQuickMessages);
+router.post('/quick-messages', authenticateToken, authorizeRole(['ADMIN', 'SUPERADMIN']), upload.single('file'), createQuickMessage);
+router.put('/quick-messages/:id', authenticateToken, authorizeRole(['ADMIN', 'SUPERADMIN']), upload.single('file'), updateQuickMessage);
+router.delete('/quick-messages/:id', authenticateToken, authorizeRole(['ADMIN', 'SUPERADMIN']), deleteQuickMessage);
+
 
 // Roadmap
 import { getRoadmapItems, createRoadmapItem, updateRoadmapItem, deleteRoadmapItem, getRoadmapComments, addRoadmapComment, linkTaskToRoadmap } from './controllers/roadmapController';
@@ -677,19 +707,25 @@ import {
   getShopDashboard,
   getSales,
   createSale,
+  updateSaleStatus,
   getInventory,
   createInventoryItem,
   updateInventoryItem,
   getSuppliers,
   createSupplier,
   getPayments,
-  getReceivables as getShopReceivables
+  getReceivables as getShopReceivables,
+  getGoalsOverview,
+  createGoal,
+  distributeRevenueGoalBySellers,
+  getGoalSellers
 } from './controllers/shopController';
 import { validateCompanyAndInstance } from './middleware/validateCompanyAndInstance';
 
 router.get('/shop/dashboard', authenticateToken, validateCompanyAndInstance, getShopDashboard);
 router.get('/shop/sales', authenticateToken, validateCompanyAndInstance, getSales);
 router.post('/shop/sales', authenticateToken, validateCompanyAndInstance, createSale);
+router.put('/shop/sales/:id/status', authenticateToken, validateCompanyAndInstance, updateSaleStatus);
 router.get('/shop/inventory', authenticateToken, validateCompanyAndInstance, getInventory);
 router.post('/shop/inventory', authenticateToken, authorizePermission('inventory.create_prod'), validateCompanyAndInstance, createInventoryItem);
 router.put('/shop/inventory/:id', authenticateToken, authorizePermission('inventory.edit_prod'), validateCompanyAndInstance, updateInventoryItem);
@@ -697,5 +733,9 @@ router.get('/shop/suppliers', authenticateToken, validateCompanyAndInstance, get
 router.post('/shop/suppliers', authenticateToken, validateCompanyAndInstance, createSupplier);
 router.get('/shop/payments', authenticateToken, validateCompanyAndInstance, getPayments);
 router.get('/shop/receivables', authenticateToken, validateCompanyAndInstance, getShopReceivables);
+router.get('/shop/goals/overview', authenticateToken, validateCompanyAndInstance, getGoalsOverview);
+router.get('/shop/goals/sellers', authenticateToken, validateCompanyAndInstance, getGoalSellers);
+router.post('/shop/goals', authenticateToken, validateCompanyAndInstance, createGoal);
+router.post('/shop/goals/distribute', authenticateToken, validateCompanyAndInstance, distributeRevenueGoalBySellers);
 
 export default router;

@@ -37,6 +37,7 @@ export const CrmDashboard = ({ company }: CrmDashboardProps) => {
     });
 
     const [dashboardData, setDashboardData] = useState<any>(null);
+    const [closingAnalytics, setClosingAnalytics] = useState<any>(null);
     const [loading, setLoading] = useState(false);
 
     // Save to localStorage when changed
@@ -83,6 +84,23 @@ export const CrmDashboard = ({ company }: CrmDashboardProps) => {
                 if (res.ok) {
                     const data = await res.json();
                     setDashboardData(data);
+                }
+
+                let analyticsUrl = company.id && company.id !== 'superadmin-view'
+                    ? `/api/closing-reasons/analytics?companyId=${company.id}`
+                    : "/api/closing-reasons/analytics?";
+
+                if (dateRange?.start) analyticsUrl += `&startDate=${dateRange.start}`;
+                if (dateRange?.end) analyticsUrl += `&endDate=${dateRange.end}`;
+
+                const analyticsRes = await fetch(analyticsUrl, {
+                    headers: { "Authorization": `Bearer ${token}` }
+                });
+                if (analyticsRes.ok) {
+                    const analyticsData = await analyticsRes.json();
+                    setClosingAnalytics(analyticsData);
+                } else {
+                    setClosingAnalytics(null);
                 }
             } catch (e) {
                 console.error("Failed to fetch dashboard", e);
@@ -172,6 +190,58 @@ export const CrmDashboard = ({ company }: CrmDashboardProps) => {
                 description="Criamos um Assistente Virtual pronto para uso. Ele pode responder seus clientes 24/7. Tente enviar uma mensagem para 'Teste' para ver a mágica acontecer."
             />
             <CrmOverviewCards data={dashboardData?.overview} />
+
+            <Card>
+                <CardHeader>
+                    <CardTitle>Motivos de Encerramento</CardTitle>
+                    <CardDescription>Distribuição dos encerramentos por motivo e qualidade.</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                        <div className="rounded-md border p-3">
+                            <p className="text-xs text-muted-foreground">Total</p>
+                            <p className="text-xl font-bold">{closingAnalytics?.summary?.totalClosures || 0}</p>
+                        </div>
+                        <div className="rounded-md border p-3">
+                            <p className="text-xs text-muted-foreground">Positivo</p>
+                            <p className="text-xl font-bold text-green-600">{closingAnalytics?.summary?.positivePct || 0}%</p>
+                        </div>
+                        <div className="rounded-md border p-3">
+                            <p className="text-xs text-muted-foreground">Negativo</p>
+                            <p className="text-xl font-bold text-red-600">{closingAnalytics?.summary?.negativePct || 0}%</p>
+                        </div>
+                        <div className="rounded-md border p-3">
+                            <p className="text-xs text-muted-foreground">Neutro</p>
+                            <p className="text-xl font-bold text-blue-600">{closingAnalytics?.summary?.neutralPct || 0}%</p>
+                        </div>
+                    </div>
+
+                    <div className="grid md:grid-cols-2 gap-4">
+                        <div className="rounded-md border p-3">
+                            <p className="text-sm font-semibold mb-2">Por motivo</p>
+                            <div className="space-y-1 text-sm">
+                                {(closingAnalytics?.byReason || []).slice(0, 6).map((item: any) => (
+                                    <div key={item.id} className="flex items-center justify-between">
+                                        <span className="truncate pr-3">{item.name}</span>
+                                        <span className="font-semibold">{item.total}</span>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                        <div className="rounded-md border p-3">
+                            <p className="text-sm font-semibold mb-2">Por categoria</p>
+                            <div className="space-y-1 text-sm">
+                                {(closingAnalytics?.byCategory || []).slice(0, 6).map((item: any) => (
+                                    <div key={item.category} className="flex items-center justify-between">
+                                        <span className="truncate pr-3">{item.category}</span>
+                                        <span className="font-semibold">{item.total}</span>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    </div>
+                </CardContent>
+            </Card>
 
             <div className="grid lg:grid-cols-3 gap-6">
                 <div className="lg:col-span-2 space-y-6">

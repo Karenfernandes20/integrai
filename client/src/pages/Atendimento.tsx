@@ -54,6 +54,7 @@ import {
   Lock,
   Calendar,
   Stethoscope,
+  GitBranch,
 } from "lucide-react";
 import RelationshipManager from "../components/RelationshipManager";
 import { Badge } from "../components/ui/badge";
@@ -107,6 +108,7 @@ interface Conversation {
   is_group?: boolean;
   group_name?: string;
   company_name?: string;
+  contact_saved_name?: string;
   contact_push_name?: string;
   last_sender_name?: string;
   last_message_source?: string;
@@ -114,6 +116,14 @@ interface Conversation {
   instance_friendly_name?: string;
   tags?: { id: number; name: string; color: string }[];
   user_name?: string;
+  queue_name?: string | null;
+  queue_id?: number | null;
+  assigned_user_name?: string | null;
+}
+
+interface QueueOption {
+  id: number;
+  name: string;
 }
 
 interface Message {
@@ -141,6 +151,8 @@ interface Message {
   user_name?: string;
   remoteJid?: string;
   message_origin?: string;
+  message_source?: string;
+  sent_by_user_name?: string;
   saved_name?: string;
   t?: number;
 }
@@ -151,6 +163,24 @@ interface Contact {
   phone: string;
   profile_pic_url?: string;
   push_name?: string;
+}
+
+type QuickMessageType = 'text' | 'image' | 'audio' | 'document';
+
+interface QuickMessage {
+  id: number;
+  key: string;
+  type: QuickMessageType;
+  content: string;
+  fileName?: string | null;
+}
+
+interface ClosingReason {
+  id: number;
+  name: string;
+  category?: string | null;
+  type: 'positivo' | 'negativo' | 'neutro';
+  isActive: boolean;
 }
 
 import { useSearchParams, useNavigate } from "react-router-dom";
@@ -275,6 +305,8 @@ const AtendimentoPage = () => {
   const newContactFormRef = useRef<HTMLFormElement | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const messageInputRef = useRef<HTMLTextAreaElement>(null);
+  const quickMenuRef = useRef<HTMLDivElement>(null);
   const isNearBottomRef = useRef(true);
   const isInitialLoadRef = useRef(true);
   const [selectedCompanyFilter, setSelectedCompanyFilter] = useState<string | null>(null);
@@ -294,6 +326,18 @@ const AtendimentoPage = () => {
   const [isContactInfoOpen, setIsContactInfoOpen] = useState(false);
 
   const [messageInput, setMessageInput] = useState("");
+  const [quickMessages, setQuickMessages] = useState<QuickMessage[]>([]);
+  const [isQuickMenuOpen, setIsQuickMenuOpen] = useState(false);
+  const [quickSearch, setQuickSearch] = useState("");
+  const [quickSelectedIndex, setQuickSelectedIndex] = useState(0);
+  const [pendingQuickAttachment, setPendingQuickAttachment] = useState<QuickMessage | null>(null);
+  const [closingReasons, setClosingReasons] = useState<ClosingReason[]>([]);
+  const [isClosingModalOpen, setIsClosingModalOpen] = useState(false);
+  const [closingReasonId, setClosingReasonId] = useState("");
+  const [closingReasonSearch, setClosingReasonSearch] = useState("");
+  const [closingObservation, setClosingObservation] = useState("");
+  const [pendingCloseConversation, setPendingCloseConversation] = useState<Conversation | null>(null);
+  const [isClosingSubmitting, setIsClosingSubmitting] = useState(false);
   const [replyingTo, setReplyingTo] = useState<Message | null>(null);
   const [importedContacts, setImportedContacts] = useState<Contact[]>([]);
   const [isLoadingContacts, setIsLoadingContacts] = useState(false);
@@ -311,6 +355,29 @@ const AtendimentoPage = () => {
   useEffect(() => {
     if (token) {
       fetchConversations();
+    }
+  }, [token]);
+
+  const fetchClosingReasons = async () => {
+    if (!token) return;
+    try {
+      const res = await fetch("/api/closing-reasons?onlyActive=true", {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (!res.ok) {
+        throw new Error("Falha ao carregar motivos de encerramento");
+      }
+      const data = await res.json();
+      setClosingReasons(Array.isArray(data) ? data : []);
+    } catch (error) {
+      console.error("Erro ao carregar motivos de encerramento:", error);
+      setClosingReasons([]);
+    }
+  };
+
+  useEffect(() => {
+    if (token) {
+      fetchClosingReasons();
     }
   }, [token]);
 
@@ -522,23 +589,55 @@ const AtendimentoPage = () => {
 
     // For groups, prioritize group_name
     if (conv.is_group) {
-      return conv.group_name || conv.contact_name || 'Grupo';
+      const isUsableGroupName = (value?: string | null) => {
+        if (!value) return false;
+        const name = String(value).trim();
+        if (!name) return false;
+        if (/@g\.us$/i.test(name) || /@s\.whatsapp\.net$/i.test(name)) return false;
+        if (/^\d{8,16}$/.test(name)) return false;
+        return true;
+      };
+
+      if (isUsableGroupName(conv.group_name)) return String(conv.group_name).trim();
+      if (isUsableGroupName(conv.contact_name)) return String(conv.contact_name).trim();
+      return 'Grupo';
     }
 
-    // Priority 1: Check contacts database (saved in "Contatos" tab)
+    const isUsableName = (value?: string | null) => {
+      if (!value) return false;
+      const name = String(value).trim();
+      if (!name) return false;
+      if (name.includes('@')) return false;
+      const digitsOnly = name.replace(/\D/g, "");
+      // Ignore raw phone-like names used as fallback
+      if (digitsOnly.length >= 8 && digitsOnly.length <= 15 && digitsOnly === name.replace(/\s/g, "")) return false;
+      return true;
+    };
+
+    // Priority 1: Saved name from whatsapp_contacts join
+    if (isUsableName(conv.contact_saved_name)) {
+      return String(conv.contact_saved_name).trim();
+    }
+
+    // Priority 2: Check contacts database (saved in "Contatos" tab)
     const raw = conv.phone.replace(/\D/g, "");
     const fromDB = contactMap.get(raw);
-    if (fromDB) {
+    if (isUsableName(fromDB)) {
       return fromDB;
     }
 
-    // Priority 2: Push Name from WhatsApp (name the person set on their WhatsApp)
+    // Priority 3: Name persisted in conversation
+    if (isUsableName(conv.contact_name)) {
+      return String(conv.contact_name).trim();
+    }
+
+    // Priority 4: Push Name from WhatsApp (name the person set on their WhatsApp)
     const normalize = (s: string) => s ? s.replace(/\D/g, "") : "";
-    if (conv.contact_push_name && normalize(conv.contact_push_name) !== normalize(conv.phone)) {
+    if (isUsableName(conv.contact_push_name) && normalize(conv.contact_push_name || '') !== normalize(conv.phone)) {
       return conv.contact_push_name;
     }
 
-    // Priority 3: Phone number (formatted)
+    // Priority 5: Phone number (formatted)
     return conv.phone?.replace(/\D/g, "") || "";
   }, [contactMap]);
 
@@ -1727,10 +1826,106 @@ const AtendimentoPage = () => {
     }
   };
 
+  const resolveQuickTemplateValue = (raw: string) => {
+    const name = selectedConversation ? getDisplayName(selectedConversation) : "";
+    const phone = selectedConversation?.phone || "";
+    const today = new Intl.DateTimeFormat("pt-BR", { timeZone: SAO_PAULO_TZ }).format(new Date());
+    const companyName = user?.company?.name || "";
+
+    return String(raw || "").replace(/\{\{\s*(nome|telefone|data|empresa)\s*\}\}/gi, (_m, key) => {
+      const normalized = String(key).toLowerCase();
+      if (normalized === "nome") return name;
+      if (normalized === "telefone") return phone;
+      if (normalized === "data") return today;
+      if (normalized === "empresa") return companyName;
+      return "";
+    });
+  };
+
+  const applyQuickMessage = (item: QuickMessage) => {
+    setIsQuickMenuOpen(false);
+    setQuickSelectedIndex(0);
+    setQuickSearch("");
+
+    if (item.type === "text") {
+      setPendingQuickAttachment(null);
+      setMessageInput(resolveQuickTemplateValue(item.content));
+      return;
+    }
+
+    setPendingQuickAttachment(item);
+    // Caption is optional for media; keep what user already typed unless it was slash command.
+    if (messageInput.startsWith("/")) {
+      setMessageInput("");
+    }
+  };
+
+  const filteredQuickMessages = useMemo(() => {
+    const q = quickSearch.trim().toLowerCase();
+    if (!q) return quickMessages;
+    return quickMessages.filter((m) => m.key.toLowerCase().startsWith(q));
+  }, [quickMessages, quickSearch]);
+
+  const filteredClosingReasons = useMemo(() => {
+    const q = closingReasonSearch.trim().toLowerCase();
+    if (!q) return closingReasons;
+    return closingReasons.filter((r) => {
+      const name = String(r.name || "").toLowerCase();
+      const category = String(r.category || "").toLowerCase();
+      return name.includes(q) || category.includes(q);
+    });
+  }, [closingReasons, closingReasonSearch]);
+
+  useEffect(() => {
+    if (filteredQuickMessages.length === 0) {
+      setQuickSelectedIndex(0);
+      return;
+    }
+    setQuickSelectedIndex((prev) => Math.min(prev, filteredQuickMessages.length - 1));
+  }, [filteredQuickMessages.length]);
+
+  useEffect(() => {
+    if (!token) return;
+    const loadQuickMessages = async () => {
+      try {
+        const companyHint = (selectedConversation as any)?.company_id || selectedCompanyFilter;
+        const url = companyHint
+          ? `/api/quick-messages?companyId=${companyHint}`
+          : "/api/quick-messages";
+        const res = await fetch(url, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        if (!res.ok) return;
+        const data = await res.json();
+        setQuickMessages(Array.isArray(data) ? data : []);
+      } catch (error) {
+        console.error("Erro ao carregar mensagens rápidas:", error);
+      }
+    };
+
+    loadQuickMessages();
+  }, [token, selectedCompanyFilter, selectedConversation?.id]);
+
+  useEffect(() => {
+    const onDocClick = (event: MouseEvent) => {
+      if (!isQuickMenuOpen) return;
+      const target = event.target as Node;
+      if (quickMenuRef.current && !quickMenuRef.current.contains(target) && messageInputRef.current && !messageInputRef.current.contains(target)) {
+        setIsQuickMenuOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", onDocClick);
+    return () => document.removeEventListener("mousedown", onDocClick);
+  }, [isQuickMenuOpen]);
+
   const handleSendMessage = async (e?: FormEvent | React.MouseEvent) => {
     e?.preventDefault();
+    if (!selectedConversation || selectedConversation.status !== 'OPEN' || isReadOnly) {
+      toast.error("Atendimento ainda não iniciado. Clique em Atender para responder.");
+      return;
+    }
     const contentToSend = messageInput.trim();
-    if (!contentToSend || !selectedConversation) return;
+    if ((!contentToSend && !pendingQuickAttachment) || !selectedConversation) return;
 
     console.log("Tentando enviar mensagem...");
 
@@ -1747,14 +1942,53 @@ const AtendimentoPage = () => {
     }
 
     const messageContent = contentToSend;
-    setMessageInput("");
+    
 
     // 1. Validation (Strict)
-    if (!messageContent || !messageContent.trim()) {
+    if (!pendingQuickAttachment && (!messageContent || !messageContent.trim())) {
       alert("A mensagem não pode estar vazia.");
       return;
     }
 
+    if (pendingQuickAttachment) {
+      const toastId = toast.loading(`Enviando ${pendingQuickAttachment.type}...`);
+      try {
+        const mediaRes = await fetch("/api/evolution/messages/media", {
+          method: "POST",
+          headers: {
+            "Authorization": `Bearer ${token}`,
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({
+            phone: selectedConversation.phone,
+            media: pendingQuickAttachment.content,
+            mediaType: pendingQuickAttachment.type === 'document' ? 'document' : pendingQuickAttachment.type,
+            fileName: pendingQuickAttachment.fileName || pendingQuickAttachment.key,
+            caption: messageContent || pendingQuickAttachment.key,
+            companyId: (selectedConversation as any).company_id || selectedCompanyFilter,
+            instanceKey: (selectedConversation as any).instance
+          })
+        });
+
+        if (!mediaRes.ok) {
+          const err = await mediaRes.json().catch(() => ({}));
+          toast.error(err?.error || "Falha ao enviar mídia", { id: toastId });
+          return;
+        }
+
+        toast.success("Mídia enviada!", { id: toastId });
+        setPendingQuickAttachment(null);
+        setMessageInput("");
+        fetchMessages(selectedConversation.id);
+        return;
+      } catch (error) {
+        console.error("Erro ao enviar mídia rápida:", error);
+        toast.error("Erro ao enviar mídia", { id: toastId });
+        return;
+      }
+    }
+
+    setMessageInput("");
     const tempMessageId = `temp-${Date.now()}`;
     try {
       // 2. Optimistic Update (Immediate Feedback)
@@ -1893,6 +2127,10 @@ const AtendimentoPage = () => {
   };
 
   const startRecording = async () => {
+    if (!selectedConversation || selectedConversation.status !== 'OPEN' || isReadOnly) {
+      toast.error("Atendimento ainda não iniciado. Clique em Atender para responder.");
+      return;
+    }
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
 
@@ -1968,7 +2206,10 @@ const AtendimentoPage = () => {
   };
 
   const handleSendAudio = async (blob: Blob) => {
-    if (!selectedConversation) return;
+    if (!selectedConversation || selectedConversation.status !== 'OPEN' || isReadOnly) {
+      toast.error("Atendimento ainda não iniciado. Clique em Atender para responder.");
+      return;
+    }
 
     try {
       // Create reader to convert blob to data url
@@ -2051,34 +2292,47 @@ const AtendimentoPage = () => {
     setNewContactPhone("");
   };
 
-  const formatTime = (dateString: string) => {
+  const formatTime = (dateString?: string) => {
     if (!dateString) return "";
-    return new Date(dateString).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+    return new Intl.DateTimeFormat("pt-BR", {
+      timeZone: SAO_PAULO_TZ,
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false
+    }).format(new Date(dateString));
   };
 
-  const isSameDay = (d1: Date, d2: Date) => {
-    return d1.getFullYear() === d2.getFullYear() &&
-      d1.getMonth() === d2.getMonth() &&
-      d1.getDate() === d2.getDate();
+  const toSPDateKey = (dateValue: Date | string) => {
+    const d = typeof dateValue === "string" ? new Date(dateValue) : dateValue;
+    return new Intl.DateTimeFormat("en-CA", {
+      timeZone: SAO_PAULO_TZ,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit"
+    }).format(d);
+  };
+
+  const isSameDay = (d1: Date | string, d2: Date | string) => {
+    return toSPDateKey(d1) === toSPDateKey(d2);
   };
 
   const formatDateLabel = (dateString: string) => {
     if (!dateString) return "";
     const date = new Date(dateString);
     const today = new Date();
-    const yesterday = new Date();
-    yesterday.setDate(today.getDate() - 1);
+    const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000);
 
     if (isSameDay(date, today)) {
       return "Hoje";
     } else if (isSameDay(date, yesterday)) {
       return "Ontem";
     } else {
-      return date.toLocaleDateString("pt-BR", {
+      return new Intl.DateTimeFormat("pt-BR", {
+        timeZone: SAO_PAULO_TZ,
         day: "2-digit",
         month: "2-digit",
         year: "numeric"
-      });
+      }).format(date);
     }
   };
 
@@ -2086,26 +2340,76 @@ const AtendimentoPage = () => {
     if (!dateString) return "";
     const date = new Date(dateString);
     const today = new Date();
-    const yesterday = new Date();
-    yesterday.setDate(today.getDate() - 1);
+    const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000);
 
     if (isSameDay(date, today)) {
       return "HOJE";
     } else if (isSameDay(date, yesterday)) {
       return "ONTEM";
     } else {
-      return date.toLocaleDateString("pt-BR", {
+      return new Intl.DateTimeFormat("pt-BR", {
+        timeZone: SAO_PAULO_TZ,
         day: "2-digit",
         month: "2-digit"
-      });
+      }).format(date);
     }
   };
 
   const onEmojiClick = (emojiData: EmojiClickData) => {
+    if (!selectedConversation || selectedConversation.status !== 'OPEN' || isReadOnly) {
+      toast.error("Atendimento ainda não iniciado. Clique em Atender para responder.");
+      return;
+    }
     setMessageInput((prev) => prev + emojiData.emoji);
   };
 
+  const getMessageSourceLabel = (msg: Message): { label: string; className: string } => {
+    const origin = String(msg.message_origin || "").toLowerCase();
+    const source = String(msg.message_source || "").toLowerCase();
+    const systemUserName = (msg.agent_name || msg.sent_by_user_name || msg.user_name || "").trim();
+    const hasSystemUserId = msg.user_id !== null && msg.user_id !== undefined && String(msg.user_id).trim() !== "";
+
+    if (hasSystemUserId || origin === "system_user") {
+      return {
+        label: systemUserName || "Usuário",
+        className: "text-[#64748B]"
+      };
+    }
+
+    const isWhatsAppWebOrApp =
+      source.includes("whatsapp_mobile") ||
+      source.includes("whatsapp_web") ||
+      origin.includes("whatsapp_mobile") ||
+      origin.includes("whatsapp_web");
+
+    const isKnownApiOrigin =
+      origin === "api" ||
+      origin === "evolution_api" ||
+      origin === "ai_agent" ||
+      origin === "campaign" ||
+      origin === "follow_up" ||
+      origin === "instagram" ||
+      source === "api" ||
+      source === "system";
+
+    if (isWhatsAppWebOrApp || (msg.direction === "inbound" && !isKnownApiOrigin)) {
+      return {
+        label: "WEB",
+        className: "text-[#64748B]"
+      };
+    }
+
+    return {
+      label: "API",
+      className: "text-[#1E3A8A]"
+    };
+  };
+
   const handleAttachmentClick = () => {
+    if (!selectedConversation || selectedConversation.status !== 'OPEN' || isReadOnly) {
+      toast.error("Atendimento ainda não iniciado. Clique em Atender para responder.");
+      return;
+    }
     if (fileInputRef.current) {
       fileInputRef.current.click();
     }
@@ -2114,6 +2418,12 @@ const AtendimentoPage = () => {
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file || !selectedConversation) return;
+    if (selectedConversation.status !== 'OPEN' || isReadOnly) {
+      toast.error("Atendimento ainda não iniciado. Clique em Atender para responder.");
+      if (fileInputRef.current) fileInputRef.current.value = "";
+      return;
+    }
+    setPendingQuickAttachment(null);
 
     // Validate size (e.g. 15MB)
     if (file.size > 15 * 1024 * 1024) {
@@ -2335,14 +2645,42 @@ const AtendimentoPage = () => {
       toast.error("Nenhuma conversa selecionada");
       return;
     }
-    if (!window.confirm("Deseja realmente encerrar este atendimento?")) return;
+    if (closingReasons.length === 0) {
+      await fetchClosingReasons();
+    }
+    setPendingCloseConversation(conv);
+    setClosingReasonId("");
+    setClosingReasonSearch("");
+    setClosingObservation("");
+    setIsClosingModalOpen(true);
+  };
 
+  const handleConfirmCloseAtendimento = async () => {
+    const conv = pendingCloseConversation;
+    if (!conv) {
+      toast.error("Nenhuma conversa selecionada");
+      return;
+    }
+    if (!closingReasonId) {
+      toast.error("Selecione um motivo para encerrar o atendimento");
+      return;
+    }
+
+    setIsClosingSubmitting(true);
     const toastId = toast.loading("Encerrando atendimento...");
     try {
       const res = await fetch(`/api/crm/conversations/${conv.id}/close`, {
         method: "POST",
-        headers: { "Authorization": `Bearer ${token}` }
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          closingReasonId: Number(closingReasonId),
+          closingObservation: closingObservation.trim() || null
+        })
       });
+
       if (res.ok) {
         setConversations(prev => prev.map(c =>
           String(c.id) === String(conv.id) ? { ...c, status: 'CLOSED' as const } : c
@@ -2350,14 +2688,18 @@ const AtendimentoPage = () => {
         if (selectedConversation && String(selectedConversation.id) === String(conv.id)) {
           setSelectedConversation(prev => prev ? { ...prev, status: 'CLOSED' as const } : null);
         }
+        setIsClosingModalOpen(false);
+        setPendingCloseConversation(null);
         toast.success("Atendimento encerrado com sucesso", { id: toastId });
       } else {
-        const err = await res.json();
+        const err = await res.json().catch(() => ({}));
         toast.error(err.error || "Erro ao encerrar atendimento", { id: toastId });
       }
     } catch (e) {
       console.error(e);
-      toast.error("Erro de conexão ao servidor", { id: toastId });
+      toast.error("Erro de conexao ao servidor", { id: toastId });
+    } finally {
+      setIsClosingSubmitting(false);
     }
   };
 
@@ -2407,6 +2749,8 @@ const AtendimentoPage = () => {
   // - Open conversations assigned to someone else
   const isReadOnly = isClosed || isPending || (selectedConversation?.status === 'OPEN' && selectedConversation?.user_id && selectedConversation.user_id !== user?.id);
   // Note: if user_id is null/undefined on an OPEN chat, we allow messaging as it's the 'unclaimed' state.
+  const isPendingConversation = !!selectedConversation && (!selectedConversation.status || selectedConversation.status === 'PENDING');
+  const canRespondToConversation = !!selectedConversation && selectedConversation.status === 'OPEN' && !isReadOnly;
 
 
   const fetchContactAgenda = async (phone: string) => {
@@ -2548,6 +2892,17 @@ const AtendimentoPage = () => {
                   {conv.tags.slice(0, 2).map(tag => (
                     <span key={tag.id} className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: tag.color }} title={tag.name} />
                   ))}
+                </span>
+              )}
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2 text-[10px]">
+              <span className="px-1.5 py-0.5 rounded-[4px] bg-[#ECFDF3] text-[#15803D] border border-[#BBF7D0] font-semibold">
+                Fila: {conv.queue_name || "Recepcao"}
+              </span>
+              {conv.status === 'OPEN' && (
+                <span className="px-1.5 py-0.5 rounded-[4px] bg-[#EFF6FF] text-[#1D4ED8] border border-[#BFDBFE] font-semibold">
+                  Responsavel: {conv.assigned_user_name || conv.user_name || "-"}
                 </span>
               )}
             </div>
@@ -3027,11 +3382,7 @@ const AtendimentoPage = () => {
                     {selectedConversation.is_group && (
                       <Badge variant="outline" className="text-[7px] md:text-[9px] h-4 bg-[#2563EB]/10 text-[#2563EB] border-[#2563EB]/20 font-bold uppercase tracking-tighter">Grupo</Badge>
                     )}
-                    {(selectedConversation.instance_friendly_name || selectedConversation.instance) && (
-                      <div className="hidden md:flex items-center gap-1 bg-[#F1F5F9] border border-[#E2E8F0] px-1.5 py-0.5 rounded text-[9px] font-mono text-[#64748B]">
-                        <Zap className="w-2.5 h-2.5" /> {selectedConversation.instance_friendly_name || selectedConversation.instance}
-                      </div>
-                    )}
+                    
                   </div>
                   <div className="flex items-center gap-1 md:gap-2 text-[11px] md:text-xs">
                     <span className={cn(
@@ -3042,7 +3393,7 @@ const AtendimentoPage = () => {
                         <span className="flex items-center gap-1"><div className="w-1 h-1 rounded-full bg-[#16A34A]" /> em atendimento</span>
                       ) : "cliente / paciente"}
                     </span>
-                    {selectedConversation.user_name && (
+                    {selectedConversation.status === 'OPEN' && selectedConversation.user_name && (
                       <>
                         <span className="text-[#E2E8F0]">•</span>
                         <span className="text-[#64748B] italic">Resp: {selectedConversation.user_name}</span>
@@ -3214,11 +3565,6 @@ const AtendimentoPage = () => {
                           "flex flex-col w-full max-w-[85%] lg:max-w-[75%] gap-0.5",
                           isOutbound ? "items-end self-end" : "items-start self-start"
                         )}>
-                          {isOutbound && firstMsg.agent_name && (
-                            <span className="text-[10px] font-bold text-[#475569] mb-1 mr-1 px-1 flex items-center gap-1">
-                              {firstMsg.agent_name}:
-                            </span>
-                          )}
                           {group.map((msg, msgIdx) => (
                             <div
                               key={msg.id}
@@ -3340,19 +3686,19 @@ const AtendimentoPage = () => {
                                       "flex items-center gap-2 mt-1 self-end",
                                       isOutbound ? "justify-end" : "justify-start"
                                     )}>
-                                      {msg.instance_friendly_name && (
-                                        <span className={cn(
-                                          "text-[7px] font-black uppercase tracking-tighter px-1 py-0 rounded border opacity-60",
-                                          isOutbound ? "bg-white/10 border-white/5" : "bg-[#F1F5F9] border-[#E2E8F0]"
-                                        )}>
-                                          {msg.instance_friendly_name}
-                                        </span>
-                                      )}
+                                      {(() => {
+                                        const sourceLabel = getMessageSourceLabel(msg);
+                                        return (
+                                          <span className={cn("text-[10px] font-medium", sourceLabel.className)}>
+                                            {sourceLabel.label}
+                                          </span>
+                                        );
+                                      })()}
                                       <span className={cn(
                                         "text-[10px] opacity-60 font-mono tracking-tighter",
                                         isOutbound ? "text-white" : "text-[#64748B]"
                                       )}>
-                                        {new Date(msg.sent_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                        {formatTime(msg.sent_at)}
                                       </span>
                                       {isOutbound && (
                                         <div className="flex">
@@ -3405,6 +3751,29 @@ const AtendimentoPage = () => {
 
               {/* INPUT AREA - LIGHT MODE CLEAN */}
               <div className="relative bg-[#F8FAFC] p-2 md:p-6 z-20 shrink-0 border-t border-[#E2E8F0]">
+                {isPendingConversation && (
+                  <div className="max-w-6xl mx-auto rounded-xl border border-[#BBF7D0] bg-[#F0FDF4] p-4 md:p-5">
+                    <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+                      <div>
+                        <p className="text-sm font-semibold text-[#166534]">Atendimento ainda não iniciado</p>
+                        <p className="text-xs text-[#15803D]">Clique em "Atender" para começar a responder.</p>
+                      </div>
+                      <Button onClick={() => handleStartAtendimento()} className="bg-[#16A34A] hover:bg-[#15803D] text-white">
+                        <Play className="h-4 w-4 mr-2 fill-current" /> Atender Conversa
+                      </Button>
+                    </div>
+                  </div>
+                )}
+
+                {!isPendingConversation && !canRespondToConversation && (
+                  <div className="max-w-6xl mx-auto rounded-xl border border-[#E2E8F0] bg-white p-4 md:p-5">
+                    <p className="text-sm font-semibold text-[#334155]">Conversa em modo leitura</p>
+                    <p className="text-xs text-[#64748B]">O envio de mensagens está disponível apenas quando a conversa está em aberto para você.</p>
+                  </div>
+                )}
+
+                {canRespondToConversation && (
+                  <>
                 <div className="max-w-6xl mx-auto bg-white border border-[#E2E8F0] rounded-xl md:rounded-2xl p-1 md:p-2 pr-2 md:pr-4 shadow-sm">
                   <div className="flex items-end gap-0.5 md:gap-2">
                     <DropdownMenu>
@@ -3425,24 +3794,121 @@ const AtendimentoPage = () => {
                       <Smile className="h-4 md:h-5 w-4 md:w-5" />
                     </Button>
 
-                    <div className="flex-1 min-h-[36px] md:min-h-[40px] flex flex-col justify-center">
+                    {pendingQuickAttachment && (
+                      <div className="self-center max-w-[220px] md:max-w-[280px] px-2 py-1 rounded-lg border border-[#DBEAFE] bg-[#EFF6FF] text-[#1E3A8A] text-[10px] md:text-xs flex items-center gap-2">
+                        <span className="truncate font-medium">
+                          /{pendingQuickAttachment.key} ({pendingQuickAttachment.type})
+                        </span>
+                        <button
+                          type="button"
+                          className="text-[#1D4ED8] hover:text-[#1E3A8A]"
+                          onClick={() => setPendingQuickAttachment(null)}
+                          title="Remover anexo rápido"
+                        >
+                          <X className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                    )}
+
+                    <div className="flex-1 min-h-[36px] md:min-h-[40px] flex flex-col justify-center relative">
                       <textarea
+                        ref={messageInputRef}
                         rows={1}
                         placeholder="Digite uma mensagem..."
                         className="w-full bg-transparent border-none text-[#0F172A] placeholder:text-[#94A3B8] focus:ring-0 text-xs md:text-sm py-1.5 md:py-2.5 resize-none max-h-48 custom-scrollbar scroll-py-2"
                         value={messageInput}
                         onChange={(e) => {
-                          setMessageInput(e.target.value);
+                          const value = e.target.value;
+                          setMessageInput(value);
                           e.target.style.height = 'auto';
                           e.target.style.height = e.target.scrollHeight + 'px';
+
+                          if (!value.startsWith("/")) {
+                            setIsQuickMenuOpen(false);
+                            setQuickSearch("");
+                            return;
+                          }
+
+                          const slashQuery = value.slice(1);
+                          if (slashQuery.includes(" ")) {
+                            setIsQuickMenuOpen(false);
+                            return;
+                          }
+
+                          setQuickSearch(slashQuery.toLowerCase());
+                          setQuickSelectedIndex(0);
+                          setIsQuickMenuOpen(true);
                         }}
                         onKeyDown={(e) => {
+                          if (isQuickMenuOpen && filteredQuickMessages.length > 0) {
+                            if (e.key === 'ArrowDown') {
+                              e.preventDefault();
+                              setQuickSelectedIndex((prev) => Math.min(prev + 1, filteredQuickMessages.length - 1));
+                              return;
+                            }
+                            if (e.key === 'ArrowUp') {
+                              e.preventDefault();
+                              setQuickSelectedIndex((prev) => Math.max(prev - 1, 0));
+                              return;
+                            }
+                            if (e.key === 'Escape') {
+                              e.preventDefault();
+                              setIsQuickMenuOpen(false);
+                              return;
+                            }
+                            if (e.key === 'Enter' && !e.shiftKey) {
+                              e.preventDefault();
+                              const selectedQuick = filteredQuickMessages[quickSelectedIndex] || filteredQuickMessages[0];
+                              if (selectedQuick) {
+                                applyQuickMessage(selectedQuick);
+                                return;
+                              }
+                            }
+                          }
+
+                          if (isQuickMenuOpen && e.key === 'Escape') {
+                            e.preventDefault();
+                            setIsQuickMenuOpen(false);
+                            return;
+                          }
+
+                          if (isQuickMenuOpen && e.key === 'Enter' && !e.shiftKey) {
+                            e.preventDefault();
+                            return;
+                          }
+
                           if (e.key === 'Enter' && !e.shiftKey) {
                             e.preventDefault();
                             handleSendMessage();
                           }
                         }}
                       />
+
+                      {isQuickMenuOpen && (
+                        <div ref={quickMenuRef} className="absolute left-0 right-0 bottom-full mb-2 rounded-xl border border-[#E2E8F0] bg-white shadow-xl z-40 max-h-56 overflow-y-auto">
+                          {filteredQuickMessages.length === 0 ? (
+                            <div className="px-3 py-2 text-xs text-[#94A3B8]">Nenhuma chave encontrada</div>
+                          ) : (
+                            filteredQuickMessages.map((item, idx) => (
+                              <button
+                                key={item.id}
+                                type="button"
+                                className={cn(
+                                  "w-full text-left px-3 py-2 border-b border-[#F1F5F9] last:border-b-0 text-xs md:text-sm",
+                                  idx === quickSelectedIndex ? "bg-[#EFF6FF] text-[#1D4ED8]" : "hover:bg-[#F8FAFC] text-[#0F172A]"
+                                )}
+                                onMouseEnter={() => setQuickSelectedIndex(idx)}
+                                onClick={() => applyQuickMessage(item)}
+                              >
+                                <div className="font-mono font-semibold">/{item.key}</div>
+                                <div className="text-[11px] text-[#64748B] truncate">
+                                  {item.type === 'text' ? item.content : (item.fileName || item.type)}
+                                </div>
+                              </button>
+                            ))
+                          )}
+                        </div>
+                      )}
                     </div>
 
                     <div className="flex items-center self-end mb-0 md:mb-1 gap-1 md:gap-2">
@@ -3470,7 +3936,7 @@ const AtendimentoPage = () => {
                             </Button>
                           </div>
                         </div>
-                      ) : messageInput.trim() ? (
+                      ) : (messageInput.trim() || pendingQuickAttachment) ? (
                         <Button
                           onClick={handleSendMessage}
                           className="h-8 md:h-9 w-8 md:w-9 bg-[#2563EB] hover:bg-[#1D4ED8] text-white rounded-full p-0 shadow-sm shadow-[#2563EB]/20 shrink-0"
@@ -3491,10 +3957,19 @@ const AtendimentoPage = () => {
                   </div>
                 </div>
 
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  className="hidden"
+                  onChange={handleFileChange}
+                />
+
                 {/* Typing Indicator */}
                 <div className="h-4 mt-2 px-8">
                   {/* Logica de typing seria injetada aqui */}
                 </div>
+                  </>
+                )}
               </div>
             </div>
           </>
@@ -3599,6 +4074,79 @@ const AtendimentoPage = () => {
           />
         </div>
       )}
+
+      <Dialog
+        open={isClosingModalOpen}
+        onOpenChange={(open) => {
+          if (isClosingSubmitting) return;
+          setIsClosingModalOpen(open);
+          if (!open) {
+            setPendingCloseConversation(null);
+            setClosingReasonId("");
+            setClosingReasonSearch("");
+            setClosingObservation("");
+          }
+        }}
+      >
+        <DialogContent className="sm:max-w-[520px] border border-[#E2E8F0] bg-white text-[#0F172A] shadow-lg">
+          <DialogHeader>
+            <DialogTitle>Encerrar atendimento</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Motivo de encerramento *</label>
+              <Input
+                value={closingReasonSearch}
+                onChange={(e) => setClosingReasonSearch(e.target.value)}
+                placeholder="Buscar motivo..."
+              />
+              <select
+                className="w-full h-10 rounded-md border border-[#E2E8F0] bg-white px-3 text-sm outline-none focus:ring-2 focus:ring-[#2563EB]/30"
+                value={closingReasonId}
+                onChange={(e) => setClosingReasonId(e.target.value)}
+              >
+                <option value="">Selecione um motivo</option>
+                {filteredClosingReasons.map((reason) => (
+                  <option key={reason.id} value={String(reason.id)}>
+                    {reason.name} {reason.category ? `(${reason.category})` : ""}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Observação (opcional)</label>
+              <textarea
+                className="w-full min-h-[96px] rounded-md border border-[#E2E8F0] bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-[#2563EB]/30 resize-y"
+                placeholder="Ex: Cliente pediu para retornar no próximo mês."
+                value={closingObservation}
+                onChange={(e) => setClosingObservation(e.target.value)}
+                maxLength={1000}
+              />
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-2">
+              <Button
+                type="button"
+                variant="ghost"
+                disabled={isClosingSubmitting}
+                onClick={() => setIsClosingModalOpen(false)}
+              >
+                Cancelar
+              </Button>
+              <Button
+                type="button"
+                disabled={isClosingSubmitting}
+                onClick={handleConfirmCloseAtendimento}
+                className="bg-[#DC2626] hover:bg-[#b91c1c] text-white"
+              >
+                {isClosingSubmitting ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+                Confirmar Encerramento
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
 
 
       {/* Relationship Dialog */}
@@ -3803,3 +4351,6 @@ const AtendimentoPage = () => {
 };
 
 export default AtendimentoPage;
+  const SAO_PAULO_TZ = "America/Sao_Paulo";
+
+

@@ -436,8 +436,39 @@ export const VisualEditor: React.FC<VisualEditorProps> = ({
                                             className="w-full text-sm p-2 border rounded-md font-mono text-slate-600"
                                             value={node.data.variable || ''}
                                             onChange={e => updateData('variable', e.target.value)}
-                                            placeholder="ex: data_nascimento"
+                                                                                        placeholder="ex: data_nascimento"
                                         />
+                                    </div>
+                                    <div className="space-y-2">
+                                        <label className="text-xs font-bold text-slate-500 uppercase">Enviar para fila (mapa)</label>
+                                        <textarea
+                                            className="w-full h-20 text-xs p-2 border rounded-md focus:outline-none focus:border-blue-500 resize-none font-mono"
+                                            value={node.data.queueRouting || ''}
+                                            onChange={e => updateData('queueRouting', e.target.value)}
+                                            placeholder={"1:Financeiro\n2:Recepcao"}
+                                        />
+                                        <p className="text-[10px] text-slate-400">Formato: opcao:fila (uma por linha)</p>
+                                    </div>
+                                    <div className="grid grid-cols-2 gap-2">
+                                        <div className="space-y-2">
+                                            <label className="text-xs font-bold text-slate-500 uppercase">Max tentativas</label>
+                                            <input
+                                                type="number"
+                                                min={1}
+                                                className="w-full text-sm p-2 border rounded-md"
+                                                value={node.data.maxInvalidAttempts || 2}
+                                                onChange={e => updateData('maxInvalidAttempts', Number(e.target.value || 2))}
+                                            />
+                                        </div>
+                                        <div className="space-y-2">
+                                            <label className="text-xs font-bold text-slate-500 uppercase">Fila fallback</label>
+                                            <input
+                                                className="w-full text-sm p-2 border rounded-md"
+                                                value={node.data.fallbackQueue || 'Recepcao'}
+                                                onChange={e => updateData('fallbackQueue', e.target.value)}
+                                                placeholder="Recepcao"
+                                            />
+                                        </div>
                                     </div>
                                 </>
                             )}
@@ -532,3 +563,4 @@ export const VisualEditor: React.FC<VisualEditorProps> = ({
         </div>
     );
 };
+

@@ -1,6 +1,8 @@
 
 import { Request, Response } from 'express';
 import { pool } from '../db';
+import { ensureClosingReasonSchema } from './closingReasonController';
+import { ensureQueueSchema } from './queueController';
 
 interface AuthenticatedRequest extends Request {
     user?: any;
@@ -23,11 +25,12 @@ const auditLog = async (conversationId: number, userId: number, action: string, 
 export const startConversation = async (req: AuthenticatedRequest, res: Response) => {
     try {
         if (!pool) return res.status(500).json({ error: "DB not configured" });
+        await ensureClosingReasonSchema();
+        await ensureQueueSchema();
 
         const { id } = req.params;
         const userId = req.user.id;
         const companyId = req.user.company_id;
-        const isAdmin = req.user.role === 'SUPERADMIN' || req.user.role === 'ADMIN';
 
         // Check current status and company
         const check = await pool.query('SELECT status, user_id, phone, instance, company_id FROM whatsapp_conversations WHERE id = $1', [id]);
@@ -47,7 +50,14 @@ export const startConversation = async (req: AuthenticatedRequest, res: Response
 
         // Lock it
         await pool.query(
-            `UPDATE whatsapp_conversations SET status = 'OPEN', user_id = $1, started_at = NOW(), company_id = COALESCE(company_id, $2) WHERE id = $3`,
+            `UPDATE whatsapp_conversations
+             SET status = 'OPEN',
+                 user_id = $1,
+                 started_at = NOW(),
+                 opened_at = NOW(),
+                 opened_by_user_id = $1,
+                 company_id = COALESCE(company_id, $2)
+             WHERE id = $3`,
             [userId, companyId, id]
         );
 
@@ -70,11 +80,18 @@ export const startConversation = async (req: AuthenticatedRequest, res: Response
 export const closeConversation = async (req: AuthenticatedRequest, res: Response) => {
     try {
         if (!pool) return res.status(500).json({ error: "DB not configured" });
+        await ensureClosingReasonSchema();
 
         const { id } = req.params;
         const userId = req.user.id;
         const companyId = req.user.company_id;
         const isAdmin = req.user.role === 'SUPERADMIN' || req.user.role === 'ADMIN';
+        const closingReasonId = Number(req.body?.closingReasonId || 0);
+        const closingObservation = req.body?.closingObservation ? String(req.body.closingObservation).slice(0, 1000) : null;
+
+        if (!closingReasonId) {
+            return res.status(400).json({ error: "Selecione um motivo de encerramento." });
+        }
 
         const check = await pool.query('SELECT status, user_id, company_id FROM whatsapp_conversations WHERE id = $1', [id]);
         if (check.rows.length === 0) return res.status(404).json({ error: "Conversation not found" });
@@ -91,13 +108,28 @@ export const closeConversation = async (req: AuthenticatedRequest, res: Response
             return res.status(403).json({ error: "Apenas o atendente responsável ou admin pode fechar esta conversa." });
         }
 
+        const reasonCheck = await pool.query(
+            'SELECT id FROM closing_reasons WHERE id = $1 AND company_id = $2 AND is_active = true',
+            [closingReasonId, companyId]
+        );
+        if (reasonCheck.rows.length === 0) {
+            return res.status(400).json({ error: "Motivo de encerramento inválido para esta empresa." });
+        }
+
         // Close it
         await pool.query(
-            `UPDATE whatsapp_conversations SET status = 'CLOSED', closed_at = NOW(), company_id = COALESCE(company_id, $1) WHERE id = $2`,
-            [companyId, id]
+            `UPDATE whatsapp_conversations
+             SET status = 'CLOSED',
+                 closed_at = NOW(),
+                 closed_by_user_id = $1,
+                 closing_reason_id = $2,
+                 closing_observation = $3,
+                 company_id = COALESCE(company_id, $4)
+             WHERE id = $5`,
+            [userId, closingReasonId, closingObservation, companyId, id]
         );
 
-        await auditLog(Number(id), userId, 'CLOSE');
+        await auditLog(Number(id), userId, 'CLOSE', { closingReasonId, closingObservation });
         if (companyId) {
             req.app.get('io')?.to(`company_${companyId}`).emit('conversation:update', { id, status: 'CLOSED', closed_by: userId });
         }
@@ -268,6 +300,72 @@ export const returnToPending = async (req: AuthenticatedRequest, res: Response) 
         return res.json({ status: 'success' });
     } catch (e) {
         console.error("Error returning to pending:", e);
+        return res.status(500).json({ error: "Internal Server Error" });
+    }
+};
+
+export const transferConversationQueue = async (req: AuthenticatedRequest, res: Response) => {
+    try {
+        if (!pool) return res.status(500).json({ error: "DB not configured" });
+        await ensureQueueSchema();
+
+        const { id } = req.params;
+        const userId = Number(req.user.id);
+        const companyId = Number(req.user.company_id || 0);
+        const isAdmin = req.user.role === 'SUPERADMIN' || req.user.role === 'ADMIN';
+        const queueId = Number(req.body?.queueId || 0);
+
+        if (!queueId) {
+            return res.status(400).json({ error: "Fila de destino é obrigatória." });
+        }
+
+        const convRes = await pool.query(
+            'SELECT id, status, user_id, company_id, queue_id FROM whatsapp_conversations WHERE id = $1',
+            [id]
+        );
+        if (convRes.rows.length === 0) return res.status(404).json({ error: "Conversation not found" });
+
+        const conv = convRes.rows[0];
+
+        if (req.user.role !== 'SUPERADMIN' && conv.company_id && Number(conv.company_id) !== companyId) {
+            return res.status(403).json({ error: "Permissão negada." });
+        }
+
+        if (conv.status === 'OPEN' && conv.user_id && Number(conv.user_id) !== userId && !isAdmin) {
+            return res.status(403).json({ error: "Apenas o responsável ou admin pode transferir esta conversa." });
+        }
+
+        const resolvedCompanyId = Number(conv.company_id || companyId);
+        const queueRes = await pool.query(
+            'SELECT id, name FROM queues WHERE id = $1 AND company_id = $2 AND is_active = true LIMIT 1',
+            [queueId, resolvedCompanyId]
+        );
+        if (queueRes.rows.length === 0) {
+            return res.status(400).json({ error: "Fila de destino inválida para esta empresa." });
+        }
+
+        if (conv.queue_id && Number(conv.queue_id) === queueId) {
+            return res.status(400).json({ error: "A conversa já está nesta fila." });
+        }
+
+        const queueName = queueRes.rows[0].name;
+
+        await pool.query(
+            'UPDATE whatsapp_conversations SET queue_id = $1, company_id = COALESCE(company_id, $2) WHERE id = $3',
+            [queueId, resolvedCompanyId, id]
+        );
+
+        await auditLog(Number(id), userId, 'TRANSFER_QUEUE', { queue_id: queueId, queue_name: queueName });
+
+        req.app.get('io')?.to(`company_${resolvedCompanyId}`).emit('conversation:update', {
+            id,
+            queue_id: queueId,
+            queue_name: queueName
+        });
+
+        return res.json({ status: 'success', queueId, queueName });
+    } catch (e) {
+        console.error("Error transferring conversation queue:", e);
         return res.status(500).json({ error: "Internal Server Error" });
     }
 };

@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from "react";
 import { useAuth } from "../../contexts/AuthContext";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetFooter } from "../ui/sheet";
@@ -7,19 +6,19 @@ import { Input } from "../ui/input";
 import { Label } from "../ui/label";
 import { Textarea } from "../ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select";
-import { Checkbox } from "../ui/checkbox";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "../ui/tabs";
 import { toast } from "../ui/use-toast";
-import { Plus, Upload, Calculator } from "lucide-react";
+import { Calculator } from "lucide-react";
 
-interface CreateProductDrawerProps {
+interface EditProductDrawerProps {
     open: boolean;
     onOpenChange: (open: boolean) => void;
     onSuccess: () => void;
+    product: any | null;
     instanceId: number | null;
 }
 
-export function CreateProductDrawer({ open, onOpenChange, onSuccess, instanceId }: CreateProductDrawerProps) {
+export function EditProductDrawer({ open, onOpenChange, onSuccess, product, instanceId }: EditProductDrawerProps) {
     const { token, user } = useAuth();
     const [loading, setLoading] = useState(false);
     const isHealthMode = user?.company?.operation_type === 'pacientes' || user?.company?.operational_profile === 'CLINICA' || user?.company?.category === 'clinica';
@@ -33,26 +32,36 @@ export function CreateProductDrawer({ open, onOpenChange, onSuccess, instanceId 
     const [description, setDescription] = useState("");
     const [batchNumber, setBatchNumber] = useState("");
     const [expirationDate, setExpirationDate] = useState("");
-
     const [costPrice, setCostPrice] = useState("");
     const [salePrice, setSalePrice] = useState("");
-
     const [quantity, setQuantity] = useState("");
     const [minQuantity, setMinQuantity] = useState("");
     const [location, setLocation] = useState("");
     const [unit, setUnit] = useState("un");
-
     const [supplierId, setSupplierId] = useState("");
     const [suppliers, setSuppliers] = useState<any[]>([]);
-
-    const [channels, setChannels] = useState({
-        pdv: true,
-        whatsapp: false,
-        campaigns: true,
-        ai: true
-    });
-
     const [activeTab, setActiveTab] = useState("basic");
+
+    // Load product data when modal opens
+    useEffect(() => {
+        if (product && open) {
+            setName(product.name || "");
+            setCategory(product.category || "");
+            setSku(product.sku || "");
+            setBarcode(product.barcode || "");
+            setStatus(product.status || "active");
+            setDescription(product.description || "");
+            setBatchNumber(product.batch_number || "");
+            setExpirationDate(product.expiration_date || "");
+            setCostPrice(product.cost_price?.toString() || "");
+            setSalePrice(product.sale_price?.toString() || "");
+            setQuantity(product.quantity?.toString() || "");
+            setMinQuantity(product.min_quantity?.toString() || "");
+            setLocation(product.location || "");
+            setUnit(product.unit || "un");
+            setSupplierId(product.supplier_id?.toString() || "");
+        }
+    }, [product, open]);
 
     // Fetch Suppliers
     useEffect(() => {
@@ -77,21 +86,33 @@ export function CreateProductDrawer({ open, onOpenChange, onSuccess, instanceId 
         return ((sale - cost) / sale) * 100;
     }, [costPrice, salePrice]);
 
-    const handleSubmit = async (createAnother = false) => {
+    const handleSubmit = async () => {
         if (!name || !salePrice) {
-            toast({ title: "Erro de validação", description: "Nome e Preço de Venda são obrigatórios.", variant: "destructive" });
+            toast({
+                title: "Erro de validação",
+                description: "Nome e Preço de Venda são obrigatórios.",
+                variant: "destructive"
+            });
             return;
         }
 
-        if (parseFloat(quantity) < 0) {
-            toast({ title: "Erro de validação", description: "Quantidade não pode ser negativa.", variant: "destructive" });
+        if (!product?.id) {
+            toast({
+                title: "Erro",
+                description: "ID do produto não encontrado.",
+                variant: "destructive"
+            });
             return;
         }
 
         setLoading(true);
         try {
             if (!instanceId) {
-                toast({ title: "Instância não encontrada", description: "Selecione/conecte uma instância para salvar produtos.", variant: "destructive" });
+                toast({
+                    title: "Instância não encontrada",
+                    description: "Selecione/conecte uma instância para salvar produtos.",
+                    variant: "destructive"
+                });
                 setLoading(false);
                 return;
             }
@@ -109,14 +130,13 @@ export function CreateProductDrawer({ open, onOpenChange, onSuccess, instanceId 
                 location,
                 unit,
                 supplier_id: supplierId ? parseInt(supplierId) : null,
-                channels,
                 batch_number: batchNumber,
                 expiration_date: expirationDate || null,
                 instance_id: instanceId
             };
 
-            const res = await fetch('/api/shop/inventory', {
-                method: 'POST',
+            const res = await fetch(`/api/shop/inventory/${product.id}`, {
+                method: 'PUT',
                 headers: {
                     'Content-Type': 'application/json',
                     Authorization: `Bearer ${token}`,
@@ -126,48 +146,32 @@ export function CreateProductDrawer({ open, onOpenChange, onSuccess, instanceId 
             });
 
             if (res.ok) {
-                toast({ title: "Produto cadastrado com sucesso!" });
+                toast({ title: "Produto atualizado com sucesso!" });
                 onSuccess();
-                if (createAnother) {
-                    resetForm();
-                } else {
-                    onOpenChange(false);
-                    resetForm();
-                }
+                onOpenChange(false);
             } else {
                 const err = await res.json();
-                toast({ title: "Erro ao cadastrar", description: err.error, variant: "destructive" });
+                toast({
+                    title: "Erro ao atualizar",
+                    description: err.error || "Erro desconhecido",
+                    variant: "destructive"
+                });
             }
         } catch (e) {
+            console.error('Update error:', e);
             toast({ title: "Erro de conexão", variant: "destructive" });
         } finally {
             setLoading(false);
         }
     };
 
-    const resetForm = () => {
-        setName("");
-        setCategory("");
-        setSku("");
-        setBarcode("");
-        setStatus("active");
-        setDescription("");
-        setCostPrice("");
-        setSalePrice("");
-        setQuantity("");
-        setMinQuantity("");
-        setLocation("");
-        setUnit("un");
-        setSupplierId("");
-        setBatchNumber("");
-        setExpirationDate("");
-    };
-
     return (
         <Sheet open={open} onOpenChange={onOpenChange}>
             <SheetContent side="right" className="w-full sm:max-w-xl overflow-y-auto">
                 <SheetHeader>
-                    <SheetTitle className="text-2xl">{isHealthMode ? 'Cadastro de Insumo' : 'Cadastro de Produto'}</SheetTitle>
+                    <SheetTitle className="text-2xl">
+                        {isHealthMode ? 'Editar Insumo' : 'Editar Produto'}
+                    </SheetTitle>
                 </SheetHeader>
 
                 <div className="py-6 space-y-6">
@@ -182,13 +186,13 @@ export function CreateProductDrawer({ open, onOpenChange, onSuccess, instanceId 
                         <TabsContent value="basic" className="space-y-4 mt-4">
                             <div className="space-y-2">
                                 <Label>{isHealthMode ? 'Nome do Insumo *' : 'Nome do Produto *'}</Label>
-                                <Input value={name} onChange={e => setName(e.target.value)} placeholder={isHealthMode ? "Ex: Luvas de Látex" : "Ex: Camiseta Básica P"} />
+                                <Input value={name} onChange={e => setName(e.target.value)} />
                             </div>
 
                             <div className="grid grid-cols-2 gap-4">
                                 <div className="space-y-2">
                                     <Label>Categoria</Label>
-                                    <Input value={category} onChange={e => setCategory(e.target.value)} placeholder={isHealthMode ? "Ex: Descartáveis" : "Ex: Vestuário"} />
+                                    <Input value={category} onChange={e => setCategory(e.target.value)} />
                                 </div>
                                 <div className="space-y-2">
                                     <Label>Status</Label>
@@ -206,7 +210,7 @@ export function CreateProductDrawer({ open, onOpenChange, onSuccess, instanceId 
                                 <div className="grid grid-cols-2 gap-4">
                                     <div className="space-y-2">
                                         <Label>Número do Lote</Label>
-                                        <Input value={batchNumber} onChange={e => setBatchNumber(e.target.value)} placeholder="Ex: LT-2024-001" />
+                                        <Input value={batchNumber} onChange={e => setBatchNumber(e.target.value)} />
                                     </div>
                                     <div className="space-y-2">
                                         <Label>Data de Validade</Label>
@@ -217,12 +221,12 @@ export function CreateProductDrawer({ open, onOpenChange, onSuccess, instanceId 
 
                             <div className="grid grid-cols-2 gap-4">
                                 <div className="space-y-2">
-                                    <Label>SKU (Opcional)</Label>
-                                    <Input value={sku} onChange={e => setSku(e.target.value)} placeholder="Gerado auto..." />
+                                    <Label>SKU</Label>
+                                    <Input value={sku} onChange={e => setSku(e.target.value)} disabled />
                                 </div>
                                 <div className="space-y-2">
                                     <Label>Código de Barras</Label>
-                                    <Input value={barcode} onChange={e => setBarcode(e.target.value)} placeholder="EAN-13" />
+                                    <Input value={barcode} onChange={e => setBarcode(e.target.value)} />
                                 </div>
                             </div>
 
@@ -244,7 +248,7 @@ export function CreateProductDrawer({ open, onOpenChange, onSuccess, instanceId 
                                     />
                                 </div>
                                 <div className="space-y-2">
-                                    <Label>{isHealthMode ? 'Preço de Saída / Uso (Opcional)' : 'Preço de Venda (R$) *'}</Label>
+                                    <Label>{isHealthMode ? 'Preço de Saída (R$) *' : 'Preço de Venda (R$) *'}</Label>
                                     <Input
                                         type="number"
                                         value={salePrice}
@@ -269,12 +273,20 @@ export function CreateProductDrawer({ open, onOpenChange, onSuccess, instanceId 
                         <TabsContent value="stock" className="space-y-4 mt-4">
                             <div className="grid grid-cols-2 gap-4">
                                 <div className="space-y-2">
-                                    <Label>Estoque Inicial</Label>
-                                    <Input type="number" value={quantity} onChange={e => setQuantity(e.target.value)} />
+                                    <Label>Estoque Atual</Label>
+                                    <Input
+                                        type="number"
+                                        value={quantity}
+                                        onChange={e => setQuantity(e.target.value)}
+                                    />
                                 </div>
                                 <div className="space-y-2">
                                     <Label>Estoque Mínimo</Label>
-                                    <Input type="number" value={minQuantity} onChange={e => setMinQuantity(e.target.value)} />
+                                    <Input
+                                        type="number"
+                                        value={minQuantity}
+                                        onChange={e => setMinQuantity(e.target.value)}
+                                    />
                                 </div>
                             </div>
 
@@ -294,7 +306,7 @@ export function CreateProductDrawer({ open, onOpenChange, onSuccess, instanceId 
                                 </div>
                                 <div className="space-y-2">
                                     <Label>Localização</Label>
-                                    <Input value={location} onChange={e => setLocation(e.target.value)} placeholder="Ex: Prateleira B3" />
+                                    <Input value={location} onChange={e => setLocation(e.target.value)} />
                                 </div>
                             </div>
                         </TabsContent>
@@ -311,38 +323,15 @@ export function CreateProductDrawer({ open, onOpenChange, onSuccess, instanceId 
                                     </SelectContent>
                                 </Select>
                             </div>
-
-                            <div className="space-y-4">
-                                <Label className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">{isHealthMode ? 'Canais de Uso' : 'Canais de Venda'}</Label>
-                                <div className="grid grid-cols-2 gap-4">
-                                    <div className="flex items-center space-x-2">
-                                        <Checkbox id="pdv" checked={channels.pdv} onCheckedChange={(c: any) => setChannels({ ...channels, pdv: c })} />
-                                        <Label htmlFor="pdv">{isHealthMode ? 'Uso Interno' : 'PDV Loja'}</Label>
-                                    </div>
-                                    <div className="flex items-center space-x-2">
-                                        <Checkbox id="campaigns" checked={channels.campaigns} onCheckedChange={(c: any) => setChannels({ ...channels, campaigns: c })} />
-                                        <Label htmlFor="campaigns">Campanhas</Label>
-                                    </div>
-                                    <div className="flex items-center space-x-2">
-                                        <Checkbox id="ai" checked={channels.ai} onCheckedChange={(c: any) => setChannels({ ...channels, ai: c })} />
-                                        <Label htmlFor="ai">IA Vendedora</Label>
-                                    </div>
-                                </div>
-                            </div>
                         </TabsContent>
                     </Tabs>
                 </div>
 
                 <SheetFooter className="gap-2 sm:gap-0">
                     <Button variant="outline" onClick={() => onOpenChange(false)}>Cancelar</Button>
-                    <div className="flex gap-2 w-full sm:w-auto">
-                        <Button variant="secondary" onClick={() => handleSubmit(true)} disabled={loading}>
-                            Salvar e Novo
-                        </Button>
-                        <Button onClick={() => handleSubmit(false)} disabled={loading}>
-                            {loading ? 'Salvando...' : isHealthMode ? 'Salvar Insumo' : 'Salvar Produto'}
-                        </Button>
-                    </div>
+                    <Button onClick={handleSubmit} disabled={loading}>
+                        {loading ? 'Salvando...' : 'Salvar Alterações'}
+                    </Button>
                 </SheetFooter>
             </SheetContent>
         </Sheet>

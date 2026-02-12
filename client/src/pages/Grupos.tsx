@@ -91,6 +91,7 @@ const AuthAudio = ({ src, token }: { src: string, token: string }) => {
 };
 
 const GruposPage = () => {
+    const SAO_PAULO_TZ = "America/Sao_Paulo";
     const { token, user } = useAuth();
     const [groups, setGroups] = useState<GroupConversation[]>([]);
     const [searchTerm, setSearchTerm] = useState("");
@@ -160,7 +161,7 @@ const GruposPage = () => {
         const groupsToRefresh = groups.filter(g => {
             const name = g.group_name || g.contact_name;
             // Refresh if name is missing, generic "Grupo", matches phone, or matches generic pattern
-            return !name || name === 'Grupo' || name === g.phone || /^Grupo \d+/.test(name) || /@g\.us$/.test(name);
+            return !name || name === 'Grupo' || name === g.phone || /^Grupo \d+/.test(name) || /@g\.us$/.test(name) || !g.profile_pic_url;
         });
 
         if (groupsToRefresh.length === 0) return;
@@ -298,7 +299,7 @@ const GruposPage = () => {
     const filteredGroups = groups.filter(group => {
         if (!searchTerm) return true;
         const search = searchTerm.toLowerCase();
-        const name = (group.group_name || group.contact_name || "").toLowerCase();
+        const name = getGroupDisplayName(group).toLowerCase();
         return name.includes(search);
     });
 
@@ -310,9 +311,33 @@ const GruposPage = () => {
         const hours = diff / (1000 * 60 * 60);
 
         if (hours < 24) {
-            return date.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+            return new Intl.DateTimeFormat('pt-BR', {
+                timeZone: SAO_PAULO_TZ,
+                hour: '2-digit',
+                minute: '2-digit',
+                hour12: false
+            }).format(date);
         }
-        return date.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
+        return new Intl.DateTimeFormat('pt-BR', {
+            timeZone: SAO_PAULO_TZ,
+            day: '2-digit',
+            month: '2-digit'
+        }).format(date);
+    };
+
+    const isUsableGroupName = (value?: string | null) => {
+        if (!value) return false;
+        const name = String(value).trim();
+        if (!name) return false;
+        if (/@g\.us$/i.test(name) || /@s\.whatsapp\.net$/i.test(name)) return false;
+        if (/^\d{8,16}$/.test(name)) return false;
+        return true;
+    };
+
+    const getGroupDisplayName = (group?: GroupConversation | null) => {
+        if (!group) return "Grupo";
+        if (isUsableGroupName(group.group_name)) return String(group.group_name).trim();
+        return "Grupo";
     };
 
     const handleRefreshMetadata = async () => {
@@ -360,7 +385,7 @@ const GruposPage = () => {
                 </div>
 
                 <ScrollArea className="flex-1">
-                    <div className="px-3 py-2 space-y-1">
+                    <div className="pl-2 pr-4 py-2 space-y-1">
                         {isLoading ? (
                             <div className="text-center py-8 text-muted-foreground text-sm">
                                 Carregando grupos...
@@ -375,7 +400,7 @@ const GruposPage = () => {
                                     key={group.id}
                                     onClick={() => setSelectedGroup(group)}
                                     className={cn(
-                                        "group flex items-center gap-2.5 p-1.5 rounded-lg cursor-pointer transition-all duration-200 border border-transparent",
+                                        "group mr-1 flex items-center gap-2.5 p-1.5 rounded-lg cursor-pointer transition-all duration-200 border border-transparent",
                                         selectedGroup?.id === group.id
                                             ? "bg-[#e7fce3] dark:bg-[#005c4b]/30 border-[#00a884]/20 shadow-sm"
                                             : "hover:bg-zinc-50 dark:hover:bg-zinc-900 border-zinc-100/50 dark:border-zinc-800/50"
@@ -383,7 +408,7 @@ const GruposPage = () => {
                                 >
                                     <div className="relative shrink-0">
                                         <Avatar className="h-9 w-9 border-2 border-white dark:border-zinc-900 shadow-sm">
-                                            <AvatarImage src={group.profile_pic_url || `https://api.dicebear.com/7.x/initials/svg?seed=${group.group_name || group.contact_name || "G"}`} />
+                                            <AvatarImage src={group.profile_pic_url || `https://api.dicebear.com/7.x/initials/svg?seed=${getGroupDisplayName(group)}`} />
                                             <AvatarFallback className="bg-blue-100 text-blue-600">
                                                 <Users className="h-4 w-4" />
                                             </AvatarFallback>
@@ -396,7 +421,7 @@ const GruposPage = () => {
                                                 "font-semibold truncate text-[13px]",
                                                 selectedGroup?.id === group.id ? "text-[#008069] dark:text-[#00a884]" : "text-zinc-900 dark:text-zinc-100"
                                             )}>
-                                                {group.group_name || group.contact_name || "Grupo"}
+                                                {getGroupDisplayName(group)}
                                             </span>
                                             <span className="text-[10px] text-muted-foreground whitespace-nowrap ml-2 opacity-80">
                                                 {formatTime(group.last_message_at)}
@@ -437,11 +462,11 @@ const GruposPage = () => {
                         <div className="h-16 flex-none bg-zinc-100 dark:bg-zinc-800 flex items-center justify-between px-4 border-b border-zinc-200 dark:border-zinc-700 relative z-10 shadow-sm">
                             <div className="flex items-center gap-3">
                                 <Avatar className="h-10 w-10">
-                                    <AvatarImage src={selectedGroup.profile_pic_url || `https://api.dicebear.com/7.x/initials/svg?seed=${selectedGroup.group_name || selectedGroup.contact_name || "G"}`} />
-                                    <AvatarFallback>{(selectedGroup.group_name || "G")[0]}</AvatarFallback>
+                                    <AvatarImage src={selectedGroup.profile_pic_url || `https://api.dicebear.com/7.x/initials/svg?seed=${getGroupDisplayName(selectedGroup)}`} />
+                                    <AvatarFallback>{(getGroupDisplayName(selectedGroup) || "G")[0]}</AvatarFallback>
                                 </Avatar>
                                 <div className="flex flex-col">
-                                    <span className="font-semibold text-sm">{selectedGroup.group_name || selectedGroup.contact_name}</span>
+                                    <span className="font-semibold text-sm">{getGroupDisplayName(selectedGroup)}</span>
                                     <span className="text-[10px] text-muted-foreground">ID: {selectedGroup.phone}</span>
                                 </div>
                             </div>
