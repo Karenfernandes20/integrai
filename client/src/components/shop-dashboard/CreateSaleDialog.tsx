@@ -147,6 +147,16 @@ export function CreateSaleDialog({ open, onOpenChange, onSuccess }: CreateSaleDi
             return;
         }
 
+        // Check stock availability
+        if (qty > product.quantity) {
+            toast({
+                title: "Estoque insuficiente",
+                description: `Você solicitou ${qty}, mas só existem ${product.quantity} unidades disponíveis.`,
+                variant: "destructive"
+            });
+            return;
+        }
+
         const newItem: CartItem = {
             inventory_id: product.id,
             name: product.name,

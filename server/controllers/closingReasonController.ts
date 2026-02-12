@@ -55,7 +55,7 @@ export const listClosingReasons = async (req: Request, res: Response) => {
 
         const onlyActive = String(req.query.onlyActive || 'true') !== 'false';
 
-        const result = await pool.query(
+        let result = await pool.query(
             `SELECT id, company_id as "companyId", name, category, type, is_active as "isActive", created_at as "createdAt", updated_at as "updatedAt"
              FROM closing_reasons
              WHERE company_id = $1
@@ -63,6 +63,37 @@ export const listClosingReasons = async (req: Request, res: Response) => {
              ORDER BY name ASC`,
             [companyId, onlyActive]
         );
+        if (result.rows.length === 0) {
+            // Seed defaults
+            const defaults = [
+                { name: 'Venda Concluída', category: 'Vendas', type: 'positivo' },
+                { name: 'Negociação em Andamento', category: 'Vendas', type: 'neutro' },
+                { name: 'Cliente Desistiu', category: 'Vendas', type: 'negativo' },
+                { name: 'Dúvida Respondida', category: 'Suporte', type: 'neutro' },
+                { name: 'Suporte Técnico', category: 'Suporte', type: 'neutro' },
+                { name: 'Outros', category: 'Geral', type: 'neutro' }
+            ];
+
+            for (const d of defaults) {
+                await pool.query(
+                    `INSERT INTO closing_reasons (company_id, name, category, type, is_active) 
+                     VALUES ($1, $2, $3, $4, true) 
+                     ON CONFLICT (company_id, name) DO NOTHING`,
+                    [companyId, d.name, d.category, d.type]
+                );
+            }
+
+            // Re-fetch after seeding
+            result = await pool.query(
+                `SELECT id, company_id as "companyId", name, category, type, is_active as "isActive", created_at as "createdAt", updated_at as "updatedAt"
+                 FROM closing_reasons
+                 WHERE company_id = $1
+                   AND ($2::boolean = false OR is_active = true)
+                 ORDER BY name ASC`,
+                [companyId, onlyActive]
+            );
+        }
+
         res.json(result.rows);
     } catch (error: any) {
         console.error('Error listing closing reasons:', error);

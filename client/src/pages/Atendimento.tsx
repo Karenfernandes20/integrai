@@ -3737,6 +3737,17 @@ const AtendimentoPage = () => {
                                         </div>
                                       )}
 
+                                      {/* Sticker Rendering */}
+                                      {(msg.type === 'sticker' || msg.message_type === 'sticker' || msg.message_type === 'stickerMessage') && getMediaUrl(msg) && (
+                                        <div className="mb-2">
+                                          <img
+                                            src={getMediaUrl(msg)}
+                                            alt="Sticker"
+                                            className="w-32 h-32 object-contain select-none pointer-events-none"
+                                          />
+                                        </div>
+                                      )}
+
 
                                       {(msg.type === 'audio' || msg.message_type === 'audio') && getMediaUrl(msg) && (
                                         <div className={cn(

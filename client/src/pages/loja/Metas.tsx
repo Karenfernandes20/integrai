@@ -81,6 +81,28 @@ export default function MetasPage() {
         commissionRate: ''
     });
 
+    const [manualMode, setManualMode] = useState(false);
+    const [manualDistributions, setManualDistributions] = useState<{ sellerId: number, name: string, targetValue: string }[]>([]);
+
+    useEffect(() => {
+        if (isDistributeModalOpen && sellerOptions.length > 0) {
+            // Init manual distributions
+            const initial = sellerOptions.map(s => ({
+                sellerId: s.id,
+                name: s.full_name,
+                targetValue: '' // Start empty or equal split? Start empty to force input or calculate on button click
+            }));
+            setManualDistributions(initial);
+        }
+    }, [isDistributeModalOpen, sellerOptions]);
+
+    const calculateEqualSplit = () => {
+        const total = Number(distributeForm.totalTarget);
+        if (!total || manualDistributions.length === 0) return;
+        const split = (total / manualDistributions.length).toFixed(2);
+        setManualDistributions(prev => prev.map(d => ({ ...d, targetValue: split })));
+    };
+
     useEffect(() => {
         if (preset === 'current_month') {
             setStartDate(toDateInput(new Date(today.getFullYear(), today.getMonth(), 1)));
@@ -239,7 +261,7 @@ export default function MetasPage() {
 
     const handleDistribute = async () => {
         if (!instanceId) return;
-        if (!distributeForm.totalTarget) {
+        if (!manualMode && !distributeForm.totalTarget) {
             toast({ title: 'Informe a meta total', variant: 'destructive' });
             return;
         }
@@ -257,7 +279,8 @@ export default function MetasPage() {
                     startDate: distributeForm.startDate,
                     endDate: distributeForm.endDate,
                     commissionRate: Number(distributeForm.commissionRate || 0),
-                    instance_id: instanceId
+                    instance_id: instanceId,
+                    distributions: manualMode ? manualDistributions.map(d => ({ sellerId: d.sellerId, targetValue: Number(d.targetValue) })) : undefined
                 })
             });
             const data = await res.json();
@@ -625,10 +648,22 @@ export default function MetasPage() {
                 <DialogContent className="max-w-lg">
                     <DialogHeader><DialogTitle>Dividir Meta Geral entre Vendedores</DialogTitle></DialogHeader>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                        <div className="md:col-span-2">
-                            <Label>Meta total</Label>
-                            <Input type="number" value={distributeForm.totalTarget} onChange={(e) => setDistributeForm({ ...distributeForm, totalTarget: e.target.value })} />
+                        <div className="md:col-span-2 flex items-center justify-between">
+                            <Label>Modo de Distribuição</Label>
+                            <label className="flex items-center gap-2 cursor-pointer text-sm">
+                                <input type="checkbox" checked={manualMode} onChange={(e) => setManualMode(e.target.checked)} className="rounded border-gray-300" />
+                                Ajuste Manual Individual
+                            </label>
                         </div>
+
+                        <div className="md:col-span-2">
+                            <Label>Meta total {manualMode ? '(Referência)' : ''}</Label>
+                            <div className="flex gap-2">
+                                <Input type="number" value={distributeForm.totalTarget} onChange={(e) => setDistributeForm({ ...distributeForm, totalTarget: e.target.value })} />
+                                {manualMode && <Button variant="secondary" onClick={calculateEqualSplit} title="Distribuir Igualmente">Distribuir</Button>}
+                            </div>
+                        </div>
+
                         <div>
                             <Label>Início</Label>
                             <Input type="date" value={distributeForm.startDate} onChange={(e) => setDistributeForm({ ...distributeForm, startDate: e.target.value })} />
@@ -641,6 +676,29 @@ export default function MetasPage() {
                             <Label>Comissão estimada (%)</Label>
                             <Input type="number" value={distributeForm.commissionRate} onChange={(e) => setDistributeForm({ ...distributeForm, commissionRate: e.target.value })} />
                         </div>
+
+                        {manualMode && (
+                            <div className="md:col-span-2 space-y-2 mt-2 max-h-60 overflow-y-auto border rounded p-2">
+                                <Label>Valores por Vendedor</Label>
+                                {manualDistributions.map((dist, idx) => (
+                                    <div key={dist.sellerId} className="flex items-center gap-2">
+                                        <span className="text-sm flex-1 truncate" title={dist.name}>{dist.name}</span>
+                                        <Input
+                                            type="number"
+                                            className="w-32 h-8"
+                                            value={dist.targetValue}
+                                            onChange={(e) => {
+                                                const val = e.target.value;
+                                                setManualDistributions(prev => prev.map((item, i) => i === idx ? { ...item, targetValue: val } : item));
+                                            }}
+                                        />
+                                    </div>
+                                ))}
+                                <div className="text-right text-sm font-bold mt-2">
+                                    Soma: {formatMoney(manualDistributions.reduce((acc, curr) => acc + Number(curr.targetValue || 0), 0))}
+                                </div>
+                            </div>
+                        )}
                     </div>
                     <DialogFooter>
                         <Button variant="outline" onClick={() => setIsDistributeModalOpen(false)}>Cancelar</Button>

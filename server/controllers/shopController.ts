@@ -336,7 +336,11 @@ export const createSale = async (req: RequestWithInstance, res: Response) => {
             // Check stock
             const stockCheck = await client.query('SELECT id, quantity, name FROM inventory WHERE id = $1', [item.inventory_id]);
             if (stockCheck.rows.length === 0) throw new Error(`Produto #${item.inventory_id} não encontrado no estoque.`);
-            // if (stockCheck.rows[0].quantity < item.quantity) throw new Error(`Insufficient stock for ${stockCheck.rows[0].name}`);
+
+            const currentStock = Number(stockCheck.rows[0].quantity);
+            if (currentStock < qty) {
+                throw new Error(`Estoque insuficiente para ${stockCheck.rows[0].name}. Disponível: ${currentStock}, Solicitado: ${qty}`);
+            }
         }
 
         const final_amount = total_amount - (Number(discount) || 0);
@@ -501,7 +505,7 @@ export const updateSaleStatus = async (req: RequestWithInstance, res: Response) 
             );
         }
 
-        refreshGoalsForWindow(company_id, instance_id, new Date(), new Date()).catch((e) =>
+        refreshGoalsForWindow(company_id, Number(instance_id), new Date(), new Date()).catch((e) =>
             console.error('[SHOP][GOALS] Failed to refresh after updateSaleStatus:', e)
         );
 
@@ -1143,35 +1147,66 @@ export const distributeRevenueGoalBySellers = async (req: RequestWithInstance, r
 
         const { company_id } = req.user;
         const instance_id = req.instanceId as number;
-        const { totalTarget, startDate, endDate, namePrefix, commissionRate } = req.body;
+        const { totalTarget, startDate, endDate, namePrefix, commissionRate, distributions } = req.body;
 
-        if (!totalTarget || !startDate || !endDate) {
-            return res.status(400).json({ error: 'Campos obrigatórios: totalTarget, startDate, endDate' });
+        if (!startDate || !endDate) {
+            return res.status(400).json({ error: 'Campos obrigatórios: startDate, endDate' });
         }
 
-        const sellersRes = await pool.query(`
-            SELECT id, full_name
-            FROM app_users
-            WHERE company_id = $1 AND is_active = true
-            ORDER BY full_name ASC
-        `, [company_id]);
-        if (sellersRes.rows.length === 0) {
-            return res.status(400).json({ error: 'Nenhum vendedor ativo encontrado.' });
-        }
-
-        const split = Number(totalTarget) / sellersRes.rows.length;
         const createdGoals: any[] = [];
-        for (const s of sellersRes.rows) {
-            const goalName = `${namePrefix || 'Meta'} - ${s.full_name}`;
-            const row = await pool.query(`
-                INSERT INTO goals (
-                    company_id, instance_id, name, goal_metric, target_scope, target_value,
-                    start_date, end_date, user_id, status, is_recurring, recurrence, commission_rate
-                )
-                VALUES ($1, $2, $3, 'revenue', 'seller', $4, $5::date, $6::date, $7, 'active', false, 'none', $8)
-                RETURNING *
-            `, [company_id, instance_id, goalName, split, startDate, endDate, s.id, Number(commissionRate || 0)]);
-            createdGoals.push(row.rows[0]);
+
+        // Manual Distribution Mode
+        if (Array.isArray(distributions) && distributions.length > 0) {
+            for (const dist of distributions) {
+                if (!dist.sellerId || !dist.targetValue) continue;
+
+                // Get seller name for goal name
+                const sellerRes = await pool.query('SELECT full_name FROM app_users WHERE id = $1', [dist.sellerId]);
+                const sellerName = sellerRes.rows[0]?.full_name || `Vendedor #${dist.sellerId}`;
+                const goalName = `${namePrefix || 'Meta'} - ${sellerName}`;
+
+                const row = await pool.query(`
+                    INSERT INTO goals (
+                        company_id, instance_id, name, goal_metric, target_scope, target_value,
+                        start_date, end_date, user_id, status, is_recurring, recurrence, commission_rate
+                    )
+                    VALUES ($1, $2, $3, 'revenue', 'seller', $4, $5::date, $6::date, $7, 'active', false, 'none', $8)
+                    RETURNING *
+                `, [company_id, instance_id, goalName, Number(dist.targetValue), startDate, endDate, dist.sellerId, Number(commissionRate || 0)]);
+                createdGoals.push(row.rows[0]);
+            }
+        }
+        // Automatic Equal Split Mode
+        else {
+            if (!totalTarget) {
+                return res.status(400).json({ error: 'Total target ou distributions obrigatório.' });
+            }
+
+            const sellersRes = await pool.query(`
+                SELECT id, full_name
+                FROM app_users
+                WHERE company_id = $1 AND is_active = true
+                ORDER BY full_name ASC
+            `, [company_id]);
+
+            if (sellersRes.rows.length === 0) {
+                return res.status(400).json({ error: 'Nenhum vendedor ativo encontrado.' });
+            }
+
+            const split = Number(totalTarget) / sellersRes.rows.length;
+
+            for (const s of sellersRes.rows) {
+                const goalName = `${namePrefix || 'Meta'} - ${s.full_name}`;
+                const row = await pool.query(`
+                    INSERT INTO goals (
+                        company_id, instance_id, name, goal_metric, target_scope, target_value,
+                        start_date, end_date, user_id, status, is_recurring, recurrence, commission_rate
+                    )
+                    VALUES ($1, $2, $3, 'revenue', 'seller', $4, $5::date, $6::date, $7, 'active', false, 'none', $8)
+                    RETURNING *
+                `, [company_id, instance_id, goalName, split, startDate, endDate, s.id, Number(commissionRate || 0)]);
+                createdGoals.push(row.rows[0]);
+            }
         }
 
         await refreshGoalsForWindow(company_id, instance_id, new Date(startDate), new Date(endDate));

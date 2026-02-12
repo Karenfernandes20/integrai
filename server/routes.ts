@@ -312,6 +312,8 @@ router.get('/crm/leads', authenticateToken, getLeads);
 router.put('/crm/leads/:id', authenticateToken, authorizePermission('crm.move_cards'), updateLead);
 router.post('/crm/leads', authenticateToken, createLead);
 router.put('/crm/leads/:id/move', authenticateToken, authorizePermission('crm.move_cards'), updateLeadStage);
+router.get('/crm/contacts', authenticateToken, getContacts);
+
 
 // Bot Routes (Chatbot V2)
 import {
@@ -403,11 +405,14 @@ router.get('/crm/clinical-bi', authenticateToken, getClinicalBIStats);
 import { getDRE, getBreakdown, getFinancialIndicators, getOperationalReports } from './controllers/reportsController';
 import { getConversionStats } from './controllers/analyticsController';
 
-router.get('/reports/dre', authenticateToken, authorizeRole(['SUPERADMIN', 'ADMIN']), getDRE);
-router.get('/reports/breakdown', authenticateToken, authorizeRole(['SUPERADMIN', 'ADMIN']), getBreakdown);
-router.get('/reports/indicators', authenticateToken, authorizeRole(['SUPERADMIN', 'ADMIN']), getFinancialIndicators);
-router.get('/reports/operational', authenticateToken, authorizeRole(['SUPERADMIN', 'ADMIN']), getOperationalReports);
-router.get('/reports/conversion', authenticateToken, authorizeRole(['SUPERADMIN']), getConversionStats);
+router.get('/reports/dre', authenticateToken, authorizeRole(['SUPERADMIN', 'ADMIN', 'USUARIO']), getDRE);
+router.get('/reports/breakdown', authenticateToken, authorizeRole(['SUPERADMIN', 'ADMIN', 'USUARIO']), getBreakdown);
+router.get('/reports/indicators', authenticateToken, authorizeRole(['SUPERADMIN', 'ADMIN', 'USUARIO']), getFinancialIndicators);
+router.get('/reports/operational', authenticateToken, authorizeRole(['SUPERADMIN', 'ADMIN', 'USUARIO']), getOperationalReports);
+router.get('/reports/conversion', authenticateToken, authorizeRole(['SUPERADMIN', 'ADMIN', 'USUARIO']), getConversionStats);
+
+// CRM Contacts route (Alias for generic contacts)
+router.get('/crm/contacts', authenticateToken, getContacts);
 
 
 import { getPayables, getReceivables, getReceivablesByCity, getCashFlow, getFinancialStats, createFinancialTransaction, updateFinancialTransaction, deleteFinancialTransaction, reactivateFinancialTransaction, markAsPaid, getCategories, createCategory, deleteCategory } from './controllers/financialController';
