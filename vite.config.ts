@@ -13,7 +13,9 @@ export default defineConfig(({ mode }) => ({
   server: {
     host: "0.0.0.0", // Force IPv4
     port: 8082,
-    open: true,
+    strictPort: true, // Fail fast instead of silently switching to another port
+    // Avoid trying to open a browser automatically (breaks in headless/remote envs).
+    open: false,
     proxy: {
       "/api": {
         target: "http://127.0.0.1:3000", // Force IPv4 to avoid ENETUNREACH on localhost (::1)
