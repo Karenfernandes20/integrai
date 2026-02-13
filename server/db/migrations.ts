@@ -803,6 +803,17 @@ const runWhatsappMigrations = async () => {
             `);
             await pool.query('CREATE INDEX IF NOT EXISTS idx_conv_vars_lookup ON conversation_variables(company_id, conversation_id)');
 
+            await pool.query(`
+                CREATE TABLE IF NOT EXISTS conversation_states (
+                    conversation_id INTEGER PRIMARY KEY REFERENCES whatsapp_conversations(id) ON DELETE CASCADE,
+                    current_node_id VARCHAR(100) NOT NULL,
+                    waiting_for_input BOOLEAN NOT NULL DEFAULT FALSE,
+                    expected_variable VARCHAR(100),
+                    updated_at TIMESTAMP DEFAULT NOW()
+                );
+            `);
+            await pool.query('CREATE INDEX IF NOT EXISTS idx_conv_states_waiting ON conversation_states(waiting_for_input, updated_at)');
+
             await pool.query(`ALTER TABLE chatbot_sessions ADD COLUMN IF NOT EXISTS execution_count INTEGER DEFAULT 0`);
             await pool.query(`ALTER TABLE chatbot_sessions ADD COLUMN IF NOT EXISTS timeout_at TIMESTAMP`);
             await pool.query(`ALTER TABLE chatbot_sessions ADD COLUMN IF NOT EXISTS timeout_node_id VARCHAR(100)`);

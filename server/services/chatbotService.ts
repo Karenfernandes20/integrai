@@ -21,6 +21,13 @@ interface FlowJson {
     edges: FlowEdge[];
 }
 
+interface ConversationState {
+    conversation_id: number;
+    current_node_id: string;
+    waiting_for_input: boolean;
+    expected_variable: string | null;
+}
+
 const parseQueueRouting = (raw: any): Record<string, string> => {
     if (!raw) return {};
     if (typeof raw === 'object' && !Array.isArray(raw)) {
@@ -170,6 +177,56 @@ const saveVariable = async (companyId: number, contactPhone: string, key: string
     }
 };
 
+const getConversationId = async (companyId: number, contactPhone: string): Promise<number | null> => {
+    const conv = await pool!.query(`
+        SELECT id FROM whatsapp_conversations
+        WHERE company_id = $1 AND (phone = $2 OR external_id = $2 OR external_id = $3)
+        LIMIT 1
+    `, [companyId, contactPhone, `${contactPhone}@s.whatsapp.net`]);
+
+    if (conv.rows.length === 0) return null;
+    return conv.rows[0].id;
+};
+
+const getConversationState = async (conversationId: number): Promise<ConversationState | null> => {
+    const state = await pool!.query(`
+        SELECT conversation_id, current_node_id, waiting_for_input, expected_variable
+        FROM conversation_states
+        WHERE conversation_id = $1
+        LIMIT 1
+    `, [conversationId]);
+
+    return state.rows[0] || null;
+};
+
+const saveConversationState = async ({
+    conversationId,
+    currentNodeId,
+    waitingForInput,
+    expectedVariable
+}: {
+    conversationId: number;
+    currentNodeId: string;
+    waitingForInput: boolean;
+    expectedVariable: string | null;
+}) => {
+    await pool!.query(`
+        INSERT INTO conversation_states (conversation_id, current_node_id, waiting_for_input, expected_variable, updated_at)
+        VALUES ($1, $2, $3, $4, NOW())
+        ON CONFLICT (conversation_id)
+        DO UPDATE SET
+            current_node_id = EXCLUDED.current_node_id,
+            waiting_for_input = EXCLUDED.waiting_for_input,
+            expected_variable = EXCLUDED.expected_variable,
+            updated_at = NOW()
+    `, [conversationId, currentNodeId, waitingForInput, expectedVariable]);
+};
+
+const getNextNodeId = (flow: FlowJson, currentNodeId: string): string | null => {
+    const edge = flow.edges.find(e => e.source === currentNodeId);
+    return edge?.target || null;
+};
+
 export const processChatbotMessage = async (instanceKey: string, contactPhone: string, messageText: string, io?: any) => {
     try {
         console.log(`[ChatbotService] START: Instance=${instanceKey}, Phone=${contactPhone}`);
@@ -232,7 +289,39 @@ export const processChatbotMessage = async (instanceKey: string, contactPhone: s
             session = sessionRes.rows[0];
         }
 
-        await executeNode(bot.id, bot.company_id, session, flow, messageText, instanceKey, io);
+        const conversationId = await getConversationId(bot.company_id, contactPhone);
+
+        // Event-driven resume path: if there is a pending input, persist and continue from next node
+        if (conversationId) {
+            const state = await getConversationState(conversationId);
+            if (state?.waiting_for_input) {
+                const expectedVariable = String(state.expected_variable || '').trim();
+                if (expectedVariable) {
+                    await saveVariable(bot.company_id, contactPhone, expectedVariable, String(messageText || '').trim());
+                }
+
+                await saveConversationState({
+                    conversationId,
+                    currentNodeId: state.current_node_id,
+                    waitingForInput: false,
+                    expectedVariable: null
+                });
+
+                const nextNodeId = getNextNodeId(flow, state.current_node_id);
+                if (!nextNodeId) return;
+
+                await pool!.query(
+                    'UPDATE chatbot_sessions SET current_node_id = $1, last_activity = NOW() WHERE id = $2',
+                    [nextNodeId, session.id]
+                );
+                session.current_node_id = nextNodeId;
+
+                await executeNode(bot.id, bot.company_id, session, flow, '', instanceKey, io, 0, conversationId);
+                return;
+            }
+        }
+
+        await executeNode(bot.id, bot.company_id, session, flow, messageText, instanceKey, io, 0, conversationId);
     } catch (error) {
         console.error('[ChatbotService] Error processing message:', error);
     }
@@ -245,8 +334,14 @@ const executeNode = async (
     flow: FlowJson,
     messageText: string,
     instanceKey: string,
-    io?: any
+    io?: any,
+    executionDepth: number = 0,
+    conversationId: number | null = null
 ) => {
+    if (executionDepth > 20) {
+        throw new Error('Possible infinite loop');
+    }
+
     let currentNode = flow.nodes.find(n => n.id === session.current_node_id);
     if (!currentNode) return;
 
@@ -316,26 +411,17 @@ const executeNode = async (
 
             // Se a opção "Capturar resposta do cliente" estiver ativa no bloco de texto
             if (data.capture_response) {
-                const askedKey = `__asked_msg_${currentNode.id}`;
-
-                // Se ainda não perguntou, envia a mensagem e marca como perguntado
-                if (!sessionVars[askedKey]) {
-                    await sendMessage(instanceKey, session.contact_key, text, botCompanyId);
-                    sessionVars[askedKey] = true;
-                    // Salva o nome da variável personalizada se fornecido, senão usa last_response padrão
-                    await pool!.query('UPDATE chatbot_sessions SET variables = $1 WHERE id = $2', [sessionVars, session.id]);
-                    return; // Interrompe e aguarda a resposta do cliente
+                await sendMessage(instanceKey, session.contact_key, text, botCompanyId);
+                if (conversationId) {
+                    const varName = String(data.variable_name || 'last_response').replace(/[{}]/g, '');
+                    await saveConversationState({
+                        conversationId,
+                        currentNodeId: currentNode.id,
+                        waitingForInput: true,
+                        expectedVariable: varName
+                    });
                 }
-
-                // Se já perguntou, a messageText atual é a resposta
-                const varName = data.variable_name || 'last_response';
-                const cleanVarName = varName.replace(/[{}]/g, '');
-                sessionVars[cleanVarName] = lastResponse;
-                await saveVariable(botCompanyId, session.contact_key, cleanVarName, lastResponse);
-
-                // Limpa o estado perguntado para futuras execuções deste nó se houver loop
-                delete sessionVars[askedKey];
-                await pool!.query('UPDATE chatbot_sessions SET variables = $1 WHERE id = $2', [sessionVars, session.id]);
+                return;
             } else {
                 // Comportamento normal: envia e segue para o próximo
                 await sendMessage(instanceKey, session.contact_key, text, botCompanyId);
@@ -357,9 +443,7 @@ const executeNode = async (
         case 'question': {
             const data = currentNode.data;
             const questionText = resolveVariables(data.question || '');
-            const variableName = data.variable || data.salvar_resposta_em;
-            const askedKey = `__asked_${currentNode.id}`;
-            const attemptsKey = `__attempts_${currentNode.id}`;
+            const variableName = String(data.variable || data.salvar_resposta_em || 'last_response').replace(/[{}]/g, '');
 
             // Timeout Config
             if (data.timeout_seconds) {
@@ -368,80 +452,33 @@ const executeNode = async (
                     [timeoutAt, currentNode.id, session.id]);
             }
 
-            if (!sessionVars[askedKey]) {
-                await sendMessage(instanceKey, session.contact_key, questionText, botCompanyId);
-                sessionVars[askedKey] = true;
-                sessionVars[attemptsKey] = 0;
-                await pool!.query('UPDATE chatbot_sessions SET variables = $1 WHERE id = $2', [sessionVars, session.id]);
-                return; // Wait for answer
+            await sendMessage(instanceKey, session.contact_key, questionText, botCompanyId);
+            if (conversationId) {
+                await saveConversationState({
+                    conversationId,
+                    currentNodeId: currentNode.id,
+                    waitingForInput: true,
+                    expectedVariable: variableName
+                });
             }
+            return;
+        }
 
-            const answer = String(messageText || '').trim();
-            if (!answer) return;
+        case 'input': {
+            const data = currentNode.data;
+            const inputText = resolveVariables(data.question || data.label || data.content || '');
+            const variableName = String(data.variable || data.variable_name || data.salvar_resposta_em || 'last_response').replace(/[{}]/g, '');
 
-            // VALIDATION
-            let isValid = true;
-            const valType = data.validation_type || 'any';
-
-            if (valType === 'number') {
-                isValid = !isNaN(Number(answer));
-            } else if (valType === 'regex' && data.validation_regex) {
-                try {
-                    const re = new RegExp(data.validation_regex);
-                    isValid = re.test(answer);
-                } catch (e) { isValid = false; }
-            } else if (valType === 'options' && data.validation_options) {
-                const options = Array.isArray(data.validation_options) ? data.validation_options : String(data.validation_options).split(',').map(s => s.trim());
-                isValid = options.includes(answer);
+            await sendMessage(instanceKey, session.contact_key, inputText, botCompanyId);
+            if (conversationId) {
+                await saveConversationState({
+                    conversationId,
+                    currentNodeId: currentNode.id,
+                    waitingForInput: true,
+                    expectedVariable: variableName
+                });
             }
-
-            if (isValid) {
-                // Save Variable
-                if (variableName) {
-                    const cleanVarName = variableName.replace(/[{}]/g, '');
-                    sessionVars[cleanVarName] = answer;
-                    await saveVariable(botCompanyId, session.contact_key, cleanVarName, answer);
-                }
-
-                // Clear state and move next
-                delete sessionVars[askedKey];
-                delete sessionVars[attemptsKey];
-                await pool!.query('UPDATE chatbot_sessions SET variables = $1, timeout_at = NULL WHERE id = $2', [sessionVars, session.id]);
-
-                const qEdge = flow.edges.find(e => e.source === currentNode?.id && e.sourceHandle !== 'timeout' && e.sourceHandle !== 'invalid');
-                if (qEdge) {
-                    nextNodeId = qEdge.target;
-                    shouldContinue = true;
-                }
-            } else {
-                // Invalid Attempt
-                const attempts = (sessionVars[attemptsKey] || 0) + 1;
-                sessionVars[attemptsKey] = attempts;
-                const maxAttempts = Number(data.max_attempts || 3);
-
-                if (attempts >= maxAttempts) {
-                    // Fail action
-                    const failEdge = flow.edges.find(e => e.source === currentNode?.id && e.sourceHandle === 'invalid');
-                    if (failEdge) {
-                        nextNodeId = failEdge.target;
-                        shouldContinue = true;
-                        delete sessionVars[askedKey];
-                        delete sessionVars[attemptsKey];
-                        await pool!.query('UPDATE chatbot_sessions SET variables = $1, timeout_at = NULL WHERE id = $2', [sessionVars, session.id]);
-                    } else {
-                        // Default fail: handoff
-                        await sendMessage(instanceKey, session.contact_key, "Número de tentativas excedido. Encaminhando para um atendente.", botCompanyId);
-                        await pool!.query('DELETE FROM chatbot_sessions WHERE id = $1', [session.id]);
-                        return;
-                    }
-                } else {
-                    const errMsg = data.error_message || "Resposta inválida. Por favor, tente novamente.";
-                    await sendMessage(instanceKey, session.contact_key, resolveVariables(errMsg), botCompanyId);
-                    await pool!.query('UPDATE chatbot_sessions SET variables = $1 WHERE id = $2', [sessionVars, session.id]);
-                    return; // Wait for retry
-                }
-            }
-            break;
+            return;
         }
 
         case 'condition': {
@@ -450,7 +487,8 @@ const executeNode = async (
 
             for (const rule of rules) {
                 const varName = (rule.variable || '').replace(/[{}]/g, '');
-                const varValue = allVars[varName];
+                const varsFromDb = await getGlobalVariables(botCompanyId, session.contact_key, instanceKey);
+                const varValue = varsFromDb[varName];
                 const isMatch = evaluateCondition(varValue, rule.operator, rule.value);
 
                 if (isMatch) {
@@ -617,7 +655,7 @@ const executeNode = async (
         if (shouldContinue) {
             // Add slight delay to prevent stack overflow or race conditions in async recursion? 
             // Better to just await.
-            await executeNode(botId, botCompanyId, session, flow, '', instanceKey, io);
+            await executeNode(botId, botCompanyId, session, flow, '', instanceKey, io, executionDepth + 1, conversationId);
         }
     }
 };
@@ -672,7 +710,8 @@ export const checkChatbotTimeouts = async (io?: any) => {
 
                     const updatedSession = { ...session, current_node_id: timeoutEdge.target };
                     // Execute the next node
-                    await executeNode(session.chatbot_id, session.company_id, updatedSession, flow, '', session.instance_key, io);
+                    const conversationId = await getConversationId(session.company_id, session.contact_key);
+                    await executeNode(session.chatbot_id, session.company_id, updatedSession, flow, '', session.instance_key, io, 0, conversationId);
                 } else {
                     // No specific timeout target, just clear timeout
                     await pool!.query('UPDATE chatbot_sessions SET timeout_at = NULL, timeout_node_id = NULL WHERE id = $2', [session.id]);
@@ -698,4 +737,3 @@ const replaceVariables = (text: string, variables: any) => {
         return value !== undefined && value !== null ? String(value) : `{{${k}}}`;
     });
 };
-
