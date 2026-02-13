@@ -1538,23 +1538,21 @@ export const getMessages = async (req: Request, res: Response) => {
 
 export const verifyInstagramWebhook = async (req: Request, res: Response) => {
     try {
-        const mode = String(req.query['hub.mode'] || '');
-        const token = String(req.query['hub.verify_token'] || '');
-        const challenge = String(req.query['hub.challenge'] || '');
+        const mode = req.query['hub.mode'];
+        const token = req.query['hub.verify_token'];
+        const challenge = req.query['hub.challenge'];
 
         const VERIFY_TOKEN = process.env.INSTAGRAM_VERIFY_TOKEN;
 
-        if (!VERIFY_TOKEN) {
-            console.error('[Instagram Webhook] INSTAGRAM_VERIFY_TOKEN is not set.');
-            return res.sendStatus(403);
-        }
+        console.log(`[Instagram Webhook] Tentativa de verificação: mode=${mode}, token=${token}`);
 
         if (mode === 'subscribe' && token === VERIFY_TOKEN) {
-            console.log('[Instagram Webhook] Verified successfully.');
+            console.log('[Instagram Webhook] Verificado com sucesso.');
+            // Meta exige que o desafio seja retornado como texto puro na resposta
             return res.status(200).send(challenge);
         }
 
-        console.warn(`[Instagram Webhook] Verification failed. Mode: ${mode}`);
+        console.warn(`[Instagram Webhook] Falha na verificação. Token esperado: ${VERIFY_TOKEN ? 'Configurado' : 'AUSENTE'}`);
         return res.sendStatus(403);
     } catch (e) {
         console.error('[Instagram Verify Error]', e);
