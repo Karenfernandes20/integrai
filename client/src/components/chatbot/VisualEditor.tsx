@@ -41,16 +41,19 @@ export const VisualEditor: React.FC<VisualEditorProps> = ({
         fetchData();
     }, [initialNodes]);
 
+    const [chatbots, setChatbots] = useState<any[]>([]);
     const fetchData = async () => {
         try {
-            const [qRes, tRes, uRes] = await Promise.all([
+            const [qRes, tRes, uRes, bRes] = await Promise.all([
                 fetch('/api/queues', { headers: { Authorization: `Bearer ${token}` } }),
                 fetch('/api/crm/tags', { headers: { Authorization: `Bearer ${token}` } }),
-                fetch('/api/users', { headers: { Authorization: `Bearer ${token}` } })
+                fetch('/api/users', { headers: { Authorization: `Bearer ${token}` } }),
+                fetch('/api/chatbot', { headers: { Authorization: `Bearer ${token}` } })
             ]);
             if (qRes.ok) setQueues(await qRes.json());
             if (tRes.ok) setTags(await tRes.json());
             if (uRes.ok) setUsers(await uRes.json());
+            if (bRes.ok) setChatbots(await bRes.json());
         } catch (e) {
             console.error("Error fetching actions data:", e);
         }
@@ -543,15 +546,43 @@ export const VisualEditor: React.FC<VisualEditorProps> = ({
                             </div>
 
                             {node.type === 'message' && (
-                                <div className="space-y-2">
-                                    <label className="text-xs font-bold text-slate-500 uppercase">Conteúdo da Mensagem</label>
-                                    <textarea
-                                        className="w-full h-32 text-sm p-2 border rounded-md focus:outline-none focus:border-blue-500 resize-none"
-                                        value={node.data.content || ''}
-                                        onChange={e => updateData('content', e.target.value)}
-                                        placeholder="Digite a mensagem que o bot enviará..."
-                                    />
-                                    <p className="text-[10px] text-slate-400">Dica: Use {"{{nome}}"} para personalizar.</p>
+                                <div className="space-y-4">
+                                    <div className="space-y-2">
+                                        <label className="text-xs font-bold text-slate-500 uppercase">Conteúdo da Mensagem</label>
+                                        <textarea
+                                            className="w-full h-32 text-sm p-2 border rounded-md focus:outline-none focus:border-blue-500 resize-none"
+                                            value={node.data.content || ''}
+                                            onChange={e => updateData('content', e.target.value)}
+                                            placeholder="Digite a mensagem que o bot enviará..."
+                                        />
+                                        <p className="text-[10px] text-slate-400">Dica: Use {"{{nome}}"} para personalizar.</p>
+                                    </div>
+
+                                    <div className="flex items-center space-x-2 bg-blue-50 p-2 rounded-md border border-blue-100">
+                                        <input
+                                            type="checkbox"
+                                            id="capture_response"
+                                            className="rounded border-blue-300 text-blue-600 focus:ring-blue-500 h-4 w-4"
+                                            checked={!!node.data.capture_response}
+                                            onChange={e => updateData('capture_response', e.target.checked)}
+                                        />
+                                        <label htmlFor="capture_response" className="text-xs font-medium text-blue-700 cursor-pointer">
+                                            Capturar resposta do cliente
+                                        </label>
+                                    </div>
+
+                                    {node.data.capture_response && (
+                                        <div className="space-y-2 animate-in fade-in slide-in-from-top-1 duration-200">
+                                            <label className="text-[10px] font-bold text-slate-400 uppercase">Salvar resposta em:</label>
+                                            <input
+                                                className="w-full text-xs p-2 border rounded-md font-mono"
+                                                value={node.data.variable_name || ''}
+                                                onChange={e => updateData('variable_name', e.target.value)}
+                                                placeholder="ex: nome_cliente"
+                                            />
+                                            <p className="text-[9px] text-slate-400">Padrão: {"{{last_response}}"}</p>
+                                        </div>
+                                    )}
                                 </div>
                             )}
 
@@ -710,8 +741,13 @@ export const VisualEditor: React.FC<VisualEditorProps> = ({
                                                     <option value="equals">Igual a</option>
                                                     <option value="different">Diferente de</option>
                                                     <option value="contains">Contém</option>
+                                                    <option value="not_contains">Não contém</option>
+                                                    <option value="starts_with">Começa com</option>
+                                                    <option value="ends_with">Termina com</option>
                                                     <option value="greater_than">Maior que</option>
                                                     <option value="less_than">Menor que</option>
+                                                    <option value="is_empty">Vazio</option>
+                                                    <option value="is_not_empty">Não Vazio</option>
                                                     <option value="regex">Regex</option>
                                                 </select>
                                                 <input
@@ -787,27 +823,20 @@ export const VisualEditor: React.FC<VisualEditorProps> = ({
                                                         </optgroup>
                                                         <optgroup label="🎯 Gestão de Conversa">
                                                             <option value="move_queue">Enviar para Fila</option>
-                                                            <option value="assign_user">Atribuir a Usuário</option>
-                                                            <option value="change_status">Mudar Status</option>
-                                                            <option value="close_conversation">Fechar Conversa</option>
-                                                            <option value="stop_chatbot">Parar Chatbot</option>
+                                                            <option value="set_responsible">Atribuir Responsável</option>
+                                                            <option value="finish_conversation">Concluir Conversa</option>
+                                                            <option value="start_flow">Iniciar outro Fluxo</option>
+                                                            <option value="stop_chatbot">Parar Chatbot neste Ponto</option>
                                                         </optgroup>
                                                         <optgroup label="🏷️ Tags">
                                                             <option value="add_tag">Adicionar Tag</option>
                                                             <option value="remove_tag">Remover Tag</option>
                                                         </optgroup>
-                                                        <optgroup label="💼 CRM & Tarefas">
-                                                            <option value="create_lead">Criar Lead no CRM</option>
-                                                            <option value="create_task">Criar Tarefa</option>
-                                                        </optgroup>
-                                                        <optgroup label="🔔 Notificações">
-                                                            <option value="send_notification">Enviar Notificação</option>
-                                                        </optgroup>
                                                         <optgroup label="⚙️ Variáveis">
-                                                            <option value="set_variable">Definir Variável</option>
+                                                            <option value="set_variable">Definir/Atualizar Variável</option>
                                                         </optgroup>
                                                         <optgroup label="🔗 Integração">
-                                                            <option value="webhook">Chamar Webhook</option>
+                                                            <option value="webhook">Enviar Webhook/API</option>
                                                         </optgroup>
                                                     </select>
                                                 </div>
@@ -830,21 +859,21 @@ export const VisualEditor: React.FC<VisualEditorProps> = ({
                                                     {action.type === 'move_queue' && (
                                                         <select
                                                             className="w-full text-xs p-1.5 border rounded bg-white"
-                                                            value={action.params?.queueName || ''}
+                                                            value={action.params?.queueId || ''}
                                                             onChange={e => {
                                                                 const newActions = [...node.data.actions];
-                                                                newActions[index].params = { ...action.params, queueName: e.target.value };
+                                                                newActions[index].params = { ...action.params, queueId: e.target.value };
                                                                 updateData('actions', newActions);
                                                             }}
                                                         >
                                                             <option value="">Selecionar Fila...</option>
                                                             {queues.map((q: any) => (
-                                                                <option key={q.id} value={q.name}>{q.name}</option>
+                                                                <option key={q.id} value={q.id}>{q.name}</option>
                                                             ))}
                                                         </select>
                                                     )}
 
-                                                    {action.type === 'assign_user' && (
+                                                    {action.type === 'set_responsible' && (
                                                         <select
                                                             className="w-full text-xs p-1.5 border rounded bg-white"
                                                             value={action.params?.userId || ''}
@@ -861,38 +890,25 @@ export const VisualEditor: React.FC<VisualEditorProps> = ({
                                                         </select>
                                                     )}
 
-                                                    {(action.type === 'add_tag' || action.type === 'remove_tag') && (
+                                                    {action.type === 'start_flow' && (
                                                         <select
                                                             className="w-full text-xs p-1.5 border rounded bg-white"
-                                                            value={action.params?.tagId || ''}
+                                                            value={action.params?.chatbotId || ''}
                                                             onChange={e => {
                                                                 const newActions = [...node.data.actions];
-                                                                newActions[index].params = { ...action.params, tagId: Number(e.target.value) };
+                                                                newActions[index].params = { ...action.params, chatbotId: Number(e.target.value) };
                                                                 updateData('actions', newActions);
                                                             }}
                                                         >
-                                                            <option value="">Selecionar Tag...</option>
-                                                            {tags.map((t: any) => (
-                                                                <option key={t.id} value={t.id}>{t.name}</option>
+                                                            <option value="">Selecionar Chatbot...</option>
+                                                            {chatbots.map((b: any) => (
+                                                                <option key={b.id} value={b.id}>{b.name}</option>
                                                             ))}
                                                         </select>
                                                     )}
 
-                                                    {action.type === 'change_status' && (
-                                                        <select
-                                                            className="w-full text-xs p-1.5 border rounded bg-white"
-                                                            value={action.params?.status || ''}
-                                                            onChange={e => {
-                                                                const newActions = [...node.data.actions];
-                                                                newActions[index].params = { ...action.params, status: e.target.value };
-                                                                updateData('actions', newActions);
-                                                            }}
-                                                        >
-                                                            <option value="">Selecionar Status...</option>
-                                                            <option value="PENDING">Pendente</option>
-                                                            <option value="OPEN">Em Aberto</option>
-                                                            <option value="CLOSED">Fechado</option>
-                                                        </select>
+                                                    {action.type === 'finish_conversation' && (
+                                                        <p className="text-[10px] text-slate-400 italic">Conclui atendimento atual</p>
                                                     )}
 
                                                     {action.type === 'delay' && (

@@ -3,11 +3,14 @@ import { pool } from './index.js';
 import { runWhaticketMigrations } from './migrations/whaticket_migration.js';
 import { runFixInstagramTextColumns } from './migrations/fix_instagram_text_columns_fn.js';
 import { runFixSchema } from './migrations/fix_schema_2026.js';
+import { runOmnichannelContactsMigration } from './migrations/omnichannel_contacts.js';
 
 export const runMigrations = async () => {
     if (!pool) return;
     try {
         console.log("Running migrations...");
+        await runOmnichannelContactsMigration();
+
         console.log("*************************************************");
         console.log("STARTING DB MIGRATIONS - CHECKING BASE TABLES");
         console.log("*************************************************");

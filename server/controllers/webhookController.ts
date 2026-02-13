@@ -1140,30 +1140,13 @@ export const getConversations = async (req: Request, res: Response) => {
                 THEN COALESCE(c.profile_pic_url, co.profile_pic_url)
               ELSE COALESCE(co.profile_pic_url, c.profile_pic_url)
             END as profile_pic_url,
-            -- Prioritize Saved Name from whatsapp_contacts (Manually set in CRM)
-            -- For Instagram: Prioritize @username over numeric ID
+            -- Prioritize Name/Username from contacts
             COALESCE(
                 CASE WHEN (c.is_group = true OR c.external_id LIKE '%@g.us') THEN NULLIF(TRIM(c.group_name), '') ELSE NULL END,
-                -- Instagram: Show @username if available
-                CASE WHEN c.channel = 'instagram' AND NULLIF(TRIM(co.instagram_username), '') IS NOT NULL 
-                     AND NULLIF(TRIM(co.instagram_username), '') !~ '^[0-9]+$'
-                     THEN CASE WHEN TRIM(co.instagram_username) LIKE '@%' 
-                               THEN TRIM(co.instagram_username) 
-                               ELSE '@' || TRIM(co.instagram_username) 
-                          END
-                     ELSE NULL
-                END,
-                -- Instagram: Fallback to instagram_name
-                CASE WHEN c.channel = 'instagram' AND NULLIF(TRIM(co.instagram_name), '') IS NOT NULL 
-                     AND NULLIF(TRIM(co.instagram_name), '') !~ '^[0-9]+$'
-                     THEN TRIM(co.instagram_name)
-                     ELSE NULL
-                END,
-                NULLIF(TRIM(co.name), ''), 
+                NULLIF(TRIM(co.name), ''),
+                CASE WHEN c.channel = 'instagram' AND co.push_name IS NOT NULL THEN '@' || co.push_name ELSE co.push_name END,
                 NULLIF(TRIM(c.contact_name), ''),
-                NULLIF(TRIM(co.push_name), ''),
-                -- Fallback: Never show numeric ID for Instagram
-                CASE WHEN c.channel = 'instagram' AND c.phone ~ '^[0-9]+$' THEN 'Instagram User' ELSE c.phone END
+                c.phone
             ) as display_name,
             CASE
               WHEN co.name IS NULL OR btrim(co.name) = '' THEN NULL
@@ -1189,50 +1172,28 @@ export const getConversations = async (req: Request, res: Response) => {
             ), '[]'::json) as tags
             FROM whatsapp_conversations c
             LEFT JOIN LATERAL (
-                SELECT wc.profile_pic_url, wc.push_name, wc.name, wc.instagram_username, wc.instagram_name
-                FROM whatsapp_contacts wc
-                WHERE wc.company_id = c.company_id
+                SELECT co.profile_picture as profile_pic_url, co.username as push_name, co.name
+                FROM contacts co
+                WHERE co.company_id = c.company_id
                   AND (
-                    (
-                      (c.is_group = true OR c.external_id LIKE '%@g.us' OR c.phone LIKE '%@g.us')
-                      AND (
-                        wc.jid = c.external_id
-                        OR wc.jid = REPLACE(c.external_id, '@g.us', '@c.us')
-                      )
-                    )
+                    (c.channel = 'instagram' AND co.channel = 'instagram' AND co.external_id = c.external_id)
                     OR
-                    (
-                      NOT (c.is_group = true OR c.external_id LIKE '%@g.us' OR c.phone LIKE '%@g.us')
-                      AND (
-                        wc.jid = c.external_id
-                        OR wc.jid = REPLACE(c.external_id, '@s.whatsapp.net', '@c.us')
-                        OR wc.phone = split_part(c.external_id, '@', 1)
+                    (c.channel = 'whatsapp' AND co.channel = 'whatsapp' AND (
+                        co.external_id = c.external_id
+                        OR co.phone = split_part(c.external_id, '@', 1)
                         OR (
-                            REGEXP_REPLACE(COALESCE(wc.phone, ''), '\\D', '', 'g') <> ''
-                            AND REGEXP_REPLACE(COALESCE(wc.phone, ''), '\\D', '', 'g') = REGEXP_REPLACE(COALESCE(c.phone, ''), '\\D', '', 'g')
+                            REGEXP_REPLACE(COALESCE(co.phone, ''), '\\D', '', 'g') <> ''
+                            AND REGEXP_REPLACE(COALESCE(co.phone, ''), '\\D', '', 'g') = REGEXP_REPLACE(COALESCE(c.phone, ''), '\\D', '', 'g')
                         )
-                      )
-                    )
+                    ))
                   )
                 ORDER BY
                   CASE
-                    WHEN wc.jid = c.external_id THEN 0
-                    WHEN (c.is_group = true OR c.external_id LIKE '%@g.us' OR c.phone LIKE '%@g.us')
-                         AND wc.jid = REPLACE(c.external_id, '@g.us', '@c.us') THEN 1
-                    WHEN NOT (c.is_group = true OR c.external_id LIKE '%@g.us' OR c.phone LIKE '%@g.us')
-                         AND wc.jid = REPLACE(c.external_id, '@s.whatsapp.net', '@c.us') THEN 1
-                    WHEN NOT (c.is_group = true OR c.external_id LIKE '%@g.us' OR c.phone LIKE '%@g.us')
-                         AND wc.phone = split_part(c.external_id, '@', 1) THEN 2
-                    WHEN NOT (c.is_group = true OR c.external_id LIKE '%@g.us' OR c.phone LIKE '%@g.us')
-                         AND (
-                            REGEXP_REPLACE(COALESCE(wc.phone, ''), '\\D', '', 'g') <> ''
-                            AND REGEXP_REPLACE(COALESCE(wc.phone, ''), '\\D', '', 'g') = REGEXP_REPLACE(COALESCE(c.phone, ''), '\\D', '', 'g')
-                         ) THEN 3
+                    WHEN co.external_id = c.external_id THEN 0
+                    WHEN co.phone = split_part(c.external_id, '@', 1) THEN 1
                     ELSE 9
                   END,
-                  CASE WHEN wc.profile_pic_url IS NOT NULL AND wc.profile_pic_url <> '' THEN 0 ELSE 1 END,
-                  wc.updated_at DESC NULLS LAST,
-                  wc.id DESC
+                  co.updated_at DESC NULLS LAST
                 LIMIT 1
             ) co ON TRUE
             LEFT JOIN companies comp ON c.company_id = comp.id
@@ -1457,12 +1418,10 @@ export const getMessages = async (req: Request, res: Response) => {
                         COALESCE(
                             m.sender_name, 
                             CASE 
-                                WHEN m.channel = 'instagram' AND wc.instagram_username IS NOT NULL 
-                                THEN CASE WHEN wc.instagram_username LIKE '@%' THEN wc.instagram_username ELSE '@' || wc.instagram_username END
-                                ELSE NULL 
+                                WHEN m.channel = 'instagram' AND co.username IS NOT NULL 
+                                THEN '@' || co.username
+                                ELSE co.name 
                             END,
-                            wc.instagram_name,
-                            wc.name, 
                             split_part(m.sender_jid, '@', 1)
                         ) as sender_name,
                         CASE 
@@ -1484,10 +1443,8 @@ export const getMessages = async (req: Request, res: Response) => {
                         ci.color as instance_color
                 FROM whatsapp_messages m 
                 LEFT JOIN app_users u ON m.user_id = u.id 
-                LEFT JOIN whatsapp_contacts wc ON (
-                    (m.sender_jid IS NOT NULL AND wc.jid = m.sender_jid AND wc.company_id = $2)
-                    OR 
-                    (m.sender_jid IS NULL AND m.direction = 'inbound' AND wc.jid = (SELECT external_id FROM whatsapp_conversations WHERE id = m.conversation_id LIMIT 1) AND wc.company_id = $2)
+                LEFT JOIN contacts co ON (
+                    co.company_id = $2 AND co.external_id = COALESCE(m.sender_jid, (SELECT external_id FROM whatsapp_conversations WHERE id = m.conversation_id LIMIT 1))
                 )
                 LEFT JOIN company_instances ci ON m.instance_id = ci.id
                 WHERE m.conversation_id = $1 
@@ -1692,23 +1649,19 @@ export const handleInstagramWebhook = async (req: Request, res: Response) => {
                                 conversationId = newConv.rows[0].id;
                             }
 
-                            // Sync to whatsapp_contacts for consistency
+                            // Sync to contacts for consistency (Omnichannel)
                             await pool!.query(`
-                                INSERT INTO whatsapp_contacts 
-                                (jid, phone, name, push_name, instance, profile_pic_url, company_id, 
-                                 instagram_id, instagram_username, instagram_name, instagram_updated_at, updated_at)
-                                VALUES ($1, $2, $3, $4, 'instagram', $5, $6, $7, $8, $9, NOW(), NOW())
-                                ON CONFLICT (jid, instance, company_id) 
+                                INSERT INTO contacts 
+                                (company_id, channel, external_id, name, username, phone, instagram_id, profile_picture, updated_at)
+                                VALUES ($1, 'instagram', $2, $3, $4, $5, $6, $7, NOW())
+                                ON CONFLICT (company_id, channel, external_id) 
                                 DO UPDATE SET
                                     name = EXCLUDED.name,
-                                    push_name = COALESCE(EXCLUDED.push_name, whatsapp_contacts.push_name),
-                                    profile_pic_url = COALESCE(EXCLUDED.profile_pic_url, whatsapp_contacts.profile_pic_url),
+                                    username = EXCLUDED.username,
+                                    profile_picture = COALESCE(EXCLUDED.profile_picture, contacts.profile_picture),
                                     instagram_id = EXCLUDED.instagram_id,
-                                    instagram_username = EXCLUDED.instagram_username,
-                                    instagram_name = EXCLUDED.instagram_name,
-                                    instagram_updated_at = EXCLUDED.instagram_updated_at,
                                     updated_at = NOW()
-                            `, [senderId, '0000000000', formattedName, username, profilePic, company.id, senderId, username, profile.name || null]);
+                            `, [company.id, senderId, formattedName, username, '0000000000', senderId, profilePic]);
 
                             // Determine Message Type
                             let msgType = 'text';

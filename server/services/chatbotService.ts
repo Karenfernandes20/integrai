@@ -48,43 +48,59 @@ const parseQueueRouting = (raw: any): Record<string, string> => {
 
 // Helper to evaluate conditions
 const evaluateCondition = (variableValue: any, operator: string, ruleValue: string): boolean => {
-    const val = String(variableValue || '').toLowerCase();
-    const rule = String(ruleValue || '').toLowerCase();
+    if (variableValue === undefined || variableValue === null) variableValue = '';
+
+    const val = String(variableValue).toLowerCase().trim();
+    const rule = String(ruleValue || '').toLowerCase().trim();
 
     // Numeric comparison safety
-    const numVal = Number(variableValue);
-    const numRule = Number(ruleValue);
-    const isNumeric = !isNaN(numVal) && !isNaN(numRule) && variableValue !== '' && ruleValue !== '';
+    const numVal = parseFloat(String(variableValue).replace(',', '.'));
+    const numRule = parseFloat(String(ruleValue || '0').replace(',', '.'));
+    const isNumeric = !isNaN(numVal) && !isNaN(numRule);
 
     switch (operator) {
         case 'equals':
         case 'equal':
+        case 'igual a':
             return val === rule;
         case 'not_equals':
         case 'different':
+        case 'diferente de':
             return val !== rule;
         case 'contains':
+        case 'contém':
             return val.includes(rule);
         case 'not_contains':
+        case 'não contém':
             return !val.includes(rule);
         case 'starts_with':
+        case 'começa com':
             return val.startsWith(rule);
+        case 'ends_with':
+        case 'termina com':
+            return val.endsWith(rule);
         case 'greater_than':
+        case 'maior que':
             return isNumeric ? numVal > numRule : val > rule;
         case 'less_than':
+        case 'menor que':
             return isNumeric ? numVal < numRule : val < rule;
         case 'greater_than_or_equal':
+        case 'maior ou igual':
             return isNumeric ? numVal >= numRule : val >= rule;
         case 'less_than_or_equal':
+        case 'menor ou igual':
             return isNumeric ? numVal <= numRule : val <= rule;
         case 'is_empty':
-            return !variableValue || val === '';
+        case 'vazio':
+            return val === '';
         case 'is_not_empty':
-            return !!variableValue && val !== '';
+        case 'não vazio':
+            return val !== '';
         case 'regex':
             try {
                 const re = new RegExp(ruleValue);
-                return re.test(String(variableValue || ''));
+                return re.test(String(variableValue));
             } catch (e) { return false; }
         default:
             return val === rule;
@@ -263,19 +279,67 @@ const executeNode = async (
     // Fetch variables for this execution
     const globalVars = await getGlobalVariables(botCompanyId, session.contact_key, instanceKey);
     const sessionVars = session.variables || {};
-    const allVars = { ...globalVars, ...sessionVars, ultima_mensagem: messageText };
+
+    // Suporte para {{last_response}} solicitado pelo usuário
+    const lastResponse = String(messageText || '').trim();
+    if (lastResponse) {
+        sessionVars['last_response'] = lastResponse;
+        // Salvar persistente se necessário
+        await saveVariable(botCompanyId, session.contact_key, 'last_response', lastResponse);
+    }
+
+    const allVars = {
+        ...globalVars,
+        ...sessionVars,
+        ultima_mensagem: messageText,
+        last_response: lastResponse
+    };
 
     const resolveVariables = (text: string) => {
         return String(text || '').replace(/{{([\w\.]+)}}/g, (_match, key) => {
             const k = key.trim();
-            return allVars[k] !== undefined ? String(allVars[k]) : `{{${k}}}`;
+            // Suporte para caminhos aninhados se allVars tiver objetos
+            const parts = k.split('.');
+            let val: any = allVars;
+            for (const part of parts) {
+                if (val && val[part] !== undefined) val = val[part];
+                else { val = undefined; break; }
+            }
+            return val !== undefined ? String(val) : `{{${k}}}`;
         });
     };
 
     switch (currentNode.type) {
         case 'message': {
-            const text = resolveVariables(currentNode.data.content || '');
-            await sendMessage(instanceKey, session.contact_key, text, botCompanyId);
+            const data = currentNode.data;
+            const text = resolveVariables(data.content || '');
+
+            // Se a opção "Capturar resposta do cliente" estiver ativa no bloco de texto
+            if (data.capture_response) {
+                const askedKey = `__asked_msg_${currentNode.id}`;
+
+                // Se ainda não perguntou, envia a mensagem e marca como perguntado
+                if (!sessionVars[askedKey]) {
+                    await sendMessage(instanceKey, session.contact_key, text, botCompanyId);
+                    sessionVars[askedKey] = true;
+                    // Salva o nome da variável personalizada se fornecido, senão usa last_response padrão
+                    await pool!.query('UPDATE chatbot_sessions SET variables = $1 WHERE id = $2', [sessionVars, session.id]);
+                    return; // Interrompe e aguarda a resposta do cliente
+                }
+
+                // Se já perguntou, a messageText atual é a resposta
+                const varName = data.variable_name || 'last_response';
+                const cleanVarName = varName.replace(/[{}]/g, '');
+                sessionVars[cleanVarName] = lastResponse;
+                await saveVariable(botCompanyId, session.contact_key, cleanVarName, lastResponse);
+
+                // Limpa o estado perguntado para futuras execuções deste nó se houver loop
+                delete sessionVars[askedKey];
+                await pool!.query('UPDATE chatbot_sessions SET variables = $1 WHERE id = $2', [sessionVars, session.id]);
+            } else {
+                // Comportamento normal: envia e segue para o próximo
+                await sendMessage(instanceKey, session.contact_key, text, botCompanyId);
+            }
 
             await pool!.query(
                 'UPDATE chatbot_logs SET response_sent = $1 WHERE chatbot_id = $2 AND contact_key = $3 ORDER BY created_at DESC LIMIT 1',
@@ -423,15 +487,52 @@ const executeNode = async (
                             if (key) {
                                 sessionVars[key] = val;
                                 await saveVariable(botCompanyId, session.contact_key, key, val);
+
+                                // Se for um campo padrão de contato, atualiza na tabela contacts também
+                                const standardFields = ['name', 'phone', 'email', 'username'];
+                                if (standardFields.includes(key)) {
+                                    await pool!.query(`
+                                        UPDATE contacts SET ${key} = $1 
+                                        WHERE company_id = $2 AND external_id = $3
+                                    `, [val, botCompanyId, session.contact_key]);
+                                }
+
                                 await pool!.query('UPDATE chatbot_sessions SET variables = $1 WHERE id = $2', [sessionVars, session.id]);
                             }
                             break;
                         }
                         case 'move_queue': {
-                            const queueName = action.params?.queueName || action.params?.queue;
-                            if (queueName && botCompanyId) {
-                                await assignQueueToConversationByPhone(botCompanyId, instanceKey, session.contact_key, queueName);
-                                if (io) io.to(`company_${botCompanyId}`).emit('conversation:update_queue', { phone: session.contact_key, queueName });
+                            const queueId = action.params?.queueId || action.params?.queue_id;
+                            if (queueId && botCompanyId) {
+                                await pool!.query('UPDATE whatsapp_conversations SET queue_id = $1 WHERE company_id = $2 AND external_id = $3', [queueId, botCompanyId, session.contact_key]);
+                                if (io) io.to(`company_${botCompanyId}`).emit('conversation:update_queue', { phone: session.contact_key, queueId });
+                            }
+                            break;
+                        }
+                        case 'set_responsible': {
+                            const userId = action.params?.userId || action.params?.user_id;
+                            if (userId && botCompanyId) {
+                                await pool!.query('UPDATE whatsapp_conversations SET user_id = $1, status = \'OPEN\' WHERE company_id = $2 AND external_id = $3', [userId, botCompanyId, session.contact_key]);
+                                if (io) io.to(`company_${botCompanyId}`).emit('conversation:update_user', { phone: session.contact_key, userId });
+                            }
+                            break;
+                        }
+                        case 'finish_conversation': {
+                            if (botCompanyId) {
+                                await pool!.query('UPDATE whatsapp_conversations SET status = \'CLOSED\', closed_at = NOW() WHERE company_id = $2 AND external_id = $3', [botCompanyId, session.contact_key]);
+                                if (io) io.to(`company_${botCompanyId}`).emit('conversation:update_status', { phone: session.contact_key, status: 'CLOSED' });
+                            }
+                            break;
+                        }
+                        case 'start_flow': {
+                            const targetBotId = action.params?.chatbotId || action.params?.chatbot_id;
+                            if (targetBotId) {
+                                // Deleta sessão atual e cria nova para o bot alvo
+                                await pool!.query('DELETE FROM chatbot_sessions WHERE id = $1', [session.id]);
+                                // Recursão será tratada pela próxima mensagem do cliente ou podemos forçar
+                                // Para forçar o início imediato:
+                                setTimeout(() => processChatbotMessage(instanceKey, session.contact_key, 'START_FLOW_TRIGGER'), 500);
+                                return;
                             }
                             break;
                         }
