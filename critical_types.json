@@ -1,0 +1,23 @@
+﻿DB Configured within Host: aws-0-us-west-2.pooler.supabase.com (IPv4 Forced)
+[
+  {
+    "table_name": "whatsapp_contacts",
+    "column_name": "jid",
+    "data_type": "text"
+  },
+  {
+    "table_name": "whatsapp_contacts",
+    "column_name": "phone",
+    "data_type": "text"
+  },
+  {
+    "table_name": "whatsapp_conversations",
+    "column_name": "external_id",
+    "data_type": "text"
+  },
+  {
+    "table_name": "whatsapp_conversations",
+    "column_name": "phone",
+    "data_type": "text"
+  }
+]

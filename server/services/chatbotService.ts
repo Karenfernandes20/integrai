@@ -490,13 +490,14 @@ const sendMessage = async (instanceKey: string, phone: string, text: string, com
         const config = await getEvolutionConfig({ company_id: companyId }, 'chatbot_service', companyId, instanceKey);
         const apiUrl = config.url;
         const apiKey = config.apikey;
+        const resolvedInstance = config.instance;
 
-        if (!apiUrl || !apiKey) {
-            console.error(`[ChatbotService] Missing API config for company ${companyId}. URL: ${apiUrl}, Key: ${apiKey ? '***' : 'MISSING'}`);
+        if (!apiUrl || !apiKey || !resolvedInstance) {
+            console.error(`[ChatbotService] Missing API config for company ${companyId}. URL: ${apiUrl}, Key: ${apiKey ? '***' : 'MISSING'}, Instance: ${resolvedInstance || 'MISSING'}`);
             return;
         }
 
-        await axios.post(`${apiUrl}/message/sendText/${instanceKey}`, {
+        await axios.post(`${apiUrl}/message/sendText/${resolvedInstance}`, {
             number: phone,
             text,
             delay: 1200,

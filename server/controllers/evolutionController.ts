@@ -1,8 +1,8 @@
 import { Request, Response } from "express";
-import { pool } from "../db";
-import { logEvent } from "../logger";
-import { normalizePhone, extractPhoneFromJid } from "../utils/phoneUtils";
-import { sendInstagramMessage } from "../services/instagramService";
+import { pool } from "../db/index.js";
+import { logEvent } from "../logger.js";
+import { normalizePhone, extractPhoneFromJid } from "../utils/phoneUtils.js";
+import { sendInstagramMessage } from "../services/instagramService.js";
 
 /**
  * Evolution API controller
@@ -18,114 +18,115 @@ import { sendInstagramMessage } from "../services/instagramService";
 const DEFAULT_URL = "https://freelasdekaren-evolution-api.nhvvzr.easypanel.host";
 const GLOBAL_API_KEY = "5A44C72AAB33-42BD-968A-27EB8E14BE6F";
 
+/**
+ * STRICT Instance Resolver for SaaS Multi-tenant
+ */
+export async function resolveInstanceByCompany(companyId: number) {
+  if (!companyId) {
+    throw new Error("Company ID is required to resolve instance");
+  }
+  if (!pool) throw new Error("Database not configured");
+
+  // 1. Check company_instances table for an active/open instance
+  const instRes = await pool.query(
+    'SELECT instance_key, api_key FROM company_instances WHERE company_id = $1 AND status = \'open\' LIMIT 1',
+    [companyId]
+  );
+
+  if (instRes.rows.length > 0) {
+    return {
+      instance_key: instRes.rows[0].instance_key,
+      api_key: instRes.rows[0].api_key
+    };
+  }
+
+  // 2. Fallback to main company record
+  const compRes = await pool.query(
+    'SELECT evolution_instance, evolution_apikey FROM companies WHERE id = $1',
+    [companyId]
+  );
+
+  if (compRes.rows.length > 0 && compRes.rows[0].evolution_instance) {
+    return {
+      instance_key: compRes.rows[0].evolution_instance,
+      api_key: compRes.rows[0].evolution_apikey
+    };
+  }
+
+  throw new Error(`No active instance found for company ${companyId}`);
+}
+
 export const getEvolutionConfig = async (user: any, source: string = 'unknown', targetCompanyId?: number | string, targetInstanceKey?: string) => {
-  // Base configuration from env (fallback)
+  // Base configuration from env (fallback for URL/Key only)
   let config = {
     url: (process.env.EVOLUTION_API_URL || DEFAULT_URL).replace(/['"]/g, "").replace(/\/$/, ""),
     apikey: (process.env.EVOLUTION_API_KEY || GLOBAL_API_KEY).replace(/['"]/g, ""),
-    instance: "integrai", // Default instance for Integrai
+    instance: "", // NO DEFAULT INSTANCE
     company_id: null as number | null
   };
-
-  // Force the known working key if env is empty or just generic placeholder
-  if (!config.apikey || config.apikey.includes("CHANGE_ME") || config.apikey.length < 10) {
-    config.apikey = GLOBAL_API_KEY;
-  }
 
   if (!pool) return config;
 
   try {
-    const role = (user?.role || '').toUpperCase();
-    const isMasterUser = role === 'SUPERADMIN';
     let resolvedCompanyId: number | null = null;
-
     if (targetCompanyId) {
       resolvedCompanyId = Number(targetCompanyId);
     } else if (user?.company_id) {
       resolvedCompanyId = Number(user.company_id);
     }
 
-    if (resolvedCompanyId) {
-      // 1. If strict instance requested, try to find it
-      if (targetInstanceKey) {
-        const instRes = await pool.query('SELECT instance_key, api_key FROM company_instances WHERE instance_key = $1 AND company_id = $2', [targetInstanceKey, resolvedCompanyId]);
+    if (!resolvedCompanyId) {
+      console.warn(`[Evolution Config] Could not resolve company_id for source: ${source}`);
+      return config;
+    }
 
-        // Also get the URL from company
-        const urlRes = await pool.query('SELECT evolution_url FROM companies WHERE id = $1', [resolvedCompanyId]);
-        if (urlRes.rows.length > 0 && urlRes.rows[0].evolution_url) {
-          config.url = urlRes.rows[0].evolution_url.replace(/['"]/g, "").replace(/\/$/, "");
+    config.company_id = resolvedCompanyId;
+
+    // 1. Fetch Company Specific URL
+    const urlRes = await pool.query('SELECT evolution_url FROM companies WHERE id = $1', [resolvedCompanyId]);
+    if (urlRes.rows.length > 0 && urlRes.rows[0].evolution_url) {
+      config.url = urlRes.rows[0].evolution_url.replace(/['"]/g, "").replace(/\/$/, "");
+    }
+
+    // 2. Resolve Instance
+    if (targetInstanceKey) {
+      // Find specific requested instance
+      const instRes = await pool.query(
+        'SELECT instance_key, api_key FROM company_instances WHERE instance_key = $1 AND company_id = $2',
+        [targetInstanceKey, resolvedCompanyId]
+      );
+      if (instRes.rows.length > 0) {
+        config.instance = instRes.rows[0].instance_key;
+        if (instRes.rows[0].api_key && instRes.rows[0].api_key.length > 10) {
+          config.apikey = instRes.rows[0].api_key;
         }
-
-        if (instRes.rows.length > 0) {
-          const row = instRes.rows[0];
-          config.instance = row.instance_key.replace(/\s+/g, '_').replace(/[^a-zA-Z0-9_-]/g, '');
-
-          // Use specific key ONLY if it looks valid
-          if (row.api_key && row.api_key.length > 10) {
-            config.apikey = row.api_key;
-          }
-
-          config.company_id = resolvedCompanyId;
-          console.log(`[Evolution Config] RESOLVED SPECIFIC INSTANCE: ${config.instance} for Company ${resolvedCompanyId} at ${config.url}`);
-          return config;
-        }
-      }
-
-      // 2. Fallback to main company config
-      const compRes = await pool.query('SELECT name, evolution_instance, evolution_apikey, evolution_url FROM companies WHERE id = $1', [resolvedCompanyId]);
-      if (compRes.rows.length > 0) {
-        const { name, evolution_instance, evolution_apikey, evolution_url } = compRes.rows[0];
-
-        if (evolution_url) {
-          config.url = evolution_url.replace(/['"]/g, "").replace(/\/$/, "");
-        }
-
-        if (targetInstanceKey && evolution_instance !== targetInstanceKey) {
-          console.warn(`[Evolution Config] Requested instance ${targetInstanceKey} not found for company ${resolvedCompanyId}. Falling back to main: ${evolution_instance}`);
-        }
-
-        if (evolution_instance) {
-          config.instance = evolution_instance.replace(/\s+/g, '_').replace(/[^a-zA-Z0-9_-]/g, '');
-
-          if (evolution_apikey && evolution_apikey.length > 10) {
-            config.apikey = evolution_apikey;
-          }
-
-          config.company_id = resolvedCompanyId;
-          console.log(`[Evolution Config] RESOLVED PER-COMPANY: ${name} (${resolvedCompanyId}) -> Instance: ${config.instance}`);
-        } else {
-          console.warn(`[Evolution Config] Company ${resolvedCompanyId} found but MISSING instance or apikey in DB. Using defaults.`);
-        }
-      } else {
-        console.warn(`[Evolution Config] Company ID ${resolvedCompanyId} NOT FOUND in database.`);
-      }
-    } else if (isMasterUser) {
-      // Superadmin without company context: fallback to Integrai (usually ID 1)
-      const masterRes = await pool.query('SELECT evolution_instance, evolution_apikey, evolution_url FROM companies WHERE id = 1 LIMIT 1');
-      if (masterRes.rows.length > 0) {
-        if (masterRes.rows[0].evolution_url) {
-          config.url = masterRes.rows[0].evolution_url.replace(/['"]/g, "").replace(/\/$/, "");
-        }
-        config.instance = masterRes.rows[0].evolution_instance || "integrai";
-        if (masterRes.rows[0].evolution_apikey && masterRes.rows[0].evolution_apikey.length > 10) {
-          config.apikey = masterRes.rows[0].evolution_apikey;
-        }
-        config.company_id = 1;
-        console.log(`[Evolution Config] MASTER FALLBACK (ID:1) -> Instance: ${config.instance} at ${config.url}`);
+        return config;
       }
     }
 
-  } catch (e: any) {
-    console.error("[Evolution Config Erro]:", e.message);
+    // Auto-resolve if not specified or not found in company_instances
+    try {
+      const resolved = await resolveInstanceByCompany(resolvedCompanyId);
+      config.instance = resolved.instance_key;
+      if (resolved.api_key && resolved.api_key.length > 10) {
+        config.apikey = resolved.api_key;
+      }
+    } catch (e: any) {
+      console.warn(`[Evolution Config] Auto-resolve failed for company ${resolvedCompanyId}: ${e.message}`);
+      // If we can't resolve an instance, we should probably not return a half-baked config
+      // But for backward compatibility we return what we have (url/apikey) and empty instance
+    }
+
+    if (!config.instance) {
+      console.error(`[Evolution Config] CRITICAL: No instance resolved for company ${resolvedCompanyId} (Source: ${source})`);
+    }
+
+    return config;
+  } catch (err: any) {
+    console.error("[Evolution Config Error]", err);
+    return config;
   }
-
-  // Final validation log (masking key)
-  const maskedKey = config.apikey ? `***${config.apikey.slice(-4)}` : 'MISSING';
-  console.log(`[Evolution Debug] [Source: ${source}] Final Config: Instance=${config.instance}, Key=${maskedKey}, CompanyId=${config.company_id}`);
-
-  return config;
 };
-
 const isUsableGroupTitle = (value?: string | null): boolean => {
   if (!value) return false;
   const name = String(value).trim();
@@ -579,14 +580,14 @@ export const getEvolutionConnectionState = async (req: Request, res: Response) =
     }
     return res.json(data);
 
-  } catch (error) {
+  } catch (error: any) {
     // console.error("Error fetching connection state:", error); 
     // Suppress heavy logging for polling
     return res.json({ instance: EVOLUTION_INSTANCE, state: 'unknown' });
   }
 };
 
-import { checkLimit, incrementUsage } from '../services/limitService';
+import { checkLimit, incrementUsage } from '../services/limitService.js';
 
 export const sendEvolutionMessage = async (req: Request, res: Response) => {
   const { companyId, instanceKey } = req.body;
@@ -597,6 +598,14 @@ export const sendEvolutionMessage = async (req: Request, res: Response) => {
   const resolvedCompanyId = config.company_id;
 
   try {
+    if (!resolvedCompanyId) {
+      return res.status(403).json({ error: "Company context required for sending messages" });
+    }
+
+    if (!EVOLUTION_INSTANCE) {
+      return res.status(400).json({ error: "No active WhatsApp instance found for this company" });
+    }
+
     if (!EVOLUTION_API_URL || !EVOLUTION_API_KEY) {
       return res.status(500).json({ error: "Evolution API not configured" });
     }
@@ -2423,10 +2432,18 @@ export const refreshConversationMetadata = async (req: Request, res: Response) =
     const { url: EVOLUTION_API_URL, apikey: EVOLUTION_API_KEY, instance: EVOLUTION_INSTANCE } = config;
 
     // 1. Get Conversation
-    const convRes = await pool.query('SELECT * FROM whatsapp_conversations WHERE id = $1', [conversationId]);
+    let convRes;
+    if (!isNaN(Number(conversationId)) && !String(conversationId).includes('@')) {
+      convRes = await pool.query('SELECT * FROM whatsapp_conversations WHERE id = $1', [conversationId]);
+    } else {
+      // It is likely a JID
+      convRes = await pool.query('SELECT * FROM whatsapp_conversations WHERE external_id = $1', [conversationId]);
+    }
+
     if (convRes.rows.length === 0) return res.status(404).json({ error: "Conversation not found" });
     const conv = convRes.rows[0];
     const remoteJid = conv.external_id;
+    const conversationPK = conv.id;
 
     // 2. Fetch Group Metadata if Group
     let updatedName = conv.contact_name;
@@ -2514,10 +2531,10 @@ export const refreshConversationMetadata = async (req: Request, res: Response) =
       const url = pData.profilePictureUrl || pData.url;
       if (url) {
         updatedPic = url;
-        await pool.query('UPDATE whatsapp_conversations SET profile_pic_url = $1 WHERE id = $2', [url, conversationId]);
+        await pool.query('UPDATE whatsapp_conversations SET profile_pic_url = $1 WHERE id = $2', [url, conversationPK]);
         // Also update contacts if not group
         if (!conv.is_group) {
-          await pool.query('UPDATE whatsapp_contacts SET profile_pic_url = $1 WHERE jid = $2 AND instance = $3', [url, remoteJid, EVOLUTION_INSTANCE]);
+          await pool.query('UPDATE whatsapp_contacts SET profile_pic_url = $1 WHERE jid = $2 AND company_id = $3', [url, remoteJid, user.company_id]);
         }
         console.log(`[Refresh] Updated profile pic: ${url}`);
       }

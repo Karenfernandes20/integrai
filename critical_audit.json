@@ -1,0 +1,363 @@
+﻿DB Configured within Host: aws-0-us-west-2.pooler.supabase.com (IPv4 Forced)
+[
+  {
+    "table_name": "company_instances",
+    "column_name": "api_key",
+    "data_type": "text"
+  },
+  {
+    "table_name": "company_instances",
+    "column_name": "color",
+    "data_type": "character varying"
+  },
+  {
+    "table_name": "company_instances",
+    "column_name": "company_id",
+    "data_type": "integer"
+  },
+  {
+    "table_name": "company_instances",
+    "column_name": "created_at",
+    "data_type": "timestamp with time zone"
+  },
+  {
+    "table_name": "company_instances",
+    "column_name": "id",
+    "data_type": "integer"
+  },
+  {
+    "table_name": "company_instances",
+    "column_name": "instance_key",
+    "data_type": "text"
+  },
+  {
+    "table_name": "company_instances",
+    "column_name": "name",
+    "data_type": "text"
+  },
+  {
+    "table_name": "company_instances",
+    "column_name": "phone",
+    "data_type": "text"
+  },
+  {
+    "table_name": "company_instances",
+    "column_name": "status",
+    "data_type": "text"
+  },
+  {
+    "table_name": "company_instances",
+    "column_name": "updated_at",
+    "data_type": "timestamp without time zone"
+  },
+  {
+    "table_name": "conversations_tags",
+    "column_name": "conversation_id",
+    "data_type": "integer"
+  },
+  {
+    "table_name": "conversations_tags",
+    "column_name": "created_at",
+    "data_type": "timestamp without time zone"
+  },
+  {
+    "table_name": "conversations_tags",
+    "column_name": "tag_id",
+    "data_type": "integer"
+  },
+  {
+    "table_name": "conversations_tags",
+    "column_name": "updated_at",
+    "data_type": "timestamp without time zone"
+  },
+  {
+    "table_name": "crm_leads",
+    "column_name": "company_id",
+    "data_type": "integer"
+  },
+  {
+    "table_name": "crm_leads",
+    "column_name": "created_at",
+    "data_type": "timestamp without time zone"
+  },
+  {
+    "table_name": "crm_leads",
+    "column_name": "description",
+    "data_type": "text"
+  },
+  {
+    "table_name": "crm_leads",
+    "column_name": "email",
+    "data_type": "character varying"
+  },
+  {
+    "table_name": "crm_leads",
+    "column_name": "id",
+    "data_type": "integer"
+  },
+  {
+    "table_name": "crm_leads",
+    "column_name": "instance",
+    "data_type": "character varying"
+  },
+  {
+    "table_name": "crm_leads",
+    "column_name": "instance_id",
+    "data_type": "integer"
+  },
+  {
+    "table_name": "crm_leads",
+    "column_name": "insurance_card_number",
+    "data_type": "character varying"
+  },
+  {
+    "table_name": "crm_leads",
+    "column_name": "insurance_coverage_type",
+    "data_type": "character varying"
+  },
+  {
+    "table_name": "crm_leads",
+    "column_name": "insurance_plan_id",
+    "data_type": "integer"
+  },
+  {
+    "table_name": "crm_leads",
+    "column_name": "insurance_validity",
+    "data_type": "date"
+  },
+  {
+    "table_name": "crm_leads",
+    "column_name": "name",
+    "data_type": "character varying"
+  },
+  {
+    "table_name": "crm_leads",
+    "column_name": "origin",
+    "data_type": "character varying"
+  },
+  {
+    "table_name": "crm_leads",
+    "column_name": "phone",
+    "data_type": "character varying"
+  },
+  {
+    "table_name": "crm_leads",
+    "column_name": "stage_id",
+    "data_type": "integer"
+  },
+  {
+    "table_name": "crm_leads",
+    "column_name": "updated_at",
+    "data_type": "timestamp without time zone"
+  },
+  {
+    "table_name": "crm_leads",
+    "column_name": "value",
+    "data_type": "numeric"
+  },
+  {
+    "table_name": "whatsapp_contacts",
+    "column_name": "company_id",
+    "data_type": "integer"
+  },
+  {
+    "table_name": "whatsapp_contacts",
+    "column_name": "created_at",
+    "data_type": "timestamp without time zone"
+  },
+  {
+    "table_name": "whatsapp_contacts",
+    "column_name": "id",
+    "data_type": "integer"
+  },
+  {
+    "table_name": "whatsapp_contacts",
+    "column_name": "instance",
+    "data_type": "text"
+  },
+  {
+    "table_name": "whatsapp_contacts",
+    "column_name": "jid",
+    "data_type": "text"
+  },
+  {
+    "table_name": "whatsapp_contacts",
+    "column_name": "name",
+    "data_type": "text"
+  },
+  {
+    "table_name": "whatsapp_contacts",
+    "column_name": "phone",
+    "data_type": "text"
+  },
+  {
+    "table_name": "whatsapp_contacts",
+    "column_name": "profile_pic_url",
+    "data_type": "text"
+  },
+  {
+    "table_name": "whatsapp_contacts",
+    "column_name": "push_name",
+    "data_type": "text"
+  },
+  {
+    "table_name": "whatsapp_contacts",
+    "column_name": "updated_at",
+    "data_type": "timestamp without time zone"
+  },
+  {
+    "table_name": "whatsapp_conversations",
+    "column_name": "channel",
+    "data_type": "character varying"
+  },
+  {
+    "table_name": "whatsapp_conversations",
+    "column_name": "closed_at",
+    "data_type": "timestamp without time zone"
+  },
+  {
+    "table_name": "whatsapp_conversations",
+    "column_name": "closed_by_user_id",
+    "data_type": "integer"
+  },
+  {
+    "table_name": "whatsapp_conversations",
+    "column_name": "closing_observation",
+    "data_type": "text"
+  },
+  {
+    "table_name": "whatsapp_conversations",
+    "column_name": "closing_reason_id",
+    "data_type": "integer"
+  },
+  {
+    "table_name": "whatsapp_conversations",
+    "column_name": "company_id",
+    "data_type": "integer"
+  },
+  {
+    "table_name": "whatsapp_conversations",
+    "column_name": "contact_name",
+    "data_type": "character varying"
+  },
+  {
+    "table_name": "whatsapp_conversations",
+    "column_name": "created_at",
+    "data_type": "timestamp without time zone"
+  },
+  {
+    "table_name": "whatsapp_conversations",
+    "column_name": "external_id",
+    "data_type": "text"
+  },
+  {
+    "table_name": "whatsapp_conversations",
+    "column_name": "group_name",
+    "data_type": "character varying"
+  },
+  {
+    "table_name": "whatsapp_conversations",
+    "column_name": "id",
+    "data_type": "integer"
+  },
+  {
+    "table_name": "whatsapp_conversations",
+    "column_name": "instagram_user_id",
+    "data_type": "text"
+  },
+  {
+    "table_name": "whatsapp_conversations",
+    "column_name": "instagram_username",
+    "data_type": "text"
+  },
+  {
+    "table_name": "whatsapp_conversations",
+    "column_name": "instance",
+    "data_type": "text"
+  },
+  {
+    "table_name": "whatsapp_conversations",
+    "column_name": "instance_id",
+    "data_type": "integer"
+  },
+  {
+    "table_name": "whatsapp_conversations",
+    "column_name": "is_group",
+    "data_type": "boolean"
+  },
+  {
+    "table_name": "whatsapp_conversations",
+    "column_name": "last_instance_key",
+    "data_type": "text"
+  },
+  {
+    "table_name": "whatsapp_conversations",
+    "column_name": "last_message",
+    "data_type": "text"
+  },
+  {
+    "table_name": "whatsapp_conversations",
+    "column_name": "last_message_at",
+    "data_type": "timestamp without time zone"
+  },
+  {
+    "table_name": "whatsapp_conversations",
+    "column_name": "last_message_source",
+    "data_type": "character varying"
+  },
+  {
+    "table_name": "whatsapp_conversations",
+    "column_name": "messenger_user_id",
+    "data_type": "text"
+  },
+  {
+    "table_name": "whatsapp_conversations",
+    "column_name": "opened_at",
+    "data_type": "timestamp with time zone"
+  },
+  {
+    "table_name": "whatsapp_conversations",
+    "column_name": "opened_by_user_id",
+    "data_type": "integer"
+  },
+  {
+    "table_name": "whatsapp_conversations",
+    "column_name": "phone",
+    "data_type": "text"
+  },
+  {
+    "table_name": "whatsapp_conversations",
+    "column_name": "profile_pic_url",
+    "data_type": "text"
+  },
+  {
+    "table_name": "whatsapp_conversations",
+    "column_name": "queue_id",
+    "data_type": "integer"
+  },
+  {
+    "table_name": "whatsapp_conversations",
+    "column_name": "started_at",
+    "data_type": "timestamp without time zone"
+  },
+  {
+    "table_name": "whatsapp_conversations",
+    "column_name": "status",
+    "data_type": "character varying"
+  },
+  {
+    "table_name": "whatsapp_conversations",
+    "column_name": "unread_count",
+    "data_type": "integer"
+  },
+  {
+    "table_name": "whatsapp_conversations",
+    "column_name": "updated_at",
+    "data_type": "timestamp without time zone"
+  },
+  {
+    "table_name": "whatsapp_conversations",
+    "column_name": "user_id",
+    "data_type": "integer"
+  }
+]

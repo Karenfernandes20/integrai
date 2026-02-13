@@ -150,7 +150,11 @@ export const handleWebhook = async (req: Request, res: Response) => {
             // Extract raw metadata for logging (Re-extraction for scope safety)
             let type = body.type || body.event;
             let data = body.data;
-            let instance = body.instance || body.data?.instance || body.instanceName || 'integrai';
+            let instance = body.instance || body.data?.instance || body.instanceName;
+            if (!instance) {
+                console.warn('[Webhook] Missing instance name in payload');
+                return res.status(200).send('Instance missing');
+            }
 
             // Handle wrapped payloads (some proxy or version of Evolution might wrap in array)
             if (Array.isArray(body) && body.length > 0) {
@@ -415,20 +419,15 @@ export const handleWebhook = async (req: Request, res: Response) => {
             }
 
             if (!meta) {
-                const allCompanies = await pool.query('SELECT id FROM companies');
-                if (allCompanies.rows.length === 1) {
-                    meta = {
-                        companyId: allCompanies.rows[0].id,
-                        instanceId: 0,
-                        instanceName: instance
-                    };
-                    instanceMetaCache.set(instance, meta);
-                } else {
-                    return;
-                }
+                console.warn(`[Webhook] Unrecognized instance: ${instance}. No mapping found and global fallback disabled.`);
+                return;
             }
 
             const companyId = meta.companyId;
+            if (!companyId) {
+                console.warn(`[Webhook] Instance ${instance} found but has NO associated company_id.`);
+                return;
+            }
             const instanceId = meta.instanceId > 0 ? meta.instanceId : null;
             const instanceDisplayName = meta.instanceName;
             await ensureQueueSchema();
@@ -1628,10 +1627,10 @@ export const handleInstagramWebhook = async (req: Request, res: Response) => {
                             console.log(`[Instagram Webhook] Msg from ${senderId}: ${text}`);
 
                             // Get User Profile (optional, async)
-                            let username = 'Instagram User';
+                            let username = senderId;
                             let profilePic = null;
                             try {
-                                const url = `https://graph.facebook.com/v18.0/${senderId}?fields=name,username,profile_pic&access_token=${company.instagram_access_token}`;
+                                const url = `https://graph.facebook.com/v19.0/${senderId}?fields=name,username,profile_pic&access_token=${company.instagram_access_token}`;
                                 const profileRes = await fetch(url);
                                 if (profileRes.ok) {
                                     const profile = await profileRes.json();
@@ -1640,11 +1639,9 @@ export const handleInstagramWebhook = async (req: Request, res: Response) => {
                                 }
                             } catch (e) { /* ignore profile fetch error */ }
 
-                            // Create/Update Conversation
-                            // We use 'instagram:' + senderId as external_id? Or just senderId?
-                            // To avoid collision with phone numbers, prefixed is safer, but whatsapp uses raw numbers.
-                            // Let's use senderId as external_id and channel='instagram'
+                            const formattedName = username.startsWith('@') ? username : `@${username}`;
 
+                            // Create/Update Conversation
                             // Check existing conversation
                             const convRes = await pool!.query(`
                                 SELECT id, status FROM whatsapp_conversations 
@@ -1654,21 +1651,40 @@ export const handleInstagramWebhook = async (req: Request, res: Response) => {
                             let conversationId;
                             if (convRes.rows.length > 0) {
                                 conversationId = convRes.rows[0].id;
-                                // Update status if needed (reopen logic similar to whatsapp)
-                                if (convRes.rows[0].status === 'CLOSED') {
-                                    await pool!.query('UPDATE whatsapp_conversations SET status = $1 WHERE id = $2', ['PENDING', conversationId]);
-                                }
+                                // Update status and name/username automatically
+                                await pool!.query(`
+                                    UPDATE whatsapp_conversations 
+                                    SET status = CASE WHEN status = 'CLOSED' THEN 'PENDING' ELSE status END,
+                                        contact_name = $1,
+                                        instagram_username = $2,
+                                        profile_pic_url = COALESCE($3, profile_pic_url),
+                                        updated_at = NOW()
+                                    WHERE id = $4
+                                `, [formattedName, username, profilePic, conversationId]);
                             } else {
                                 const defaultQueueId = await getOrCreateQueueId(company.id, 'Recepcao');
                                 // Create New Conversation
                                 const newConv = await pool!.query(`
                                     INSERT INTO whatsapp_conversations 
-                                    (company_id, external_id, phone, contact_name, status, channel, instagram_user_id, instagram_username, profile_pic_url, queue_id)
-                                    VALUES ($1, $2, $3, $4, 'PENDING', 'instagram', $5, $6, $7, $8)
+                                    (company_id, external_id, phone, contact_name, status, channel, instagram_user_id, instagram_username, profile_pic_url, queue_id, created_at, updated_at)
+                                    VALUES ($1, $2, $3, $4, 'PENDING', 'instagram', $5, $6, $7, $8, NOW(), NOW())
                                     RETURNING id
-                                `, [company.id, senderId, '0000000000', username, senderId, username, profilePic, defaultQueueId]);
+                                `, [company.id, senderId, '0000000000', formattedName, senderId, username, profilePic, defaultQueueId]);
                                 conversationId = newConv.rows[0].id;
                             }
+
+                            // Sync to whatsapp_contacts for consistency
+                            await pool!.query(`
+                                INSERT INTO whatsapp_contacts (jid, phone, name, push_name, instance, profile_pic_url, company_id, updated_at, instagram_id, instagram_username)
+                                VALUES ($1, $2, $3, $4, 'instagram', $5, $6, NOW(), $7, $8)
+                                ON CONFLICT (jid, company_id) DO UPDATE SET
+                                    name = EXCLUDED.name,
+                                    push_name = COALESCE(EXCLUDED.push_name, whatsapp_contacts.push_name),
+                                    profile_pic_url = COALESCE(EXCLUDED.profile_pic_url, whatsapp_contacts.profile_pic_url),
+                                    updated_at = NOW(),
+                                    instagram_id = EXCLUDED.instagram_id,
+                                    instagram_username = EXCLUDED.instagram_username
+                            `, [senderId, '0000000000', formattedName, username, profilePic, company.id, senderId, username]);
 
                             // Determine Message Type
                             let msgType = 'text';

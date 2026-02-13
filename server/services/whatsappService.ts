@@ -1,9 +1,10 @@
-import { pool } from '../db';
-import { incrementUsage } from './limitService';
+import { pool } from '../db/index.js';
+import { incrementUsage } from './limitService.js';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { normalizePhone } from '../utils/phoneUtils';
+import { normalizePhone } from '../utils/phoneUtils.js';
+import { getEvolutionConfig } from '../controllers/evolutionController.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -37,48 +38,18 @@ export async function sendWhatsAppMessage({
         if (!pool) return { success: false, error: 'Database not configured' };
 
         // 1. Resolve Evolution Config
-        let evolution_instance, evolution_apikey, evolution_url;
-        let resolvedCompanyId = companyId;
+        const config = await getEvolutionConfig({ id: userId, company_id: companyId }, 'whatsapp_service', companyId as number);
 
-        if (followUpId || campaignId) {
-            const contextQuery = followUpId
-                ? await pool.query('SELECT conversation_id, company_id FROM crm_follow_ups WHERE id = $1', [followUpId])
-                : await pool.query('SELECT instance_id, company_id FROM whatsapp_campaigns WHERE id = $1', [campaignId]);
+        let evolution_instance = config.instance;
+        let evolution_apikey = config.apikey;
+        let evolution_url = config.url;
+        let resolvedCompanyId = config.company_id;
 
-            if (contextQuery.rows.length > 0) {
-                const ctx = contextQuery.rows[0];
-                resolvedCompanyId = ctx.company_id || companyId;
-                const convId = ctx.conversation_id;
-                const campaignInstanceId = ctx.instance_id;
-
-                if (convId) {
-                    const convRes = await pool.query('SELECT instance FROM whatsapp_conversations WHERE id = $1', [convId]);
-                    if (convRes.rows.length > 0) {
-                        evolution_instance = convRes.rows[0].instance;
-                    }
-                } else if (campaignInstanceId) {
-                    const instRes = await pool.query('SELECT instance_key FROM company_instances WHERE id = $1', [campaignInstanceId]);
-                    if (instRes.rows.length > 0) {
-                        evolution_instance = instRes.rows[0].instance_key;
-                    }
-                }
-            }
+        if (!evolution_instance || !evolution_apikey) {
+            return { success: false, error: 'Configuração Evolution não encontrada para esta empresa.' };
         }
 
-        const compRes = await pool.query(
-            'SELECT evolution_instance, evolution_apikey, evolution_url FROM companies WHERE id = $1',
-            [resolvedCompanyId]
-        );
-
-        if (compRes.rows.length === 0) {
-            return { success: false, error: 'Empresa não encontrada ou sem configuração Evolution' };
-        }
-
-        const compData = compRes.rows[0];
-        evolution_instance = evolution_instance || compData.evolution_instance;
-        evolution_apikey = compData.evolution_apikey;
-        evolution_url = compData.evolution_url;
-        const baseUrl = (evolution_url || process.env.EVOLUTION_API_URL || "https://freelasdekaren-evolution-api.nhvvzr.easypanel.host").replace(/\/$/, "");
+        const baseUrl = evolution_url.replace(/\/$/, "");
 
         const cleanPhone = normalizePhone(phone);
         console.log(`[sendWhatsAppMessage] Sending to ${cleanPhone} via instance ${evolution_instance}. Media: ${mediaUrl ? 'YES' : 'NO'}`);

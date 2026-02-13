@@ -1,0 +1,28 @@
+﻿DB Configured within Host: aws-0-us-west-2.pooler.supabase.com (IPv4 Forced)
+[
+  {
+    "table_name": "pg_depend",
+    "column_name": "objid",
+    "data_type": "oid"
+  },
+  {
+    "table_name": "pg_depend",
+    "column_name": "refobjid",
+    "data_type": "oid"
+  },
+  {
+    "table_name": "pg_locks",
+    "column_name": "objid",
+    "data_type": "oid"
+  },
+  {
+    "table_name": "pg_shdepend",
+    "column_name": "objid",
+    "data_type": "oid"
+  },
+  {
+    "table_name": "pg_shdepend",
+    "column_name": "refobjid",
+    "data_type": "oid"
+  }
+]
