@@ -1565,6 +1565,14 @@ export const handleInstagramWebhook = async (req: Request, res: Response) => {
         const body = req.body;
         console.log('[Instagram Webhook] Received event:', JSON.stringify(body, null, 2));
 
+        // LOG TO DB FOR DEBUGGING
+        if (pool) {
+            await pool.query(
+                "INSERT INTO system_logs (level, message, details, instance) VALUES ($1, $2, $3, $4)",
+                ['info', 'Instagram Webhook Received', JSON.stringify(body), 'instagram_webhook']
+            ).catch(e => console.error('Failed to log webhook to DB', e));
+        }
+
         // 1. Acknowledge immediately
         res.status(200).send('EVENT_RECEIVED');
 

@@ -101,7 +101,11 @@ const LoginPage = () => {
                                 />
                             </div>
                         </div>
-                        {error && <div className="text-sm text-red-500 text-center">{error}</div>}
+                        {error && (
+                            <div className="text-sm text-red-600 text-center bg-red-50 p-2.5 rounded-lg border border-red-200 animate-in fade-in zoom-in duration-200">
+                                {error}
+                            </div>
+                        )}
                         <Button type="submit" className="w-full" disabled={loading}>
                             {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : "Entrar"}
                         </Button>

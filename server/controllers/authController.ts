@@ -83,22 +83,22 @@ export const login = async (req: Request, res: Response) => {
             });
         }
 
-        if (!pool) return res.status(500).json({ error: 'Database not configured' });
+        if (!pool) return res.status(500).json({ error: 'Banco de dados não configurado' });
 
         const result = await pool.query('SELECT * FROM app_users WHERE email = $1', [email]);
         const user = result.rows[0];
 
         if (!user) {
-            return res.status(401).json({ error: 'Invalid credentials' });
+            return res.status(401).json({ error: 'E-mail ou senha incorretos' });
         }
 
         if (!user.is_active) {
-            return res.status(403).json({ error: 'Account is inactive' });
+            return res.status(403).json({ error: 'Esta conta está inativa' });
         }
 
         const validPassword = await bcrypt.compare(password, user.password_hash);
         if (!validPassword) {
-            return res.status(401).json({ error: 'Invalid credentials' });
+            return res.status(401).json({ error: 'E-mail ou senha incorretos' });
         }
 
         // Generate Token
@@ -147,7 +147,7 @@ export const login = async (req: Request, res: Response) => {
 
     } catch (error) {
         console.error('Login error:', error);
-        res.status(500).json({ error: 'Internal server error' });
+        res.status(500).json({ error: 'Erro interno no servidor. Tente novamente mais tarde.' });
     }
 };
 
@@ -160,7 +160,7 @@ export const register = async (req: Request, res: Response) => {
         // Check if user exists
         const userCheck = await pool.query('SELECT id FROM app_users WHERE email = $1', [email]);
         if (userCheck.rows.length > 0) {
-            return res.status(400).json({ error: 'User already exists' });
+            return res.status(400).json({ error: 'Este e-mail já está cadastrado' });
         }
 
         // Hash password
