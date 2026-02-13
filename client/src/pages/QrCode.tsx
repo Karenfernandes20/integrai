@@ -26,7 +26,7 @@ const generateWebhookToken = (companyId: string | number | null | undefined, ind
   return `ig_${safeCompany}_${index + 1}_${rand}`;
 };
 
-const buildInstagramCallbackUrl = () => {
+const buildInstagramCallbackUrl = (_tokenValue?: string, _companyId?: string | number | null | undefined, _index?: number) => {
   const origin = typeof window !== 'undefined' ? window.location.origin : '';
   return `${origin}/api/webhooks/instagram`;
 };
@@ -41,7 +41,7 @@ const normalizeInstagramConfigs = (
     const current = parsed[index] || {};
     const token = (current.webhook_token || '').trim() || generateWebhookToken(companyId, index);
     return {
-      callback_url: (current.callback_url || '').trim() || buildInstagramCallbackUrl(),
+      callback_url: (current.callback_url || '').trim() || buildInstagramCallbackUrl(token, companyId, index),
       webhook_token: token
     };
   });
@@ -430,7 +430,7 @@ const QrCodePage = () => {
       if (!next[index]) {
         const token = generateWebhookToken(company?.id, index);
         next[index] = {
-          callback_url: buildInstagramCallbackUrl(),
+          callback_url: buildInstagramCallbackUrl(token, company?.id, index),
           webhook_token: token
         };
       }
@@ -1145,6 +1145,8 @@ const QrCodePage = () => {
                     onChange={(e) => {
                       const nextToken = e.target.value;
                       handleInstagramInstanceConfigChange(selectedInstagramIndex, 'webhook_token', nextToken);
+                      const autoCallback = buildInstagramCallbackUrl(nextToken, company?.id, selectedInstagramIndex);
+                      handleInstagramInstanceConfigChange(selectedInstagramIndex, 'callback_url', autoCallback);
                     }}
                     className="rounded-xl h-10"
                     placeholder="token_exclusivo_da_instancia"
