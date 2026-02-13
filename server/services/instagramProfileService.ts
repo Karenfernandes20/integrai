@@ -9,7 +9,7 @@ interface InstagramProfile {
 interface CachedProfile {
     instagram_id: string;
     instagram_username: string | null;
-    instagram_name: string | null;
+    name: string | null;
     instagram_updated_at: Date | null;
 }
 
@@ -25,7 +25,7 @@ export async function getInstagramProfile(
     try {
         // 1. Verificar cache no banco (whatsapp_contacts)
         const cacheCheck = await pool!.query<CachedProfile>(
-            `SELECT instagram_id, instagram_username, instagram_name, instagram_updated_at 
+            `SELECT instagram_id, instagram_username, name, instagram_updated_at 
        FROM whatsapp_contacts 
        WHERE instagram_id = $1 AND company_id = $2
        LIMIT 1`,
@@ -45,7 +45,7 @@ export async function getInstagramProfile(
                 console.log(`[Instagram Profile] Cache hit for ${senderId}`);
                 return {
                     username: cached.instagram_username,
-                    name: cached.instagram_name || undefined
+                    name: cached.name || undefined
                 };
             }
         }
@@ -63,18 +63,19 @@ export async function getInstagramProfile(
         }
 
         const profile: InstagramProfile = await response.json();
-        const username = profile.username || profile.name || senderId;
-        const name = profile.name || null;
+        const rawUsername = profile.username || profile.name || senderId;
+        const username = rawUsername.startsWith('@') ? rawUsername : `@${rawUsername}`;
+        const name = username || 'Instagram User';
 
         // 4. Atualizar cache no banco
         await pool!.query(
             `INSERT INTO whatsapp_contacts 
-       (jid, instagram_id, instagram_username, instagram_name, instagram_updated_at, company_id, instance, updated_at)
+       (jid, instagram_id, instagram_username, name, instagram_updated_at, company_id, instance, updated_at)
        VALUES ($1, $2, $3, $4, NOW(), $5, 'instagram', NOW())
        ON CONFLICT (jid, instance, company_id) 
        DO UPDATE SET
          instagram_username = EXCLUDED.instagram_username,
-         instagram_name = EXCLUDED.instagram_name,
+         name = EXCLUDED.name,
          instagram_updated_at = NOW(),
          updated_at = NOW()`,
             [senderId, senderId, username, name, companyId]
