@@ -129,6 +129,74 @@ export default function EstoquePage() {
 
     const isHealthMode = user?.company?.operation_type === 'pacientes' || user?.company?.operational_profile === 'CLINICA' || user?.company?.category === 'clinica';
 
+    const tableColSpan = isHealthMode ? 10 : 8;
+
+    const renderTableRows = () => {
+        if (loading) {
+            return (
+                <TableRow>
+                    <TableCell colSpan={tableColSpan} className="text-center py-8">
+                        Carregando...
+                    </TableCell>
+                </TableRow>
+            );
+        }
+
+        if (products.length === 0) {
+            return (
+                <TableRow>
+                    <TableCell colSpan={tableColSpan} className="text-center py-12 text-muted-foreground">
+                        <div className="flex h-40 flex-col items-center justify-center">
+                            <Package className="mb-2 h-10 w-10 opacity-50" />
+                            Nenhum produto encontrado.
+                        </div>
+                    </TableCell>
+                </TableRow>
+            );
+        }
+
+        return products.map((product) => (
+            <TableRow
+                key={product.id}
+                className="cursor-pointer hover:bg-muted/50 transition-colors"
+                onClick={() => handleRowClick(product)}
+            >
+                <TableCell className="font-mono text-xs text-muted-foreground">{product.sku}</TableCell>
+                <TableCell className="font-medium">{product.name}</TableCell>
+                {isHealthMode && <TableCell className="text-xs font-mono">{(product as any).batch_number || '-'}</TableCell>}
+                {isHealthMode && (
+                    <TableCell className="text-xs">
+                        {(product as any).expiration_date ? (
+                            <span className={cn(
+                                new Date((product as any).expiration_date) < new Date() ? "text-red-500 font-bold" :
+                                    new Date((product as any).expiration_date) < new Date(Date.now() + 30 * 24 * 60 * 60 * 1000) ? "text-amber-500 font-medium" : ""
+                            )}>
+                                {new Date((product as any).expiration_date).toLocaleDateString('pt-BR')}
+                            </span>
+                        ) : '-'}
+                    </TableCell>
+                )}
+                <TableCell>{product.category || '-'}</TableCell>
+                <TableCell>{isHealthMode ? formatCurrency((product as any).cost_price || 0) : formatCurrency(product.sale_price)}</TableCell>
+                <TableCell className="text-center font-bold">{Number(product.quantity)}</TableCell>
+                <TableCell className="text-xs">{product.location || '-'}</TableCell>
+                <TableCell>{getStatusBadge(product.status, Number(product.quantity), Number(product.min_quantity))}</TableCell>
+                <TableCell>
+                    <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            handleRowClick(product);
+                        }}
+                    >
+                        <Edit className="h-4 w-4" />
+                    </Button>
+                </TableCell>
+            </TableRow>
+        ));
+    };
+
     if (instanceLoading) {
         return <div className="p-8 text-center text-muted-foreground">Buscando instância...</div>;
     }
