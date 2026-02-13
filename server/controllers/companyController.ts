@@ -279,7 +279,7 @@ export const updateCompany = async (req: Request, res: Response) => {
             primary_color, secondary_color, system_name, custom_domain, plan_id, due_date, max_instances,
             instanceDefinitions,
             // Instagram
-            instagram_enabled, instagram_app_id, instagram_app_secret, instagram_page_id, instagram_business_id, instagram_access_token,
+            instagram_enabled, instagram_app_id, instagram_app_secret, instagram_page_id, instagram_business_id, instagram_access_token, instagram_instances_config,
             // WhatsApp Extended
             whatsapp_enabled, whatsapp_type, whatsapp_official_phone, whatsapp_official_phone_number_id, whatsapp_official_business_account_id,
             whatsapp_official_access_token, whatsapp_official_api_version, whatsapp_official_webhook_token, whatsapp_api_plus_token,
@@ -404,6 +404,18 @@ export const updateCompany = async (req: Request, res: Response) => {
             finalAccessToken = currentRes.rows[0].instagram_access_token;
         }
 
+        let parsedInstagramInstancesConfig: any[] = [];
+        if (instagram_instances_config) {
+            try {
+                parsedInstagramInstancesConfig = Array.isArray(instagram_instances_config)
+                    ? instagram_instances_config
+                    : JSON.parse(instagram_instances_config);
+            } catch (cfgErr) {
+                console.error(`[Update Company ${id}] Invalid instagram_instances_config payload`, cfgErr);
+                parsedInstagramInstancesConfig = [];
+            }
+        }
+
         let newLogoUrl = currentLogo;
         if (isRemovingLogo) newLogoUrl = null;
         else if (finalLogoUrl) newLogoUrl = finalLogoUrl;
@@ -422,6 +434,7 @@ export const updateCompany = async (req: Request, res: Response) => {
                 instagram_enabled = $18, instagram_app_id = $19, instagram_app_secret = $20,
                 instagram_page_id = $21, instagram_business_id = $22, instagram_access_token = $23,
                 instagram_status = $24, category = COALESCE($25, category), operational_profile = $26,
+                instagram_instances_config = $46,
                 -- WhatsApp Extended
                 whatsapp_enabled = $27, whatsapp_type = $28, whatsapp_official_phone = $29,
                 whatsapp_official_phone_number_id = $30, whatsapp_official_business_account_id = $31,
@@ -492,7 +505,8 @@ export const updateCompany = async (req: Request, res: Response) => {
             parseNum(finalWhatsappLimit) || 1, // $42
             parseNum(finalInstagramLimit) || 1, // $43
             parseNum(finalMessengerLimit) || 1, // $44
-            evolution_url || null // $45
+            evolution_url || null, // $45
+            JSON.stringify(parsedInstagramInstancesConfig) // $46
         ];
 
         // --- INSTANCE SYNC & DEFINITIONS ---
