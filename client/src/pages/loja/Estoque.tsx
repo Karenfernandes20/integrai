@@ -168,7 +168,7 @@ export default function EstoquePage() {
                         <Table>
                             <TableHeader>
                                 <TableRow>
-                                    <TableHead className="w-[80px]">SKU</TableHead>
+                                    <TableHead className="w-[80px] whitespace-nowrap">SKU</TableHead>
                                     <TableHead>{isHealthMode ? 'Insumo' : 'Produto'}</TableHead>
                                     {isHealthMode && <TableHead>Lote</TableHead>}
                                     {isHealthMode && <TableHead>Validade</TableHead>}
@@ -183,9 +183,12 @@ export default function EstoquePage() {
                             <TableBody>
                                 {loading && (
                                     <TableRow>
-                                        <TableCell colSpan={10} className="text-center py-8">
-                                            Carregando...
-                                        </TableCell>
+                                        <TableCell colSpan={isHealthMode ? 9 : 7} className="text-center py-8">Carregando...</TableCell>
+                                    </TableRow>
+                                ) : products.length === 0 ? (
+                                    <TableRow>
+                                        <TableCell colSpan={isHealthMode ? 9 : 7} className="text-center py-12 text-muted-foreground flex flex-col items-center justify-center h-40 break-normal whitespace-normal">
+                                        <TableCell colSpan={10} className="text-center py-8">Carregando...</TableCell>
                                     </TableRow>
                                 )}
 
@@ -198,6 +201,49 @@ export default function EstoquePage() {
                                             </div>
                                         </TableCell>
                                     </TableRow>
+                                ) : (
+                                    products.map((product) => (
+                                        <TableRow key={product.id}>
+                                            <TableCell className="font-mono text-xs text-muted-foreground whitespace-nowrap break-normal">{product.sku}</TableCell>
+                                        <TableRow
+                                            key={product.id}
+                                            className="cursor-pointer hover:bg-muted/50 transition-colors"
+                                            onClick={() => handleRowClick(product)}
+                                        >
+                                            <TableCell className="font-mono text-xs text-muted-foreground">{product.sku}</TableCell>
+                                            <TableCell className="font-medium">{product.name}</TableCell>
+                                            {isHealthMode && <TableCell className="text-xs font-mono">{(product as any).batch_number || '-'}</TableCell>}
+                                            {isHealthMode && (
+                                                <TableCell className="text-xs">
+                                                    {(product as any).expiration_date ? (
+                                                        <span className={cn(
+                                                            new Date((product as any).expiration_date) < new Date() ? "text-red-500 font-bold" :
+                                                                new Date((product as any).expiration_date) < new Date(Date.now() + 30 * 24 * 60 * 60 * 1000) ? "text-amber-500 font-medium" : ""
+                                                        )}>
+                                                            {new Date((product as any).expiration_date).toLocaleDateString('pt-BR')}
+                                                        </span>
+                                                    ) : '-'}
+                                                </TableCell>
+                                            )}
+                                            <TableCell>{product.category || '-'}</TableCell>
+                                            <TableCell>{isHealthMode ? formatCurrency((product as any).cost_price || 0) : formatCurrency(product.sale_price)}</TableCell>
+                                            <TableCell className="text-center font-bold">{Number(product.quantity)}</TableCell>
+                                            <TableCell className="text-xs">{product.location || '-'}</TableCell>
+                                            <TableCell>{getStatusBadge(product.status, Number(product.quantity), Number(product.min_quantity))}</TableCell>
+                                            <TableCell>
+                                                <Button
+                                                    variant="ghost"
+                                                    size="sm"
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        handleRowClick(product);
+                                                    }}
+                                                >
+                                                    <Edit className="h-4 w-4" />
+                                                </Button>
+                                            </TableCell>
+                                        </TableRow>
+                                    ))
                                 )}
 
                                 {!loading && products.length > 0 && products.map((product) => (
