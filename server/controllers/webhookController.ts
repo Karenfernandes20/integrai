@@ -1538,30 +1538,27 @@ export const getMessages = async (req: Request, res: Response) => {
 
 export const verifyInstagramWebhook = async (req: Request, res: Response) => {
     try {
-        const mode = req.query['hub.mode'];
-        const token = req.query['hub.token'];
-        const challenge = req.query['hub.challenge'];
+        const mode = String(req.query['hub.mode'] || '');
+        const token = String(req.query['hub.verify_token'] || '');
+        const challenge = String(req.query['hub.challenge'] || '');
 
-        // We can use a global verify token or check against companies?
-        // Simpler: Use a fixed token for the platform, or allow companies to set it?
-        // User instructions said "Webhook URL (read only)". Usually implies platform handles it.
-        // Let's us "integrai_instagram_verify_token" or check env.
-        const VERIFY_TOKEN = process.env.INSTAGRAM_VERIFY_TOKEN || 'integrai_verify_token';
+        const VERIFY_TOKEN = process.env.INSTAGRAM_VERIFY_TOKEN;
 
-        if (mode && token) {
-            if (mode === 'subscribe' && token === VERIFY_TOKEN) {
-                console.log('[Instagram Webhook] Verified successfully.');
-                res.status(200).send(challenge);
-            } else {
-                console.warn(`[Instagram Webhook] Verification failed. Token: ${token}, Mode: ${mode}`);
-                res.sendStatus(403);
-            }
-        } else {
-            res.sendStatus(400);
+        if (!VERIFY_TOKEN) {
+            console.error('[Instagram Webhook] INSTAGRAM_VERIFY_TOKEN is not set.');
+            return res.sendStatus(403);
         }
+
+        if (mode === 'subscribe' && token === VERIFY_TOKEN) {
+            console.log('[Instagram Webhook] Verified successfully.');
+            return res.status(200).send(challenge);
+        }
+
+        console.warn(`[Instagram Webhook] Verification failed. Mode: ${mode}`);
+        return res.sendStatus(403);
     } catch (e) {
         console.error('[Instagram Verify Error]', e);
-        res.sendStatus(500);
+        return res.sendStatus(403);
     }
 };
 
