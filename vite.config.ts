@@ -13,6 +13,7 @@ export default defineConfig(({ mode }) => ({
   server: {
     host: "0.0.0.0", // Force IPv4
     port: 8082,
+    strictPort: true, // Fail fast instead of silently switching to another port
     // Avoid trying to open a browser automatically (breaks in headless/remote envs).
     open: false,
     proxy: {
