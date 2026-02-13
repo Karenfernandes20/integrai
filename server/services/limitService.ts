@@ -1,6 +1,6 @@
 
-import { pool } from '../db';
-import { logEvent } from '../logger';
+import { pool } from '../db/index.js';
+import { logEvent } from '../logger.js';
 
 export type ResourceType = 'users' | 'ai_agents' | 'automations' | 'messages' | 'queues' | 'campaigns' | 'schedules' | 'internal_chat' | 'external_api' | 'kanban';
 
@@ -108,7 +108,7 @@ export const getPlanStatus = async (companyId: number) => {
     if (!pool) throw new Error("Database not connected");
 
     const planRes = await pool.query(`
-        SELECT p.*, c.company_name, c.due_date 
+        SELECT p.*, c.name as company_name, c.due_date 
         FROM companies c
         LEFT JOIN plans p ON c.plan_id = p.id
         WHERE c.id = $1

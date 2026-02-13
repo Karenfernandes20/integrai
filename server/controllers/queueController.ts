@@ -1,5 +1,5 @@
 import { Request, Response } from 'express';
-import { pool } from '../db';
+import { pool } from '../db/index.js';
 
 const DEFAULT_QUEUE_NAME = 'Recepção';
 

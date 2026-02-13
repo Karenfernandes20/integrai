@@ -1,14 +1,14 @@
 import { Request, Response } from 'express';
-import { pool } from '../db';
-import { logEvent } from '../logger';
-import { triggerWorkflow } from './workflowController';
-import { processChatbotMessage } from '../services/chatbotService';
-import { ensureQueueSchema, getOrCreateQueueId } from './queueController';
-import { normalizePhone, extractPhoneFromJid, isGroupJid } from '../utils/phoneUtils';
-import { downloadMediaFromEvolution } from '../services/mediaService';
-import { returnToPending } from './conversationController';
-import { handleWhaticketGreeting } from '../services/whaticketService';
-import { getEvolutionConfig } from './evolutionController';
+import { pool } from '../db/index.js';
+import { logEvent } from '../logger.js';
+import { triggerWorkflow } from './workflowController.js';
+import { processChatbotMessage } from '../services/chatbotService.js';
+import { ensureQueueSchema, getOrCreateQueueId } from './queueController.js';
+import { normalizePhone, extractPhoneFromJid, isGroupJid } from '../utils/phoneUtils.js';
+import { downloadMediaFromEvolution } from '../services/mediaService.js';
+import { returnToPending } from './conversationController.js';
+import { handleWhaticketGreeting } from '../services/whaticketService.js';
+import { getEvolutionConfig } from './evolutionController.js';
 
 // Tipo simplificado da mensagem
 interface WebhookMessage {
@@ -43,7 +43,7 @@ export const debugWebhookPayloads = (req: Request, res: Response) => {
 
 
 // ... imports
-import { handleCallWebhook } from './callController';
+import { handleCallWebhook } from './callController.js';
 
 // REACTION HANDLER
 const handleReactionWebhook = async (payload: any, instance: string, io: any) => {
@@ -506,7 +506,7 @@ export const handleWebhook = async (req: Request, res: Response) => {
                 if (!groupName) {
                     console.log(`[Webhook] Group message received for ${normalizedJid} but NO SUBJECT in payload. Triggering background refresh.`);
                     // Proactively try to get metadata in background
-                    const { refreshConversationMetadata } = await import('./evolutionController');
+                    const { refreshConversationMetadata } = await import('./evolutionController.js');
                     if (refreshConversationMetadata) {
                         // We don't await this as it might be slow
                         refreshConversationMetadata({ params: { conversationId: normalizedJid }, query: { companyId } } as any, { json: () => { } } as any).catch(() => { });
@@ -867,7 +867,7 @@ export const handleWebhook = async (req: Request, res: Response) => {
 
                 // Process Chatbot (V2 logic)
                 if (direction === 'inbound') {
-                    processChatbotMessage(instance, phone, content).catch(e => console.error('[Chatbot Error]:', e));
+                    processChatbotMessage(instance, phone, content, req.app.get('io')).catch(e => console.error('[Chatbot Error]:', e));
                 }
 
                 // Emit Socket (Critical Path for UI Responsiveness)

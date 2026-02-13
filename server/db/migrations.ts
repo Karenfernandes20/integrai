@@ -1,7 +1,8 @@
 
-import { pool } from './index';
-import { runWhaticketMigrations } from './migrations/whaticket_migration';
-import { runFixInstagramTextColumns } from './migrations/fix_instagram_text_columns_fn';
+import { pool } from './index.js';
+import { runWhaticketMigrations } from './migrations/whaticket_migration.js';
+import { runFixInstagramTextColumns } from './migrations/fix_instagram_text_columns_fn.js';
+import { runFixSchema } from './migrations/fix_schema_2026.js';
 
 export const runMigrations = async () => {
     if (!pool) return;
@@ -283,6 +284,7 @@ export const runMigrations = async () => {
 
         await runWhaticketMigrations();
         await runFixInstagramTextColumns();
+        await runFixSchema();
 
         console.log("Migrations finished.");
     } catch (e) {

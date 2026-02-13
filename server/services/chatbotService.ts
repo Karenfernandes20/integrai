@@ -1,7 +1,7 @@
-import { pool } from '../db';
+import { pool } from '../db/index.js';
 import axios from 'axios';
-import { assignQueueToConversationByPhone } from '../controllers/queueController';
-import { getEvolutionConfig } from '../controllers/evolutionController';
+import { assignQueueToConversationByPhone } from '../controllers/queueController.js';
+import { getEvolutionConfig } from '../controllers/evolutionController.js';
 
 interface FlowNode {
     id: string;
@@ -46,7 +46,45 @@ const parseQueueRouting = (raw: any): Record<string, string> => {
     return map;
 };
 
-export const processChatbotMessage = async (instanceKey: string, contactPhone: string, messageText: string) => {
+// Helper to evaluate conditions
+const evaluateCondition = (variableValue: any, operator: string, ruleValue: string): boolean => {
+    const val = String(variableValue || '').toLowerCase();
+    const rule = String(ruleValue || '').toLowerCase();
+
+    // Numeric comparison safety
+    const numVal = Number(variableValue);
+    const numRule = Number(ruleValue);
+    const isNumeric = !isNaN(numVal) && !isNaN(numRule) && variableValue !== '' && ruleValue !== '';
+
+    switch (operator) {
+        case 'equals':
+            return val === rule;
+        case 'not_equals':
+            return val !== rule;
+        case 'contains':
+            return val.includes(rule);
+        case 'not_contains':
+            return !val.includes(rule);
+        case 'starts_with':
+            return val.startsWith(rule);
+        case 'greater_than':
+            return isNumeric ? numVal > numRule : val > rule;
+        case 'less_than':
+            return isNumeric ? numVal < numRule : val < rule;
+        case 'greater_than_or_equal':
+            return isNumeric ? numVal >= numRule : val >= rule;
+        case 'less_than_or_equal':
+            return isNumeric ? numVal <= numRule : val <= rule;
+        case 'is_empty':
+            return !variableValue || val === '';
+        case 'is_not_empty':
+            return !!variableValue && val !== '';
+        default:
+            return val === rule;
+    }
+};
+
+export const processChatbotMessage = async (instanceKey: string, contactPhone: string, messageText: string, io?: any) => {
     try {
         console.log(`[ChatbotService] START: Instance=${instanceKey}, Phone=${contactPhone}`);
 
@@ -107,7 +145,7 @@ export const processChatbotMessage = async (instanceKey: string, contactPhone: s
             session = sessionRes.rows[0];
         }
 
-        await executeNode(bot.id, bot.company_id, session, flow, messageText, instanceKey);
+        await executeNode(bot.id, bot.company_id, session, flow, messageText, instanceKey, io);
     } catch (error) {
         console.error('[ChatbotService] Error processing message:', error);
     }
@@ -119,7 +157,8 @@ const executeNode = async (
     session: any,
     flow: FlowJson,
     messageText: string,
-    instanceKey: string
+    instanceKey: string,
+    io?: any
 ) => {
     let currentNode = flow.nodes.find(n => n.id === session.current_node_id);
     if (!currentNode) return;
@@ -228,53 +267,194 @@ const executeNode = async (
         }
 
         case 'condition': {
-            const variableName = currentNode.data.variable;
-            const variableValue = session.variables?.[variableName];
             const rules = currentNode.data.rules || [];
-
-            // Find matched rule
             let matchedRuleId: string | null = null;
+            const variables = session.variables || {};
 
-            // Allow for simple equality check
-            const rulematch = rules.find((r: any) => {
-                // Simple loose equality (handling number vs string)
-                return String(variableValue).toLowerCase() === String(r.value).toLowerCase();
+            // Iterate through rules to find the first match
+            const ruleMatch = rules.find((rule: any) => {
+                const variableName = rule.field || rule.variable; // Backward compatibility
+                const operator = rule.operator || 'equals';
+                const value = rule.value;
+                const variableValue = variables[variableName];
+
+                return evaluateCondition(variableValue, operator, value);
             });
 
-            if (rulematch) {
-                matchedRuleId = rulematch.id;
+            if (ruleMatch) {
+                matchedRuleId = ruleMatch.id;
             }
 
             // Find Edge:
-            // - If matchedRuleId, find edge with sourceHandle == matchedRuleId
-            // - Else, find edge with sourceHandle == 'default' or 'false' or no handle?
-            // Convention: VisualEditor usually saves sourceHandle as the rule ID. Default flow uses 'default' handle or specific one.
-
             let chosenEdge = null;
             if (matchedRuleId) {
                 chosenEdge = flow.edges.find(e => e.source === currentNode?.id && e.sourceHandle === matchedRuleId);
             }
 
             if (!chosenEdge) {
-                // Fallback / Default
-                chosenEdge = flow.edges.find(e => e.source === currentNode?.id && (e.sourceHandle === 'default' || e.sourceHandle === 'else'));
+                // Fallback / Else
+                chosenEdge = flow.edges.find(e => e.source === currentNode?.id && (e.sourceHandle === 'default' || e.sourceHandle === 'else' || e.sourceHandle === 'false'));
             }
 
             if (chosenEdge) {
                 nextNodeId = chosenEdge.target;
                 shouldContinue = true;
             } else {
-                console.warn(`[ChatbotService] No edge found for condition node ${currentNode.id} (matched: ${matchedRuleId})`);
+                console.warn(`[ChatbotService] No edge found for condition node ${currentNode.id}`);
             }
             break;
         }
 
+        // BACKWARD COMPATIBILITY: Classic 'action' node (single action)
         case 'action': {
-            console.log(`Executing action: ${currentNode.data.action}`);
-            // Logic for actions (API Call, Tagging, etc) would go here
+            console.log(`Executing legacy action: ${currentNode.data.action}`);
+            if (currentNode.data.action === 'send_message') {
+                // Classic structure might be different, but assuming standard flow logic
+            }
+            // Just move next
             const aEdge = flow.edges.find(e => e.source === currentNode?.id);
             if (aEdge) {
                 nextNodeId = aEdge.target;
+                shouldContinue = true;
+            }
+            break;
+        }
+
+        // NEW: Multi-Action Block
+        case 'actions': {
+            const actions = currentNode.data.actions || [];
+            console.log(`[ChatbotService] Executing ${actions.length} actions for node ${currentNode.id}`);
+
+            for (const action of actions) {
+                try {
+                    switch (action.type) {
+                        case 'send_message': {
+                            const params = action.params || {};
+                            const text = replaceVariables(params.content || params.message || '', session.variables || {});
+                            if (text) {
+                                await sendMessage(instanceKey, session.contact_key, text, botCompanyId);
+                                await pool!.query(
+                                    'UPDATE chatbot_logs SET response_sent = $1 WHERE chatbot_id = $2 AND contact_key = $3 ORDER BY created_at DESC LIMIT 1',
+                                    [text, botId, session.contact_key]
+                                );
+                            }
+                            break;
+                        }
+
+                        case 'set_variable': {
+                            const params = action.params || {};
+                            const key = params.name || params.key;
+                            let val = params.value;
+
+                            if (key) {
+                                // Resolve value if it contains {{variables}}
+                                val = replaceVariables(String(val), session.variables || {});
+                                session.variables = { ...session.variables, [key]: val };
+                                await pool!.query('UPDATE chatbot_sessions SET variables = $1 WHERE id = $2', [session.variables, session.id]);
+                            }
+                            break;
+                        }
+
+                        case 'move_queue': {
+                            const params = action.params || {};
+                            const queueName = params.queueName || params.queue;
+                            if (queueName && botCompanyId) {
+                                await assignQueueToConversationByPhone(botCompanyId, instanceKey, session.contact_key, queueName);
+                                // Emit Socket if IO is available
+                                if (io) {
+                                    // We need the conversation ID to emit efficiently, but assignQueue searches for it.
+                                    // Ideally assignQueue should return the ID or we fetch it.
+                                    // For now, let's emit a refresh event for the company
+                                    io.to(`company_${botCompanyId}`).emit('conversation:update_queue', {
+                                        phone: session.contact_key,
+                                        queueName: queueName
+                                    });
+                                }
+                            }
+                            break;
+                        }
+
+                        case 'assign_user': {
+                            const params = action.params || {};
+                            const userId = params.userId || params.user_id;
+
+                            if (userId && botCompanyId) {
+                                await pool!.query(`
+                                    UPDATE whatsapp_conversations 
+                                    SET opened_by_user_id = $1 
+                                    WHERE company_id = $2 AND (phone = $3 OR external_id = $4)
+                                `, [userId, botCompanyId, session.contact_key, `${session.contact_key}@s.whatsapp.net`]);
+
+                                if (io) {
+                                    io.to(`company_${botCompanyId}`).emit('conversation:update_user', {
+                                        phone: session.contact_key,
+                                        userId: userId
+                                    });
+                                }
+                            }
+                            break;
+                        }
+
+                        case 'add_tag': {
+                            const params = action.params || {};
+                            const tagId = params.tagId || params.tag_id;
+
+                            if (tagId && botCompanyId) {
+                                // Find conversation ID first
+                                const convRes = await pool!.query(`
+                                    SELECT id FROM whatsapp_conversations 
+                                    WHERE company_id = $1 AND (phone = $2 OR external_id = $3)
+                                    LIMIT 1
+                                `, [botCompanyId, session.contact_key, `${session.contact_key}@s.whatsapp.net`]);
+
+                                if (convRes.rows.length > 0) {
+                                    const convId = convRes.rows[0].id;
+                                    await pool!.query(`
+                                        INSERT INTO conversations_tags (conversation_id, tag_id)
+                                        VALUES ($1, $2)
+                                        ON CONFLICT DO NOTHING
+                                    `, [convId, tagId]);
+
+                                    if (io) {
+                                        io.to(`company_${botCompanyId}`).emit('conversation:update_tags', {
+                                            conversationId: convId,
+                                            tagId: tagId,
+                                            action: 'add'
+                                        });
+                                    }
+                                }
+                            }
+                            break;
+                        }
+
+                        case 'close_conversation': {
+                            if (botCompanyId) {
+                                await pool!.query(`
+                                    UPDATE whatsapp_conversations 
+                                    SET status = 'CLOSED', closed_at = NOW() 
+                                    WHERE company_id = $1 AND (phone = $2 OR external_id = $2 OR external_id = $3)
+                                `, [botCompanyId, session.contact_key, `${session.contact_key}@s.whatsapp.net`]);
+
+                                if (io) {
+                                    io.to(`company_${botCompanyId}`).emit('conversation:update_status', {
+                                        phone: session.contact_key,
+                                        status: 'CLOSED'
+                                    });
+                                }
+                            }
+                            // End Session
+                            await pool!.query('DELETE FROM chatbot_sessions WHERE id = $1', [session.id]);
+                            return; // Stop execution
+                        }
+                    }
+                } catch (e) {
+                    console.error(`[ChatbotService] Error executing action ${action.type}:`, e);
+                }
+            }
+
+            const actEdge = flow.edges.find(e => e.source === currentNode?.id);
+            if (actEdge) {
+                nextNodeId = actEdge.target;
                 shouldContinue = true;
             }
             break;
@@ -300,7 +480,7 @@ const executeNode = async (
         if (shouldContinue) {
             // Add slight delay to prevent stack overflow or race conditions in async recursion? 
             // Better to just await.
-            await executeNode(botId, botCompanyId, session, flow, '', instanceKey);
+            await executeNode(botId, botCompanyId, session, flow, '', instanceKey, io);
         }
     }
 };
@@ -330,7 +510,12 @@ const sendMessage = async (instanceKey: string, phone: string, text: string, com
 };
 
 const replaceVariables = (text: string, variables: any) => {
-    return String(text || '').replace(/{{(\w+)}}/g, (_match, key) => {
-        return variables?.[key] || `{{${key}}}`;
+    // Support dot notation (e.g., {{contact.name}}) and simple keys ({{name}})
+    // Also handling spacing: {{ name }}
+    return String(text || '').replace(/{{([\w\.]+)}}/g, (_match, key) => {
+        const k = key.trim();
+        // TODO: Deep object access if needed (e.g. contact.name)
+        // For now, flattening or direct access
+        return variables?.[k] !== undefined ? String(variables[k]) : `{{${k}}}`;
     });
 };

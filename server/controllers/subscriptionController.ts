@@ -1,8 +1,8 @@
 
 import { Request, Response } from "express";
-import { pool } from "../db";
+import { pool } from "../db/index.js";
 import { Server } from "socket.io";
-import { logEvent } from "../logger";
+import { logEvent } from "../logger.js";
 
 // Helper to calculate next billing date
 const addMonths = (date: Date, months: number) => {
@@ -158,7 +158,7 @@ export const checkSubscriptions = async (io: Server) => {
         // Find subscriptions expiring soon (today or past) that are ACTIVE
         // We look for anything where current_period_end < NOW
         const result = await pool.query(`
-            SELECT s.*, c.company_name, p.price 
+            SELECT s.*, c.name as company_name, p.price 
             FROM subscriptions s
             JOIN companies c ON s.company_id = c.id
             LEFT JOIN plans p ON s.plan_id = p.id
