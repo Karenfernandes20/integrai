@@ -157,8 +157,13 @@ export default function MetasPage() {
         if (!token) return;
         try {
             const query = new URLSearchParams({ startDate, endDate });
+            if (instanceId) query.set('instance_id', String(instanceId));
+            if (user?.company_id) query.set('companyId', String(user.company_id));
             const res = await fetch(`/api/closing-reasons/analytics?${query.toString()}`, {
-                headers: { Authorization: `Bearer ${token}` }
+                headers: {
+                    Authorization: `Bearer ${token}`,
+                    ...(instanceId ? { 'x-instance-id': String(instanceId) } : {})
+                }
             });
             if (!res.ok) {
                 setClosingAnalytics(null);
@@ -741,4 +746,3 @@ export default function MetasPage() {
         </div>
     );
 }
-
