@@ -1383,29 +1383,6 @@ export const syncEvolutionContacts = async (req: Request, res: Response) => {
               [resolvedCompanyId]
             );
 
-            // Get or Ensure LEADS stage exists for this specific company
-            let leadStageId = null;
-            const stageRes = await client.query(
-              "SELECT id FROM crm_stages WHERE company_id = $1 AND UPPER(name) = 'LEADS' LIMIT 1",
-              [resolvedCompanyId]
-            );
-            if (stageRes.rows.length > 0) {
-              leadStageId = stageRes.rows[0].id;
-            } else {
-              const newStage = await client.query(
-                "INSERT INTO crm_stages (name, position, company_id, color) VALUES ('LEADS', 0, $1, '#cbd5e1') RETURNING id",
-                [resolvedCompanyId]
-              );
-              leadStageId = newStage.rows[0].id;
-            }
-
-            // Fetch existing leads to avoid duplicates
-            const existingLeadsRes = await client.query(
-              "SELECT phone FROM crm_leads WHERE company_id = $1",
-              [resolvedCompanyId]
-            );
-            const existingLeadPhones = new Set(existingLeadsRes.rows.map(r => (r.phone || '').replace(/\D/g, '')));
-
             const existingByJid = new Map<string, string>();
             const existingByPhone = new Map<string, string>();
             for (const row of existingContactsRes.rows) {
@@ -1475,19 +1452,6 @@ export const syncEvolutionContacts = async (req: Request, res: Response) => {
                   updated_at = NOW()
               `, [jid, candidate, finalName, pushName || null, profilePic || null, instanceToSave, resolvedCompanyId]);
 
-              // --- CRM INTEGRATION: Sync to Leads ---
-              if (leadStageId && !existingLeadPhones.has(candidate)) {
-                try {
-                  await client.query(`
-                    INSERT INTO crm_leads (name, phone, stage_id, origin, company_id, instance, created_at, updated_at)
-                    VALUES ($1, $2, $3, 'WhatsApp Sync', $4, $5, NOW(), NOW())
-                    ON CONFLICT (phone, company_id) DO NOTHING
-                  `, [finalName, candidate, leadStageId, resolvedCompanyId, instanceToSave]);
-                  existingLeadPhones.add(candidate);
-                } catch (crmErr) {
-                  console.error(`[Sync] CRM Lead Error for ${candidate}:`, crmErr);
-                }
-              }
             }
 
             await client.query(`
