@@ -1,0 +1,97 @@
+DB Configured within Host: aws-0-us-west-2.pooler.supabase.com (IPv4 Forced)
+
+--- Listing all tables in public schema ---
+Tables found: leads, ai_agents, audit_logs, workflow_executions, leads_bd, chatbot_versions, entity_links, global_templates, roadmap_items, crm_stages, suppliers, cities, app_users, chatbot_sessions, whatsapp_audit_logs, whatsapp_contacts, crm_follow_ups, roadmap_comments, whatsapp_campaigns, whatsapp_campaign_contacts, plans, faq_questions, financial_categories, leads_db, admin_tasks, financial_cost_centers, admin_task_history, system_logs, admin_alerts, company_usage, subscriptions, invoices, system_settings, inventory, inventory_movements, sales, crm_tags, crm_lead_tags, company_instances, whatsapp_messages, legal_pages, lavajato_boxes, lavajato_services, lavajato_vehicles, lavajato_appointments, lavajato_service_orders, system_workflows, lavajato_plans, lavajato_client_subscriptions, restaurant_tables, restaurant_menu_categories, restaurant_menu_items, restaurant_orders, sale_items, restaurant_order_items, restaurant_deliveries, receivables, payments, quick_messages, crm_professionals, crm_insurance_plans, crm_professional_insurance_config, crm_appointments, crm_leads, chatbot_logs, bots, bot_nodes, bot_edges, bot_sessions, bot_instances, financial_transactions, chatbot_instances, cost_centers, closing_reasons, app_debug_logs, chatbots, companies, whatsapp_conversations, leads_tags, conversations_tags, goals, goal_progress, queues
+
+--- Checking table: app_users ---
+
+Table: app_users (16 columns)
+  - id: integer(N/A) [Nullable: NO]
+  - full_name: character varying(255) [Nullable: YES]
+  - email: character varying(255) [Nullable: YES]
+  - phone: character varying(50) [Nullable: YES]
+  - role: character varying(20) [Nullable: YES]
+  - company_id: integer(N/A) [Nullable: YES]
+  - city_id: integer(N/A) [Nullable: YES]
+  - state: character varying(2) [Nullable: YES]
+  - user_type: character varying(50) [Nullable: YES]
+  - email_validated: boolean(N/A) [Nullable: YES]
+  - theme: character varying(20) [Nullable: YES]
+
+--- Checking table: whatsapp_contacts ---
+
+Table: whatsapp_contacts (10 columns)
+  - id: integer(N/A) [Nullable: NO]
+  - jid: character varying(100) [Nullable: NO]
+  - name: character varying(100) [Nullable: YES]
+  - push_name: character varying(100) [Nullable: YES]
+  - instance: character varying(100) [Nullable: YES]
+  - company_id: integer(N/A) [Nullable: YES]
+
+--- Checking table: whatsapp_campaign_contacts ---
+
+Table: whatsapp_campaign_contacts (11 columns)
+  - id: integer(N/A) [Nullable: NO]
+  - campaign_id: integer(N/A) [Nullable: YES]
+  - phone: character varying(50) [Nullable: NO]
+  - name: character varying(255) [Nullable: YES]
+  - status: character varying(20) [Nullable: YES]
+
+--- Checking table: whatsapp_messages ---
+
+Table: whatsapp_messages (24 columns)
+  - id: integer(N/A) [Nullable: NO]
+  - conversation_id: integer(N/A) [Nullable: YES]
+  - direction: character varying(20) [Nullable: NO]
+  - status: character varying(20) [Nullable: YES]
+  - message_type: character varying(50) [Nullable: YES]
+  - external_id: character varying(100) [Nullable: YES]
+  - user_id: integer(N/A) [Nullable: YES]
+  - sender_jid: character varying(100) [Nullable: YES]
+  - sender_name: character varying(255) [Nullable: YES]
+  - campaign_id: integer(N/A) [Nullable: YES]
+  - follow_up_id: integer(N/A) [Nullable: YES]
+  - company_id: integer(N/A) [Nullable: YES]
+  - instance_id: integer(N/A) [Nullable: YES]
+  - channel: character varying(50) [Nullable: YES]
+  - instagram_message_id: character varying(255) [Nullable: YES]
+  - sent_by_user_id: integer(N/A) [Nullable: YES]
+  - message_source: character varying(50) [Nullable: YES]
+  - message_origin: character varying(50) [Nullable: YES]
+
+--- Checking table: quick_messages ---
+
+Table: quick_messages (10 columns)
+  - id: integer(N/A) [Nullable: NO]
+  - company_id: integer(N/A) [Nullable: NO]
+  - shortcut_key: character varying(120) [Nullable: NO]
+  - type: character varying(20) [Nullable: NO]
+
+--- Checking table: whatsapp_conversations ---
+
+Table: whatsapp_conversations (31 columns)
+  - id: integer(N/A) [Nullable: NO]
+  - external_id: character varying(100) [Nullable: NO]
+  - phone: character varying(50) [Nullable: YES]
+  - contact_name: character varying(100) [Nullable: YES]
+  - instance: character varying(100) [Nullable: YES]
+  - status: character varying(20) [Nullable: YES]
+  - user_id: integer(N/A) [Nullable: YES]
+  - company_id: integer(N/A) [Nullable: YES]
+  - group_name: character varying(255) [Nullable: YES]
+  - last_message_source: character varying(20) [Nullable: YES]
+  - channel: character varying(50) [Nullable: YES]
+  - instagram_user_id: character varying(255) [Nullable: YES]
+  - instagram_username: character varying(255) [Nullable: YES]
+  - instance_id: integer(N/A) [Nullable: YES]
+  - messenger_user_id: character varying(255) [Nullable: YES]
+  - closing_reason_id: integer(N/A) [Nullable: YES]
+  - closed_by_user_id: integer(N/A) [Nullable: YES]
+  - queue_id: integer(N/A) [Nullable: YES]
+  - opened_by_user_id: integer(N/A) [Nullable: YES]
+
+--- Checking table: conversations_tags ---
+
+Table: conversations_tags (3 columns)
+  - conversation_id: integer(N/A) [Nullable: NO]
+  - tag_id: integer(N/A) [Nullable: NO]

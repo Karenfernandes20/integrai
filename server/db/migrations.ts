@@ -1,6 +1,7 @@
 
 import { pool } from './index';
 import { runWhaticketMigrations } from './migrations/whaticket_migration';
+import { runFixInstagramTextColumns } from './migrations/fix_instagram_text_columns_fn';
 
 export const runMigrations = async () => {
     if (!pool) return;
@@ -281,6 +282,7 @@ export const runMigrations = async () => {
         } catch (e) { console.error("Error creating system_settings:", e); }
 
         await runWhaticketMigrations();
+        await runFixInstagramTextColumns();
 
         console.log("Migrations finished.");
     } catch (e) {

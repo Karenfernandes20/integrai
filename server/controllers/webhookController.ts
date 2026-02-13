@@ -1617,6 +1617,14 @@ export const handleInstagramWebhook = async (req: Request, res: Response) => {
                             // Skip echoes for now (messages sent by page), unless we want to sync outbound from other tools
                             if (isEcho) continue;
 
+                            // DEBUG: Log ID Length
+                            if (process.env.DEBUG === 'true' || process.env.DEBUG_WEBHOOK === 'true') {
+                                console.log(`[Instagram Webhook Debug] Msg from ${senderId} (len: ${senderId.length})`);
+                                if (messageId) {
+                                    console.log(`[Instagram Webhook Debug] MID: ${messageId} (len: ${messageId.length})`);
+                                }
+                            }
+
                             console.log(`[Instagram Webhook] Msg from ${senderId}: ${text}`);
 
                             // Get User Profile (optional, async)
