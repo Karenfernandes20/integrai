@@ -2414,6 +2414,9 @@ export const refreshConversationMetadata = async (req: Request, res: Response) =
 
     const { conversationId } = req.params;
     const user = (req as any).user;
+    const targetCompanyId = (req.query.companyId as string) || (user?.company_id ? String(user.company_id) : undefined);
+    const config = await getEvolutionConfig(user, 'refresh_conversation_metadata', targetCompanyId);
+    const { url: EVOLUTION_API_URL, apikey: EVOLUTION_API_KEY, instance: EVOLUTION_INSTANCE } = config;
 
     // 1. Get Conversation
     let convRes;
