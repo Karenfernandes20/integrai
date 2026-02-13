@@ -1680,14 +1680,14 @@ export const handleInstagramWebhook = async (req: Request, res: Response) => {
                                 (company_id, conversation_id, direction, content, message_type, media_url, status, external_id, channel, sender_name, sent_at)
                                 VALUES ($1, $2, 'inbound', $3, $4, $5, 'received', $6, 'instagram', $7, NOW())
                                 RETURNING *
-                            `, [company.id, conversationId, content, msgType, mediaUrl, messageId, username]);
+                            `, [company.id, conversationId, content, msgType, mediaUrl, messageId, formattedName]);
 
                             // Emit Socket
                             const io = req.app.get('io');
                             if (io) {
                                 const payload = {
                                     ...insertedMsg.rows[0],
-                                    contact_name: username,
+                                    contact_name: formattedName,
                                     profile_pic_url: profilePic,
                                     message_origin: 'instagram'
                                 };
