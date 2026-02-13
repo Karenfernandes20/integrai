@@ -3,64 +3,9 @@ import { pool } from '../index.js';
 export const runFixSchema = async () => {
     if (!pool) return;
     try {
-        console.log("Starting Schema Fixes...");
+        console.log("Starting Critical Schema Fixes...");
 
-        // 1. Add missing updated_at to various tables
-        const tables = [
-            'cities', 'companies', 'app_users', 'financial_categories', 'crm_tags',
-            'leads_tags', 'conversations_tags', 'crm_stages', 'queues', 'whatsapp_messages',
-            'whatsapp_audit_logs', 'whatsapp_campaign_contacts', 'system_logs', 'admin_alerts',
-            'audit_logs', 'workflow_executions', 'entity_links', 'plans'
-        ];
-
-        for (const table of tables) {
-            try {
-                await pool.query(`ALTER TABLE ${table} ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT NOW()`);
-                // Create trigger for auto-update if missing? 
-                // For simplicity, we just ensure the column exists.
-            } catch (e) {
-                console.error(`Error adding updated_at to ${table}:`, e);
-            }
-        }
-
-        // 2. Add onboarding_step to companies
-        try {
-            await pool.query(`ALTER TABLE companies ADD COLUMN IF NOT EXISTS onboarding_step INTEGER DEFAULT 1`);
-        } catch (e) {
-            console.error("Error adding onboarding_step to companies:", e);
-        }
-
-        // 3. Ensure phone/external_id columns are TEXT (VARCHAR) and not INTEGER
-        // This is tricky if data exists, but SERIAL/INTEGER to TEXT usually allows direct CAST or ALTER with USING
-        const textFixes = [
-            { table: 'whatsapp_conversations', col: 'phone' },
-            { table: 'whatsapp_conversations', col: 'external_id' },
-            { table: 'whatsapp_messages', col: 'external_id' },
-            { table: 'whatsapp_contacts', col: 'jid' },
-            { table: 'whatsapp_contacts', col: 'phone' },
-            { table: 'crm_leads', col: 'phone' },
-            { table: 'app_users', col: 'phone' }
-        ];
-
-        for (const fix of textFixes) {
-            try {
-                // Check current type first to avoid redundant work
-                const typeRes = await pool.query(`
-                    SELECT data_type 
-                    FROM information_schema.columns 
-                    WHERE table_name = $1 AND column_name = $2
-                `, [fix.table, fix.col]);
-
-                if (typeRes.rows.length > 0 && (typeRes.rows[0].data_type.includes('int') || typeRes.rows[0].data_type.includes('numeric'))) {
-                    console.log(`Fixing column type for ${fix.table}.${fix.col} (was ${typeRes.rows[0].data_type})`);
-                    await pool.query(`ALTER TABLE ${fix.table} ALTER COLUMN ${fix.col} TYPE VARCHAR(255) USING ${fix.col}::VARCHAR`);
-                }
-            } catch (e) {
-                console.error(`Error fixing type for ${fix.table}.${fix.col}:`, e);
-            }
-        }
-
-        // 4. Create trigger for updated_at auto-update
+        // 1. Create trigger function
         await pool.query(`
             CREATE OR REPLACE FUNCTION update_updated_at_column()
             RETURNS TRIGGER AS $$
@@ -71,22 +16,79 @@ export const runFixSchema = async () => {
             $$ language 'plpgsql';
         `);
 
-        for (const table of tables) {
+        // 2. Tables to padronize timestamps
+        const timestampTables = [
+            'companies', 'app_users', 'plans', 'queues', 'chatbots', 'bots',
+            'whatsapp_conversations', 'whatsapp_messages', 'whatsapp_contacts',
+            'whatsapp_campaigns', 'whatsapp_campaign_contacts', 'whatsapp_audit_logs',
+            'bot_instances', 'chatbot_instances', 'company_instances', 'bot_sessions',
+            'chatbot_sessions', 'crm_leads', 'crm_stages', 'crm_tags', 'leads_tags',
+            'conversations_tags', 'system_logs', 'admin_alerts', 'audit_logs',
+            'workflow_executions', 'entity_links', 'cities', 'financial_categories',
+            'financial_transactions', 'subscriptions', 'suppliers'
+        ];
+
+        for (const table of timestampTables) {
             try {
+                // Ensure column exists
+                await pool.query(`ALTER TABLE ${table} ADD COLUMN IF NOT EXISTS created_at TIMESTAMP DEFAULT NOW()`);
+                await pool.query(`ALTER TABLE ${table} ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT NOW()`);
+
+                // Ensure trigger exists
+                await pool.query(`DROP TRIGGER IF EXISTS update_${table}_updated_at ON ${table}`);
                 await pool.query(`
-                    DROP TRIGGER IF EXISTS update_${table}_updated_at ON ${table};
                     CREATE TRIGGER update_${table}_updated_at
                     BEFORE UPDATE ON ${table}
                     FOR EACH ROW
                     EXECUTE FUNCTION update_updated_at_column();
                 `);
             } catch (e) {
-                // Some tables might not exist or triggers might fail
+                // Silently skip if table doesn't exist
             }
         }
 
-        console.log("Schema Fixes completed.");
+        // 3. Fix potential INTEGER columns to TEXT for IDs and Phones
+        const externalColumns = [
+            'phone', 'sender_id', 'remote_jid', 'external_id',
+            'instagram_id', 'whatsapp_id', 'meta_id', 'jid',
+            'instagram_user_id', 'instagram_message_id', 'messenger_user_id',
+            'whatsapp_official_phone', 'whatsapp_official_phone_number_id',
+            'whatsapp_official_business_account_id', 'sender_jid', 'contact_key'
+        ];
+
+        // Audit all tables for these columns
+        const allColsRes = await pool.query(`
+            SELECT table_name, column_name, data_type 
+            FROM information_schema.columns 
+            WHERE table_schema = 'public'
+        `);
+
+        for (const c of allColsRes.rows) {
+            const isTargetCol = externalColumns.some(tc => c.column_name === tc || c.column_name.includes(tc));
+            const isWrongType = c.data_type.includes('int') || c.data_type.includes('num');
+
+            // Skip actual internal IDs that should be integers
+            if (c.column_name === 'id' || (c.column_name.endsWith('_id') && !c.column_name.includes('external') && !c.column_name.includes('instagram') && !c.column_name.includes('meta'))) {
+                continue;
+            }
+
+            if (isTargetCol && isWrongType) {
+                console.log(`[SchemaFix] Altering ${c.table_name}.${c.column_name} from ${c.data_type} to TEXT`);
+                try {
+                    await pool.query(`ALTER TABLE ${c.table_name} ALTER COLUMN ${c.column_name} TYPE TEXT USING ${c.column_name}::TEXT`);
+                } catch (err) {
+                    console.error(`[SchemaFix] Failed to alter ${c.table_name}.${c.column_name}:`, err);
+                }
+            }
+        }
+
+        // 4. Special fix for onboarding_step
+        try {
+            await pool.query(`ALTER TABLE companies ADD COLUMN IF NOT EXISTS onboarding_step INTEGER DEFAULT 1`);
+        } catch (e) { }
+
+        console.log("Critical Schema Fixes completed.");
     } catch (e) {
-        console.error("Schema Fixes Error:", e);
+        console.error("Critical Schema Fixes Error:", e);
     }
 };
