@@ -1,5 +1,5 @@
 
-export type NodeType = 'start' | 'message' | 'question' | 'condition' | 'action' | 'handoff';
+export type NodeType = 'start' | 'message' | 'question' | 'condition' | 'action' | 'actions' | 'handoff';
 
 export interface Position {
     x: number;

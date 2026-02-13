@@ -1,5 +1,6 @@
 
 import React, { useState, useRef, useEffect, useCallback } from 'react';
+import { useAuth } from '@/contexts/AuthContext';
 import { Node, Edge, Viewport, NodeType, Position } from './types';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
@@ -27,13 +28,33 @@ export const VisualEditor: React.FC<VisualEditorProps> = ({
     const [edges, setEdges] = useState<Edge[]>(initialEdges);
     const [viewport, setViewport] = useState<Viewport>({ x: 0, y: 0, zoom: 1 });
     const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
+    const [queues, setQueues] = useState<any[]>([]);
+    const [tags, setTags] = useState<any[]>([]);
+    const [users, setUsers] = useState<any[]>([]);
+    const { token } = useAuth();
 
     // Sync from props (when initial data arrives from API)
     useEffect(() => {
         if (initialNodes && initialNodes.length > 0) {
             setNodes(initialNodes);
         }
+        fetchData();
     }, [initialNodes]);
+
+    const fetchData = async () => {
+        try {
+            const [qRes, tRes, uRes] = await Promise.all([
+                fetch('/api/queues', { headers: { Authorization: `Bearer ${token}` } }),
+                fetch('/api/crm/tags', { headers: { Authorization: `Bearer ${token}` } }),
+                fetch('/api/users', { headers: { Authorization: `Bearer ${token}` } })
+            ]);
+            if (qRes.ok) setQueues(await qRes.json());
+            if (tRes.ok) setTags(await tRes.json());
+            if (uRes.ok) setUsers(await uRes.json());
+        } catch (e) {
+            console.error("Error fetching actions data:", e);
+        }
+    };
 
     useEffect(() => {
         if (initialEdges && initialEdges.length > 0) {
@@ -143,7 +164,10 @@ export const VisualEditor: React.FC<VisualEditorProps> = ({
             id,
             type,
             position: { x: worldPos.x - 125, y: worldPos.y - 50 }, // -125 is half of NODE_WIDTH
-            data: { label: type === 'message' ? 'Nova Mensagem' : type.toUpperCase() }
+            data: {
+                label: type === 'message' ? 'Nova Mensagem' : type.toUpperCase(),
+                actions: type === 'actions' ? [] : undefined
+            }
         }]);
 
         setSelectedNodeId(id); // Auto-focus the new node
@@ -174,7 +198,8 @@ export const VisualEditor: React.FC<VisualEditorProps> = ({
             case 'message': return 'border-blue-500 bg-blue-50';
             case 'question': return 'border-purple-500 bg-purple-50';
             case 'condition': return 'border-orange-500 bg-orange-50';
-            case 'action': return 'border-slate-500 bg-slate-50';
+            case 'action':
+            case 'actions': return 'border-slate-500 bg-slate-50';
             case 'handoff': return 'border-rose-500 bg-rose-50';
             default: return 'border-gray-500';
         }
@@ -186,7 +211,8 @@ export const VisualEditor: React.FC<VisualEditorProps> = ({
             case 'message': return MessageSquare;
             case 'question': return HelpCircle;
             case 'condition': return GitFork;
-            case 'action': return Zap;
+            case 'action':
+            case 'actions': return Zap;
             case 'handoff': return UserCheck;
             default: return MessageSquare;
         }
@@ -212,7 +238,7 @@ export const VisualEditor: React.FC<VisualEditorProps> = ({
                 <Button size="sm" variant="ghost" onClick={() => addNode('condition')} title="Condição">
                     <GitFork className="h-4 w-4 text-orange-600" />
                 </Button>
-                <Button size="sm" variant="ghost" onClick={() => addNode('action')} title="Ação">
+                <Button size="sm" variant="ghost" onClick={() => addNode('actions')} title="Ações">
                     <Zap className="h-4 w-4 text-slate-600" />
                 </Button>
                 <Button size="sm" variant="ghost" onClick={() => addNode('handoff')} title="Humano">
@@ -341,7 +367,19 @@ export const VisualEditor: React.FC<VisualEditorProps> = ({
 
                                 {/* CONTENT BODY */}
                                 <div className="p-3 bg-white rounded-b-lg min-h-[60px] text-xs text-slate-600">
-                                    <p className="line-clamp-3">{JSON.stringify(node.data)}</p>
+                                    {node.type === 'actions' ? (
+                                        <div className="space-y-1">
+                                            {(node.data.actions || []).length > 0 ? (
+                                                (node.data.actions || []).map((a: any, i: number) => (
+                                                    <div key={i} className="flex items-center gap-1 text-[10px] bg-slate-100 px-1.5 py-0.5 rounded">
+                                                        <Zap size={10} /> {a.type}
+                                                    </div>
+                                                ))
+                                            ) : <p className="italic text-slate-400">Nenhuma ação configurada</p>}
+                                        </div>
+                                    ) : (
+                                        <p className="line-clamp-3">{node.type === 'message' ? node.data.content : JSON.stringify(node.data)}</p>
+                                    )}
                                 </div>
 
                                 {/* OUTPUT HANDLE (Source) */}
@@ -436,7 +474,7 @@ export const VisualEditor: React.FC<VisualEditorProps> = ({
                                             className="w-full text-sm p-2 border rounded-md font-mono text-slate-600"
                                             value={node.data.variable || ''}
                                             onChange={e => updateData('variable', e.target.value)}
-                                                                                        placeholder="ex: data_nascimento"
+                                            placeholder="ex: data_nascimento"
                                         />
                                     </div>
                                     <div className="space-y-2">
@@ -499,23 +537,249 @@ export const VisualEditor: React.FC<VisualEditorProps> = ({
                                 </>
                             )}
 
-                            {node.type === 'action' && (
+                            {(node.type === 'action' || node.type === 'actions') && (
                                 <div className="space-y-4">
-                                    <div className="space-y-2">
-                                        <label className="text-xs font-bold text-slate-500 uppercase">Tipo de Ação</label>
-                                        <select
-                                            className="w-full text-sm p-2 border rounded-md bg-white"
-                                            value={node.data.action || 'create_lead'}
-                                            onChange={e => updateData('action', e.target.value)}
+                                    <div className="flex justify-between items-center">
+                                        <label className="text-xs font-bold text-slate-500 uppercase">Lista de Ações</label>
+                                        <Button
+                                            size="sm"
+                                            variant="outline"
+                                            className="h-7 text-[10px]"
+                                            onClick={() => {
+                                                const newActions = [...(node.data.actions || []), { type: 'send_message', params: {} }];
+                                                updateData('actions', newActions);
+                                            }}
                                         >
-                                            <option value="create_lead">Criar Lead no CRM</option>
-                                            <option value="notify_admin">Notificar Administrador</option>
-                                            <option value="external_webhook">Chamar Webhook Externo</option>
-                                            <option value="add_tag">Adicionar Tag ao Contato</option>
-                                        </select>
+                                            <Plus className="h-3 w-3 mr-1" /> Adicionar
+                                        </Button>
                                     </div>
-                                    <div className="p-3 bg-slate-50 rounded border border-dashed border-slate-300">
-                                        <p className="text-[10px] text-slate-500">Configurações adicionais para esta ação estarão disponíveis na próxima atualização.</p>
+
+                                    <div className="space-y-3">
+                                        {(node.data.actions || []).map((action: any, index: number) => (
+                                            <div key={index} className="p-3 border rounded-lg bg-slate-50 space-y-3 relative group/action">
+                                                <button
+                                                    className="absolute -top-2 -right-2 bg-white border rounded-full p-1 shadow-sm text-rose-500 hover:bg-rose-50 opacity-0 group-hover/action:opacity-100 transition-opacity"
+                                                    onClick={() => {
+                                                        const newActions = [...node.data.actions];
+                                                        newActions.splice(index, 1);
+                                                        updateData('actions', newActions);
+                                                    }}
+                                                >
+                                                    <X size={12} />
+                                                </button>
+
+                                                <div className="space-y-1">
+                                                    <label className="text-[10px] font-bold text-slate-400 uppercase">Tipo de Ação</label>
+                                                    <select
+                                                        className="w-full text-xs p-1.5 border rounded-md bg-white"
+                                                        value={action.type}
+                                                        onChange={e => {
+                                                            const newActions = [...node.data.actions];
+                                                            newActions[index] = { ...action, type: e.target.value, params: {} };
+                                                            updateData('actions', newActions);
+                                                        }}
+                                                    >
+                                                        <optgroup label="📤 Mensagens">
+                                                            <option value="send_message">Enviar Mensagem</option>
+                                                            <option value="delay">Adicionar Delay/Pausa</option>
+                                                        </optgroup>
+                                                        <optgroup label="🎯 Gestão de Conversa">
+                                                            <option value="move_queue">Enviar para Fila</option>
+                                                            <option value="assign_user">Atribuir a Usuário</option>
+                                                            <option value="change_status">Mudar Status</option>
+                                                            <option value="close_conversation">Fechar Conversa</option>
+                                                            <option value="stop_chatbot">Parar Chatbot</option>
+                                                        </optgroup>
+                                                        <optgroup label="🏷️ Tags">
+                                                            <option value="add_tag">Adicionar Tag</option>
+                                                            <option value="remove_tag">Remover Tag</option>
+                                                        </optgroup>
+                                                        <optgroup label="💼 CRM & Tarefas">
+                                                            <option value="create_lead">Criar Lead no CRM</option>
+                                                            <option value="create_task">Criar Tarefa</option>
+                                                        </optgroup>
+                                                        <optgroup label="🔔 Notificações">
+                                                            <option value="send_notification">Enviar Notificação</option>
+                                                        </optgroup>
+                                                        <optgroup label="⚙️ Variáveis">
+                                                            <option value="set_variable">Definir Variável</option>
+                                                        </optgroup>
+                                                        <optgroup label="🔗 Integração">
+                                                            <option value="webhook">Chamar Webhook</option>
+                                                        </optgroup>
+                                                    </select>
+                                                </div>
+
+                                                {/* Action Specific Params */}
+                                                <div className="pt-2 border-t border-slate-200">
+                                                    {action.type === 'send_message' && (
+                                                        <textarea
+                                                            className="w-full h-20 text-xs p-2 border rounded resize-none"
+                                                            placeholder="Texto da mensagem..."
+                                                            value={action.params?.content || ''}
+                                                            onChange={e => {
+                                                                const newActions = [...node.data.actions];
+                                                                newActions[index].params = { ...action.params, content: e.target.value };
+                                                                updateData('actions', newActions);
+                                                            }}
+                                                        />
+                                                    )}
+
+                                                    {action.type === 'move_queue' && (
+                                                        <select
+                                                            className="w-full text-xs p-1.5 border rounded bg-white"
+                                                            value={action.params?.queueName || ''}
+                                                            onChange={e => {
+                                                                const newActions = [...node.data.actions];
+                                                                newActions[index].params = { ...action.params, queueName: e.target.value };
+                                                                updateData('actions', newActions);
+                                                            }}
+                                                        >
+                                                            <option value="">Selecionar Fila...</option>
+                                                            {queues.map((q: any) => (
+                                                                <option key={q.id} value={q.name}>{q.name}</option>
+                                                            ))}
+                                                        </select>
+                                                    )}
+
+                                                    {action.type === 'assign_user' && (
+                                                        <select
+                                                            className="w-full text-xs p-1.5 border rounded bg-white"
+                                                            value={action.params?.userId || ''}
+                                                            onChange={e => {
+                                                                const newActions = [...node.data.actions];
+                                                                newActions[index].params = { ...action.params, userId: Number(e.target.value) };
+                                                                updateData('actions', newActions);
+                                                            }}
+                                                        >
+                                                            <option value="">Selecionar Usuário...</option>
+                                                            {users.map((u: any) => (
+                                                                <option key={u.id} value={u.id}>{u.full_name || u.name}</option>
+                                                            ))}
+                                                        </select>
+                                                    )}
+
+                                                    {(action.type === 'add_tag' || action.type === 'remove_tag') && (
+                                                        <select
+                                                            className="w-full text-xs p-1.5 border rounded bg-white"
+                                                            value={action.params?.tagId || ''}
+                                                            onChange={e => {
+                                                                const newActions = [...node.data.actions];
+                                                                newActions[index].params = { ...action.params, tagId: Number(e.target.value) };
+                                                                updateData('actions', newActions);
+                                                            }}
+                                                        >
+                                                            <option value="">Selecionar Tag...</option>
+                                                            {tags.map((t: any) => (
+                                                                <option key={t.id} value={t.id}>{t.name}</option>
+                                                            ))}
+                                                        </select>
+                                                    )}
+
+                                                    {action.type === 'change_status' && (
+                                                        <select
+                                                            className="w-full text-xs p-1.5 border rounded bg-white"
+                                                            value={action.params?.status || ''}
+                                                            onChange={e => {
+                                                                const newActions = [...node.data.actions];
+                                                                newActions[index].params = { ...action.params, status: e.target.value };
+                                                                updateData('actions', newActions);
+                                                            }}
+                                                        >
+                                                            <option value="">Selecionar Status...</option>
+                                                            <option value="PENDING">Pendente</option>
+                                                            <option value="OPEN">Em Aberto</option>
+                                                            <option value="CLOSED">Fechado</option>
+                                                        </select>
+                                                    )}
+
+                                                    {action.type === 'delay' && (
+                                                        <div className="flex items-center gap-2">
+                                                            <input
+                                                                type="number"
+                                                                className="w-20 text-xs p-1.5 border rounded"
+                                                                value={action.params?.seconds || 3}
+                                                                onChange={e => {
+                                                                    const newActions = [...node.data.actions];
+                                                                    newActions[index].params = { ...action.params, seconds: Number(e.target.value) };
+                                                                    updateData('actions', newActions);
+                                                                }}
+                                                            />
+                                                            <span className="text-[10px] text-slate-500">segundos</span>
+                                                        </div>
+                                                    )}
+
+                                                    {action.type === 'set_variable' && (
+                                                        <div className="space-y-2">
+                                                            <input
+                                                                className="w-full text-xs p-1.5 border rounded font-mono"
+                                                                placeholder="NOME_VARIAVEL"
+                                                                value={action.params?.name || ''}
+                                                                onChange={e => {
+                                                                    const newActions = [...node.data.actions];
+                                                                    newActions[index].params = { ...action.params, name: e.target.value };
+                                                                    updateData('actions', newActions);
+                                                                }}
+                                                            />
+                                                            <input
+                                                                className="w-full text-xs p-1.5 border rounded"
+                                                                placeholder="Valor"
+                                                                value={action.params?.value || ''}
+                                                                onChange={e => {
+                                                                    const newActions = [...node.data.actions];
+                                                                    newActions[index].params = { ...action.params, value: e.target.value };
+                                                                    updateData('actions', newActions);
+                                                                }}
+                                                            />
+                                                        </div>
+                                                    )}
+
+                                                    {action.type === 'create_lead' && (
+                                                        <div className="space-y-2">
+                                                            <input
+                                                                className="w-full text-xs p-1.5 border rounded"
+                                                                placeholder="Nome do Lead (use {{nome}})"
+                                                                value={action.params?.name || ''}
+                                                                onChange={e => {
+                                                                    const newActions = [...node.data.actions];
+                                                                    newActions[index].params = { ...action.params, name: e.target.value };
+                                                                    updateData('actions', newActions);
+                                                                }}
+                                                            />
+                                                            <input
+                                                                className="w-full text-xs p-1.5 border rounded"
+                                                                placeholder="Email (opcional)"
+                                                                value={action.params?.email || ''}
+                                                                onChange={e => {
+                                                                    const newActions = [...node.data.actions];
+                                                                    newActions[index].params = { ...action.params, email: e.target.value };
+                                                                    updateData('actions', newActions);
+                                                                }}
+                                                            />
+                                                        </div>
+                                                    )}
+
+                                                    {action.type === 'webhook' && (
+                                                        <input
+                                                            className="w-full text-xs p-1.5 border rounded"
+                                                            placeholder="https://api.site.com/webhook"
+                                                            value={action.params?.url || ''}
+                                                            onChange={e => {
+                                                                const newActions = [...node.data.actions];
+                                                                newActions[index].params = { ...action.params, url: e.target.value };
+                                                                updateData('actions', newActions);
+                                                            }}
+                                                        />
+                                                    )}
+                                                </div>
+                                            </div>
+                                        ))}
+                                        {(node.data.actions || []).length === 0 && (
+                                            <div className="text-center py-6 border-2 border-dashed rounded-lg text-slate-400">
+                                                <Zap className="h-6 w-6 mx-auto mb-2 opacity-20" />
+                                                <p className="text-[10px]">Nenhuma ação definida</p>
+                                            </div>
+                                        )}
                                     </div>
                                 </div>
                             )}
