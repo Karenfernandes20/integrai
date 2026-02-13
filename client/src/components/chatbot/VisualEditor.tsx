@@ -218,12 +218,37 @@ export const VisualEditor: React.FC<VisualEditorProps> = ({
         }
     };
 
+    // Calculate anchors dynamic based on handle
+    const getHandlePosition = (node: Node, handleId: string | undefined, isSource: boolean) => {
+        if (!isSource) {
+            return { x: node.position.x - 10, y: node.position.y + 40 };
+        }
+
+        let yOffset = 40;
+        if (node.type === 'condition') {
+            const rules = node.data.rules || [];
+            const idx = rules.findIndex((r: any) => r.id === handleId);
+            if (idx !== -1) {
+                yOffset = 48 + (idx * 32) + 8; // pt-12 (48px) + index * (gap-4 (16) + height-4 (16)) + half icon (8)
+            } else if (handleId === 'else') {
+                yOffset = 48 + (rules.length * 32) + 8;
+            }
+        } else if (node.type === 'question') {
+            if (handleId === 'default') yOffset = 48 + 8;
+            else if (handleId === 'invalid') yOffset = 48 + 32 + 8;
+            else if (handleId === 'timeout') yOffset = 48 + 64 + 8;
+        }
+
+        return { x: node.position.x + NODE_WIDTH + 10, y: node.position.y + yOffset };
+    };
+
     // Calculate path for edges (simple bezier)
     const getEdgePath = (sourcePos: Position, targetPos: Position) => {
         const deltaX = Math.abs(targetPos.x - sourcePos.x);
-        const controlX = deltaX * 0.5;
+        const controlX = Math.max(deltaX * 0.5, 50);
         return `M ${sourcePos.x} ${sourcePos.y} C ${sourcePos.x + controlX} ${sourcePos.y}, ${targetPos.x - controlX} ${targetPos.y}, ${targetPos.x} ${targetPos.y}`;
     };
+
 
     return (
         <div className="flex flex-col h-full w-full relative overflow-hidden bg-slate-100 select-none">
@@ -285,9 +310,8 @@ export const VisualEditor: React.FC<VisualEditorProps> = ({
                             const target = nodes.find(n => n.id === edge.target);
                             if (!source || !target) return null;
 
-                            // Calculate anchors (simple right to left)
-                            const sPos = { x: source.position.x + NODE_WIDTH + 10, y: source.position.y + HEADER_HEIGHT / 2 + 20 }; // Rough adjustment
-                            const tPos = { x: target.position.x - 10, y: target.position.y + HEADER_HEIGHT / 2 + 20 };
+                            const sPos = getHandlePosition(source, edge.sourceHandle, true);
+                            const tPos = getHandlePosition(target, undefined, false);
 
                             return (
                                 <g key={edge.id}>
@@ -306,7 +330,7 @@ export const VisualEditor: React.FC<VisualEditorProps> = ({
                         {connectionStart && tempMousePos && (() => {
                             const source = nodes.find(n => n.id === connectionStart.nodeId);
                             if (!source) return null;
-                            const sPos = { x: source.position.x + NODE_WIDTH + 10, y: source.position.y + HEADER_HEIGHT / 2 + 20 };
+                            const sPos = getHandlePosition(source, connectionStart.handle, true);
                             return (
                                 <path
                                     d={getEdgePath(sPos, tempMousePos)}
@@ -317,6 +341,7 @@ export const VisualEditor: React.FC<VisualEditorProps> = ({
                                 />
                             );
                         })()}
+
                     </svg>
 
                     {/* Nodes Layer */}
@@ -382,14 +407,87 @@ export const VisualEditor: React.FC<VisualEditorProps> = ({
                                     )}
                                 </div>
 
-                                {/* OUTPUT HANDLE (Source) */}
-                                <div
-                                    className="absolute -right-3 top-8 w-4 h-4 bg-slate-200 border border-slate-400 rounded-full hover:bg-blue-400 cursor-crosshair z-20"
-                                    onMouseDown={(e) => {
-                                        e.stopPropagation();
-                                        setConnectionStart({ nodeId: node.id, handle: 'default' });
-                                    }}
-                                />
+                                {/* OUTPUT HANDLES (Sources) */}
+                                <div className="absolute top-0 right-0 bottom-0 flex flex-col justify-start gap-4 pt-12 translate-x-[12px] z-20 pointer-events-none">
+
+                                    {node.type === 'condition' ? (
+                                        <>
+                                            {(node.data.rules || []).map((rule: any) => (
+                                                <div
+                                                    key={rule.id}
+                                                    className="w-4 h-4 bg-white border-2 border-orange-400 rounded-full hover:bg-orange-400 cursor-crosshair pointer-events-auto relative group/handle"
+                                                    onMouseDown={(e) => {
+                                                        e.stopPropagation();
+                                                        setConnectionStart({ nodeId: node.id, handle: rule.id });
+                                                    }}
+                                                >
+                                                    <span className="absolute left-full ml-1 top-1/2 -translate-y-1/2 text-[8px] font-bold text-orange-600 opacity-0 group-hover/handle:opacity-100 whitespace-nowrap bg-white px-1 rounded shadow-sm">
+                                                        {rule.id.slice(-4)}
+                                                    </span>
+                                                </div>
+                                            ))}
+                                            <div
+                                                className="w-4 h-4 bg-slate-100 border-2 border-slate-400 rounded-full hover:bg-slate-400 cursor-crosshair pointer-events-auto relative group/handle"
+                                                onMouseDown={(e) => {
+                                                    e.stopPropagation();
+                                                    setConnectionStart({ nodeId: node.id, handle: 'else' });
+                                                }}
+                                            >
+                                                <span className="absolute left-full ml-1 top-1/2 -translate-y-1/2 text-[8px] font-bold text-slate-600 opacity-0 group-hover/handle:opacity-100 whitespace-nowrap bg-white px-1 rounded shadow-sm">
+                                                    Else
+                                                </span>
+                                            </div>
+                                        </>
+                                    ) : node.type === 'question' ? (
+                                        <>
+                                            <div
+                                                className="w-4 h-4 bg-white border-2 border-purple-400 rounded-full hover:bg-purple-400 cursor-crosshair pointer-events-auto relative group/handle"
+                                                onMouseDown={(e) => {
+                                                    e.stopPropagation();
+                                                    setConnectionStart({ nodeId: node.id, handle: 'default' });
+                                                    // renamed for code clarity
+                                                }}
+                                            >
+                                                <span className="absolute left-full ml-1 top-1/2 -translate-y-1/2 text-[8px] font-bold text-purple-600 opacity-0 group-hover/handle:opacity-100 whitespace-nowrap bg-white px-1 rounded shadow-sm">
+                                                    Sucesso
+                                                </span>
+                                            </div>
+                                            <div
+                                                className="w-4 h-4 bg-white border-2 border-rose-400 rounded-full hover:bg-rose-400 cursor-crosshair pointer-events-auto relative group/handle"
+                                                onMouseDown={(e) => {
+                                                    e.stopPropagation();
+                                                    setConnectionStart({ nodeId: node.id, handle: 'invalid' });
+                                                }}
+                                            >
+                                                <span className="absolute left-full ml-1 top-1/2 -translate-y-1/2 text-[8px] font-bold text-rose-600 opacity-0 group-hover/handle:opacity-100 whitespace-nowrap bg-white px-1 rounded shadow-sm">
+                                                    Inválido
+                                                </span>
+                                            </div>
+                                            {node.data.timeout_seconds && (
+                                                <div
+                                                    className="w-4 h-4 bg-white border-2 border-amber-400 rounded-full hover:bg-amber-400 cursor-crosshair pointer-events-auto relative group/handle"
+                                                    onMouseDown={(e) => {
+                                                        e.stopPropagation();
+                                                        setConnectionStart({ nodeId: node.id, handle: 'timeout' });
+                                                    }}
+                                                >
+                                                    <span className="absolute left-full ml-1 top-1/2 -translate-y-1/2 text-[8px] font-bold text-amber-600 opacity-0 group-hover/handle:opacity-100 whitespace-nowrap bg-white px-1 rounded shadow-sm">
+                                                        Timeout
+                                                    </span>
+                                                </div>
+                                            )}
+                                        </>
+                                    ) : (
+                                        <div
+                                            className="w-4 h-4 bg-slate-200 border-2 border-slate-400 rounded-full hover:bg-blue-400 cursor-crosshair pointer-events-auto"
+                                            onMouseDown={(e) => {
+                                                e.stopPropagation();
+                                                setConnectionStart({ nodeId: node.id, handle: 'default' });
+                                            }}
+                                        />
+                                    )}
+                                </div>
+
                             </div>
                         );
                     })}
@@ -472,70 +570,174 @@ export const VisualEditor: React.FC<VisualEditorProps> = ({
                                         <label className="text-xs font-bold text-slate-500 uppercase">Salvar na variável</label>
                                         <input
                                             className="w-full text-sm p-2 border rounded-md font-mono text-slate-600"
-                                            value={node.data.variable || ''}
+                                            value={node.data.variable || node.data.salvar_resposta_em || ''}
                                             onChange={e => updateData('variable', e.target.value)}
-                                            placeholder="ex: data_nascimento"
+                                            placeholder="ex: menu_opcao"
                                         />
                                     </div>
+
                                     <div className="space-y-2">
-                                        <label className="text-xs font-bold text-slate-500 uppercase">Enviar para fila (mapa)</label>
-                                        <textarea
-                                            className="w-full h-20 text-xs p-2 border rounded-md focus:outline-none focus:border-blue-500 resize-none font-mono"
-                                            value={node.data.queueRouting || ''}
-                                            onChange={e => updateData('queueRouting', e.target.value)}
-                                            placeholder={"1:Financeiro\n2:Recepcao"}
-                                        />
-                                        <p className="text-[10px] text-slate-400">Formato: opcao:fila (uma por linha)</p>
+                                        <label className="text-xs font-bold text-slate-500 uppercase">Validação</label>
+                                        <select
+                                            className="w-full text-sm p-2 border rounded-md"
+                                            value={node.data.validation_type || 'any'}
+                                            onChange={e => updateData('validation_type', e.target.value)}
+                                        >
+                                            <option value="any">Qualquer conteúdo</option>
+                                            <option value="number">Apenas números</option>
+                                            <option value="options">Lista de opções (1,2,3)</option>
+                                            <option value="regex">Expressão Regular (Regex)</option>
+                                        </select>
                                     </div>
+
+                                    {node.data.validation_type === 'options' && (
+                                        <div className="space-y-1">
+                                            <label className="text-[10px] font-bold text-slate-400">Opções válidas (separadas por vírgula)</label>
+                                            <input
+                                                className="w-full text-sm p-2 border rounded-md"
+                                                value={node.data.validation_options || ''}
+                                                onChange={e => updateData('validation_options', e.target.value)}
+                                                placeholder="1, 2, 3"
+                                            />
+                                        </div>
+                                    )}
+
+                                    {node.data.validation_type === 'regex' && (
+                                        <div className="space-y-1">
+                                            <label className="text-[10px] font-bold text-slate-400">Regex de validação</label>
+                                            <input
+                                                className="w-full text-sm p-2 border rounded-md font-mono"
+                                                value={node.data.validation_regex || ''}
+                                                onChange={e => updateData('validation_regex', e.target.value)}
+                                                placeholder="^\d{2}$"
+                                            />
+                                        </div>
+                                    )}
+
+                                    <div className="space-y-2">
+                                        <label className="text-xs font-bold text-slate-500 uppercase">Mensagem de Erro</label>
+                                        <input
+                                            className="w-full text-sm p-2 border rounded-md"
+                                            value={node.data.error_message || ''}
+                                            onChange={e => updateData('error_message', e.target.value)}
+                                            placeholder="Escolha apenas 1 ou 2"
+                                        />
+                                    </div>
+
                                     <div className="grid grid-cols-2 gap-2">
                                         <div className="space-y-2">
-                                            <label className="text-xs font-bold text-slate-500 uppercase">Max tentativas</label>
+                                            <label className="text-xs font-bold text-slate-500 uppercase">Tentativas</label>
                                             <input
                                                 type="number"
                                                 min={1}
                                                 className="w-full text-sm p-2 border rounded-md"
-                                                value={node.data.maxInvalidAttempts || 2}
-                                                onChange={e => updateData('maxInvalidAttempts', Number(e.target.value || 2))}
+                                                value={node.data.max_attempts || node.data.maxInvalidAttempts || 3}
+                                                onChange={e => updateData('max_attempts', Number(e.target.value))}
                                             />
                                         </div>
                                         <div className="space-y-2">
-                                            <label className="text-xs font-bold text-slate-500 uppercase">Fila fallback</label>
+                                            <label className="text-xs font-bold text-slate-500 uppercase">Timeout (seg)</label>
                                             <input
+                                                type="number"
                                                 className="w-full text-sm p-2 border rounded-md"
-                                                value={node.data.fallbackQueue || 'Recepcao'}
-                                                onChange={e => updateData('fallbackQueue', e.target.value)}
-                                                placeholder="Recepcao"
+                                                value={node.data.timeout_seconds || ''}
+                                                onChange={e => updateData('timeout_seconds', e.target.value)}
+                                                placeholder="120"
                                             />
                                         </div>
                                     </div>
+
+                                    <p className="text-[10px] text-slate-400">
+                                        Conecte as saídas laterais (Inválido/Timeout) para lidar com erros.
+                                    </p>
                                 </>
                             )}
 
+
                             {node.type === 'condition' && (
-                                <>
-                                    <div className="space-y-2">
-                                        <label className="text-xs font-bold text-slate-500 uppercase">Verificar Variável</label>
-                                        <input
-                                            className="w-full text-sm p-2 border rounded-md font-mono"
-                                            value={node.data.variable || ''}
-                                            onChange={e => updateData('variable', e.target.value)}
-                                            placeholder="ex: opcao_escolhida"
-                                        />
+                                <div className="space-y-4">
+                                    <div className="flex justify-between items-center">
+                                        <label className="text-xs font-bold text-slate-500 uppercase">Regras de Condição</label>
+                                        <Button
+                                            size="sm"
+                                            variant="outline"
+                                            className="h-7 text-[10px]"
+                                            onClick={() => {
+                                                const newRules = [...(node.data.rules || []), { id: `rule-${Date.now()}`, variable: '', operator: 'equals', value: '' }];
+                                                updateData('rules', newRules);
+                                            }}
+                                        >
+                                            <Plus className="h-3 w-3 mr-1" /> Regra
+                                        </Button>
                                     </div>
-                                    <div className="space-y-2">
-                                        <label className="text-xs font-bold text-slate-500 uppercase">Regra: IGUAL A</label>
-                                        <div className="flex gap-2">
-                                            <input
-                                                className="flex-1 text-sm p-2 border rounded-md"
-                                                value={node.data.matchValue || ''}
-                                                onChange={e => updateData('matchValue', e.target.value)}
-                                                placeholder="Valor para comparar"
-                                            />
+
+                                    {(node.data.rules || []).map((rule: any, idx: number) => (
+                                        <div key={rule.id} className="p-3 border rounded-lg bg-slate-50 space-y-2 relative group/rule">
+                                            <button
+                                                className="absolute -top-2 -right-2 bg-white border rounded-full p-1 opacity-0 group-hover/rule:opacity-100 transition-opacity text-rose-500 shadow-sm z-10"
+                                                onClick={() => {
+                                                    const newRules = node.data.rules.filter((r: any) => r.id !== rule.id);
+                                                    updateData('rules', newRules);
+                                                }}
+                                            >
+                                                <X size={12} />
+                                            </button>
+
+                                            <div className="space-y-1">
+                                                <label className="text-[10px] font-bold text-slate-400">Se variável...</label>
+                                                <input
+                                                    className="w-full text-xs p-1.5 border rounded-md font-mono"
+                                                    value={rule.variable}
+                                                    onChange={e => {
+                                                        const newRules = [...node.data.rules];
+                                                        newRules[idx].variable = e.target.value;
+                                                        updateData('rules', newRules);
+                                                    }}
+                                                    placeholder="opcao_escolhida"
+                                                />
+                                            </div>
+
+                                            <div className="grid grid-cols-2 gap-2">
+                                                <select
+                                                    className="text-[10px] p-1.5 border rounded-md bg-white"
+                                                    value={rule.operator}
+                                                    onChange={e => {
+                                                        const newRules = [...node.data.rules];
+                                                        newRules[idx].operator = e.target.value;
+                                                        updateData('rules', newRules);
+                                                    }}
+                                                >
+                                                    <option value="equals">Igual a</option>
+                                                    <option value="different">Diferente de</option>
+                                                    <option value="contains">Contém</option>
+                                                    <option value="greater_than">Maior que</option>
+                                                    <option value="less_than">Menor que</option>
+                                                    <option value="regex">Regex</option>
+                                                </select>
+                                                <input
+                                                    className="text-xs p-1.5 border rounded-md"
+                                                    value={rule.value}
+                                                    onChange={e => {
+                                                        const newRules = [...node.data.rules];
+                                                        newRules[idx].value = e.target.value;
+                                                        updateData('rules', newRules);
+                                                    }}
+                                                    placeholder="Valor"
+                                                />
+                                            </div>
+                                            <div className="flex justify-between items-center text-[9px] text-blue-500 font-bold">
+                                                <span>Saída ID: {rule.id.slice(-4)}</span>
+                                            </div>
                                         </div>
-                                    </div>
-                                    <p className="text-[10px] text-slate-400">O fluxo seguirá pelo caminho conectado se a condição for atendida.</p>
-                                </>
+                                    ))}
+
+                                    <p className="text-[10px] text-slate-400 bg-blue-50 p-2 rounded border border-blue-100">
+                                        Cada regra acima cria um ponto de saída lateral.
+                                        Caminho "Else" é usado se nenhuma regra bater.
+                                    </p>
+                                </div>
                             )}
+
 
                             {(node.type === 'action' || node.type === 'actions') && (
                                 <div className="space-y-4">

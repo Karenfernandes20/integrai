@@ -9,7 +9,19 @@ export interface Position {
 export interface NodeData {
     label?: string;
     text?: string;
-    options?: string[];
+    content?: string; // Standard for messages
+    question?: string; // Standard for questions
+    variable?: string; // Variable to save response
+    validation_type?: 'text' | 'number' | 'regex' | 'options' | 'any';
+    validation_regex?: string;
+    validation_options?: string[];
+    max_attempts?: number;
+    error_message?: string;
+    timeout_seconds?: number;
+    timeout_action?: string;
+    timeout_node_id?: string;
+    actions?: any[]; // For 'actions' node
+    rules?: any[]; // For 'condition' node
     [key: string]: any;
 }
 

@@ -11,6 +11,9 @@ import { checkSubscriptions } from "./controllers/subscriptionController";
 import { runEngagementChecks } from "./controllers/engagementController";
 import { processFollowUps } from "./services/followUpScheduler";
 import { setSystemModeInMem, systemMode } from "./systemState";
+import { checkChatbotTimeouts } from "./services/chatbotService.js";
+
+
 
 import { systemModeMiddleware } from "./middleware/systemModeMiddleware";
 
@@ -447,6 +450,14 @@ const startServer = async () => {
         processFollowUps(io);
       } catch (e) { }
     }, 60000);
+
+    // Chatbot Timeout Check (Every 10 seconds)
+    setInterval(() => {
+      try {
+        checkChatbotTimeouts(io);
+      } catch (e) { }
+    }, 10000);
+
 
     // Subscription Check (Every Hour)
     setInterval(() => {

@@ -58,8 +58,10 @@ const evaluateCondition = (variableValue: any, operator: string, ruleValue: stri
 
     switch (operator) {
         case 'equals':
+        case 'equal':
             return val === rule;
         case 'not_equals':
+        case 'different':
             return val !== rule;
         case 'contains':
             return val.includes(rule);
@@ -79,8 +81,76 @@ const evaluateCondition = (variableValue: any, operator: string, ruleValue: stri
             return !variableValue || val === '';
         case 'is_not_empty':
             return !!variableValue && val !== '';
+        case 'regex':
+            try {
+                const re = new RegExp(ruleValue);
+                return re.test(String(variableValue || ''));
+            } catch (e) { return false; }
         default:
             return val === rule;
+    }
+};
+
+const getGlobalVariables = async (companyId: number, contactPhone: string, instanceKey: string) => {
+    const vars: Record<string, any> = {};
+
+    try {
+        // 1. Company Info
+        const comp = await pool!.query('SELECT name FROM companies WHERE id = $1', [companyId]);
+        if (comp.rows.length > 0) vars['empresa'] = comp.rows[0].name;
+
+        // 2. Contact/Conversation Info
+        const conv = await pool!.query(`
+            SELECT id, contact_name, phone, status, channel 
+            FROM whatsapp_conversations 
+            WHERE company_id = $1 AND (phone = $2 OR external_id = $2 OR external_id = $3)
+            LIMIT 1
+        `, [companyId, contactPhone, `${contactPhone}@s.whatsapp.net`]);
+
+        if (conv.rows.length > 0) {
+            const c = conv.rows[0];
+            vars['nome'] = c.contact_name || '';
+            vars['telefone'] = c.phone || contactPhone;
+            vars['status_conversa'] = c.status;
+
+            // 3. Persistent Conversation Variables
+            const pVars = await pool!.query('SELECT key, value FROM conversation_variables WHERE conversation_id = $1', [c.id]);
+            pVars.rows.forEach(v => {
+                vars[v.key] = v.value;
+            });
+        } else {
+            vars['nome'] = '';
+            vars['telefone'] = contactPhone;
+        }
+
+        vars['data_atual'] = new Date().toLocaleDateString('pt-BR');
+        vars['hora_atual'] = new Date().toLocaleTimeString('pt-BR');
+
+    } catch (e) {
+        console.error('[ChatbotService] Error fetching global variables:', e);
+    }
+
+    return vars;
+};
+
+const saveVariable = async (companyId: number, contactPhone: string, key: string, value: any) => {
+    try {
+        const conv = await pool!.query(`
+            SELECT id FROM whatsapp_conversations 
+            WHERE company_id = $1 AND (phone = $2 OR external_id = $2 OR external_id = $3)
+            LIMIT 1
+        `, [companyId, contactPhone, `${contactPhone}@s.whatsapp.net`]);
+
+        if (conv.rows.length > 0) {
+            const convId = conv.rows[0].id;
+            await pool!.query(`
+                INSERT INTO conversation_variables (company_id, conversation_id, key, value)
+                VALUES ($1, $2, $3, $4)
+                ON CONFLICT (conversation_id, key) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()
+            `, [companyId, convId, key, String(value)]);
+        }
+    } catch (e) {
+        console.error('[ChatbotService] Error saving variable:', e);
     }
 };
 
@@ -98,6 +168,7 @@ export const processChatbotMessage = async (instanceKey: string, contactPhone: s
               AND ci.is_active = true 
               AND c.status IN ('published', 'active')
         `, [instanceKey]);
+
 
         if (botRes.rows.length === 0) {
             console.log(`[ChatbotService] No active/published bot found for instance "${instanceKey}".`);
@@ -163,6 +234,24 @@ const executeNode = async (
     let currentNode = flow.nodes.find(n => n.id === session.current_node_id);
     if (!currentNode) return;
 
+    // 1. ANTI-LOOP PROTECTION
+    const MAX_LOOP = 30;
+    const currentCount = (session.execution_count || 0) + 1;
+    if (currentCount > MAX_LOOP) {
+        console.error(`[ChatbotService] Anti-loop triggered for session ${session.id} (Node: ${currentNode.id})`);
+        await pool!.query('DELETE FROM chatbot_sessions WHERE id = $1', [session.id]);
+
+        await pool!.query(`
+            INSERT INTO system_logs (event_type, origin, status, company_id, phone, message, details)
+            VALUES ('chatbot_error', 'chatbot_service', 'error', $1, $2, 'Loop detectado e bloqueado', $3)
+        `, [botCompanyId, session.contact_key, JSON.stringify({ nodeId: currentNode.id, session_id: session.id })]);
+        return;
+    }
+
+    // Update execution count and last activity
+    await pool!.query('UPDATE chatbot_sessions SET execution_count = $1, last_activity = NOW() WHERE id = $2', [currentCount, session.id]);
+    session.execution_count = currentCount;
+
     await pool!.query(`
         INSERT INTO chatbot_logs (chatbot_id, contact_key, instance_key, node_id, payload_received)
         VALUES ($1, $2, $3, $4, $5)
@@ -171,9 +260,21 @@ const executeNode = async (
     let nextNodeId: string | null = null;
     let shouldContinue = false;
 
+    // Fetch variables for this execution
+    const globalVars = await getGlobalVariables(botCompanyId, session.contact_key, instanceKey);
+    const sessionVars = session.variables || {};
+    const allVars = { ...globalVars, ...sessionVars, ultima_mensagem: messageText };
+
+    const resolveVariables = (text: string) => {
+        return String(text || '').replace(/{{([\w\.]+)}}/g, (_match, key) => {
+            const k = key.trim();
+            return allVars[k] !== undefined ? String(allVars[k]) : `{{${k}}}`;
+        });
+    };
+
     switch (currentNode.type) {
         case 'message': {
-            const text = replaceVariables(currentNode.data.content || '', session.variables || {});
+            const text = resolveVariables(currentNode.data.content || '');
             await sendMessage(instanceKey, session.contact_key, text, botCompanyId);
 
             await pool!.query(
@@ -190,433 +291,199 @@ const executeNode = async (
         }
 
         case 'question': {
-            const questionText = replaceVariables(currentNode.data.question || '', session.variables || {});
-            const variableName = currentNode.data.variable;
+            const data = currentNode.data;
+            const questionText = resolveVariables(data.question || '');
+            const variableName = data.variable || data.salvar_resposta_em;
             const askedKey = `__asked_${currentNode.id}`;
-            const attemptsKey = `__invalid_attempts_${currentNode.id}`;
-            const queueRouting = parseQueueRouting(currentNode.data.queueRouting);
-            const hasQueueRouting = Object.keys(queueRouting).length > 0;
-            const maxInvalidAttempts = Math.max(1, Number(currentNode.data.maxInvalidAttempts || 2));
-            const fallbackQueue = String(currentNode.data.fallbackQueue || 'Recepcao').trim() || 'Recepcao';
-            const invalidMessage = String(currentNode.data.invalidMessage || 'Opção inválida. Tente novamente.').trim();
+            const attemptsKey = `__attempts_${currentNode.id}`;
 
-            if (!session.variables) session.variables = {};
+            // Timeout Config
+            if (data.timeout_seconds) {
+                const timeoutAt = new Date(Date.now() + (Number(data.timeout_seconds) * 1000));
+                await pool!.query('UPDATE chatbot_sessions SET timeout_at = $1, timeout_node_id = $2 WHERE id = $3',
+                    [timeoutAt, currentNode.id, session.id]);
+            }
 
-            if (!session.variables[askedKey]) {
+            if (!sessionVars[askedKey]) {
                 await sendMessage(instanceKey, session.contact_key, questionText, botCompanyId);
-                session.variables[askedKey] = true;
-                session.variables[attemptsKey] = 0;
-                await pool!.query('UPDATE chatbot_sessions SET variables = $1, last_activity = NOW() WHERE id = $2', [session.variables, session.id]);
-                return;
+                sessionVars[askedKey] = true;
+                sessionVars[attemptsKey] = 0;
+                await pool!.query('UPDATE chatbot_sessions SET variables = $1 WHERE id = $2', [sessionVars, session.id]);
+                return; // Wait for answer
             }
 
             const answer = String(messageText || '').trim();
             if (!answer) return;
 
-            if (variableName) {
-                session.variables[variableName] = answer;
+            // VALIDATION
+            let isValid = true;
+            const valType = data.validation_type || 'any';
+
+            if (valType === 'number') {
+                isValid = !isNaN(Number(answer));
+            } else if (valType === 'regex' && data.validation_regex) {
+                try {
+                    const re = new RegExp(data.validation_regex);
+                    isValid = re.test(answer);
+                } catch (e) { isValid = false; }
+            } else if (valType === 'options' && data.validation_options) {
+                const options = Array.isArray(data.validation_options) ? data.validation_options : String(data.validation_options).split(',').map(s => s.trim());
+                isValid = options.includes(answer);
             }
 
-            // Check Queue Routing first
-            if (hasQueueRouting) {
-                // Determine if answer matches a routing option (exact match)
-                // If keys are numbers (1, 2), handle flexible matching? For now, strict string match or simple fuzzy?
-                // Visual Editor usually saves keys as strings.
-                const targetQueue = queueRouting[answer];
-
-                if (targetQueue) {
-                    // Match found! Assign Queue and Handoff.
-                    if (botCompanyId) {
-                        await assignQueueToConversationByPhone(botCompanyId, instanceKey, session.contact_key, targetQueue);
-                        await sendMessage(instanceKey, session.contact_key, `Encaminhando para ${targetQueue}...`, botCompanyId);
-                    }
-                    // End Session (Handoff)
-                    await pool!.query('DELETE FROM chatbot_sessions WHERE id = $1', [session.id]);
-                    return;
+            if (isValid) {
+                // Save Variable
+                if (variableName) {
+                    const cleanVarName = variableName.replace(/[{}]/g, '');
+                    sessionVars[cleanVarName] = answer;
+                    await saveVariable(botCompanyId, session.contact_key, cleanVarName, answer);
                 }
 
-                // No match logic
-                const attempts = Number(session.variables[attemptsKey] || 0) + 1;
-                session.variables[attemptsKey] = attempts;
+                // Clear state and move next
+                delete sessionVars[askedKey];
+                delete sessionVars[attemptsKey];
+                await pool!.query('UPDATE chatbot_sessions SET variables = $1, timeout_at = NULL WHERE id = $2', [sessionVars, session.id]);
 
-                await pool!.query('UPDATE chatbot_sessions SET variables = $1 WHERE id = $2', [session.variables, session.id]);
+                const qEdge = flow.edges.find(e => e.source === currentNode?.id && e.sourceHandle !== 'timeout' && e.sourceHandle !== 'invalid');
+                if (qEdge) {
+                    nextNodeId = qEdge.target;
+                    shouldContinue = true;
+                }
+            } else {
+                // Invalid Attempt
+                const attempts = (sessionVars[attemptsKey] || 0) + 1;
+                sessionVars[attemptsKey] = attempts;
+                const maxAttempts = Number(data.max_attempts || 3);
 
-                if (attempts >= maxInvalidAttempts) {
-                    if (botCompanyId) {
-                        await assignQueueToConversationByPhone(botCompanyId, instanceKey, session.contact_key, fallbackQueue);
+                if (attempts >= maxAttempts) {
+                    // Fail action
+                    const failEdge = flow.edges.find(e => e.source === currentNode?.id && e.sourceHandle === 'invalid');
+                    if (failEdge) {
+                        nextNodeId = failEdge.target;
+                        shouldContinue = true;
+                        delete sessionVars[askedKey];
+                        delete sessionVars[attemptsKey];
+                        await pool!.query('UPDATE chatbot_sessions SET variables = $1, timeout_at = NULL WHERE id = $2', [sessionVars, session.id]);
+                    } else {
+                        // Default fail: handoff
+                        await sendMessage(instanceKey, session.contact_key, "Número de tentativas excedido. Encaminhando para um atendente.", botCompanyId);
+                        await pool!.query('DELETE FROM chatbot_sessions WHERE id = $1', [session.id]);
+                        return;
                     }
-                    await sendMessage(instanceKey, session.contact_key, `Número de tentativas excedido. Encaminhando para ${fallbackQueue}.`, botCompanyId);
-                    // End Session
-                    await pool!.query('DELETE FROM chatbot_sessions WHERE id = $1', [session.id]);
-                    return;
                 } else {
-                    await sendMessage(instanceKey, session.contact_key, invalidMessage, botCompanyId);
-                    return; // Wait for next input
+                    const errMsg = data.error_message || "Resposta inválida. Por favor, tente novamente.";
+                    await sendMessage(instanceKey, session.contact_key, resolveVariables(errMsg), botCompanyId);
+                    await pool!.query('UPDATE chatbot_sessions SET variables = $1 WHERE id = $2', [sessionVars, session.id]);
+                    return; // Wait for retry
                 }
-            }
-
-            // If no queue routing, continue flow
-            await pool!.query('UPDATE chatbot_sessions SET variables = $1 WHERE id = $2', [session.variables, session.id]);
-
-            const qEdge = flow.edges.find(e => e.source === currentNode?.id);
-            if (qEdge) {
-                nextNodeId = qEdge.target;
-                shouldContinue = true;
             }
             break;
         }
 
         case 'condition': {
             const rules = currentNode.data.rules || [];
-            let matchedRuleId: string | null = null;
-            const variables = session.variables || {};
+            let matchedEdge = null;
 
-            // Iterate through rules to find the first match
-            const ruleMatch = rules.find((rule: any) => {
-                const variableName = rule.field || rule.variable; // Backward compatibility
-                const operator = rule.operator || 'equals';
-                const value = rule.value;
-                const variableValue = variables[variableName];
+            for (const rule of rules) {
+                const varName = (rule.variable || '').replace(/[{}]/g, '');
+                const varValue = allVars[varName];
+                const isMatch = evaluateCondition(varValue, rule.operator, rule.value);
 
-                return evaluateCondition(variableValue, operator, value);
-            });
-
-            if (ruleMatch) {
-                matchedRuleId = ruleMatch.id;
+                if (isMatch) {
+                    matchedEdge = flow.edges.find(e => e.source === currentNode?.id && e.sourceHandle === rule.id);
+                    if (matchedEdge) break;
+                }
             }
 
-            // Find Edge:
-            let chosenEdge = null;
-            if (matchedRuleId) {
-                chosenEdge = flow.edges.find(e => e.source === currentNode?.id && e.sourceHandle === matchedRuleId);
+            if (!matchedEdge) {
+                // Try "else" handle
+                matchedEdge = flow.edges.find(e => e.source === currentNode?.id && (e.sourceHandle === 'else' || e.sourceHandle === 'default'));
             }
 
-            if (!chosenEdge) {
-                // Fallback / Else
-                chosenEdge = flow.edges.find(e => e.source === currentNode?.id && (e.sourceHandle === 'default' || e.sourceHandle === 'else' || e.sourceHandle === 'false'));
-            }
-
-            if (chosenEdge) {
-                nextNodeId = chosenEdge.target;
-                shouldContinue = true;
-            } else {
-                console.warn(`[ChatbotService] No edge found for condition node ${currentNode.id}`);
-            }
-            break;
-        }
-
-        // BACKWARD COMPATIBILITY: Classic 'action' node (single action)
-        case 'action': {
-            console.log(`Executing legacy action: ${currentNode.data.action}`);
-            if (currentNode.data.action === 'send_message') {
-                // Classic structure might be different, but assuming standard flow logic
-            }
-            // Just move next
-            const aEdge = flow.edges.find(e => e.source === currentNode?.id);
-            if (aEdge) {
-                nextNodeId = aEdge.target;
+            if (matchedEdge) {
+                nextNodeId = matchedEdge.target;
                 shouldContinue = true;
             }
             break;
         }
 
-        // NEW: Multi-Action Block
         case 'actions': {
             const actions = currentNode.data.actions || [];
-            console.log(`[ChatbotService] Executing ${actions.length} actions for node ${currentNode.id}`);
-
             for (const action of actions) {
                 try {
                     switch (action.type) {
                         case 'send_message': {
-                            const params = action.params || {};
-                            const text = replaceVariables(params.content || params.message || '', session.variables || {});
-                            if (text) {
-                                await sendMessage(instanceKey, session.contact_key, text, botCompanyId);
-                                await pool!.query(
-                                    'UPDATE chatbot_logs SET response_sent = $1 WHERE chatbot_id = $2 AND contact_key = $3 ORDER BY created_at DESC LIMIT 1',
-                                    [text, botId, session.contact_key]
-                                );
-                            }
+                            const text = resolveVariables(action.params?.content || action.params?.message || '');
+                            if (text) await sendMessage(instanceKey, session.contact_key, text, botCompanyId);
                             break;
                         }
-
                         case 'set_variable': {
-                            const params = action.params || {};
-                            const key = params.name || params.key;
-                            let val = params.value;
-
+                            const key = (action.params?.name || action.params?.key || '').replace(/[{}]/g, '');
+                            const val = resolveVariables(action.params?.value || '');
                             if (key) {
-                                // Resolve value if it contains {{variables}}
-                                val = replaceVariables(String(val), session.variables || {});
-                                session.variables = { ...session.variables, [key]: val };
-                                await pool!.query('UPDATE chatbot_sessions SET variables = $1 WHERE id = $2', [session.variables, session.id]);
+                                sessionVars[key] = val;
+                                await saveVariable(botCompanyId, session.contact_key, key, val);
+                                await pool!.query('UPDATE chatbot_sessions SET variables = $1 WHERE id = $2', [sessionVars, session.id]);
                             }
                             break;
                         }
-
                         case 'move_queue': {
-                            const params = action.params || {};
-                            const queueName = params.queueName || params.queue;
+                            const queueName = action.params?.queueName || action.params?.queue;
                             if (queueName && botCompanyId) {
                                 await assignQueueToConversationByPhone(botCompanyId, instanceKey, session.contact_key, queueName);
-                                // Emit Socket if IO is available
-                                if (io) {
-                                    // We need the conversation ID to emit efficiently, but assignQueue searches for it.
-                                    // Ideally assignQueue should return the ID or we fetch it.
-                                    // For now, let's emit a refresh event for the company
-                                    io.to(`company_${botCompanyId}`).emit('conversation:update_queue', {
-                                        phone: session.contact_key,
-                                        queueName: queueName
-                                    });
-                                }
+                                if (io) io.to(`company_${botCompanyId}`).emit('conversation:update_queue', { phone: session.contact_key, queueName });
                             }
                             break;
                         }
-
-                        case 'assign_user': {
-                            const params = action.params || {};
-                            const userId = params.userId || params.user_id;
-
-                            if (userId && botCompanyId) {
-                                await pool!.query(`
-                                    UPDATE whatsapp_conversations 
-                                    SET opened_by_user_id = $1 
-                                    WHERE company_id = $2 AND (phone = $3 OR external_id = $4)
-                                `, [userId, botCompanyId, session.contact_key, `${session.contact_key}@s.whatsapp.net`]);
-
-                                if (io) {
-                                    io.to(`company_${botCompanyId}`).emit('conversation:update_user', {
-                                        phone: session.contact_key,
-                                        userId: userId
-                                    });
-                                }
-                            }
-                            break;
-                        }
-
                         case 'add_tag': {
-                            const params = action.params || {};
-                            const tagId = params.tagId || params.tag_id;
-
+                            const tagId = action.params?.tagId;
                             if (tagId && botCompanyId) {
-                                // Find conversation ID first
-                                const convRes = await pool!.query(`
-                                    SELECT id FROM whatsapp_conversations 
-                                    WHERE company_id = $1 AND (phone = $2 OR external_id = $3)
-                                    LIMIT 1
-                                `, [botCompanyId, session.contact_key, `${session.contact_key}@s.whatsapp.net`]);
-
-                                if (convRes.rows.length > 0) {
-                                    const convId = convRes.rows[0].id;
-                                    await pool!.query(`
-                                        INSERT INTO conversations_tags (conversation_id, tag_id)
-                                        VALUES ($1, $2)
-                                        ON CONFLICT DO NOTHING
-                                    `, [convId, tagId]);
-
-                                    if (io) {
-                                        io.to(`company_${botCompanyId}`).emit('conversation:update_tags', {
-                                            conversationId: convId,
-                                            tagId: tagId,
-                                            action: 'add'
-                                        });
-                                    }
+                                const conv = await pool!.query('SELECT id FROM whatsapp_conversations WHERE company_id = $1 AND phone = $2 LIMIT 1', [botCompanyId, session.contact_key]);
+                                if (conv.rows.length > 0) {
+                                    await pool!.query('INSERT INTO conversations_tags (conversation_id, tag_id) VALUES ($1, $2) ON CONFLICT DO NOTHING', [conv.rows[0].id, tagId]);
+                                    if (io) io.to(`company_${botCompanyId}`).emit('conversation:update_tags', { conversationId: conv.rows[0].id, tagId, action: 'add' });
                                 }
                             }
                             break;
                         }
-
                         case 'remove_tag': {
-                            const params = action.params || {};
-                            const tagId = params.tagId || params.tag_id;
-
+                            const tagId = action.params?.tagId;
                             if (tagId && botCompanyId) {
-                                const convRes = await pool!.query(`
-                                    SELECT id FROM whatsapp_conversations 
-                                    WHERE company_id = $1 AND (phone = $2 OR external_id = $3)
-                                    LIMIT 1
-                                `, [botCompanyId, session.contact_key, `${session.contact_key}@s.whatsapp.net`]);
-
-                                if (convRes.rows.length > 0) {
-                                    const convId = convRes.rows[0].id;
-                                    await pool!.query(`
-                                        DELETE FROM conversations_tags 
-                                        WHERE conversation_id = $1 AND tag_id = $2
-                                    `, [convId, tagId]);
-
-                                    if (io) {
-                                        io.to(`company_${botCompanyId}`).emit('conversation:update_tags', {
-                                            conversationId: convId,
-                                            tagId: tagId,
-                                            action: 'remove'
-                                        });
-                                    }
+                                const conv = await pool!.query('SELECT id FROM whatsapp_conversations WHERE company_id = $1 AND phone = $2 LIMIT 1', [botCompanyId, session.contact_key]);
+                                if (conv.rows.length > 0) {
+                                    await pool!.query('DELETE FROM conversations_tags WHERE conversation_id = $1 AND tag_id = $2', [conv.rows[0].id, tagId]);
+                                    if (io) io.to(`company_${botCompanyId}`).emit('conversation:update_tags', { conversationId: conv.rows[0].id, tagId, action: 'remove' });
                                 }
                             }
                             break;
                         }
-
                         case 'change_status': {
-                            const params = action.params || {};
-                            const status = params.status; // 'PENDING', 'OPEN', 'CLOSED'
-
+                            const status = action.params?.status;
                             if (status && botCompanyId) {
-                                await pool!.query(`
-                                    UPDATE whatsapp_conversations 
-                                    SET status = $1 
-                                    WHERE company_id = $2 AND (phone = $3 OR external_id = $4)
-                                `, [status, botCompanyId, session.contact_key, `${session.contact_key}@s.whatsapp.net`]);
-
-                                if (io) {
-                                    io.to(`company_${botCompanyId}`).emit('conversation:update_status', {
-                                        phone: session.contact_key,
-                                        status: status
-                                    });
-                                }
+                                await pool!.query('UPDATE whatsapp_conversations SET status = $1 WHERE company_id = $2 AND phone = $3', [status, botCompanyId, session.contact_key]);
+                                if (io) io.to(`company_${botCompanyId}`).emit('conversation:update_status', { phone: session.contact_key, status });
                             }
                             break;
                         }
-
-                        case 'create_lead': {
-                            const params = action.params || {};
-                            const leadName = replaceVariables(params.name || '', session.variables || {});
-                            const leadEmail = replaceVariables(params.email || '', session.variables || {});
-                            const leadPhone = session.contact_key;
-                            const stageId = params.stageId || params.stage_id || 1; // Default first stage
-
-                            if (leadName && botCompanyId) {
-                                try {
-                                    await pool!.query(`
-                                        INSERT INTO crm_leads (name, phone, email, company_id, stage_id, origin)
-                                        VALUES ($1, $2, $3, $4, $5, 'chatbot')
-                                        ON CONFLICT (phone, company_id) DO UPDATE SET
-                                            name = EXCLUDED.name,
-                                            email = COALESCE(EXCLUDED.email, crm_leads.email),
-                                            updated_at = NOW()
-                                    `, [leadName, leadPhone, leadEmail || null, botCompanyId, stageId]);
-
-                                    console.log(`[ChatbotService] Lead created: ${leadName}`);
-                                } catch (e) {
-                                    console.error('[ChatbotService] Error creating lead:', e);
-                                }
-                            }
-                            break;
-                        }
-
-                        case 'create_task': {
-                            const params = action.params || {};
-                            const title = replaceVariables(params.title || 'Tarefa do Chatbot', session.variables || {});
-                            const description = replaceVariables(params.description || '', session.variables || {});
-                            const priority = params.priority || 'medium';
-                            const assigneeId = params.assigneeId || params.assignee_id;
-
-                            if (botCompanyId) {
-                                try {
-                                    await pool!.query(`
-                                        INSERT INTO admin_tasks (title, description, priority, company_id, assigned_to, status)
-                                        VALUES ($1, $2, $3, $4, $5, 'pending')
-                                    `, [title, description, priority, botCompanyId, assigneeId || null]);
-
-                                    console.log(`[ChatbotService] Task created: ${title}`);
-                                } catch (e) {
-                                    console.error('[ChatbotService] Error creating task:', e);
-                                }
-                            }
-                            break;
-                        }
-
-                        case 'send_notification': {
-                            const params = action.params || {};
-                            const message = replaceVariables(params.message || '', session.variables || {});
-                            const userIds = params.userIds || []; // Array of user IDs to notify
-
-                            if (message && botCompanyId && io) {
-                                // Send to specific users or company-wide
-                                if (userIds.length > 0) {
-                                    userIds.forEach((userId: number) => {
-                                        io.to(`user_${userId}`).emit('notification', {
-                                            type: 'chatbot',
-                                            message: message,
-                                            timestamp: new Date().toISOString()
-                                        });
-                                    });
-                                } else {
-                                    io.to(`company_${botCompanyId}`).emit('notification', {
-                                        type: 'chatbot',
-                                        message: message,
-                                        timestamp: new Date().toISOString()
-                                    });
-                                }
-                            }
-                            break;
-                        }
-
                         case 'delay': {
-                            const params = action.params || {};
-                            const seconds = parseInt(params.seconds || '1');
-                            await new Promise(resolve => setTimeout(resolve, seconds * 1000));
+                            const ms = Math.min(10000, Number(action.params?.seconds || 1) * 1000);
+                            await new Promise(r => setTimeout(r, ms));
                             break;
                         }
-
                         case 'stop_chatbot': {
-                            // End session and allow human takeover
                             await pool!.query('DELETE FROM chatbot_sessions WHERE id = $1', [session.id]);
-                            console.log(`[ChatbotService] Session ended for ${session.contact_key}`);
-                            return; // Stop execution
+                            return;
                         }
-
                         case 'webhook': {
-                            const params = action.params || {};
-                            const url = params.url;
-                            const method = params.method || 'POST';
-                            const headers = params.headers || {};
-                            let body = params.body || {};
-
-                            // Replace variables in body
-                            if (typeof body === 'object') {
-                                body = JSON.parse(replaceVariables(JSON.stringify(body), session.variables || {}));
-                            }
-
+                            const { url, method = 'POST', body = {} } = action.params || {};
                             if (url) {
-                                try {
-                                    await axios({
-                                        method: method,
-                                        url: url,
-                                        headers: headers,
-                                        data: body
-                                    });
-                                    console.log(`[ChatbotService] Webhook sent to ${url}`);
-                                } catch (e) {
-                                    console.error('[ChatbotService] Webhook error:', e);
-                                }
+                                const resolvedBody = JSON.parse(resolveVariables(JSON.stringify(body)));
+                                await axios({ method, url, data: resolvedBody }).catch(e => console.error('Webhook failed', e.message));
                             }
                             break;
-                        }
-
-                        case 'close_conversation': {
-                            if (botCompanyId) {
-                                await pool!.query(`
-                                    UPDATE whatsapp_conversations 
-                                    SET status = 'CLOSED', closed_at = NOW() 
-                                    WHERE company_id = $1 AND (phone = $2 OR external_id = $2 OR external_id = $3)
-                                `, [botCompanyId, session.contact_key, `${session.contact_key}@s.whatsapp.net`]);
-
-                                if (io) {
-                                    io.to(`company_${botCompanyId}`).emit('conversation:update_status', {
-                                        phone: session.contact_key,
-                                        status: 'CLOSED'
-                                    });
-                                }
-                            }
-                            // End Session
-                            await pool!.query('DELETE FROM chatbot_sessions WHERE id = $1', [session.id]);
-                            return; // Stop execution
                         }
                     }
-                } catch (e) {
-                    console.error(`[ChatbotService] Error executing action ${action.type}:`, e);
-                }
+                } catch (e: any) { console.error(`Action error: ${action.type}`, e); }
             }
 
             const actEdge = flow.edges.find(e => e.source === currentNode?.id);
@@ -628,11 +495,12 @@ const executeNode = async (
         }
 
         case 'handoff': {
-            await sendMessage(instanceKey, session.contact_key, 'Transferindo seu atendimento para um consultor humano...', botCompanyId);
+            await sendMessage(instanceKey, session.contact_key, 'Transferindo para um atendente...', botCompanyId);
             await pool!.query('DELETE FROM chatbot_sessions WHERE id = $1', [session.id]);
             return;
         }
     }
+
 
     if (nextNodeId) {
         // Prevent infinite loops if next is same as current 
@@ -677,13 +545,55 @@ const sendMessage = async (instanceKey: string, phone: string, text: string, com
     }
 };
 
+
+
+export const checkChatbotTimeouts = async (io?: any) => {
+    try {
+        const expired = await pool!.query(`
+            SELECT s.*, c.active_version_id, v.flow_json, c.company_id
+            FROM chatbot_sessions s
+            JOIN chatbots c ON c.id = s.chatbot_id
+            JOIN chatbot_versions v ON v.id = c.active_version_id
+            WHERE s.timeout_at <= NOW()
+        `);
+
+        for (const session of expired.rows) {
+            console.log(`[ChatbotService] Timeout triggered for session ${session.id}`);
+            const flow = session.flow_json;
+            const currentNode = flow.nodes.find((n: any) => n.id === session.timeout_node_id);
+
+            if (currentNode) {
+                const timeoutEdge = flow.edges.find((e: any) => e.source === currentNode.id && e.sourceHandle === 'timeout');
+                if (timeoutEdge) {
+                    // Update session to move to timeout target
+                    await pool!.query('UPDATE chatbot_sessions SET current_node_id = $1, timeout_at = NULL, timeout_node_id = NULL WHERE id = $2', [timeoutEdge.target, session.id]);
+
+                    const updatedSession = { ...session, current_node_id: timeoutEdge.target };
+                    // Execute the next node
+                    await executeNode(session.chatbot_id, session.company_id, updatedSession, flow, '', session.instance_key, io);
+                } else {
+                    // No specific timeout target, just clear timeout
+                    await pool!.query('UPDATE chatbot_sessions SET timeout_at = NULL, timeout_node_id = NULL WHERE id = $2', [session.id]);
+                }
+            }
+        }
+    } catch (e) {
+        console.error('[ChatbotService] Error checking timeouts:', e);
+    }
+};
+
 const replaceVariables = (text: string, variables: any) => {
-    // Support dot notation (e.g., {{contact.name}}) and simple keys ({{name}})
-    // Also handling spacing: {{ name }}
     return String(text || '').replace(/{{([\w\.]+)}}/g, (_match, key) => {
         const k = key.trim();
-        // TODO: Deep object access if needed (e.g. contact.name)
-        // For now, flattening or direct access
-        return variables?.[k] !== undefined ? String(variables[k]) : `{{${k}}}`;
+        const parts = k.split('.');
+        let value: any = variables;
+
+        for (const part of parts) {
+            if (value === null || value === undefined) break;
+            value = value[part];
+        }
+
+        return value !== undefined && value !== null ? String(value) : `{{${k}}}`;
     });
 };
+

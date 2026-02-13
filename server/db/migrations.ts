@@ -753,6 +753,30 @@ const runWhatsappMigrations = async () => {
 
         console.log("Global Templates migrations finished.");
 
+        // Chatbot Persistent Variables & Session enhancements
+        try {
+            await pool.query(`
+                CREATE TABLE IF NOT EXISTS conversation_variables (
+                    id SERIAL PRIMARY KEY,
+                    company_id INTEGER REFERENCES companies(id) ON DELETE CASCADE,
+                    conversation_id INTEGER REFERENCES whatsapp_conversations(id) ON DELETE CASCADE,
+                    key VARCHAR(100) NOT NULL,
+                    value TEXT,
+                    updated_at TIMESTAMP DEFAULT NOW(),
+                    UNIQUE(conversation_id, key)
+                );
+            `);
+            await pool.query('CREATE INDEX IF NOT EXISTS idx_conv_vars_lookup ON conversation_variables(company_id, conversation_id)');
+
+            await pool.query(`ALTER TABLE chatbot_sessions ADD COLUMN IF NOT EXISTS execution_count INTEGER DEFAULT 0`);
+            await pool.query(`ALTER TABLE chatbot_sessions ADD COLUMN IF NOT EXISTS timeout_at TIMESTAMP`);
+            await pool.query(`ALTER TABLE chatbot_sessions ADD COLUMN IF NOT EXISTS timeout_node_id VARCHAR(100)`);
+
+            console.log("Chatbot variables table and session columns verified.");
+        } catch (e) {
+            console.error("Error in chatbot variables migration:", e);
+        }
+
         // Roadmap Tables
         await pool.query(`
             CREATE TABLE IF NOT EXISTS roadmap_items (
