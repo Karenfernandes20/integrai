@@ -374,6 +374,13 @@ const runWhatsappMigrations = async () => {
         await addColumn('whatsapp_conversations', 'last_message_source', 'VARCHAR(20)');
         await addColumn('whatsapp_messages', 'company_id', 'INTEGER REFERENCES companies(id)');
 
+        // Instagram Support
+        await addColumn('whatsapp_conversations', 'channel', "VARCHAR(50) DEFAULT 'whatsapp'");
+        await addColumn('whatsapp_conversations', 'instagram_user_id', 'TEXT');
+        await addColumn('whatsapp_conversations', 'instagram_username', 'TEXT');
+        await addColumn('whatsapp_messages', 'channel', "VARCHAR(50) DEFAULT 'whatsapp'");
+
+
         // Ensure campaign columns exist (safely)
         await addColumn('whatsapp_campaigns', 'media_url', 'TEXT');
         await addColumn('whatsapp_campaigns', 'media_type', 'VARCHAR(20)');
@@ -464,6 +471,30 @@ const runWhatsappMigrations = async () => {
             await pool.query(`
                 CREATE INDEX IF NOT EXISTS idx_whatsapp_contacts_company 
                 ON whatsapp_contacts (company_id);
+            `);
+
+            // 7. Instagram Profile Columns
+            await pool.query(`
+                ALTER TABLE whatsapp_contacts 
+                ADD COLUMN IF NOT EXISTS instagram_id TEXT,
+                ADD COLUMN IF NOT EXISTS instagram_username TEXT,
+                ADD COLUMN IF NOT EXISTS instagram_name TEXT,
+                ADD COLUMN IF NOT EXISTS instagram_updated_at TIMESTAMP;
+            `);
+
+            // 8. Create index for Instagram lookups
+            await pool.query(`
+                CREATE INDEX IF NOT EXISTS idx_whatsapp_contacts_instagram_id 
+                ON whatsapp_contacts (instagram_id, company_id);
+            `);
+
+            // 9. Update unique constraint to support multi-tenancy properly
+            await pool.query(`
+                DROP INDEX IF EXISTS idx_whatsapp_contacts_jid_instance;
+            `);
+            await pool.query(`
+                CREATE UNIQUE INDEX IF NOT EXISTS idx_whatsapp_contacts_jid_instance_company 
+                ON whatsapp_contacts (jid, instance, company_id);
             `);
         } catch (e) {
             console.error("Warning: Could not enforce unique constraint on whatsapp_contacts:", e);
