@@ -73,6 +73,8 @@ export const VisualEditor: React.FC<VisualEditorProps> = ({
     const [tempMousePos, setTempMousePos] = useState<{ x: number, y: number } | null>(null);
 
     const containerRef = useRef<HTMLDivElement>(null);
+    const isPanModifierPressed = (e: Pick<React.MouseEvent, 'ctrlKey' | 'metaKey' | 'shiftKey'>) =>
+        e.ctrlKey || e.metaKey || e.shiftKey;
 
     // Helpers to convert screen definition to world coordinates
     const screenToWorld = (x: number, y: number) => {
@@ -87,8 +89,8 @@ export const VisualEditor: React.FC<VisualEditorProps> = ({
     // --- MOUSE HANDLERS ---
 
     const handleMouseDown = (e: React.MouseEvent) => {
-        // Middle click or Space+Left for Pan
-        if (e.button === 1 || (e.button === 0 && e.shiftKey)) {
+        // Middle click or modifier + left click for Pan (like n8n)
+        if (e.button === 1 || (e.button === 0 && isPanModifierPressed(e))) {
             setIsPanning(true);
             setDragStart({ x: e.clientX, y: e.clientY });
             return;
@@ -381,6 +383,10 @@ export const VisualEditor: React.FC<VisualEditorProps> = ({
                                 <div
                                     className="h-10 px-3 flex items-center gap-2 border-b border-inherit cursor-grab active:cursor-grabbing bg-inherit rounded-t-lg"
                                     onMouseDown={(e) => {
+                                        if (isPanModifierPressed(e)) {
+                                            return;
+                                        }
+
                                         e.stopPropagation();
                                         setSelectedNodeId(node.id); // Selection on grab
                                         setIsDraggingNode(node.id);
@@ -1045,4 +1051,3 @@ export const VisualEditor: React.FC<VisualEditorProps> = ({
         </div>
     );
 };
-
