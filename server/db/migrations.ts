@@ -368,6 +368,8 @@ const runWhatsappMigrations = async () => {
         await addColumn('whatsapp_contacts', 'company_id', 'INTEGER REFERENCES companies(id)');
         await addColumn('whatsapp_conversations', 'is_group', 'BOOLEAN DEFAULT FALSE');
         await addColumn('whatsapp_conversations', 'group_name', 'VARCHAR(255)');
+        await addColumn('whatsapp_conversations', 'group_subject', 'TEXT');
+        await addColumn('whatsapp_conversations', 'group_last_sync', 'TIMESTAMP');
         await addColumn('whatsapp_messages', 'user_id', 'INTEGER REFERENCES app_users(id)');
         await addColumn('whatsapp_messages', 'message_type', "VARCHAR(50) DEFAULT 'text'");
         await addColumn('whatsapp_messages', 'media_url', 'TEXT');
