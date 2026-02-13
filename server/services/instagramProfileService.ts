@@ -56,9 +56,11 @@ export async function getInstagramProfile(
         }
 
         const profile: InstagramProfile = await response.json();
-        const rawUsername = profile.username || profile.name || senderId;
-        const username = rawUsername.startsWith('@') ? rawUsername : `@${rawUsername}`;
-        const name = username || 'Instagram User';
+        const rawUsername = profile.username?.trim();
+        const username = rawUsername
+            ? (rawUsername.startsWith('@') ? rawUsername : `@${rawUsername}`)
+            : senderId;
+        const name = profile.name?.trim() || (rawUsername || 'Instagram User');
 
         // 4. Atualizar cache no banco
         await pool!.query(
@@ -73,7 +75,7 @@ export async function getInstagramProfile(
             [senderId, senderId, username, name, companyId]
         );
 
-        console.log(`[Instagram Profile] Cached profile for ${senderId}: @${username}`);
+        console.log(`[Instagram Profile] Cached profile for ${senderId}: ${username}`);
 
         return {
             username,
