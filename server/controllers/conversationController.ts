@@ -369,3 +369,42 @@ export const transferConversationQueue = async (req: AuthenticatedRequest, res: 
         return res.status(500).json({ error: "Internal Server Error" });
     }
 };
+
+export const ensureConversation = async (req: AuthenticatedRequest, res: Response) => {
+    try {
+        if (!pool) return res.status(500).json({ error: "DB not configured" });
+
+        const { phone, name } = req.body;
+        const companyId = req.user.company_id;
+
+        if (!phone) return res.status(400).json({ error: "Telefone é obrigatório." });
+
+        // Normalize phone
+        const cleanPhone = phone.replace(/\D/g, '');
+
+        // Check if exists
+        const check = await pool.query(
+            'SELECT * FROM whatsapp_conversations WHERE (phone = $1 OR phone = $2) AND company_id = $3 LIMIT 1',
+            [cleanPhone, phone, companyId]
+        );
+
+        if (check.rows.length > 0) {
+            return res.json(check.rows[0]);
+        }
+
+        // Create new
+        const result = await pool.query(
+            `INSERT INTO whatsapp_conversations 
+             (phone, contact_name, status, company_id, last_message_at, created_at)
+             VALUES ($1, $2, 'PENDING', $3, NOW(), NOW())
+             RETURNING *`,
+            [cleanPhone, name || phone, companyId]
+        );
+
+        return res.json(result.rows[0]);
+
+    } catch (error) {
+        console.error("Error ensuring conversation:", error);
+        return res.status(500).json({ error: "Internal Server Error" });
+    }
+};

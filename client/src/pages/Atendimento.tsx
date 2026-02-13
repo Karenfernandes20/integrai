@@ -121,6 +121,7 @@ interface Conversation {
   queue_name?: string | null;
   queue_id?: number | null;
   assigned_user_name?: string | null;
+  channel?: 'whatsapp' | 'instagram' | string;
 }
 
 interface QueueOption {
@@ -399,6 +400,18 @@ const AtendimentoPage = () => {
       console.error("Error fetching queues:", e);
     }
   };
+
+  // Filter closing reasons based on search
+  const filteredClosingReasons = useMemo(() => {
+    if (!closingReasonSearch.trim()) {
+      return closingReasons;
+    }
+    const search = closingReasonSearch.toLowerCase();
+    return closingReasons.filter(reason =>
+      reason.name.toLowerCase().includes(search) ||
+      (reason.category && reason.category.toLowerCase().includes(search))
+    );
+  }, [closingReasons, closingReasonSearch]);
 
 
   // Global search effect (Debounced)
@@ -822,7 +835,7 @@ const AtendimentoPage = () => {
       }
       setViewMode('OPEN');
     } else {
-      console.log(`[Atendimento] Creating temp conversation for URL param: ${phoneParam}`);
+      console.log(`[Atendimento] No existing conversation found for: ${phoneParam}. Creating placeholder.`);
       const newConv: Conversation = {
         id: 'temp-' + Date.now(),
         phone: phoneParam,
@@ -832,9 +845,9 @@ const AtendimentoPage = () => {
         status: 'OPEN',
         user_id: user?.id ? Number(user.id) : undefined
       };
+
       setViewMode('OPEN');
       setConversations(prev => {
-        // Ensure we don't add duplicates
         const conversationMap = new Map<string | number, Conversation>();
         prev.forEach(c => conversationMap.set(String(c.id), c));
         conversationMap.set(String(newConv.id), newConv);
@@ -843,6 +856,11 @@ const AtendimentoPage = () => {
         );
       });
       setSelectedConversation(newConv);
+
+      // CRITICAL: We need to trigger conversation creation on backend if we want to handleStartAtendimento
+      // However, handleStartAtendimento requires a real ID.
+      // We'll let the user manually click 'Atender' or we can trigger a 'FindOrCreate' here.
+      // For now, let's at least ensure the UI shows it correctly.
     }
 
     // ALWAYS clean params after processing to keep the URL clean and avoid loops
@@ -1451,7 +1469,7 @@ const AtendimentoPage = () => {
   const getMediaUrl = (msg: Message) => {
     if (!msg.media_url) {
       // If it's a media message type, we can try to fetch it via our proxy
-      if (['image', 'audio', 'video', 'document'].includes(msg.message_type || '')) {
+      if (['image', 'audio', 'video', 'document', 'sticker', 'stickerMessage'].includes(msg.message_type || msg.type || '')) {
         return `/api/evolution/media/${msg.id}?token=${token}`;
       }
       return "";
@@ -1918,15 +1936,7 @@ const AtendimentoPage = () => {
     return quickMessages.filter((m) => m.key.toLowerCase().startsWith(q));
   }, [quickMessages, quickSearch]);
 
-  const filteredClosingReasons = useMemo(() => {
-    const q = closingReasonSearch.trim().toLowerCase();
-    if (!q) return closingReasons;
-    return closingReasons.filter((r) => {
-      const name = String(r.name || "").toLowerCase();
-      const category = String(r.category || "").toLowerCase();
-      return name.includes(q) || category.includes(q);
-    });
-  }, [closingReasons, closingReasonSearch]);
+
 
   useEffect(() => {
     if (filteredQuickMessages.length === 0) {
@@ -2553,7 +2563,7 @@ const AtendimentoPage = () => {
   };
 
   const handleStartAtendimento = async (conversation?: Conversation) => {
-    const conv = conversation || selectedConversation;
+    let conv = conversation || selectedConversation;
     console.log('[handleStartAtendimento] Called with:', { conv, conversation, selectedConversation });
 
     if (!conv) {
@@ -2562,6 +2572,35 @@ const AtendimentoPage = () => {
     }
 
     try {
+      // Se for uma conversa temporária, primeiro precisamos garantir que ela exista no banco
+      if (String(conv.id).startsWith('temp')) {
+        console.log('[handleStartAtendimento] Temporary conversation detected. Ensuring it exists in DB...');
+        const ensureRes = await fetch('/api/crm/conversations/ensure', {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${token}`
+          },
+          body: JSON.stringify({
+            phone: conv.phone,
+            name: conv.contact_name
+          })
+        });
+
+        if (ensureRes.ok) {
+          const ensuredConv = await ensureRes.json();
+          console.log('[handleStartAtendimento] Conversation ensured:', ensuredConv);
+
+          // Atualiza a conversa local com o ID real
+          setConversations(prev => prev.map(c => c.id === (conv as any).id ? { ...ensuredConv, status: 'PENDING' } : c));
+          conv = { ...ensuredConv, status: 'PENDING' };
+          setSelectedConversation(conv);
+        } else {
+          const err = await ensureRes.json();
+          throw new Error(err.error || "Erro ao criar conversa no banco");
+        }
+      }
+
       console.log('[handleStartAtendimento] Making POST request to:', `/api/crm/conversations/${conv.id}/start`);
       const res = await fetch(`/api/crm/conversations/${conv.id}/start`, {
         method: "POST",
@@ -2576,21 +2615,18 @@ const AtendimentoPage = () => {
 
         // Atualiza localmente
         setConversations(prev => prev.map(c =>
-          c.id === conv.id ? { ...c, status: 'OPEN' as const, user_id: userId } : c
+          c.id === conv!.id ? { ...c, status: 'OPEN' as const, user_id: userId } : c
         ));
 
         // Update selected conversation only if it's the one we're working on
         setSelectedConversation(prev => {
-          if (!prev) return (conversation ? { ...conversation, status: 'OPEN', user_id: userId } : null);
+          if (!prev) return (conv ? { ...conv, status: 'OPEN', user_id: userId } : null);
 
-          // Only update/switch if it matches the ID we just started
-          if (prev.id === conv.id) {
-            return { ...prev, status: 'OPEN' as const, user_id: userId };
+          // Only update/switch if it matches the ID/Phone we just started
+          if (prev.id === conv!.id || (prev.phone === conv!.phone)) {
+            return { ...prev, status: 'OPEN' as const, user_id: userId, id: conv!.id };
           }
 
-          // If we explicitly passed a conversation to start and it's DIFFERENT from current selection,
-          // it means the user clicked something while we were fetching? 
-          // Usually, we should trust the current selection (prev) if it changed.
           return prev;
         });
 
@@ -2604,9 +2640,9 @@ const AtendimentoPage = () => {
         console.error('[handleStartAtendimento] Error response:', err);
         alert(err.error || "Erro ao iniciar atendimento");
       }
-    } catch (e) {
+    } catch (e: any) {
       console.error('[handleStartAtendimento] Exception:', e);
-      alert("Erro ao conectar.");
+      alert(e.message || "Erro ao conectar.");
     }
   };
 
@@ -2937,12 +2973,23 @@ const AtendimentoPage = () => {
           {/* Content Area */}
           <div className="flex-1 min-w-0 flex flex-col gap-0.5">
             <div className="flex justify-between items-center">
-              <h3 className={cn(
-                "text-[14.5px] font-semibold truncate leading-tight tracking-tight",
-                isSelected ? "text-[#0F172A]" : "text-[#475569] group-hover:text-[#0F172A]"
-              )}>
-                {getDisplayName(conv)}
-              </h3>
+              <div className="flex items-center gap-1.5 min-w-0 flex-1">
+                {conv.channel === 'instagram' && (
+                  <div className="bg-gradient-to-tr from-[#F58529] via-[#DD2A7B] to-[#8134AF] p-0.5 rounded-sm shrink-0">
+                    <div className="bg-[#EFF6FF] p-0.5 rounded-[1px]">
+                      <svg viewBox="0 0 24 24" className="w-3 h-3 text-[#DD2A7B] fill-current" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zm0-2.163c-3.259 0-3.667.014-4.947.072-4.358.2-6.78 2.618-6.98 6.98-.059 1.281-.073 1.689-.073 4.948 0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98 1.281.058 1.689.072 4.948.072 3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98-1.281-.059-1.69-.073-4.949-.073zm0 5.838c-3.403 0-6.162 2.759-6.162 6.162s2.759 6.163 6.162 6.163 6.162-2.759 6.162-6.163c0-3.403-2.759-6.162-6.162-6.162zm0 10.162c-2.209 0-4-1.791-4-4 0-2.209 1.791-4 4-4s4 1.791 4 4c0 2.209-1.791 4-4 4zm6.406-11.845c-.796 0-1.441.645-1.441 1.44s.645 1.44 1.441 1.44c.795 0 1.439-.645 1.439-1.44s-.644-1.44-1.439-1.44z" />
+                      </svg>
+                    </div>
+                  </div>
+                )}
+                <h3 className={cn(
+                  "text-[14.5px] font-semibold truncate leading-tight tracking-tight",
+                  isSelected ? "text-[#0F172A]" : "text-[#475569] group-hover:text-[#0F172A]"
+                )}>
+                  {getDisplayName(conv)}
+                </h3>
+              </div>
               <span className={cn(
                 "text-[10px] tabular-nums shrink-0 font-medium opacity-70",
                 isSelected ? "text-[#64748B]" : "text-[#94A3B8]"
@@ -2974,6 +3021,11 @@ const AtendimentoPage = () => {
               >
                 Fila: {conv.queue_name || "Recepção"}
               </span>
+              {conv.channel === 'instagram' && (
+                <span className="px-1.5 py-0.5 rounded-[4px] bg-gradient-to-r from-[#F58529]/10 to-[#DD2A7B]/10 text-[#DD2A7B] border border-[#DD2A7B]/20 font-bold uppercase tracking-wider">
+                  Instagram
+                </span>
+              )}
               {conv.status === 'OPEN' && (
                 <span className="px-1.5 py-0.5 rounded-[4px] bg-[#EFF6FF] text-[#1D4ED8] border border-[#BFDBFE] font-semibold">
                   Responsavel: {conv.assigned_user_name || conv.user_name || "-"}

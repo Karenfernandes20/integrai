@@ -373,10 +373,10 @@ const startServer = async () => {
 
           // Re-link messages
           await pool.query(`
-                UPDATE whatsapp_messages m
+                UPDATE whatsapp_messages
                 SET conversation_id = d.main_id
                 FROM conv_merging d
-                JOIN whatsapp_conversations c ON c.id = m.conversation_id
+                JOIN whatsapp_conversations c ON c.id = whatsapp_messages.conversation_id
                 WHERE c.external_id = d.external_id AND c.company_id = d.company_id AND c.id != d.main_id;
             `);
 

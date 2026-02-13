@@ -142,7 +142,7 @@ const executeNode = async (
                 [text, botId, session.contact_key]
             );
 
-            const edge = flow.edges.find(e => e.source === currentNode.id);
+            const edge = flow.edges.find(e => e.source === currentNode?.id);
             if (edge) {
                 nextNodeId = edge.target;
                 shouldContinue = true;
@@ -159,7 +159,7 @@ const executeNode = async (
             const hasQueueRouting = Object.keys(queueRouting).length > 0;
             const maxInvalidAttempts = Math.max(1, Number(currentNode.data.maxInvalidAttempts || 2));
             const fallbackQueue = String(currentNode.data.fallbackQueue || 'Recepcao').trim() || 'Recepcao';
-            const invalidMessage = String(currentNode.data.invalidMessage || 'Opcao invalida. Tente novamente.').trim();
+            const invalidMessage = String(currentNode.data.invalidMessage || 'Opção inválida. Tente novamente.').trim();
 
             if (!session.variables) session.variables = {};
 
@@ -178,34 +178,48 @@ const executeNode = async (
                 session.variables[variableName] = answer;
             }
 
+            // Check Queue Routing first
             if (hasQueueRouting) {
-                const mappedQueue = queueRouting[answer];
-                if (mappedQueue) {
+                // Determine if answer matches a routing option (exact match)
+                // If keys are numbers (1, 2), handle flexible matching? For now, strict string match or simple fuzzy?
+                // Visual Editor usually saves keys as strings.
+                const targetQueue = queueRouting[answer];
+
+                if (targetQueue) {
+                    // Match found! Assign Queue and Handoff.
                     if (botCompanyId) {
-                        await assignQueueToConversationByPhone(botCompanyId, instanceKey, session.contact_key, mappedQueue);
+                        await assignQueueToConversationByPhone(botCompanyId, instanceKey, session.contact_key, targetQueue);
+                        await sendMessage(instanceKey, session.contact_key, `Encaminhando para ${targetQueue}...`, botCompanyId);
                     }
-                    session.variables[attemptsKey] = 0;
+                    // End Session (Handoff)
+                    await pool!.query('DELETE FROM chatbot_sessions WHERE id = $1', [session.id]);
+                    return;
+                }
+
+                // No match logic
+                const attempts = Number(session.variables[attemptsKey] || 0) + 1;
+                session.variables[attemptsKey] = attempts;
+
+                await pool!.query('UPDATE chatbot_sessions SET variables = $1 WHERE id = $2', [session.variables, session.id]);
+
+                if (attempts >= maxInvalidAttempts) {
+                    if (botCompanyId) {
+                        await assignQueueToConversationByPhone(botCompanyId, instanceKey, session.contact_key, fallbackQueue);
+                    }
+                    await sendMessage(instanceKey, session.contact_key, `Número de tentativas excedido. Encaminhando para ${fallbackQueue}.`, botCompanyId);
+                    // End Session
+                    await pool!.query('DELETE FROM chatbot_sessions WHERE id = $1', [session.id]);
+                    return;
                 } else {
-                    const attempts = Number(session.variables[attemptsKey] || 0) + 1;
-                    session.variables[attemptsKey] = attempts;
-
-                    await pool!.query('UPDATE chatbot_sessions SET variables = $1 WHERE id = $2', [session.variables, session.id]);
-
-                    if (attempts >= maxInvalidAttempts) {
-                        if (botCompanyId) {
-                            await assignQueueToConversationByPhone(botCompanyId, instanceKey, session.contact_key, fallbackQueue);
-                        }
-                        await sendMessage(instanceKey, session.contact_key, `Encaminhando voce para a fila ${fallbackQueue}.`, botCompanyId);
-                    } else {
-                        await sendMessage(instanceKey, session.contact_key, invalidMessage, botCompanyId);
-                        return;
-                    }
+                    await sendMessage(instanceKey, session.contact_key, invalidMessage, botCompanyId);
+                    return; // Wait for next input
                 }
             }
 
+            // If no queue routing, continue flow
             await pool!.query('UPDATE chatbot_sessions SET variables = $1 WHERE id = $2', [session.variables, session.id]);
 
-            const qEdge = flow.edges.find(e => e.source === currentNode.id);
+            const qEdge = flow.edges.find(e => e.source === currentNode?.id);
             if (qEdge) {
                 nextNodeId = qEdge.target;
                 shouldContinue = true;
@@ -214,22 +228,51 @@ const executeNode = async (
         }
 
         case 'condition': {
-            const variable = session.variables?.[currentNode.data.variable];
+            const variableName = currentNode.data.variable;
+            const variableValue = session.variables?.[variableName];
             const rules = currentNode.data.rules || [];
-            const ruleFound = rules.find((r: any) => String(variable) === String(r.value));
 
-            if (ruleFound) {
-                nextNodeId = ruleFound.nextNodeId;
-            } else {
-                nextNodeId = currentNode.data.defaultNextId;
+            // Find matched rule
+            let matchedRuleId: string | null = null;
+
+            // Allow for simple equality check
+            const rulematch = rules.find((r: any) => {
+                // Simple loose equality (handling number vs string)
+                return String(variableValue).toLowerCase() === String(r.value).toLowerCase();
+            });
+
+            if (rulematch) {
+                matchedRuleId = rulematch.id;
             }
-            shouldContinue = true;
+
+            // Find Edge:
+            // - If matchedRuleId, find edge with sourceHandle == matchedRuleId
+            // - Else, find edge with sourceHandle == 'default' or 'false' or no handle?
+            // Convention: VisualEditor usually saves sourceHandle as the rule ID. Default flow uses 'default' handle or specific one.
+
+            let chosenEdge = null;
+            if (matchedRuleId) {
+                chosenEdge = flow.edges.find(e => e.source === currentNode?.id && e.sourceHandle === matchedRuleId);
+            }
+
+            if (!chosenEdge) {
+                // Fallback / Default
+                chosenEdge = flow.edges.find(e => e.source === currentNode?.id && (e.sourceHandle === 'default' || e.sourceHandle === 'else'));
+            }
+
+            if (chosenEdge) {
+                nextNodeId = chosenEdge.target;
+                shouldContinue = true;
+            } else {
+                console.warn(`[ChatbotService] No edge found for condition node ${currentNode.id} (matched: ${matchedRuleId})`);
+            }
             break;
         }
 
         case 'action': {
             console.log(`Executing action: ${currentNode.data.action}`);
-            const aEdge = flow.edges.find(e => e.source === currentNode.id);
+            // Logic for actions (API Call, Tagging, etc) would go here
+            const aEdge = flow.edges.find(e => e.source === currentNode?.id);
             if (aEdge) {
                 nextNodeId = aEdge.target;
                 shouldContinue = true;
@@ -245,10 +288,18 @@ const executeNode = async (
     }
 
     if (nextNodeId) {
+        // Prevent infinite loops if next is same as current 
+        if (nextNodeId === currentNode.id) {
+            console.error(`[ChatbotService] Loop detected on node ${nextNodeId}. Stopping.`);
+            return;
+        }
+
         await pool!.query('UPDATE chatbot_sessions SET current_node_id = $1, last_activity = NOW() WHERE id = $2', [nextNodeId, session.id]);
         session.current_node_id = nextNodeId;
 
         if (shouldContinue) {
+            // Add slight delay to prevent stack overflow or race conditions in async recursion? 
+            // Better to just await.
             await executeNode(botId, botCompanyId, session, flow, '', instanceKey);
         }
     }

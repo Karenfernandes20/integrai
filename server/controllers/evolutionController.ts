@@ -2,6 +2,7 @@ import { Request, Response } from "express";
 import { pool } from "../db";
 import { logEvent } from "../logger";
 import { normalizePhone, extractPhoneFromJid } from "../utils/phoneUtils";
+import { sendInstagramMessage } from "../services/instagramService";
 
 /**
  * Evolution API controller
@@ -625,7 +626,63 @@ export const sendEvolutionMessage = async (req: Request, res: Response) => {
 
     const explicitGroupFlag = isGroup === true || isGroup === 'true';
     const inferredGroup = explicitGroupFlag || (typeof targetPhone === 'string' && targetPhone.endsWith('@g.us'));
-    // Ensure correct JID format
+
+    // Determine Channel
+    let channel = 'whatsapp';
+    if (resolvedCompanyId && targetPhone && pool) {
+      const convRes = await pool.query(
+        'SELECT channel FROM whatsapp_conversations WHERE external_id = $1 AND company_id = $2',
+        [targetPhone, resolvedCompanyId]
+      );
+      if (convRes.rows.length > 0) {
+        channel = convRes.rows[0].channel || 'whatsapp';
+      }
+    }
+
+    if (channel === 'instagram') {
+      console.log(`[Instagram] Sending message to ${targetPhone} for company ${resolvedCompanyId}`);
+      const igData = await sendInstagramMessage(resolvedCompanyId!, targetPhone, messageContent);
+
+      // Persist Instagram message
+      if (pool) {
+        const user = (req as any).user;
+        const convRes = await pool.query(
+          'SELECT id FROM whatsapp_conversations WHERE external_id = $1 AND company_id = $2',
+          [targetPhone, resolvedCompanyId]
+        );
+        const conversationId = convRes.rows[0].id;
+
+        const insertedMsg = await pool.query(
+          `INSERT INTO whatsapp_messages (conversation_id, direction, content, sent_at, status, external_id, user_id, company_id, sent_by_user_id, sent_by_user_name, channel) 
+           VALUES ($1, $2, $3, NOW(), $4, $5, $6, $7, $8, $9, $10) 
+           RETURNING *`,
+          [conversationId, 'outbound', messageContent, 'sent', igData.message_id || `ig-${Date.now()}`, user.id, resolvedCompanyId, user.id, user.full_name, 'instagram']
+        );
+
+        const resultPayload = {
+          ...insertedMsg.rows[0],
+          databaseId: insertedMsg.rows[0].id,
+          conversationId,
+          content: messageContent,
+          direction: 'outbound',
+          sent_at: insertedMsg.rows[0].sent_at,
+          user_id: user.id,
+          agent_name: user.full_name,
+          phone: targetPhone,
+          channel: 'instagram'
+        };
+
+        const io = req.app.get('io');
+        if (io && resolvedCompanyId) {
+          io.to(`company_${resolvedCompanyId}`).emit('message:received', resultPayload);
+        }
+
+        return res.status(200).json(resultPayload);
+      }
+      return res.status(200).json(igData);
+    }
+
+    // Ensure correct JID format for WhatsApp
     if (targetPhone && !targetPhone.includes('@')) {
       if (inferredGroup) {
         targetPhone = `${targetPhone}@g.us`;
@@ -2207,7 +2264,7 @@ export const getEvolutionMedia = async (req: Request, res: Response) => {
     const imgBuffer = Buffer.from(data.base64, 'base64');
 
     // Set content type based on message type if possible
-    if (message_type === 'image') res.setHeader('Content-Type', 'image/jpeg');
+    if (message_type === 'image' || message_type === 'sticker' || message_type === 'stickerMessage') res.setHeader('Content-Type', 'image/webp');
     else if (message_type === 'audio') res.setHeader('Content-Type', 'audio/mp3'); // or ogg
     else if (message_type === 'video') res.setHeader('Content-Type', 'video/mp4');
     else res.setHeader('Content-Type', 'application/octet-stream');

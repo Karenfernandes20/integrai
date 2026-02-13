@@ -1,4 +1,4 @@
-
+import './server/env';
 import { pool } from './server/db';
 
 async function checkInstance() {

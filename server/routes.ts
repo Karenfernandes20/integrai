@@ -29,7 +29,7 @@ import { authenticateToken, authorizeRole, authorizePermission } from './middlew
 import { rateLimit } from './middleware/rateLimitMiddleware';
 import { PERMISSIONS } from './config/roles';
 import { getCompanies, createCompany, updateCompany, deleteCompany, getCompanyUsers, getCompany, getCompanyInstances, updateCompanyInstance } from './controllers/companyController';
-import { startConversation, closeConversation, updateContactNameWithAudit, deleteConversation, returnToPending, transferConversationQueue } from './controllers/conversationController';
+import { startConversation, closeConversation, updateContactNameWithAudit, deleteConversation, returnToPending, transferConversationQueue, ensureConversation } from './controllers/conversationController';
 import { listQueues, createQueue, updateQueue, deleteQueue } from './controllers/queueController';
 import { getQuickAnswers, createQuickAnswer, updateQuickAnswer, deleteQuickAnswer } from './controllers/whaticket/quickAnswerController';
 import { getUserQueues, setUserQueues } from './controllers/whaticket/userQueueController';
@@ -138,6 +138,9 @@ router.get('/evolution/debug/mapping', async (req, res) => {
     res.status(500).json({ error: e.message });
   }
 });
+// Instagram routes
+import { testInstagramConnection } from './services/instagramService';
+router.post('/instagram/test-connection', authenticateToken, testInstagramConnection);
 
 router.get('/evolution/debug/instance/:companyId/:instanceKey', authenticateToken, async (req: Request, res: Response) => {
   try {
@@ -247,6 +250,7 @@ router.post('/crm/calls/twiml', getVoiceTwiML); // Twilio calls this directly
 
 // CRM Routes
 router.get('/crm/dashboard', authenticateToken, getCrmDashboardStats);
+router.post('/crm/conversations/ensure', authenticateToken, ensureConversation);
 router.post('/crm/conversations/:id/start', authenticateToken, startConversation);
 router.post('/crm/conversations/:id/close', authenticateToken, closeConversation);
 router.post('/crm/conversations/:id/pending', authenticateToken, returnToPending);

@@ -108,7 +108,7 @@ export const getPlanStatus = async (companyId: number) => {
     if (!pool) throw new Error("Database not connected");
 
     const planRes = await pool.query(`
-        SELECT p.*, c.name as company_name, c.due_date 
+        SELECT p.*, c.company_name, c.due_date 
         FROM companies c
         LEFT JOIN plans p ON c.plan_id = p.id
         WHERE c.id = $1

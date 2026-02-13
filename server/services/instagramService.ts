@@ -1,54 +1,85 @@
 
-import axios from 'axios';
+import { pool } from '../db';
 
-export async function validateInstagramCredentials(accessToken: string, pageId: string) {
+export const sendInstagramMessage = async (companyId: number, recipientId: string, text: string) => {
     try {
-        console.log(`[Instagram Service] Validating credentials for Page ID: ${pageId}`);
+        const companyRes = await pool!.query(
+            'SELECT instagram_access_token, instagram_page_id FROM companies WHERE id = $1',
+            [companyId]
+        );
 
-        // 1. Verify Token & Page Access
-        const pageUrl = `https://graph.facebook.com/v19.0/${pageId}?access_token=${accessToken}&fields=id,name,username`;
-        const pageRes = await fetch(pageUrl);
-
-        if (!pageRes.ok) {
-            const err = await pageRes.json();
-            throw new Error(err.error?.message || "Page ID mismatch or access denied.");
+        if (companyRes.rows.length === 0) {
+            throw new Error('Empresa não encontrada');
         }
 
-        const pageData = await pageRes.json();
+        const { instagram_access_token, instagram_page_id } = companyRes.rows[0];
 
-        if (pageData.id !== pageId) {
-            throw new Error("Page ID mismatch.");
+        if (!instagram_access_token) {
+            throw new Error('Token do Instagram não configurado');
         }
 
-        const pageName = pageData.name;
-        console.log(`[Instagram Service] Page verified: ${pageName} (${pageData.username})`);
+        const url = `https://graph.facebook.com/v18.0/me/messages?access_token=${instagram_access_token}`;
 
-        // 2. Subscribe App to Webhooks (Messages)
-        const subscribeUrl = `https://graph.facebook.com/v19.0/${pageId}/subscribed_apps?access_token=${accessToken}`;
-        const subscribeRes = await fetch(subscribeUrl, {
+        const response = await fetch(url, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-                subscribed_fields: ['messages', 'messaging_postbacks', 'messaging_optins', 'message_deliveries', 'message_reads', 'message_echoes']
+                recipient: { id: recipientId },
+                message: { text: text }
             })
         });
 
-        const subscribeData = await subscribeRes.json();
+        const data = await response.json();
 
-        if (!subscribeRes.ok || !subscribeData.success) {
-            console.warn('[Instagram Service] Subscription warning:', subscribeData);
-        } else {
-            console.log('[Instagram Service] Webhooks subscribed successfully.');
+        if (!response.ok) {
+            console.error('[Instagram Send Error]', data);
+            throw new Error(data.error?.message || 'Falha ao enviar mensagem no Instagram');
         }
 
-        return {
-            valid: true,
-            pageName: pageName,
-            pageUsername: pageData.username
-        };
-
-    } catch (error: any) {
-        console.error('[Instagram Service] Validation failed:', error.message);
-        throw new Error(error.message);
+        return data;
+    } catch (e: any) {
+        console.error('[Instagram Service Error]', e);
+        throw e;
     }
-}
+};
+
+export const validateInstagramCredentials = async (accessToken: string, pageId?: string) => {
+    try {
+        // Test token validity
+        const meUrl = `https://graph.facebook.com/v18.0/me?fields=id,name&access_token=${accessToken}`;
+        const meRes = await fetch(meUrl);
+        const meData = await meRes.json();
+
+        if (!meRes.ok) {
+            throw new Error(meData.error?.message || 'Token inválido ou expirado');
+        }
+
+        // If pageId is provided, verify accessibility
+        if (pageId) {
+            const pageUrl = `https://graph.facebook.com/v18.0/${pageId}?fields=id,name&access_token=${accessToken}`;
+            const pageRes = await fetch(pageUrl);
+            const pageData = await pageRes.json();
+
+            if (!pageRes.ok) {
+                throw new Error(pageData.error?.message || 'ID da Página inválido ou sem acesso');
+            }
+        }
+
+        return { success: true, data: meData };
+    } catch (e: any) {
+        console.error('[Instagram Validation Error]', e);
+        throw e;
+    }
+};
+
+export const testInstagramConnection = async (req: any, res: any) => {
+    try {
+        const { accessToken, pageId } = req.body;
+        if (!accessToken) return res.status(400).json({ error: 'Access token is required' });
+
+        const result = await validateInstagramCredentials(accessToken, pageId);
+        res.json(result);
+    } catch (e: any) {
+        res.status(400).json({ error: e.message });
+    }
+};

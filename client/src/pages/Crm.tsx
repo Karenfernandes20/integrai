@@ -276,12 +276,12 @@ const CrmPage = () => {
   const fetchContacts = async () => {
     setIsLoadingContacts(true);
     try {
-      const res = await fetch('/api/evolution/contacts', {
+      const res = await fetch('/api/evolution/contacts/live', {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       if (res.ok) {
         const data = await res.json();
-        setContacts(data);
+        setContacts(Array.isArray(data) ? data : []);
       }
     } catch (error) {
       console.error('Erro ao buscar contatos', error);
@@ -306,8 +306,8 @@ const CrmPage = () => {
           'Authorization': `Bearer ${token}`
         },
         body: JSON.stringify({
-          name: contact.name || contact.push_name,
-          phone: contact.phone,
+          name: contact.name || contact.push_name || contact.phone,
+          phone: contact.phone || (contact.jid ? contact.jid.split('@')[0] : ""),
           stage_id: leadsStage.id
         })
       });

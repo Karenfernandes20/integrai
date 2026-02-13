@@ -158,7 +158,7 @@ export const checkSubscriptions = async (io: Server) => {
         // Find subscriptions expiring soon (today or past) that are ACTIVE
         // We look for anything where current_period_end < NOW
         const result = await pool.query(`
-            SELECT s.*, c.name as company_name, p.price 
+            SELECT s.*, c.company_name, p.price 
             FROM subscriptions s
             JOIN companies c ON s.company_id = c.id
             LEFT JOIN plans p ON s.plan_id = p.id
