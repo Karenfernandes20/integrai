@@ -196,9 +196,30 @@ export const getClosingReasonsAnalytics = async (req: Request, res: Response) =>
         if (!companyId) return res.status(400).json({ error: 'Company ID not found' });
 
         const { startDate, endDate, userId, reasonId, category } = req.query as any;
+        const instanceId = Number(req.query.instance_id || req.headers['x-instance-id'] || 0);
 
         const params: any[] = [companyId];
         let where = 'WHERE c.company_id = $1 AND c.status = \'CLOSED\' AND c.closed_at IS NOT NULL';
+
+        if (instanceId) {
+            params.push(instanceId);
+            const instanceParamIndex = params.length;
+            where += ` AND (
+                c.instance_id = $${instanceParamIndex}
+                OR c.instance = (
+                    SELECT ci.instance_key
+                    FROM company_instances ci
+                    WHERE ci.id = $${instanceParamIndex} AND ci.company_id = $1
+                    LIMIT 1
+                )
+                OR c.last_instance_key = (
+                    SELECT ci.instance_key
+                    FROM company_instances ci
+                    WHERE ci.id = $${instanceParamIndex} AND ci.company_id = $1
+                    LIMIT 1
+                )
+            )`;
+        }
 
         if (startDate) {
             params.push(startDate);
