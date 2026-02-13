@@ -26,7 +26,7 @@ const generateWebhookToken = (companyId: string | number | null | undefined, ind
   return `ig_${safeCompany}_${index + 1}_${rand}`;
 };
 
-const buildInstagramCallbackUrl = (_tokenValue?: string, _companyId?: string | number | null | undefined, _index?: number) => {
+const buildInstagramCallbackUrl = () => {
   const origin = typeof window !== 'undefined' ? window.location.origin : '';
   return `${origin}/api/webhooks/instagram`;
 };
