@@ -234,6 +234,7 @@ const startServer = async () => {
             ADD COLUMN IF NOT EXISTS instagram_token_expires_at TIMESTAMP,
             ADD COLUMN IF NOT EXISTS instagram_status VARCHAR(20) DEFAULT 'INATIVO',
             ADD COLUMN IF NOT EXISTS instagram_webhook_token VARCHAR(100),
+            ADD COLUMN IF NOT EXISTS instagram_instances_config JSONB DEFAULT '[]'::jsonb,
             
             -- Messenger
             ADD COLUMN IF NOT EXISTS messenger_app_id VARCHAR(100),
