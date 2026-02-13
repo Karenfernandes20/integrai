@@ -23,8 +23,10 @@ import EmojiPicker, { EmojiClickData } from "emoji-picker-react";
 interface GroupConversation {
     id: number | string;
     phone: string;
+    external_id?: string;
     contact_name: string;
     group_name?: string;
+    group_subject?: string;
     last_message?: string;
     last_message_at?: string;
     unread_count?: number;
@@ -156,7 +158,7 @@ const GruposPage = () => {
         if (groups.length === 0) return;
 
         const groupsToRefresh = groups.filter(g => {
-            const name = g.group_name || g.contact_name;
+            const name = g.group_subject || g.group_name || g.contact_name;
             return !name || name === 'Grupo' || name === g.phone || /^Grupo \d+/.test(name) || /@g\.us$/.test(name) || !g.profile_pic_url;
         });
 
@@ -347,9 +349,11 @@ const GruposPage = () => {
     };
 
     const getGroupDisplayName = (group?: GroupConversation | null) => {
-        if (!group) return "Grupo";
+        if (!group) return "Grupo (Nome não sincronizado)";
+        if (isUsableGroupName(group.group_subject)) return String(group.group_subject).trim();
         if (isUsableGroupName(group.group_name)) return String(group.group_name).trim();
-        return "Grupo";
+        if (isUsableGroupName(group.contact_name)) return String(group.contact_name).trim();
+        return "Grupo (Nome não sincronizado)";
     };
 
     const handleRefreshMetadata = async () => {

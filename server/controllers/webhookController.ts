@@ -580,7 +580,7 @@ export const handleWebhook = async (req: Request, res: Response) => {
 
             // 1. First Attempt: Match strictly by JID + Instance + Company (The Gold Standard)
             let checkConv = await pool.query(
-                `SELECT id, status, is_group, contact_name, group_name, profile_pic_url, external_id, instance, phone 
+                `SELECT id, status, is_group, contact_name, group_name, group_subject, profile_pic_url, external_id, instance, phone 
                  FROM whatsapp_conversations 
                  WHERE company_id = $1 AND external_id = $2 AND instance = $3`,
                 [companyId, normalizedJid, instance]
@@ -590,7 +590,7 @@ export const handleWebhook = async (req: Request, res: Response) => {
             // This prevents "Ghost Cards" or Duplicates when the same user appears on a different instance or with/without suffix
             if (checkConv.rows.length === 0 && !isGroup) {
                 checkConv = await pool.query(
-                    `SELECT id, status, is_group, contact_name, group_name, profile_pic_url, external_id, instance, phone 
+                    `SELECT id, status, is_group, contact_name, group_name, group_subject, profile_pic_url, external_id, instance, phone 
                      FROM whatsapp_conversations 
                      WHERE company_id = $1 AND is_group = false AND phone = $2
                      ORDER BY last_message_at DESC LIMIT 1`,
@@ -617,11 +617,12 @@ export const handleWebhook = async (req: Request, res: Response) => {
                 currentStatus = newStatus;
                 const shouldForceGroup = isGroup && row.is_group !== true;
                 const shouldUpdateGroupName = isGroup && !!groupNameFromPayload && row.group_name !== groupNameFromPayload;
+                const shouldUpdateGroupSubject = isGroup && !!groupNameFromPayload && row.group_subject !== groupNameFromPayload;
 
                 // CRITICAL FIX: Ensure we don't use pushName (sender) for group titles
                 const isActuallyGroup = isGroup || row.is_group;
 
-                if (newStatus !== row.status || (!isActuallyGroup && msg.pushName && (row.contact_name === null || row.contact_name === '' || row.contact_name === row.phone)) || shouldForceGroup || shouldUpdateGroupName) {
+                if (newStatus !== row.status || (!isActuallyGroup && msg.pushName && (row.contact_name === null || row.contact_name === '' || row.contact_name === row.phone)) || shouldForceGroup || shouldUpdateGroupName || shouldUpdateGroupSubject) {
                     pool.query(
                         `UPDATE whatsapp_conversations
                          SET status = $1,
@@ -634,6 +635,14 @@ export const handleWebhook = async (req: Request, res: Response) => {
                                  WHEN $5 IS NOT NULL THEN $5
                                  WHEN $4 THEN COALESCE(group_name, contact_name, $2, external_id)
                                  ELSE group_name
+                             END,
+                             group_subject = CASE
+                                 WHEN $4 AND $5 IS NOT NULL THEN $5
+                                 ELSE group_subject
+                             END,
+                             group_last_sync = CASE
+                                 WHEN $4 AND $5 IS NOT NULL THEN NOW()
+                                 ELSE group_last_sync
                              END
                          WHERE id = $3`,
                         [
@@ -663,7 +672,7 @@ export const handleWebhook = async (req: Request, res: Response) => {
                 isNewConversation = true;
                 currentStatus = 'PENDING';
 
-                const finalName = isGroup ? (groupName || `Grupo ${phone.substring(0, 8)}`) : name;
+                const finalName = isGroup ? (groupName || 'Grupo (Nome não sincronizado)') : name;
 
                 // Final Check for Duplication before Insert (Race Condition buffer)
                 // Must match UNIQUE constraint: (external_id, instance, company_id)
@@ -676,11 +685,73 @@ export const handleWebhook = async (req: Request, res: Response) => {
                     console.log(`[Webhook] Recovered conversation ${conversationId} from race condition check.`);
                 } else {
                     const newConv = await pool.query(
-                        `INSERT INTO whatsapp_conversations (external_id, phone, contact_name, instance, status, company_id, is_group, group_name, last_instance_key, queue_id)
-                     VALUES ($1, $2, $3, $4::text, $5, $6, $7, $8, $4::text, $9) RETURNING id`,
-                        [normalizedJid, normalizedPhone, finalName, String(instance), currentStatus, companyId, isGroup, isGroup ? finalName : null, defaultQueueId]
+                        `INSERT INTO whatsapp_conversations (external_id, phone, contact_name, instance, status, company_id, is_group, group_name, group_subject, group_last_sync, last_instance_key, queue_id)
+                     VALUES ($1, $2, $3, $4::text, $5, $6, $7, $8, $9, $10, $4::text, $11) RETURNING id`,
+                        [normalizedJid, normalizedPhone, finalName, String(instance), currentStatus, companyId, isGroup, isGroup ? finalName : null, isGroup ? groupName : null, isGroup && groupName ? new Date() : null, defaultQueueId]
                     );
                     conversationId = newConv.rows[0].id;
+                }
+            }
+
+            if (isGroup) {
+                try {
+                    const metadataRow = await pool.query(
+                        'SELECT id, group_subject, instance, company_id FROM whatsapp_conversations WHERE id = $1 LIMIT 1',
+                        [conversationId]
+                    );
+                    const conversation = metadataRow.rows[0];
+                    if (conversation && !conversation.group_subject) {
+                        const cfg = await getEvolutionConfig((req as any).user, 'messages.upsert.group_subject', conversation.company_id, conversation.instance || instance);
+                        const baseUrl = String(cfg.url || '').replace(/\/$/, '');
+                        const apiKey = cfg.apikey;
+                        const instanceKey = conversation.instance || instance || cfg.instance;
+
+                        if (baseUrl && apiKey && instanceKey) {
+                            let groupInfoResponse = await fetch(`${baseUrl}/group-info/${normalizedJid}`, {
+                                method: 'GET',
+                                headers: {
+                                    'Content-Type': 'application/json',
+                                    apikey: apiKey,
+                                    instance: String(instanceKey)
+                                }
+                            });
+
+                            if (groupInfoResponse.status === 404) {
+                                groupInfoResponse = await fetch(`${baseUrl}/group/findGroup/${instanceKey}?groupJid=${encodeURIComponent(normalizedJid)}`, {
+                                    method: 'GET',
+                                    headers: {
+                                        'Content-Type': 'application/json',
+                                        apikey: apiKey
+                                    }
+                                });
+                            }
+
+                            if (groupInfoResponse.status === 404) {
+                                console.warn('[Group] Could not fetch subject. Keeping existing.');
+                            } else if (groupInfoResponse.ok) {
+                                const groupInfo = await groupInfoResponse.json();
+                                if (!groupInfo || (!groupInfo.data && !groupInfo.subject)) {
+                                    console.warn('[Group] Could not fetch subject. Keeping existing.');
+                                } else if (groupInfo?.data?.subject || groupInfo?.subject) {
+                                    const subject = groupInfo?.data?.subject || groupInfo?.subject;
+                                    await pool.query(
+                                        `UPDATE whatsapp_conversations
+                                         SET group_subject = $1,
+                                             group_name = COALESCE(NULLIF(group_name, ''), $1),
+                                             contact_name = CASE
+                                               WHEN contact_name IS NULL OR contact_name = '' OR contact_name = 'Grupo (Nome não sincronizado)' THEN $1
+                                               ELSE contact_name
+                                             END,
+                                             group_last_sync = NOW()
+                                         WHERE id = $2`,
+                                        [subject, conversation.id]
+                                    );
+                                }
+                            }
+                        }
+                    }
+                } catch (error) {
+                    console.warn('[Group] Could not fetch subject. Keeping existing.', error);
                 }
             }
 
@@ -1176,6 +1247,7 @@ export const getConversations = async (req: Request, res: Response) => {
             END as profile_pic_url,
             -- Prioritize Name/Username from contacts
             COALESCE(
+                CASE WHEN (c.is_group = true OR c.external_id LIKE '%@g.us') THEN NULLIF(TRIM(c.group_subject), '') ELSE NULL END,
                 CASE WHEN (c.is_group = true OR c.external_id LIKE '%@g.us') THEN NULLIF(TRIM(c.group_name), '') ELSE NULL END,
                 NULLIF(TRIM(co.name), ''),
                 CASE WHEN c.channel = 'instagram' AND co.push_name IS NOT NULL THEN '@' || co.push_name ELSE co.push_name END,
@@ -1325,8 +1397,9 @@ export const getConversations = async (req: Request, res: Response) => {
             const computedIsGroup = Boolean(row.computed_is_group);
             const fallbackGroupName = computedIsGroup
                 ? (
+                    (isUsableGroupName(row.group_subject) ? row.group_subject : null) ||
                     (isUsableGroupName(row.group_name) ? row.group_name : null) ||
-                    'Grupo'
+                    'Grupo (Nome não sincronizado)'
                 )
                 : row.group_name;
             return {

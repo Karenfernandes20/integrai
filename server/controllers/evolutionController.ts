@@ -127,6 +127,24 @@ export const getEvolutionConfig = async (user: any, source: string = 'unknown', 
     return config;
   }
 };
+
+export const resolveEvolutionConfig = async ({
+  instanceKey,
+  companyId,
+  user,
+  source = 'unknown'
+}: {
+  instanceKey?: string;
+  companyId: number;
+  user?: any;
+  source?: string;
+}) => {
+  if (!companyId) {
+    throw new Error('companyId is required to resolve evolution config');
+  }
+
+  return getEvolutionConfig(user || { company_id: companyId }, source, companyId, instanceKey);
+};
 const isUsableGroupTitle = (value?: string | null): boolean => {
   if (!value) return false;
   const name = String(value).trim();
@@ -1601,18 +1619,20 @@ export const syncEvolutionGroups = async (req: Request, res: Response) => {
               // but the schema only has external_id as UNIQUE currently.
               await pool.query(`
                 INSERT INTO whatsapp_conversations (
-                    external_id, phone, contact_name, group_name, is_group, instance, company_id, profile_pic_url, updated_at, status
-                ) VALUES ($1, $2, $3, $4, true, $5, $6, $7, NOW(), 'PENDING')
+                    external_id, phone, contact_name, group_name, group_subject, group_last_sync, is_group, instance, company_id, profile_pic_url, updated_at, status
+                ) VALUES ($1, $2, $3, $4, $5, $6, true, $7, $8, $9, NOW(), 'PENDING')
                 ON CONFLICT (external_id) 
                 DO UPDATE SET 
                     group_name = EXCLUDED.group_name,
+                    group_subject = COALESCE(EXCLUDED.group_subject, whatsapp_conversations.group_subject),
+                    group_last_sync = CASE WHEN EXCLUDED.group_subject IS NOT NULL THEN NOW() ELSE whatsapp_conversations.group_last_sync END,
                     contact_name = EXCLUDED.contact_name,
                     is_group = true,
                     profile_pic_url = COALESCE(EXCLUDED.profile_pic_url, whatsapp_conversations.profile_pic_url),
                     instance = COALESCE(whatsapp_conversations.instance, EXCLUDED.instance),
                     updated_at = NOW()
                 WHERE whatsapp_conversations.company_id = EXCLUDED.company_id
-              `, [jid, jid, name, name, instance_key, resolvedCompanyId, pic]);
+              `, [jid, jid, name, name, name, name ? new Date() : null, instance_key, resolvedCompanyId, pic]);
               totalSynced++;
             }
           }
@@ -2392,8 +2412,6 @@ export const refreshConversationMetadata = async (req: Request, res: Response) =
 
     const { conversationId } = req.params;
     const user = (req as any).user;
-    const config = await getEvolutionConfig(user, 'refreshMetadata');
-    const { url: EVOLUTION_API_URL, apikey: EVOLUTION_API_KEY, instance: EVOLUTION_INSTANCE } = config;
 
     // 1. Get Conversation
     let convRes;
@@ -2408,9 +2426,22 @@ export const refreshConversationMetadata = async (req: Request, res: Response) =
     const conv = convRes.rows[0];
     const remoteJid = conv.external_id;
     const conversationPK = conv.id;
+    const companyId = Number(req.query.companyId || conv.company_id || user?.company_id || 0);
+
+    if (!companyId) {
+      return res.status(400).json({ error: 'companyId is required' });
+    }
+
+    const config = await resolveEvolutionConfig({
+      instanceKey: conv.instance,
+      companyId,
+      user,
+      source: 'refreshMetadata'
+    });
+    const { url: EVOLUTION_API_URL, apikey: EVOLUTION_API_KEY, instance: EVOLUTION_INSTANCE } = config;
 
     // 2. Fetch Group Metadata if Group
-    let updatedName = conv.contact_name;
+    let updatedName = conv.group_subject || conv.group_name || conv.contact_name;
     let updatedPic = conv.profile_pic_url;
 
     if (conv.is_group) {
@@ -2425,6 +2456,18 @@ export const refreshConversationMetadata = async (req: Request, res: Response) =
       }
 
       const targetInstance = conv.instance || EVOLUTION_INSTANCE;
+      const hasRecentSync = conv.group_last_sync && (Date.now() - new Date(conv.group_last_sync).getTime()) < 24 * 60 * 60 * 1000;
+
+      if (hasRecentSync && conv.group_subject) {
+        return res.json({
+          success: true,
+          message: 'Group metadata is up-to-date.',
+          contact_name: conv.group_subject,
+          group_name: conv.group_subject,
+          pic: updatedPic,
+          conversation_id: conversationPK
+        });
+      }
 
       console.log(`[Refresh] Fetching Group Info for ${groupJid} (Original: ${remoteJid}) on Instance: ${targetInstance}`);
       try {
@@ -2452,7 +2495,7 @@ export const refreshConversationMetadata = async (req: Request, res: Response) =
 
             if (subject) {
               updatedName = subject;
-              await pool.query('UPDATE whatsapp_conversations SET contact_name = $1, group_name = $1 WHERE id = $2', [subject, conversationId]);
+              await pool.query('UPDATE whatsapp_conversations SET contact_name = $1, group_name = $1, group_subject = $1, group_last_sync = NOW() WHERE id = $2', [subject, conversationId]);
               console.log(`[Refresh] Updated group name: ${subject}`);
             }
 
