@@ -427,6 +427,173 @@ const executeNode = async (
                             break;
                         }
 
+                        case 'remove_tag': {
+                            const params = action.params || {};
+                            const tagId = params.tagId || params.tag_id;
+
+                            if (tagId && botCompanyId) {
+                                const convRes = await pool!.query(`
+                                    SELECT id FROM whatsapp_conversations 
+                                    WHERE company_id = $1 AND (phone = $2 OR external_id = $3)
+                                    LIMIT 1
+                                `, [botCompanyId, session.contact_key, `${session.contact_key}@s.whatsapp.net`]);
+
+                                if (convRes.rows.length > 0) {
+                                    const convId = convRes.rows[0].id;
+                                    await pool!.query(`
+                                        DELETE FROM conversations_tags 
+                                        WHERE conversation_id = $1 AND tag_id = $2
+                                    `, [convId, tagId]);
+
+                                    if (io) {
+                                        io.to(`company_${botCompanyId}`).emit('conversation:update_tags', {
+                                            conversationId: convId,
+                                            tagId: tagId,
+                                            action: 'remove'
+                                        });
+                                    }
+                                }
+                            }
+                            break;
+                        }
+
+                        case 'change_status': {
+                            const params = action.params || {};
+                            const status = params.status; // 'PENDING', 'OPEN', 'CLOSED'
+
+                            if (status && botCompanyId) {
+                                await pool!.query(`
+                                    UPDATE whatsapp_conversations 
+                                    SET status = $1 
+                                    WHERE company_id = $2 AND (phone = $3 OR external_id = $4)
+                                `, [status, botCompanyId, session.contact_key, `${session.contact_key}@s.whatsapp.net`]);
+
+                                if (io) {
+                                    io.to(`company_${botCompanyId}`).emit('conversation:update_status', {
+                                        phone: session.contact_key,
+                                        status: status
+                                    });
+                                }
+                            }
+                            break;
+                        }
+
+                        case 'create_lead': {
+                            const params = action.params || {};
+                            const leadName = replaceVariables(params.name || '', session.variables || {});
+                            const leadEmail = replaceVariables(params.email || '', session.variables || {});
+                            const leadPhone = session.contact_key;
+                            const stageId = params.stageId || params.stage_id || 1; // Default first stage
+
+                            if (leadName && botCompanyId) {
+                                try {
+                                    await pool!.query(`
+                                        INSERT INTO crm_leads (name, phone, email, company_id, stage_id, origin)
+                                        VALUES ($1, $2, $3, $4, $5, 'chatbot')
+                                        ON CONFLICT (phone, company_id) DO UPDATE SET
+                                            name = EXCLUDED.name,
+                                            email = COALESCE(EXCLUDED.email, crm_leads.email),
+                                            updated_at = NOW()
+                                    `, [leadName, leadPhone, leadEmail || null, botCompanyId, stageId]);
+
+                                    console.log(`[ChatbotService] Lead created: ${leadName}`);
+                                } catch (e) {
+                                    console.error('[ChatbotService] Error creating lead:', e);
+                                }
+                            }
+                            break;
+                        }
+
+                        case 'create_task': {
+                            const params = action.params || {};
+                            const title = replaceVariables(params.title || 'Tarefa do Chatbot', session.variables || {});
+                            const description = replaceVariables(params.description || '', session.variables || {});
+                            const priority = params.priority || 'medium';
+                            const assigneeId = params.assigneeId || params.assignee_id;
+
+                            if (botCompanyId) {
+                                try {
+                                    await pool!.query(`
+                                        INSERT INTO admin_tasks (title, description, priority, company_id, assigned_to, status)
+                                        VALUES ($1, $2, $3, $4, $5, 'pending')
+                                    `, [title, description, priority, botCompanyId, assigneeId || null]);
+
+                                    console.log(`[ChatbotService] Task created: ${title}`);
+                                } catch (e) {
+                                    console.error('[ChatbotService] Error creating task:', e);
+                                }
+                            }
+                            break;
+                        }
+
+                        case 'send_notification': {
+                            const params = action.params || {};
+                            const message = replaceVariables(params.message || '', session.variables || {});
+                            const userIds = params.userIds || []; // Array of user IDs to notify
+
+                            if (message && botCompanyId && io) {
+                                // Send to specific users or company-wide
+                                if (userIds.length > 0) {
+                                    userIds.forEach((userId: number) => {
+                                        io.to(`user_${userId}`).emit('notification', {
+                                            type: 'chatbot',
+                                            message: message,
+                                            timestamp: new Date().toISOString()
+                                        });
+                                    });
+                                } else {
+                                    io.to(`company_${botCompanyId}`).emit('notification', {
+                                        type: 'chatbot',
+                                        message: message,
+                                        timestamp: new Date().toISOString()
+                                    });
+                                }
+                            }
+                            break;
+                        }
+
+                        case 'delay': {
+                            const params = action.params || {};
+                            const seconds = parseInt(params.seconds || '1');
+                            await new Promise(resolve => setTimeout(resolve, seconds * 1000));
+                            break;
+                        }
+
+                        case 'stop_chatbot': {
+                            // End session and allow human takeover
+                            await pool!.query('DELETE FROM chatbot_sessions WHERE id = $1', [session.id]);
+                            console.log(`[ChatbotService] Session ended for ${session.contact_key}`);
+                            return; // Stop execution
+                        }
+
+                        case 'webhook': {
+                            const params = action.params || {};
+                            const url = params.url;
+                            const method = params.method || 'POST';
+                            const headers = params.headers || {};
+                            let body = params.body || {};
+
+                            // Replace variables in body
+                            if (typeof body === 'object') {
+                                body = JSON.parse(replaceVariables(JSON.stringify(body), session.variables || {}));
+                            }
+
+                            if (url) {
+                                try {
+                                    await axios({
+                                        method: method,
+                                        url: url,
+                                        headers: headers,
+                                        data: body
+                                    });
+                                    console.log(`[ChatbotService] Webhook sent to ${url}`);
+                                } catch (e) {
+                                    console.error('[ChatbotService] Webhook error:', e);
+                                }
+                            }
+                            break;
+                        }
+
                         case 'close_conversation': {
                             if (botCompanyId) {
                                 await pool!.query(`
