@@ -284,6 +284,40 @@ export const handleWebhook = async (req: Request, res: Response) => {
                     return;
                 }
                 console.log(`[Webhook] Processing array of ${messages.length} messages`);
+
+                // Process additional batched messages as independent webhook runs.
+                // Evolution can bundle multiple messages in a single webhook payload.
+                // Previously we only handled messages[0], causing silent message loss.
+                if (messages.length > 1) {
+                    const extraMessages = messages.slice(1);
+                    for (const extraMessage of extraMessages) {
+                        const syntheticBody = {
+                            ...body,
+                            data: {
+                                ...(body.data && typeof body.data === 'object' && !Array.isArray(body.data) ? body.data : {}),
+                                messages: [extraMessage]
+                            }
+                        };
+
+                        const syntheticReq = Object.assign(
+                            Object.create(Object.getPrototypeOf(req)),
+                            req,
+                            { body: syntheticBody }
+                        ) as Request;
+
+                        const syntheticRes: Partial<Response> = {};
+                        syntheticRes.status = () => syntheticRes as Response;
+                        syntheticRes.json = () => syntheticRes as Response;
+                        syntheticRes.send = () => syntheticRes as Response;
+
+                        setImmediate(() => {
+                            handleWebhook(syntheticReq, syntheticRes as Response).catch((err) => {
+                                console.error('[Webhook] Failed to process batched message:', err);
+                            });
+                        });
+                    }
+                }
+
                 messages = messages[0];
             }
 
