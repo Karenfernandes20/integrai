@@ -177,6 +177,8 @@ const WEBHOOK_EVENTS = [
   "PRESENCE_UPDATE"
 ];
 
+const refreshLock = new Map<string, true>();
+
 export const getEvolutionQrCode = async (req: Request, res: Response) => {
   const targetCompanyId = req.query.companyId as string;
   const targetInstanceKey = req.query.instanceKey as string;
@@ -2408,6 +2410,51 @@ export const refreshConversationMetadata = async (req: Request, res: Response) =
     const conv = convRes.rows[0];
     const remoteJid = conv.external_id;
     const conversationPK = conv.id;
+    const companyId = Number(conv.company_id || user?.company_id || config?.company_id || 0);
+
+    const lockKey = `${companyId || 'unknown'}:${remoteJid || conversationPK}`;
+    if (refreshLock.has(lockKey)) {
+      return res.json({ status: "skipped", reason: "refresh_locked", id: conversationId });
+    }
+    refreshLock.set(lockKey, true);
+    setTimeout(() => {
+      refreshLock.delete(lockKey);
+    }, 10000);
+
+    if (conv.is_group && !companyId) {
+      console.warn('[Refresh] Missing company_id for group metadata refresh. Skipping metadata refresh.');
+      return res.json({ status: "skipped", reason: "missing_company_id", id: conversationId });
+    }
+
+    if (!config || !config.url || !config.apikey || !config.company_id) {
+      console.warn('[Refresh] Invalid evolution config. Skipping metadata refresh.');
+      return res.json({ status: "skipped", reason: "invalid_config", id: conversationId });
+    }
+
+    const evolutionClient = {
+      get: async (path: string) => {
+        const targetUrl = `${EVOLUTION_API_URL.replace(/\/$/, "")}${path.startsWith('/') ? path : `/${path}`}`;
+        const response = await fetch(targetUrl, {
+          method: 'GET',
+          headers: { 'Content-Type': 'application/json', apikey: EVOLUTION_API_KEY || '' }
+        });
+
+        if (!response.ok) {
+          const errorText = await response.text();
+          const err: any = new Error(`Evolution GET failed with status ${response.status}`);
+          err.status = response.status;
+          err.body = errorText;
+          throw err;
+        }
+
+        return response.json();
+      }
+    };
+
+    if (!evolutionClient) {
+      console.warn('[Refresh] Evolution client not initialized. Skipping metadata refresh.');
+      return res.json({ status: "skipped", reason: "missing_client", id: conversationId });
+    }
 
     // 2. Fetch Group Metadata if Group
     let updatedName = conv.contact_name;
@@ -2427,47 +2474,30 @@ export const refreshConversationMetadata = async (req: Request, res: Response) =
       const targetInstance = conv.instance || EVOLUTION_INSTANCE;
 
       console.log(`[Refresh] Fetching Group Info for ${groupJid} (Original: ${remoteJid}) on Instance: ${targetInstance}`);
+      let groupInfo: any = null;
       try {
-        const groupUrl = `${EVOLUTION_API_URL.replace(/\/$/, "")}/group/findGroup/${targetInstance}?groupJid=${groupJid}`;
-        const gRes = await fetch(groupUrl, {
-          method: "GET",
-          headers: { "Content-Type": "application/json", "apikey": EVOLUTION_API_KEY || "" }
-        });
+        groupInfo = await evolutionClient.get(`/group/findGroup/${targetInstance}?groupJid=${encodeURIComponent(groupJid)}`);
+      } catch (error: any) {
+        console.warn('[Refresh] Failed to fetch group info:', error?.message);
+      }
 
-        if (gRes.status === 404) {
-          console.warn('[Refresh] Group info não encontrado (404). Mantendo dados atuais.');
-        } else if (gRes.ok) {
-          const groupInfo = await gRes.json();
-          if (!groupInfo) {
-            console.warn('[Refresh] Group info não encontrado (404). Mantendo dados atuais.');
-          } else {
-            let subject: string | undefined;
-            if (typeof groupInfo.get !== 'undefined' && typeof groupInfo.get !== 'function') {
-              console.warn('[Refresh] groupData inválido. Abortando refresh.');
-            } else if (groupInfo && typeof groupInfo.get === 'function') {
-              subject = groupInfo.get('subject') || groupInfo.get('name');
-            } else {
-              subject = groupInfo?.subject || groupInfo?.name;
-            }
+      if (!groupInfo) {
+        console.warn('[Refresh] Group info não encontrado. Mantendo dados atuais.');
+      } else {
+        const subject = groupInfo?.subject || groupInfo?.name;
 
-            if (subject) {
-              updatedName = subject;
-              await pool.query('UPDATE whatsapp_conversations SET contact_name = $1, group_name = $1 WHERE id = $2', [subject, conversationId]);
-              console.log(`[Refresh] Updated group name: ${subject}`);
-            }
-
-            const pic = groupInfo.profilePictureUrl || groupInfo.pic || groupInfo.picture;
-            if (pic && !updatedPic) {
-              updatedPic = pic;
-              await pool.query('UPDATE whatsapp_conversations SET profile_pic_url = $1 WHERE id = $2', [pic, conversationId]);
-              console.log(`[Refresh] Updated group pic from metadata: ${pic}`);
-            }
-          }
-        } else {
-          console.warn(`[Refresh] Failed to fetch group info: ${gRes.status}`);
+        if (subject) {
+          updatedName = subject;
+          await pool.query('UPDATE whatsapp_conversations SET contact_name = $1, group_name = $1 WHERE id = $2', [subject, conversationId]);
+          console.log(`[Refresh] Updated group name: ${subject}`);
         }
-      } catch (groupError) {
-        console.warn('[Refresh] Failed to refresh group metadata. Continuing without blocking main flow.', groupError);
+
+        const pic = groupInfo.profilePictureUrl || groupInfo.pic || groupInfo.picture;
+        if (pic && !updatedPic) {
+          updatedPic = pic;
+          await pool.query('UPDATE whatsapp_conversations SET profile_pic_url = $1 WHERE id = $2', [pic, conversationId]);
+          console.log(`[Refresh] Updated group pic from metadata: ${pic}`);
+        }
       }
     }
 
@@ -2491,7 +2521,7 @@ export const refreshConversationMetadata = async (req: Request, res: Response) =
             updatedPic = url;
             await pool.query('UPDATE whatsapp_conversations SET profile_pic_url = $1 WHERE id = $2', [url, conversationPK]);
             if (!conv.is_group) {
-              await pool.query('UPDATE whatsapp_contacts SET profile_pic_url = $1 WHERE jid = $2 AND company_id = $3', [url, remoteJid, user.company_id]);
+              await pool.query('UPDATE whatsapp_contacts SET profile_pic_url = $1 WHERE jid = $2 AND company_id = $3', [url, remoteJid, companyId]);
             }
             console.log(`[Refresh] Updated profile pic: ${url}`);
           }
@@ -2505,8 +2535,8 @@ export const refreshConversationMetadata = async (req: Request, res: Response) =
 
     // 4. Emit update
     const io = req.app.get('io');
-    if (io && user.company_id) {
-      io.to(`company_${user.company_id}`).emit('conversation:update', {
+    if (io && companyId) {
+      io.to(`company_${companyId}`).emit('conversation:update', {
         id: conversationId,
         contact_name: updatedName,
         group_name: updatedName,
