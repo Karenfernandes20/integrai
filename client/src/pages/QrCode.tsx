@@ -13,6 +13,40 @@ import { Badge } from "../components/ui/badge";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "../components/ui/accordion";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../components/ui/tooltip";
 
+
+
+type InstagramInstanceConfig = {
+  callback_url: string;
+  webhook_token: string;
+};
+
+const generateWebhookToken = (companyId: string | number | null | undefined, index: number) => {
+  const safeCompany = String(companyId || 'empresa');
+  const rand = Math.random().toString(36).slice(2, 8);
+  return `ig_${safeCompany}_${index + 1}_${rand}`;
+};
+
+const buildInstagramCallbackUrl = (_tokenValue?: string, _companyId?: string | number | null | undefined, _index?: number) => {
+  const origin = typeof window !== 'undefined' ? window.location.origin : '';
+  return `${origin}/api/webhooks/instagram`;
+};
+
+const normalizeInstagramConfigs = (
+  rawConfigs: any,
+  limit: number,
+  companyId: string | number | null | undefined
+): InstagramInstanceConfig[] => {
+  const parsed = Array.isArray(rawConfigs) ? rawConfigs : [];
+  return Array.from({ length: Math.max(1, limit) }).map((_, index) => {
+    const current = parsed[index] || {};
+    const token = (current.webhook_token || '').trim() || generateWebhookToken(companyId, index);
+    return {
+      callback_url: (current.callback_url || '').trim() || buildInstagramCallbackUrl(),
+      webhook_token: token
+    };
+  });
+};
+
 const QrCodePage = () => {
   const { token, user } = useAuth();
   const [company, setCompany] = useState<any>(null);
@@ -34,6 +68,8 @@ const QrCodePage = () => {
   const [isWaModalOpen, setIsWaModalOpen] = useState(false);
   const [isIgModalOpen, setIsIgModalOpen] = useState(false);
   const [isMeModalOpen, setIsMeModalOpen] = useState(false);
+  const [selectedInstagramIndex, setSelectedInstagramIndex] = useState(0);
+  const [instagramInstanceConfigs, setInstagramInstanceConfigs] = useState<InstagramInstanceConfig[]>([]);
 
   const getApiUrl = (endpoint: string, overrideInstanceKey?: string) => {
     const params = new URLSearchParams();
@@ -57,7 +93,10 @@ const QrCodePage = () => {
       });
       if (res.ok) {
         const data = await res.json();
-        setCompany(data);
+        const igLimit = Number(data?.instagram_limit || 1);
+        const normalizedIgConfigs = normalizeInstagramConfigs(data?.instagram_instances_config, igLimit, data?.id);
+        setCompany({ ...data, instagram_instances_config: normalizedIgConfigs });
+        setInstagramInstanceConfigs(normalizedIgConfigs);
       }
     } catch (e) {
       console.error("Error fetching company", e);
@@ -370,6 +409,37 @@ const QrCodePage = () => {
     }
   }, [token, selectedCompanyId, selectedInstance, company]);
 
+
+  useEffect(() => {
+    if (!company) return;
+    const normalized = normalizeInstagramConfigs(
+      company.instagram_instances_config,
+      Number(company.instagram_limit || 1),
+      company.id
+    );
+    setInstagramInstanceConfigs(normalized);
+    setCompany((prev: any) => ({ ...prev, instagram_instances_config: normalized }));
+    if (selectedInstagramIndex >= normalized.length) {
+      setSelectedInstagramIndex(0);
+    }
+  }, [company?.id, company?.instagram_limit]);
+
+  const handleInstagramInstanceConfigChange = (index: number, field: keyof InstagramInstanceConfig, value: string) => {
+    setInstagramInstanceConfigs((prev) => {
+      const next = [...prev];
+      if (!next[index]) {
+        const token = generateWebhookToken(company?.id, index);
+        next[index] = {
+          callback_url: buildInstagramCallbackUrl(),
+          webhook_token: token
+        };
+      }
+      next[index] = { ...next[index], [field]: value };
+      setCompany((prevCompany: any) => ({ ...prevCompany, instagram_instances_config: next }));
+      return next;
+    });
+  };
+
   const handleCompanyChange = (field: string, value: any) => {
     setCompany((prev: any) => ({ ...prev, [field]: value }));
   };
@@ -548,6 +618,7 @@ const QrCodePage = () => {
   };
 
   const isConnected = connectionState === 'open';
+  const selectedInstagramConfig = instagramInstanceConfigs[selectedInstagramIndex];
 
   const ChannelCard = ({
     type,
@@ -711,7 +782,7 @@ const QrCodePage = () => {
               icon={Instagram}
               enabled={true}
               connected={i === 0 && company?.instagram_status === 'ATIVO'}
-              onConfigure={() => setIsIgModalOpen(true)}
+              onConfigure={() => { setSelectedInstagramIndex(i); setIsIgModalOpen(true); }}
               onDisconnect={() => {/* Disconnect Logic */ }}
               statusText={i === 0 && company?.instagram_status === 'ATIVO' ? "Página Vinculada" : "Aguardando Configuração"}
             />
@@ -1040,6 +1111,47 @@ const QrCodePage = () => {
                 <Label className="text-[11px] font-bold uppercase text-zinc-400">Access Token (Permanente)</Label>
                 <Input type="password" value={company?.instagram_access_token || ""} onChange={(e) => handleCompanyChange('instagram_access_token', e.target.value)} className="rounded-xl h-10" placeholder="Token Meta" />
               </div>
+
+              <div className="space-y-2 border-t pt-4 mt-2">
+                <Label className="text-[11px] font-bold uppercase text-zinc-400">Instância do Instagram</Label>
+                <Select value={String(selectedInstagramIndex)} onValueChange={(value) => setSelectedInstagramIndex(Number(value))}>
+                  <SelectTrigger className="rounded-xl h-10">
+                    <SelectValue placeholder="Selecione a instância" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {Array.from({ length: Number(company?.instagram_limit || 1) }).map((_, idx) => (
+                      <SelectItem key={`ig-modal-${idx}`} value={String(idx)}>
+                        Instagram {idx + 1}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="grid gap-4 md:grid-cols-2">
+                <div className="space-y-2 md:col-span-2">
+                  <Label className="text-[11px] font-bold uppercase text-zinc-400">URL de Callback (Instância {selectedInstagramIndex + 1})</Label>
+                  <Input
+                    value={selectedInstagramConfig?.callback_url || ""}
+                    onChange={(e) => handleInstagramInstanceConfigChange(selectedInstagramIndex, 'callback_url', e.target.value)}
+                    className="rounded-xl h-10"
+                    placeholder="https://seudominio.com/api/webhooks/instagram"
+                  />
+                </div>
+                <div className="space-y-2 md:col-span-2">
+                  <Label className="text-[11px] font-bold uppercase text-zinc-400">Token de Webhook (Instância {selectedInstagramIndex + 1})</Label>
+                  <Input
+                    value={selectedInstagramConfig?.webhook_token || ""}
+                    onChange={(e) => {
+                      const nextToken = e.target.value;
+                      handleInstagramInstanceConfigChange(selectedInstagramIndex, 'webhook_token', nextToken);
+                    }}
+                    className="rounded-xl h-10"
+                    placeholder="token_exclusivo_da_instancia"
+                  />
+                </div>
+              </div>
+
               <Button
                 className="w-full h-11 rounded-xl font-bold bg-gradient-to-r from-purple-600 to-pink-600 border-none shadow-lg mt-2"
                 disabled={isLoading}
