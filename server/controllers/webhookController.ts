@@ -506,7 +506,7 @@ export const handleWebhook = async (req: Request, res: Response) => {
                 if (!groupName) {
                     console.log(`[Webhook] Group message received for ${normalizedJid} but NO SUBJECT in payload. Triggering background refresh.`);
                     // Proactively try to get metadata in background
-                    const { refreshConversationMetadata } = require('./evolutionController');
+                    const { refreshConversationMetadata } = await import('./evolutionController');
                     if (refreshConversationMetadata) {
                         // We don't await this as it might be slow
                         refreshConversationMetadata({ params: { conversationId: normalizedJid }, query: { companyId } } as any, { json: () => { } } as any).catch(() => { });
