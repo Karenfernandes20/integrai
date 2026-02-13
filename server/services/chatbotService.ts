@@ -491,9 +491,10 @@ const executeNode = async (
                                 // Se for um campo padrão de contato, atualiza na tabela contacts também
                                 const standardFields = ['name', 'phone', 'email', 'username'];
                                 if (standardFields.includes(key)) {
+                                    const targetColumn = key === 'username' ? 'instagram_username' : key;
                                     await pool!.query(`
-                                        UPDATE contacts SET ${key} = $1 
-                                        WHERE company_id = $2 AND external_id = $3
+                                        UPDATE whatsapp_contacts SET ${targetColumn} = $1 
+                                        WHERE company_id = $2 AND (jid = $3 OR phone = $3)
                                     `, [val, botCompanyId, session.contact_key]);
                                 }
 

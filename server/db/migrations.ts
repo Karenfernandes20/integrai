@@ -479,9 +479,8 @@ const runWhatsappMigrations = async () => {
             // 7. Instagram Profile Columns
             await pool.query(`
                 ALTER TABLE whatsapp_contacts 
-                ADD COLUMN IF NOT EXISTS instagram_id TEXT,
-                ADD COLUMN IF NOT EXISTS instagram_username TEXT,
-                ADD COLUMN IF NOT EXISTS instagram_name TEXT,
+                ADD COLUMN IF NOT EXISTS instagram_id VARCHAR(255),
+                ADD COLUMN IF NOT EXISTS instagram_username VARCHAR(255),
                 ADD COLUMN IF NOT EXISTS instagram_updated_at TIMESTAMP;
             `);
 
