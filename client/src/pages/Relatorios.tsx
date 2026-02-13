@@ -6,18 +6,20 @@ import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../components/ui/select";
-import { Loader2, FileDown, TrendingUp, TrendingDown, DollarSign, Filter, MessageSquare, AlertTriangle, CheckSquare, Zap } from "lucide-react";
+import { Loader2, FileDown, TrendingUp, TrendingDown, DollarSign, Filter, MessageSquare, AlertTriangle, CheckSquare, Zap, AlertCircle } from "lucide-react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, LineChart, Line, PieChart, Pie, Cell, AreaChart, Area } from 'recharts';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import * as XLSX from 'xlsx';
+import { Alert, AlertDescription, AlertTitle } from "../components/ui/alert";
 
 const RelatoriosPage = () => {
-    const { token } = useAuth();
+    const { token, user } = useAuth();
     const [activeTab, setActiveTab] = useState("operational");
     const [loading, setLoading] = useState(false);
+    const [error, setError] = useState<string | null>(null);
 
     // Filters
     const [startDate, setStartDate] = useState(format(new Date(new Date().getFullYear(), new Date().getMonth(), 1), 'yyyy-MM-dd'));
@@ -52,6 +54,7 @@ const RelatoriosPage = () => {
     // Fetch Report Data based on active tab
     const fetchData = async () => {
         setLoading(true);
+        setError(null);
         try {
             const query = new URLSearchParams({
                 startDate,
@@ -59,22 +62,50 @@ const RelatoriosPage = () => {
                 ...(selectedCity !== "0" && { cityId: selectedCity })
             });
 
+            let res;
             if (activeTab === 'dre') {
-                const res = await fetch(`/api/reports/dre?${query}`, { headers: { Authorization: `Bearer ${token}` } });
-                if (res.ok) setDreData(await res.json());
+                res = await fetch(`/api/reports/dre?${query}`, { headers: { Authorization: `Bearer ${token}` } });
+                if (res.ok) {
+                    const data = await res.json();
+                    console.log('[Relatórios] DRE data:', data);
+                    setDreData(data);
+                }
             } else if (activeTab === 'breakdown') {
-                const res = await fetch(`/api/reports/breakdown?${query}`, { headers: { Authorization: `Bearer ${token}` } });
-                if (res.ok) setBreakdownData(await res.json());
+                res = await fetch(`/api/reports/breakdown?${query}`, { headers: { Authorization: `Bearer ${token}` } });
+                if (res.ok) {
+                    const data = await res.json();
+                    console.log('[Relatórios] Breakdown data:', data);
+                    setBreakdownData(data);
+                }
             } else if (activeTab === 'indicators') {
-                const res = await fetch(`/api/reports/indicators`, { headers: { Authorization: `Bearer ${token}` } });
-                if (res.ok) setIndicatorsData(await res.json());
+                res = await fetch(`/api/reports/indicators`, { headers: { Authorization: `Bearer ${token}` } });
+                if (res.ok) {
+                    const data = await res.json();
+                    console.log('[Relatórios] Indicators data:', data);
+                    setIndicatorsData(data);
+                }
             } else if (activeTab === 'operational') {
-                const res = await fetch(`/api/reports/operational?${query}`, { headers: { Authorization: `Bearer ${token}` } });
-                if (res.ok) setOperationalData(await res.json());
+                res = await fetch(`/api/reports/operational?${query}`, { headers: { Authorization: `Bearer ${token}` } });
+                if (res.ok) {
+                    const data = await res.json();
+                    console.log('[Relatórios] Operational data:', data);
+                    setOperationalData(data);
+                }
             }
 
-        } catch (error) {
+            if (res && !res.ok) {
+                const errorData = await res.json().catch(() => ({ error: 'Erro desconhecido' }));
+                console.error('[Relatórios] Error response:', { status: res.status, data: errorData });
+
+                if (res.status === 403) {
+                    throw new Error("Acesso negado. Você não tem permissão para visualizar este relatório.");
+                }
+                throw new Error(errorData.error || "Falha ao carregar dados do servidor.");
+            }
+
+        } catch (error: any) {
             console.error("Error fetching report data", error);
+            setError(error.message || "Ocorreu um erro ao carregar o relatório.");
         } finally {
             setLoading(false);
         }
@@ -93,11 +124,17 @@ const RelatoriosPage = () => {
 
         const generatePDF = () => {
             // Add logo
-            doc.addImage(img, 'JPEG', 14, 10, 25, 25);
+            try {
+                doc.addImage(img, 'JPEG', 14, 10, 25, 25);
+            } catch (e) {
+                console.warn("Could not add logo to PDF");
+            }
+
             doc.setFontSize(16);
             doc.text(`Relatório - ${activeTab.toUpperCase()}`, 45, 20);
             doc.setFontSize(10);
             doc.text(`Período: ${startDate} a ${endDate}`, 45, 27);
+            doc.text(`Gerado em: ${new Date().toLocaleString()}`, 45, 32);
 
             if (activeTab === 'dre' && dreData) {
                 autoTable(doc, {
@@ -176,6 +213,29 @@ const RelatoriosPage = () => {
     // --- Components for Tabs ---
     const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884d8'];
 
+    const renderLoading = () => (
+        <div className="flex flex-col items-center justify-center p-12 text-muted-foreground animate-in fade-in">
+            <Loader2 className="h-10 w-10 animate-spin mb-4" />
+            <p>Carregando dados do relatório...</p>
+        </div>
+    );
+
+    const renderError = () => (
+        <Alert variant="destructive" className="my-4">
+            <AlertCircle className="h-4 w-4" />
+            <AlertTitle>Erro</AlertTitle>
+            <AlertDescription>{error || "Ocorreu um erro ao carregar os dados."}</AlertDescription>
+            <Button variant="outline" size="sm" onClick={fetchData} className="mt-2">Deleted Tentar Novamente</Button>
+        </Alert>
+    );
+
+    const renderEmpty = (msg: string = "Nenhum resultado encontrado para o período selecionado.") => (
+        <div className="flex flex-col items-center justify-center p-12 text-muted-foreground border rounded-lg bg-muted/10">
+            <AlertTriangle className="h-10 w-10 mb-4 opacity-50" />
+            <p>{msg}</p>
+        </div>
+    );
+
     return (
         <div className="space-y-6 animate-in fade-in duration-500">
             <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
@@ -184,10 +244,10 @@ const RelatoriosPage = () => {
                     <p className="text-muted-foreground">Visão completa da operação e finanças.</p>
                 </div>
                 <div className="flex items-center gap-2">
-                    <Button variant="outline" size="sm" onClick={exportPDF}>
+                    <Button variant="outline" size="sm" onClick={exportPDF} disabled={loading || !!error}>
                         <FileDown className="mr-2 h-4 w-4" /> PDF
                     </Button>
-                    <Button variant="outline" size="sm" onClick={exportExcel}>
+                    <Button variant="outline" size="sm" onClick={exportExcel} disabled={loading || !!error}>
                         <FileDown className="mr-2 h-4 w-4" /> Excel
                     </Button>
                 </div>
@@ -231,6 +291,8 @@ const RelatoriosPage = () => {
                 </CardContent>
             </Card>
 
+            {error && renderError()}
+
             <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
                 <TabsList>
                     <TabsTrigger value="operational">Operacional</TabsTrigger>
@@ -240,229 +302,235 @@ const RelatoriosPage = () => {
                 </TabsList>
 
                 <TabsContent value="operational" className="space-y-4">
-                    {operationalData ? (
-                        <div className="space-y-4">
-                            {/* Key Indicators */}
-                            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-                                <Card>
-                                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                                        <CardTitle className="text-sm font-medium">Total Mensagens</CardTitle>
-                                        <MessageSquare className="h-4 w-4 text-muted-foreground" />
-                                    </CardHeader>
-                                    <CardContent>
-                                        <div className="text-2xl font-bold">{operationalData.summary.totalMessages}</div>
-                                        <p className="text-xs text-muted-foreground">Enviadas + Recebidas</p>
-                                    </CardContent>
-                                </Card>
-                                <Card>
-                                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                                        <CardTitle className="text-sm font-medium">Taxa de Falha (Geral)</CardTitle>
-                                        <AlertTriangle className={`h-4 w-4 ${Number(operationalData.summary.failureRateMsg) > 5 ? 'text-red-500' : 'text-yellow-500'}`} />
-                                    </CardHeader>
-                                    <CardContent>
-                                        <div className="text-2xl font-bold">{operationalData.summary.failureRateMsg}%</div>
-                                        <p className="text-xs text-muted-foreground">Campanhas: {operationalData.summary.failureRateCamp}% Failed</p>
-                                    </CardContent>
-                                </Card>
-                                <Card>
-                                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                                        <CardTitle className="text-sm font-medium">Tarefas Concluídas</CardTitle>
-                                        <CheckSquare className="h-4 w-4 text-green-500" />
-                                    </CardHeader>
-                                    <CardContent>
-                                        <div className="text-2xl font-bold">{operationalData.summary.tasksCompleted}</div>
-                                    </CardContent>
-                                </Card>
-                                <Card>
-                                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                                        <CardTitle className="text-sm font-medium">Interações IA</CardTitle>
-                                        <Zap className="h-4 w-4 text-purple-500" />
-                                    </CardHeader>
-                                    <CardContent>
-                                        <div className="text-2xl font-bold">{operationalData.summary.aiInteractions}</div>
-                                        <p className="text-xs text-muted-foreground">Processadas pelo sistema</p>
-                                    </CardContent>
-                                </Card>
-                            </div>
+                    {loading && !operationalData ? renderLoading() : (
+                        operationalData ? (
+                            <div className="space-y-4">
+                                {/* Key Indicators */}
+                                <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+                                    <Card>
+                                        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                                            <CardTitle className="text-sm font-medium">Total Mensagens</CardTitle>
+                                            <MessageSquare className="h-4 w-4 text-muted-foreground" />
+                                        </CardHeader>
+                                        <CardContent>
+                                            <div className="text-2xl font-bold">{operationalData.summary.totalMessages}</div>
+                                            <p className="text-xs text-muted-foreground">Enviadas + Recebidas</p>
+                                        </CardContent>
+                                    </Card>
+                                    <Card>
+                                        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                                            <CardTitle className="text-sm font-medium">Taxa de Falha (Geral)</CardTitle>
+                                            <AlertTriangle className={`h-4 w-4 ${Number(operationalData.summary.failureRateMsg) > 5 ? 'text-red-500' : 'text-yellow-500'}`} />
+                                        </CardHeader>
+                                        <CardContent>
+                                            <div className="text-2xl font-bold">{operationalData.summary.failureRateMsg}%</div>
+                                            <p className="text-xs text-muted-foreground">Campanhas: {operationalData.summary.failureRateCamp}% Failed</p>
+                                        </CardContent>
+                                    </Card>
+                                    <Card>
+                                        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                                            <CardTitle className="text-sm font-medium">Tarefas Concluídas</CardTitle>
+                                            <CheckSquare className="h-4 w-4 text-green-500" />
+                                        </CardHeader>
+                                        <CardContent>
+                                            <div className="text-2xl font-bold">{operationalData.summary.tasksCompleted}</div>
+                                        </CardContent>
+                                    </Card>
+                                    <Card>
+                                        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                                            <CardTitle className="text-sm font-medium">Interações IA</CardTitle>
+                                            <Zap className="h-4 w-4 text-purple-500" />
+                                        </CardHeader>
+                                        <CardContent>
+                                            <div className="text-2xl font-bold">{operationalData.summary.aiInteractions}</div>
+                                            <p className="text-xs text-muted-foreground">Processadas pelo sistema</p>
+                                        </CardContent>
+                                    </Card>
+                                </div>
 
-                            {/* Charts */}
-                            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-7">
-                                <Card className="col-span-4">
-                                    <CardHeader>
-                                        <CardTitle>Volume de Mensagens (Últimos dias)</CardTitle>
-                                    </CardHeader>
-                                    <CardContent className="pl-2">
-                                        <div className="h-[300px] w-full">
-                                            <ResponsiveContainer width="100%" height="100%">
-                                                <AreaChart data={operationalData.messageVolume}>
-                                                    <defs>
-                                                        <linearGradient id="colorIn" x1="0" y1="0" x2="0" y2="1">
-                                                            <stop offset="5%" stopColor="#8884d8" stopOpacity={0.8} />
-                                                            <stop offset="95%" stopColor="#8884d8" stopOpacity={0} />
-                                                        </linearGradient>
-                                                        <linearGradient id="colorOut" x1="0" y1="0" x2="0" y2="1">
-                                                            <stop offset="5%" stopColor="#82ca9d" stopOpacity={0.8} />
-                                                            <stop offset="95%" stopColor="#82ca9d" stopOpacity={0} />
-                                                        </linearGradient>
-                                                    </defs>
-                                                    <XAxis dataKey="date" fontSize={10} tickFormatter={(value) => format(new Date(value), 'dd/MM')} />
-                                                    <YAxis fontSize={10} />
-                                                    <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                                                    <Tooltip labelFormatter={(v) => format(new Date(v), 'dd/MM/yyyy')} />
-                                                    <Area type="monotone" dataKey="inbound" stroke="#8884d8" fillOpacity={1} fill="url(#colorIn)" name="Recebidas" />
-                                                    <Area type="monotone" dataKey="outbound" stroke="#82ca9d" fillOpacity={1} fill="url(#colorOut)" name="Enviadas" />
-                                                </AreaChart>
-                                            </ResponsiveContainer>
-                                        </div>
-                                    </CardContent>
-                                </Card>
+                                {/* Charts */}
+                                <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-7">
+                                    <Card className="col-span-4">
+                                        <CardHeader>
+                                            <CardTitle>Volume de Mensagens (Últimos dias)</CardTitle>
+                                        </CardHeader>
+                                        <CardContent className="pl-2">
+                                            <div className="h-[300px] w-full">
+                                                <ResponsiveContainer width="100%" height="100%">
+                                                    <AreaChart data={operationalData.messageVolume}>
+                                                        <defs>
+                                                            <linearGradient id="colorIn" x1="0" y1="0" x2="0" y2="1">
+                                                                <stop offset="5%" stopColor="#8884d8" stopOpacity={0.8} />
+                                                                <stop offset="95%" stopColor="#8884d8" stopOpacity={0} />
+                                                            </linearGradient>
+                                                            <linearGradient id="colorOut" x1="0" y1="0" x2="0" y2="1">
+                                                                <stop offset="5%" stopColor="#82ca9d" stopOpacity={0.8} />
+                                                                <stop offset="95%" stopColor="#82ca9d" stopOpacity={0} />
+                                                            </linearGradient>
+                                                        </defs>
+                                                        <XAxis dataKey="date" fontSize={10} tickFormatter={(value) => format(new Date(value), 'dd/MM')} />
+                                                        <YAxis fontSize={10} />
+                                                        <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                                                        <Tooltip labelFormatter={(v) => format(new Date(v), 'dd/MM/yyyy')} />
+                                                        <Area type="monotone" dataKey="inbound" stroke="#8884d8" fillOpacity={1} fill="url(#colorIn)" name="Recebidas" />
+                                                        <Area type="monotone" dataKey="outbound" stroke="#82ca9d" fillOpacity={1} fill="url(#colorOut)" name="Enviadas" />
+                                                    </AreaChart>
+                                                </ResponsiveContainer>
+                                            </div>
+                                        </CardContent>
+                                    </Card>
 
-                                <Card className="col-span-3">
-                                    <CardHeader>
-                                        <CardTitle>Composição de Tráfego</CardTitle>
-                                    </CardHeader>
-                                    <CardContent>
-                                        <div className="h-[300px] w-full">
-                                            <ResponsiveContainer width="100%" height="100%">
-                                                <BarChart data={operationalData.messageVolume}>
-                                                    <XAxis dataKey="date" hide />
-                                                    <YAxis />
-                                                    <Tooltip />
-                                                    <Legend />
-                                                    <Bar dataKey="failed" stackId="a" fill="#dc2626" name="Falhas" />
-                                                    <Bar dataKey="count" stackId="b" fill="#2563eb" name="Total" />
-                                                </BarChart>
-                                            </ResponsiveContainer>
-                                        </div>
-                                    </CardContent>
-                                </Card>
+                                    <Card className="col-span-3">
+                                        <CardHeader>
+                                            <CardTitle>Composição de Tráfego</CardTitle>
+                                        </CardHeader>
+                                        <CardContent>
+                                            <div className="h-[300px] w-full">
+                                                <ResponsiveContainer width="100%" height="100%">
+                                                    <BarChart data={operationalData.messageVolume}>
+                                                        <XAxis dataKey="date" hide />
+                                                        <YAxis />
+                                                        <Tooltip />
+                                                        <Legend />
+                                                        <Bar dataKey="failed" stackId="a" fill="#dc2626" name="Falhas" />
+                                                        <Bar dataKey="count" stackId="b" fill="#2563eb" name="Total" />
+                                                    </BarChart>
+                                                </ResponsiveContainer>
+                                            </div>
+                                        </CardContent>
+                                    </Card>
+                                </div>
                             </div>
-                        </div>
-                    ) : <div className="p-8 text-center text-muted-foreground">Carregando dados operacionais...</div>}
+                        ) : renderEmpty("Sem dados operacionais para exibir.")
+                    )}
                 </TabsContent>
 
                 <TabsContent value="dre" className="space-y-4">
-                    {dreData ? (
-                        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-                            <Card>
-                                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                                    <CardTitle className="text-sm font-medium">Receita Bruta</CardTitle>
-                                    <DollarSign className="h-4 w-4 text-green-500" />
-                                </CardHeader>
-                                <CardContent>
-                                    <div className="text-2xl font-bold">R$ {dreData.grossRevenue?.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</div>
-                                </CardContent>
-                            </Card>
-                            <Card>
-                                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                                    <CardTitle className="text-sm font-medium">Custos/Despesas</CardTitle>
-                                    <TrendingDown className="h-4 w-4 text-red-500" />
-                                </CardHeader>
-                                <CardContent>
-                                    <div className="text-2xl font-bold">R$ {(Number(dreData.operationalCosts) + Number(dreData.expenses))?.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</div>
-                                    <p className="text-xs text-muted-foreground">Custos + Despesas</p>
-                                </CardContent>
-                            </Card>
-                            <Card>
-                                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                                    <CardTitle className="text-sm font-medium">Lucro Líquido</CardTitle>
-                                    <TrendingUp className="h-4 w-4 text-primary" />
-                                </CardHeader>
-                                <CardContent>
-                                    <div className={`text-2xl font-bold ${dreData.netProfit >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                                        R$ {dreData.netProfit?.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-                                    </div>
-                                </CardContent>
-                            </Card>
-                        </div>
-                    ) : <div className="text-center p-10">Carregando dados...</div>}
+                    {loading && !dreData ? renderLoading() : (
+                        dreData ? (
+                            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+                                <Card>
+                                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                                        <CardTitle className="text-sm font-medium">Receita Bruta</CardTitle>
+                                        <DollarSign className="h-4 w-4 text-green-500" />
+                                    </CardHeader>
+                                    <CardContent>
+                                        <div className="text-2xl font-bold">R$ {dreData.grossRevenue?.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</div>
+                                    </CardContent>
+                                </Card>
+                                <Card>
+                                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                                        <CardTitle className="text-sm font-medium">Custos/Despesas</CardTitle>
+                                        <TrendingDown className="h-4 w-4 text-red-500" />
+                                    </CardHeader>
+                                    <CardContent>
+                                        <div className="text-2xl font-bold">R$ {(Number(dreData.operationalCosts) + Number(dreData.expenses))?.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</div>
+                                        <p className="text-xs text-muted-foreground">Custos + Despesas</p>
+                                    </CardContent>
+                                </Card>
+                                <Card>
+                                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                                        <CardTitle className="text-sm font-medium">Lucro Líquido</CardTitle>
+                                        <TrendingUp className="h-4 w-4 text-primary" />
+                                    </CardHeader>
+                                    <CardContent>
+                                        <div className={`text-2xl font-bold ${dreData.netProfit >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                                            R$ {dreData.netProfit?.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                                        </div>
+                                    </CardContent>
+                                </Card>
+                            </div>
+                        ) : renderEmpty("Sem dados financeiros para o período.")
+                    )}
                 </TabsContent>
 
                 <TabsContent value="breakdown" className="space-y-4">
-                    {breakdownData ? (
-                        <div className="grid gap-4 md:grid-cols-2">
-                            <Card className="col-span-1">
-                                <CardHeader><CardTitle>Receita por Cidade</CardTitle></CardHeader>
-                                <CardContent className="h-[300px]">
-                                    <ResponsiveContainer width="100%" height="100%">
-                                        <BarChart data={breakdownData.byCity}>
-                                            <CartesianGrid strokeDasharray="3 3" />
-                                            <XAxis dataKey="city_name" fontSize={10} />
-                                            <YAxis />
-                                            <Tooltip />
-                                            <Legend />
-                                            <Bar dataKey="revenue" fill="#8884d8" name="Receita" />
-                                            <Bar dataKey="cost" fill="#82ca9d" name="Custo" />
-                                        </BarChart>
-                                    </ResponsiveContainer>
-                                </CardContent>
-                            </Card>
-                            <Card className="col-span-1">
-                                <CardHeader><CardTitle>Receita por Serviço (Categoria)</CardTitle></CardHeader>
-                                <CardContent className="h-[300px]">
-                                    <ResponsiveContainer width="100%" height="100%">
-                                        <PieChart>
-                                            <Pie
-                                                data={breakdownData.byService}
-                                                dataKey="revenue"
-                                                nameKey="service_name"
-                                                cx="50%"
-                                                cy="50%"
-                                                outerRadius={80}
-                                                label
-                                            >
-                                                {breakdownData.byService.map((entry: any, index: number) => (
-                                                    <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                                                ))}
-                                            </Pie>
-                                            <Tooltip />
-                                            <Legend />
-                                        </PieChart>
-                                    </ResponsiveContainer>
-                                </CardContent>
-                            </Card>
-                        </div>
-                    ) : (
-                        <div className="p-4 text-center">Carregando breakdown...</div>
+                    {loading && !breakdownData ? renderLoading() : (
+                        breakdownData ? (
+                            <div className="grid gap-4 md:grid-cols-2">
+                                <Card className="col-span-1">
+                                    <CardHeader><CardTitle>Receita por Cidade</CardTitle></CardHeader>
+                                    <CardContent className="h-[300px]">
+                                        <ResponsiveContainer width="100%" height="100%">
+                                            <BarChart data={breakdownData.byCity}>
+                                                <CartesianGrid strokeDasharray="3 3" />
+                                                <XAxis dataKey="city_name" fontSize={10} />
+                                                <YAxis />
+                                                <Tooltip />
+                                                <Legend />
+                                                <Bar dataKey="revenue" fill="#8884d8" name="Receita" />
+                                                <Bar dataKey="cost" fill="#82ca9d" name="Custo" />
+                                            </BarChart>
+                                        </ResponsiveContainer>
+                                    </CardContent>
+                                </Card>
+                                <Card className="col-span-1">
+                                    <CardHeader><CardTitle>Receita por Serviço (Categoria)</CardTitle></CardHeader>
+                                    <CardContent className="h-[300px]">
+                                        <ResponsiveContainer width="100%" height="100%">
+                                            <PieChart>
+                                                <Pie
+                                                    data={breakdownData.byService}
+                                                    dataKey="revenue"
+                                                    nameKey="service_name"
+                                                    cx="50%"
+                                                    cy="50%"
+                                                    outerRadius={80}
+                                                    label
+                                                >
+                                                    {breakdownData.byService.map((entry: any, index: number) => (
+                                                        <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                                                    ))}
+                                                </Pie>
+                                                <Tooltip />
+                                                <Legend />
+                                            </PieChart>
+                                        </ResponsiveContainer>
+                                    </CardContent>
+                                </Card>
+                            </div>
+                        ) : renderEmpty("Sem dados detalhados para exibir.")
                     )}
                 </TabsContent>
 
                 <TabsContent value="indicators" className="space-y-4">
-                    {indicatorsData ? (
-                        <div className="grid gap-4">
-                            <div className="grid gap-4 md:grid-cols-3">
+                    {loading && !indicatorsData ? renderLoading() : (
+                        indicatorsData ? (
+                            <div className="grid gap-4">
+                                <div className="grid gap-4 md:grid-cols-3">
+                                    <Card>
+                                        <CardHeader className="pb-2"><CardTitle className="text-sm">Margem de Lucro (Mês Atual)</CardTitle></CardHeader>
+                                        <CardContent><div className="text-2xl font-bold">{indicatorsData.margin}%</div></CardContent>
+                                    </Card>
+                                    <Card>
+                                        <CardHeader className="pb-2"><CardTitle className="text-sm">Crescimento (vs Mês Anterior)</CardTitle></CardHeader>
+                                        <CardContent>
+                                            <div className={`text-2xl font-bold flex items-center ${Number(indicatorsData.growth) >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                                                {Number(indicatorsData.growth) >= 0 ? <TrendingUp className="mr-2 h-4 w-4" /> : <TrendingDown className="mr-2 h-4 w-4" />}
+                                                {indicatorsData.growth}%
+                                            </div>
+                                        </CardContent>
+                                    </Card>
+                                </div>
                                 <Card>
-                                    <CardHeader className="pb-2"><CardTitle className="text-sm">Margem de Lucro (Mês Atual)</CardTitle></CardHeader>
-                                    <CardContent><div className="text-2xl font-bold">{indicatorsData.margin}%</div></CardContent>
-                                </Card>
-                                <Card>
-                                    <CardHeader className="pb-2"><CardTitle className="text-sm">Crescimento (vs Mês Anterior)</CardTitle></CardHeader>
-                                    <CardContent>
-                                        <div className={`text-2xl font-bold flex items-center ${Number(indicatorsData.growth) >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                                            {Number(indicatorsData.growth) >= 0 ? <TrendingUp className="mr-2 h-4 w-4" /> : <TrendingDown className="mr-2 h-4 w-4" />}
-                                            {indicatorsData.growth}%
-                                        </div>
+                                    <CardHeader><CardTitle>Evolução Financeira (6 meses)</CardTitle></CardHeader>
+                                    <CardContent className="h-[300px]">
+                                        <ResponsiveContainer width="100%" height="100%">
+                                            <LineChart data={indicatorsData.evolution}>
+                                                <CartesianGrid strokeDasharray="3 3" />
+                                                <XAxis dataKey="month" />
+                                                <YAxis />
+                                                <Tooltip />
+                                                <Legend />
+                                                <Line type="monotone" dataKey="revenue" stroke="#8884d8" name="Receita" />
+                                                <Line type="monotone" dataKey="cost" stroke="#82ca9d" name="Custo" />
+                                            </LineChart>
+                                        </ResponsiveContainer>
                                     </CardContent>
                                 </Card>
                             </div>
-                            <Card>
-                                <CardHeader><CardTitle>Evolução Financeira (6 meses)</CardTitle></CardHeader>
-                                <CardContent className="h-[300px]">
-                                    <ResponsiveContainer width="100%" height="100%">
-                                        <LineChart data={indicatorsData.evolution}>
-                                            <CartesianGrid strokeDasharray="3 3" />
-                                            <XAxis dataKey="month" />
-                                            <YAxis />
-                                            <Tooltip />
-                                            <Legend />
-                                            <Line type="monotone" dataKey="revenue" stroke="#8884d8" name="Receita" />
-                                            <Line type="monotone" dataKey="cost" stroke="#82ca9d" name="Custo" />
-                                        </LineChart>
-                                    </ResponsiveContainer>
-                                </CardContent>
-                            </Card>
-                        </div>
-                    ) : <div className="text-center p-4">Carregando indicadores...</div>}
+                        ) : renderEmpty("Calculando indicadores...")
+                    )}
                 </TabsContent>
             </Tabs>
         </div>

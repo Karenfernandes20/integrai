@@ -1,6 +1,7 @@
 import { Request, Response } from "express";
 import { pool } from "../db";
 import { logEvent } from "../logger";
+import { normalizePhone, extractPhoneFromJid } from "../utils/phoneUtils";
 
 /**
  * Evolution API controller
@@ -122,6 +123,42 @@ export const getEvolutionConfig = async (user: any, source: string = 'unknown', 
   console.log(`[Evolution Debug] [Source: ${source}] Final Config: Instance=${config.instance}, Key=${maskedKey}, CompanyId=${config.company_id}`);
 
   return config;
+};
+
+const isUsableGroupTitle = (value?: string | null): boolean => {
+  if (!value) return false;
+  const name = String(value).trim();
+  if (!name) return false;
+  if (/@g\.us$/i.test(name)) return false;
+  if (/@s\.whatsapp\.net$/i.test(name)) return false;
+  if (/^\d{8,16}$/.test(name)) return false;
+  return true;
+};
+
+const resolveStoredGroupTitle = async (
+  companyId: number | null,
+  remoteJid: string
+): Promise<string | null> => {
+  if (!pool || !companyId || !remoteJid) return null;
+  try {
+    const contactRes = await pool.query(
+      `SELECT name, push_name
+       FROM whatsapp_contacts
+       WHERE company_id = $1
+         AND (jid = $2 OR jid = REPLACE($2, '@g.us', '@s.whatsapp.net'))
+       ORDER BY updated_at DESC NULLS LAST, id DESC
+       LIMIT 1`,
+      [companyId, remoteJid]
+    );
+
+    const contactName = contactRes.rows[0]?.name;
+    const pushName = contactRes.rows[0]?.push_name;
+    if (isUsableGroupTitle(contactName)) return String(contactName).trim();
+    if (isUsableGroupTitle(pushName)) return String(pushName).trim();
+  } catch (err) {
+    console.warn("[Evolution] Failed to resolve stored group title:", err);
+  }
+  return null;
 };
 
 const WEBHOOK_EVENTS = [
@@ -342,44 +379,145 @@ export const getEvolutionQrCode = async (req: Request, res: Response) => {
 export const deleteEvolutionInstance = async (req: Request, res: Response) => {
   const targetCompanyId = req.query.companyId as string;
   const targetInstanceKey = req.query.instanceKey as string;
-  const config = await getEvolutionConfig((req as any).user, 'disconnect', targetCompanyId, targetInstanceKey);
-  const EVOLUTION_API_URL = config.url;
-  const EVOLUTION_API_KEY = config.apikey;
-  const EVOLUTION_INSTANCE = config.instance;
+  const user = (req as any).user;
 
   try {
-    if (!EVOLUTION_API_URL || !EVOLUTION_API_KEY) {
-      return res.status(500).json({ error: "Evolution API not configured" });
+    console.log(`[Disconnect] Request for company ${targetCompanyId}, instance key "${targetInstanceKey}"`);
+
+    // Fetch instance data directly first
+    if (!pool) {
+      return res.status(500).json({ error: "Database not configured" });
     }
 
-    const url = `${EVOLUTION_API_URL.replace(/\/$/, "")}/instance/logout/${EVOLUTION_INSTANCE}`;
+    const instRes = await pool.query(
+      'SELECT id, name, instance_key, api_key, company_id FROM company_instances WHERE instance_key = $1 AND company_id = $2',
+      [targetInstanceKey, Number(targetCompanyId)]
+    );
 
-    const response = await fetch(url, {
-      method: "DELETE",
-      headers: {
-        "Content-Type": "application/json",
-        apikey: EVOLUTION_API_KEY,
-      },
+    console.log(`[Disconnect] Instance lookup result:`, instRes.rows);
+
+    if (instRes.rows.length === 0) {
+      return res.status(404).json({ error: `Instance "${targetInstanceKey}" not found for company ${targetCompanyId}` });
+    }
+
+    const instance = instRes.rows[0];
+    console.log(`[Disconnect] Found instance:`, {
+      id: instance.id,
+      name: instance.name,
+      api_key_exists: !!instance.api_key,
+      api_key_length: instance.api_key?.length || 0
     });
 
-    if (!response.ok) {
-      // Se der erro 404, pode ser que já esteja desconectado, então tratamos como sucesso ou erro leve
-      if (response.status === 404) {
-        return res.status(200).json({ message: "Instance was already disconnected" });
-      }
-
-      const text = await response.text().catch(() => undefined);
-      return res.status(response.status).json({
-        error: "Failed to disconnect instance",
-        status: response.status,
-        body: text,
+    if (!instance.api_key || instance.api_key.length < 10) {
+      return res.status(400).json({
+        error: "Instance API Key not configured",
+        details: `Instance "${instance.name}" (${instance.instance_key}) does not have a valid API Key configured`
       });
     }
 
-    const data = await response.json();
-    return res.status(200).json(data);
+    // Get company URL
+    const companyRes = await pool.query('SELECT evolution_url FROM companies WHERE id = $1', [Number(targetCompanyId)]);
+    let evolutionUrl = process.env.EVOLUTION_API_URL || "https://evolution.integrai.com.br";
+
+    if (companyRes.rows.length > 0 && companyRes.rows[0].evolution_url) {
+      evolutionUrl = companyRes.rows[0].evolution_url;
+    }
+
+    evolutionUrl = evolutionUrl.replace(/['"]/g, "").replace(/\/$/, "");
+
+    const config = {
+      url: evolutionUrl,
+      apikey: instance.api_key,
+      instance: instance.instance_key
+    };
+
+    console.log(`[Disconnect] Resolved config:`, {
+      instance: config.instance,
+      url: config.url,
+      apikey_length: config.apikey.length
+    });
+
+    if (!config.url || !config.apikey) {
+      return res.status(500).json({ error: "Evolution API not configured" });
+    }
+
+    if (!config.instance) {
+      return res.status(400).json({ error: "Instance name not found or invalid" });
+    }
+
+    const url = `${config.url}/instance/logout/${config.instance}`;
+    console.log(`[Disconnect] Calling Evolution API: ${url}`);
+
+    // Try with instance API key first
+    let response = await fetch(url, {
+      method: "DELETE",
+      headers: {
+        "Content-Type": "application/json",
+        apikey: config.apikey,
+      },
+    });
+
+    console.log(`[Disconnect] Evolution API response status: ${response.status}`);
+
+    // If 401 Unauthorized, try with global API key as fallback
+    if (response.status === 401) {
+      console.log(`[Disconnect] Instance API Key unauthorized, trying with global key...`);
+
+      const globalKey = process.env.EVOLUTION_API_KEY; // Assuming GLOBAL_API_KEY is process.env.EVOLUTION_API_KEY
+      if (globalKey && globalKey !== config.apikey) {
+        response = await fetch(url, {
+          method: "DELETE",
+          headers: {
+            "Content-Type": "application/json",
+            apikey: globalKey,
+          },
+        });
+        console.log(`[Disconnect] Global key attempt status: ${response.status}`);
+      }
+    }
+
+    if (!response.ok) {
+      if (response.status === 404) {
+        console.log(`[Disconnect] Instance ${config.instance} already disconnected (404)`);
+        // Update DB status to disconnected
+        await pool.query('UPDATE company_instances SET status = $1 WHERE id = $2', ['disconnected', instance.id]);
+        return res.status(200).json({ message: "Instance was already disconnected", status: "success" });
+      }
+
+      const text = await response.text().catch(() => "No response body");
+      console.error(`[Disconnect] Failed with status ${response.status}: ${text}`);
+
+      let errorMessage = "Failed to disconnect instance from Evolution API";
+
+      // Add specific message for 401
+      if (response.status === 401) {
+        errorMessage = "API Key não tem permissão para desconectar esta instância. Verifique se a API Key está correta.";
+      } else {
+        // Try to parse error details
+        try {
+          const errorData = JSON.parse(text);
+          errorMessage = errorData.message || errorData.error || errorMessage;
+        } catch (e) {
+          // If not JSON, use text directly if it's meaningful
+          if (text && text.length > 0 && text.length < 200) {
+            errorMessage = text;
+          }
+        }
+      }
+
+      return res.status(response.status).json({
+        error: errorMessage,
+        status: response.status,
+        url: url,
+        instance: config.instance
+      });
+    }
+
+    const data = await response.json().catch(() => ({ success: true }));
+    console.log(`[Disconnect] Success! Response:`, data);
+    return res.status(200).json({ message: "Instance disconnected successfully", data });
   } catch (error: any) {
-    console.error("Erro ao desconectar instância Evolution:", error);
+    console.error("[Disconnect] Error:", error);
     return res.status(500).json({
       error: "Internal server error while disconnecting instance",
       details: error?.message || String(error)
@@ -485,9 +623,11 @@ export const sendEvolutionMessage = async (req: Request, res: Response) => {
       return res.status(400).json({ error: "Message text cannot be empty" });
     }
 
+    const explicitGroupFlag = isGroup === true || isGroup === 'true';
+    const inferredGroup = explicitGroupFlag || (typeof targetPhone === 'string' && targetPhone.endsWith('@g.us'));
     // Ensure correct JID format
     if (targetPhone && !targetPhone.includes('@')) {
-      if (isGroup) {
+      if (inferredGroup) {
         targetPhone = `${targetPhone}@g.us`;
       } else {
         targetPhone = `${targetPhone}@s.whatsapp.net`;
@@ -536,16 +676,21 @@ export const sendEvolutionMessage = async (req: Request, res: Response) => {
         // Basic normalization of remoteJid
         const safePhone = targetPhone || "";
         const remoteJid = safePhone; // Already normalized above
+        const messageIsGroup = remoteJid.endsWith('@g.us') || inferredGroup;
+        const user = (req as any).user;
+        const resolvedCompanyId = config.company_id;
+
+        const conversationPhone = messageIsGroup ? remoteJid : safePhone;
+        const resolvedGroupTitle = messageIsGroup
+          ? (await resolveStoredGroupTitle(resolvedCompanyId, remoteJid)) || "Grupo"
+          : null;
 
         // Find or create conversation
         let conversationId: number;
 
-        const user = (req as any).user;
-        const resolvedCompanyId = config.company_id;
-
         // CHECK INSTANCE AND COMPANY isolation
         const checkConv = await pool.query(
-          'SELECT id, status, user_id FROM whatsapp_conversations WHERE external_id = $1 AND instance = $2 AND company_id = $3',
+          'SELECT id, status, user_id, is_group, group_name FROM whatsapp_conversations WHERE external_id = $1 AND instance = $2 AND company_id = $3',
           [remoteJid, EVOLUTION_INSTANCE, resolvedCompanyId]
         );
 
@@ -554,16 +699,35 @@ export const sendEvolutionMessage = async (req: Request, res: Response) => {
           // Update status to OPEN if it was PENDING/null, assign user if unassigned, and update last_message metadata
           await pool.query(
             `UPDATE whatsapp_conversations 
-             SET last_message = $1, last_message_at = NOW(), status = 'OPEN', user_id = COALESCE(user_id, $2), company_id = COALESCE(company_id, $3)
+             SET last_message = $1, last_message_at = NOW(), status = 'OPEN', user_id = COALESCE(user_id, $2), company_id = COALESCE(company_id, $3),
+                 is_group = CASE WHEN $5 THEN true ELSE is_group END,
+                 group_name = CASE
+                   WHEN $5 THEN COALESCE(NULLIF(group_name, external_id), $6, group_name, 'Grupo')
+                   ELSE group_name
+                 END,
+                 contact_name = CASE
+                   WHEN $5 THEN COALESCE(NULLIF(contact_name, external_id), $6, contact_name, 'Grupo')
+                   ELSE contact_name
+                 END
              WHERE id = $4`,
-            [messageContent, user.id, resolvedCompanyId, conversationId]
+            [messageContent, user.id, resolvedCompanyId, conversationId, messageIsGroup, resolvedGroupTitle]
           );
         } else {
           // Create new conversation as OPEN and assigned to the sender
           const newConv = await pool.query(
-            `INSERT INTO whatsapp_conversations (external_id, phone, contact_name, instance, status, user_id, last_message, last_message_at, company_id) 
-             VALUES ($1, $2, $3, $4, 'OPEN', $5, $6, NOW(), $7) RETURNING id`,
-            [remoteJid, safePhone, safePhone, EVOLUTION_INSTANCE, user.id, messageContent, resolvedCompanyId]
+            `INSERT INTO whatsapp_conversations (external_id, phone, contact_name, instance, status, user_id, last_message, last_message_at, company_id, is_group, group_name) 
+             VALUES ($1, $2, $3, $4, 'OPEN', $5, $6, NOW(), $7, $8, $9) RETURNING id`,
+            [
+              remoteJid,
+              conversationPhone,
+              messageIsGroup ? resolvedGroupTitle : conversationPhone,
+              EVOLUTION_INSTANCE,
+              user.id,
+              messageContent,
+              resolvedCompanyId,
+              messageIsGroup,
+              messageIsGroup ? resolvedGroupTitle : null
+            ]
           );
           conversationId = newConv.rows[0].id;
         }
@@ -573,12 +737,13 @@ export const sendEvolutionMessage = async (req: Request, res: Response) => {
         // Insert message WITH USER_ID and company_id, handling race condition with webhook
         // If webhook inserted first (user_id=null), this will update it.
         const insertedMsg = await pool.query(
-          `INSERT INTO whatsapp_messages (conversation_id, direction, content, sent_at, status, external_id, user_id, company_id) 
-           VALUES ($1, $2, $3, NOW(), $4, $5, $6, $7) 
+          `INSERT INTO whatsapp_messages (conversation_id, direction, content, sent_at, status, external_id, user_id, company_id, sent_by_user_id, sent_by_user_name) 
+           VALUES ($1, $2, $3, NOW(), $4, $5, $6, $7, $8, $9) 
            ON CONFLICT (external_id) DO UPDATE 
-           SET user_id = EXCLUDED.user_id, company_id = EXCLUDED.company_id 
+           SET user_id = EXCLUDED.user_id, company_id = EXCLUDED.company_id, 
+               sent_by_user_id = EXCLUDED.sent_by_user_id, sent_by_user_name = EXCLUDED.sent_by_user_name 
            RETURNING *`,
-          [conversationId, 'outbound', messageContent, 'sent', externalMessageId, user.id, resolvedCompanyId]
+          [conversationId, 'outbound', messageContent, 'sent', externalMessageId, user.id, resolvedCompanyId, user.id, user.full_name]
         );
 
         const row = insertedMsg.rows[0];
@@ -594,8 +759,10 @@ export const sendEvolutionMessage = async (req: Request, res: Response) => {
           sent_at: row.sent_at || new Date().toISOString(),
           user_id: user.id,
           agent_name: user.full_name,
-          phone: safePhone,
-          remoteJid: remoteJid
+          phone: conversationPhone,
+          remoteJid: remoteJid,
+          is_group: messageIsGroup,
+          group_name: messageIsGroup ? resolvedGroupTitle : null
         };
 
         // Emit Socket to all users in the company
@@ -644,7 +811,7 @@ export const sendEvolutionMedia = async (req: Request, res: Response) => {
       }
     }
 
-    const { phone, media, mediaType, caption, fileName } = req.body;
+    const { phone, media, mediaType, caption, fileName, isGroup } = req.body;
 
     if (!phone || !media || !mediaType) {
       return res.status(400).json({ error: "Phone, media (base64/url) and mediaType are required" });
@@ -695,7 +862,16 @@ export const sendEvolutionMedia = async (req: Request, res: Response) => {
         const user = (req as any).user;
         // resolvedCompanyId already defined at top of function
         const safePhone = phone || "";
-        const remoteJid = safePhone.includes('@') ? safePhone : `${safePhone}@s.whatsapp.net`;
+        const explicitGroupFlag = isGroup === true || isGroup === 'true';
+        const inferredGroup = explicitGroupFlag || (typeof safePhone === 'string' && safePhone.endsWith('@g.us'));
+        const remoteJid = safePhone.includes('@')
+          ? safePhone
+          : (inferredGroup ? `${safePhone}@g.us` : `${safePhone}@s.whatsapp.net`);
+        const messageIsGroup = remoteJid.endsWith('@g.us') || inferredGroup;
+        const conversationPhone = messageIsGroup ? remoteJid : safePhone;
+        const resolvedGroupTitle = messageIsGroup
+          ? (await resolveStoredGroupTitle(resolvedCompanyId, remoteJid)) || "Grupo"
+          : null;
         const content = caption || `[${mediaType}]`;
 
         // Find or create conversation
@@ -708,13 +884,34 @@ export const sendEvolutionMedia = async (req: Request, res: Response) => {
         if (checkConv.rows.length > 0) {
           conversationId = checkConv.rows[0].id;
           await pool.query(
-            `UPDATE whatsapp_conversations SET last_message = $1, last_message_at = NOW(), status = 'OPEN', user_id = COALESCE(user_id, $2), company_id = COALESCE(company_id, $3) WHERE id = $4`,
-            [content, user.id, resolvedCompanyId, conversationId]
+            `UPDATE whatsapp_conversations 
+             SET last_message = $1, last_message_at = NOW(), status = 'OPEN', user_id = COALESCE(user_id, $2), company_id = COALESCE(company_id, $3),
+                 is_group = CASE WHEN $5 THEN true ELSE is_group END,
+                 group_name = CASE
+                   WHEN $5 THEN COALESCE(NULLIF(group_name, external_id), $6, group_name, 'Grupo')
+                   ELSE group_name
+                 END,
+                 contact_name = CASE
+                   WHEN $5 THEN COALESCE(NULLIF(contact_name, external_id), $6, contact_name, 'Grupo')
+                   ELSE contact_name
+                 END
+             WHERE id = $4`,
+            [content, user.id, resolvedCompanyId, conversationId, messageIsGroup, resolvedGroupTitle]
           );
         } else {
           const newConv = await pool.query(
-            `INSERT INTO whatsapp_conversations (external_id, phone, contact_name, instance, status, user_id, last_message, last_message_at, company_id) VALUES ($1, $2, $3, $4, 'OPEN', $5, $6, NOW(), $7) RETURNING id`,
-            [remoteJid, safePhone, safePhone, EVOLUTION_INSTANCE, user.id, content, resolvedCompanyId]
+            `INSERT INTO whatsapp_conversations (external_id, phone, contact_name, instance, status, user_id, last_message, last_message_at, company_id, is_group, group_name) VALUES ($1, $2, $3, $4, 'OPEN', $5, $6, NOW(), $7, $8, $9) RETURNING id`,
+            [
+              remoteJid,
+              conversationPhone,
+              messageIsGroup ? resolvedGroupTitle : conversationPhone,
+              EVOLUTION_INSTANCE,
+              user.id,
+              content,
+              resolvedCompanyId,
+              messageIsGroup,
+              messageIsGroup ? resolvedGroupTitle : null
+            ]
           );
           conversationId = newConv.rows[0].id;
         }
@@ -722,8 +919,8 @@ export const sendEvolutionMedia = async (req: Request, res: Response) => {
         const externalMessageId = data?.key?.id;
 
         const insertedMsg = await pool.query(
-          'INSERT INTO whatsapp_messages (conversation_id, direction, content, sent_at, status, external_id, user_id, message_type, media_url, company_id) VALUES ($1, $2, $3, NOW(), $4, $5, $6, $7, $8, $9) ON CONFLICT DO NOTHING RETURNING *',
-          [conversationId, 'outbound', content, 'sent', externalMessageId, user.id, mediaType, (media.startsWith('http') ? media : null), resolvedCompanyId]
+          'INSERT INTO whatsapp_messages (conversation_id, direction, content, sent_at, status, external_id, user_id, message_type, media_url, company_id, sent_by_user_id, sent_by_user_name) VALUES ($1, $2, $3, NOW(), $4, $5, $6, $7, $8, $9, $10, $11) ON CONFLICT DO NOTHING RETURNING *',
+          [conversationId, 'outbound', content, 'sent', externalMessageId, user.id, mediaType, (media.startsWith('http') ? media : null), resolvedCompanyId, user.id, user.full_name]
         );
 
         // Increment Usage
@@ -744,8 +941,10 @@ export const sendEvolutionMedia = async (req: Request, res: Response) => {
           agent_name: user.full_name,
           message_type: mediaType,
           media_url: media.startsWith('http') ? media : null,
-          phone: safePhone,
-          remoteJid: remoteJid
+          phone: conversationPhone,
+          remoteJid: remoteJid,
+          is_group: messageIsGroup,
+          group_name: messageIsGroup ? resolvedGroupTitle : null
         };
 
         const io = req.app.get('io');
@@ -946,6 +1145,21 @@ export const syncEvolutionContacts = async (req: Request, res: Response) => {
     let processedCount = 0;
     let errorDetails: string[] = [];
 
+    const isLikelyDisplayName = (value: any, phoneDigits?: string) => {
+      const name = String(value || '').trim();
+      if (!name) return false;
+      if (name.length < 2 || name.length > 60) return false;
+      if (/\r|\n/.test(name)) return false;
+      if (/https?:\/\//i.test(name)) return false;
+      const normalizedPhone = String(phoneDigits || '').replace(/\D/g, '');
+      const normalizedNameDigits = name.replace(/\D/g, '');
+      if (normalizedPhone && normalizedNameDigits === normalizedPhone) return false;
+      if (/^\[[^\]]+\]$/.test(name)) return false; // e.g. [Imagem]
+      const wordCount = name.split(/\s+/).filter(Boolean).length;
+      if (wordCount > 6 && name.length > 28) return false; // likely sentence
+      return true;
+    };
+
     // 2. Iterate and Sync
     for (const instKey of instancesToProcess) {
       try {
@@ -1098,6 +1312,43 @@ export const syncEvolutionContacts = async (req: Request, res: Response) => {
             await client.query('BEGIN');
             const processedJids = new Set<string>();
 
+            const existingContactsRes = await client.query(
+              `SELECT jid, phone, name FROM whatsapp_contacts WHERE company_id = $1`,
+              [resolvedCompanyId]
+            );
+
+            // Get or Ensure LEADS stage exists for this specific company
+            let leadStageId = null;
+            const stageRes = await client.query(
+              "SELECT id FROM crm_stages WHERE company_id = $1 AND UPPER(name) = 'LEADS' LIMIT 1",
+              [resolvedCompanyId]
+            );
+            if (stageRes.rows.length > 0) {
+              leadStageId = stageRes.rows[0].id;
+            } else {
+              const newStage = await client.query(
+                "INSERT INTO crm_stages (name, position, company_id, color) VALUES ('LEADS', 0, $1, '#cbd5e1') RETURNING id",
+                [resolvedCompanyId]
+              );
+              leadStageId = newStage.rows[0].id;
+            }
+
+            // Fetch existing leads to avoid duplicates
+            const existingLeadsRes = await client.query(
+              "SELECT phone FROM crm_leads WHERE company_id = $1",
+              [resolvedCompanyId]
+            );
+            const existingLeadPhones = new Set(existingLeadsRes.rows.map(r => (r.phone || '').replace(/\D/g, '')));
+
+            const existingByJid = new Map<string, string>();
+            const existingByPhone = new Map<string, string>();
+            for (const row of existingContactsRes.rows) {
+              const rowName = String(row.name || '').trim();
+              if (!rowName) continue;
+              if (row.jid) existingByJid.set(String(row.jid), rowName);
+              if (row.phone) existingByPhone.set(String(row.phone).replace(/\D/g, ''), rowName);
+            }
+
             for (const contact of contactsList) {
               const rawId = contact.id || contact.remoteJid || contact.jid;
               if (!rawId || (contact.isGroup) || (typeof rawId === 'string' && rawId.endsWith('@g.us'))) {
@@ -1109,9 +1360,9 @@ export const syncEvolutionContacts = async (req: Request, res: Response) => {
 
               for (const field of potentialFields) {
                 if (typeof field === 'string' && field) {
-                  const clean = field.split('@')[0].split(':')[0];
-                  if (/^\d+$/.test(clean) && clean.length >= 7 && clean.length <= 16) {
-                    candidate = clean;
+                  const cleaned = normalizePhone(field);
+                  if (cleaned && cleaned.length >= 7) {
+                    candidate = cleaned;
                     break;
                   }
                 }
@@ -1123,7 +1374,10 @@ export const syncEvolutionContacts = async (req: Request, res: Response) => {
               if (processedJids.has(jid)) continue;
               processedJids.add(jid);
 
-              const name = contact.name || contact.pushName || contact.notify || contact.verifiedName || candidate;
+              const candidateNames = [contact.name, contact.pushName, contact.notify, contact.verifiedName].map((n: any) => String(n || '').trim());
+              const preferredIncomingName = candidateNames.find((n: string) => isLikelyDisplayName(n, candidate)) || '';
+              const existingName = existingByJid.get(jid) || existingByPhone.get(candidate) || '';
+              const finalName = preferredIncomingName || existingName || candidate;
               const pushName = contact.pushName || contact.notify;
               const profilePic = contact.profilePictureUrl || contact.profilePicture;
 
@@ -1136,14 +1390,56 @@ export const syncEvolutionContacts = async (req: Request, res: Response) => {
                 VALUES ($1, $2, $3, $4, $5, $6, NOW(), $7)
                 ON CONFLICT (jid, company_id) 
                 DO UPDATE SET 
-                  name = EXCLUDED.name,
+                  name = CASE
+                    -- Only overwrite if current name is empty, null, or just equal to the phone
+                    WHEN whatsapp_contacts.name IS NULL 
+                         OR btrim(whatsapp_contacts.name) = '' 
+                         OR whatsapp_contacts.name = whatsapp_contacts.phone 
+                         OR whatsapp_contacts.name = whatsapp_contacts.jid
+                    THEN CASE 
+                         WHEN EXCLUDED.name IS NULL OR btrim(EXCLUDED.name) = '' THEN whatsapp_contacts.name
+                         ELSE EXCLUDED.name
+                      END
+                    ELSE whatsapp_contacts.name
+                  END,
                   push_name = EXCLUDED.push_name,
                   profile_pic_url = COALESCE(EXCLUDED.profile_pic_url, whatsapp_contacts.profile_pic_url),
                   phone = EXCLUDED.phone,
                   instance = EXCLUDED.instance,
                   updated_at = NOW()
-              `, [jid, candidate, name, pushName || null, profilePic || null, instanceToSave, resolvedCompanyId]);
+              `, [jid, candidate, finalName, pushName || null, profilePic || null, instanceToSave, resolvedCompanyId]);
+
+              // --- CRM INTEGRATION: Sync to Leads ---
+              if (leadStageId && !existingLeadPhones.has(candidate)) {
+                try {
+                  await client.query(`
+                    INSERT INTO crm_leads (name, phone, stage_id, origin, company_id, instance, created_at, updated_at)
+                    VALUES ($1, $2, $3, 'WhatsApp Sync', $4, $5, NOW(), NOW())
+                    ON CONFLICT (phone, company_id) DO NOTHING
+                  `, [finalName, candidate, leadStageId, resolvedCompanyId, instanceToSave]);
+                  existingLeadPhones.add(candidate);
+                } catch (crmErr) {
+                  console.error(`[Sync] CRM Lead Error for ${candidate}:`, crmErr);
+                }
+              }
             }
+
+            await client.query(`
+              UPDATE whatsapp_conversations c
+              SET contact_name = wc.name
+              FROM whatsapp_contacts wc
+              WHERE c.company_id = $1
+                AND wc.company_id = $1
+                AND (c.is_group IS NULL OR c.is_group = false)
+                AND wc.name IS NOT NULL
+                AND btrim(wc.name) <> ''
+                AND (
+                  wc.jid = c.external_id
+                  OR wc.jid = REPLACE(c.external_id, '@c.us', '@s.whatsapp.net')
+                  OR regexp_replace(COALESCE(wc.phone, ''), '\\D', '', 'g') = regexp_replace(COALESCE(c.phone, split_part(c.external_id, '@', 1)), '\\D', '', 'g')
+                )
+            `, [resolvedCompanyId]);
+
             await client.query('COMMIT');
             processedCount++;
           } catch (dbErr) {
@@ -1188,6 +1484,8 @@ export const syncEvolutionContacts = async (req: Request, res: Response) => {
     localQuery += ` ORDER BY name ASC`;
     const finalContacts = await pool?.query(localQuery, localParams);
 
+    // Proactively trigger profile picture sync in background (fire and forget)
+    // We don't await this to return the contact list immediately
     return res.json(finalContacts?.rows || []);
 
   } catch (error: any) {
@@ -1199,6 +1497,116 @@ export const syncEvolutionContacts = async (req: Request, res: Response) => {
         details: error?.message
       });
     }
+  }
+};
+
+export const syncEvolutionGroups = async (req: Request, res: Response) => {
+  try {
+    if (!pool) return res.status(500).json({ error: "Database not configured" });
+
+    const user = (req as any).user;
+    const companyId = req.query.companyId || user.company_id;
+    const resolvedCompanyId = Number(companyId);
+
+    // Get instances for this company
+    const instancesRes = await pool.query(
+      "SELECT instance_key, api_key FROM company_instances WHERE company_id = $1 AND status = 'open'",
+      [resolvedCompanyId]
+    );
+
+    if (instancesRes.rows.length === 0) {
+      // Fallback: check the company table for legacy primary instance
+      const companyRes = await pool.query('SELECT evolution_instance, evolution_apikey FROM companies WHERE id = $1', [resolvedCompanyId]);
+      if (companyRes.rows[0]?.evolution_instance) {
+        instancesRes.rows.push({
+          instance_key: companyRes.rows[0].evolution_instance,
+          api_key: companyRes.rows[0].evolution_apikey
+        });
+      } else {
+        return res.status(404).json({ error: "Nenhuma instância ativa encontrada para esta empresa" });
+      }
+    }
+
+    // Get Evolution URL
+    const companyRes = await pool.query('SELECT evolution_url FROM companies WHERE id = $1', [resolvedCompanyId]);
+    const evolutionUrl = companyRes.rows[0]?.evolution_url || process.env.EVOLUTION_API_URL;
+
+    if (!evolutionUrl) {
+      return res.status(500).json({ error: "Evolution API URL não configurada" });
+    }
+
+    let totalSynced = 0;
+    const errorDetails: string[] = [];
+
+    for (const inst of instancesRes.rows) {
+      const { instance_key, api_key } = inst;
+      if (!instance_key) continue;
+
+      try {
+        console.log(`[SyncGroups] Fetching groups for instance ${instance_key}`);
+        const url = `${evolutionUrl.replace(/\/$/, '')}/group/fetchAllGroups/${instance_key}?getParticipants=false`;
+        const response = await fetch(url, {
+          method: 'GET',
+          headers: {
+            'Content-Type': 'application/json',
+            'apikey': api_key || process.env.EVOLUTION_API_KEY || ''
+          }
+        });
+
+        if (response.ok) {
+          const rawGroups = await response.json();
+          // Evolution sometimes returns groups in a 'data' property or directly as array
+          const groupsList = Array.isArray(rawGroups) ? rawGroups : (rawGroups.data || []);
+
+          if (Array.isArray(groupsList)) {
+            for (const group of groupsList) {
+              const jid = group.id || group.remoteJid || group.jid;
+              const name = group.subject || group.name || group.title;
+              const pic = group.profilePictureUrl || group.pic || group.picture;
+
+              if (!jid || !jid.endsWith('@g.us')) continue;
+
+              // Upsert into whatsapp_conversations
+              // We use a combination of external_id and company_id for the match if possible
+              // but the schema only has external_id as UNIQUE currently.
+              await pool.query(`
+                INSERT INTO whatsapp_conversations (
+                    external_id, phone, contact_name, group_name, is_group, instance, company_id, profile_pic_url, updated_at, status
+                ) VALUES ($1, $2, $3, $4, true, $5, $6, $7, NOW(), 'PENDING')
+                ON CONFLICT (external_id) 
+                DO UPDATE SET 
+                    group_name = EXCLUDED.group_name,
+                    contact_name = EXCLUDED.contact_name,
+                    is_group = true,
+                    profile_pic_url = COALESCE(EXCLUDED.profile_pic_url, whatsapp_conversations.profile_pic_url),
+                    instance = COALESCE(whatsapp_conversations.instance, EXCLUDED.instance),
+                    updated_at = NOW()
+                WHERE whatsapp_conversations.company_id = EXCLUDED.company_id
+              `, [jid, jid, name, name, instance_key, resolvedCompanyId, pic]);
+              totalSynced++;
+            }
+          }
+        } else {
+          const errText = await response.text();
+          console.warn(`[SyncGroups] Failed to fetch groups for ${instance_key}: ${response.status} - ${errText}`);
+          errorDetails.push(`Instância ${instance_key}: ${response.status}`);
+        }
+      } catch (err: any) {
+        console.error(`[SyncGroups] Error for instance ${instance_key}:`, err);
+        errorDetails.push(`Instância ${instance_key}: ${err.message}`);
+      }
+    }
+
+    res.json({
+      success: true,
+      message: `${totalSynced} grupos sincronizados com sucesso.`,
+      count: totalSynced,
+      errors: errorDetails.length > 0 ? errorDetails : undefined
+    });
+
+  } catch (error: any) {
+    console.error("[SyncGroups] Critical error:", error);
+    res.status(500).json({ error: "Erro interno no servidor ao sincronizar grupos" });
   }
 };
 
@@ -1256,20 +1664,35 @@ export const getEvolutionContactsLive = async (req: Request, res: Response) => {
       return res.status(502).json({ error: "Live fetch failed from all endpoints", details: lastError });
     }
 
-    // Return mapped simple objects
-    const mapped = contactsList.map(c => {
+    // Return mapped simple objects with database caching for pictures
+    const mapped = await Promise.all(contactsList.map(async (c) => {
       const jid = c.id || c.remoteJid || c.jid;
-      // Basic clean: handle suffixes like :1
-      const phone = jid ? jid.split('@')[0].split(':')[0] : (c.phone || c.number || "");
+      const phone = extractPhoneFromJid(jid) || normalizePhone(c.phone || c.number || "");
+      let profile_pic_url = c.profilePictureUrl || c.profilePicture;
+
+      // If API didn't return a pic, try to find it in our local DB
+      if (!profile_pic_url && pool && phone) {
+        try {
+          const dbCheck = await pool.query(
+            "SELECT profile_pic_url FROM whatsapp_contacts WHERE (phone = $1 OR jid = $2) AND company_id = $3 LIMIT 1",
+            [phone, jid, config.company_id]
+          );
+          if (dbCheck.rows.length > 0 && dbCheck.rows[0].profile_pic_url) {
+            profile_pic_url = dbCheck.rows[0].profile_pic_url;
+          }
+        } catch (e) { /* ignore cache miss */ }
+      }
+
       return {
         id: jid || phone,
         name: c.name || c.pushName || c.notify || phone,
         phone: phone,
-        profile_pic_url: c.profilePictureUrl || c.profilePicture
+        profile_pic_url: profile_pic_url
       };
-    }).filter(c => c.phone && /^\d+$/.test(c.phone)); // Filter valid numeric phones
+    }));
 
-    return res.json(mapped);
+    const filtered = mapped.filter(c => c.phone && c.phone.length >= 7);
+    return res.json(filtered);
 
   } catch (error: any) {
     console.error("Error fetching live contacts:", error);
@@ -1289,10 +1712,10 @@ export const createEvolutionContact = async (req: Request, res: Response) => {
       return res.status(400).json({ error: "Name and Phone are required" });
     }
 
-    // Validate phone format - remove non-digits
-    const cleanPhone = phone.replace(/\D/g, "");
+    // Validate phone format
+    const cleanPhone = normalizePhone(phone);
     if (!cleanPhone || cleanPhone.length < 10) {
-      return res.status(400).json({ error: "Invalid phone number" });
+      return res.status(400).json({ error: "Telefone inválido. Use formato com DDD." });
     }
 
     const jid = `${cleanPhone}@s.whatsapp.net`;
@@ -1497,20 +1920,26 @@ export const handleEvolutionWebhook = async (req: Request, res: Response) => {
             // 2. Contact is NOT SAVED in whatsapp_contacts (isSavedContact === false)
             if (!fromMe && !isSavedContact) {
               try {
-                // Find 'Leads' stage ID
-                const leadStageRes = await pool.query("SELECT id FROM crm_stages WHERE name = 'Leads' LIMIT 1");
+                const leadStageRes = await pool.query(
+                  "SELECT id FROM crm_stages WHERE name = 'Leads' AND company_id = $1 LIMIT 1",
+                  [resolvedCompanyId]
+                );
 
                 if (leadStageRes.rows.length > 0) {
                   const leadsStageId = leadStageRes.rows[0].id;
 
-                  // Check if lead exists by phone
-                  const checkLead = await pool.query("SELECT id FROM crm_leads WHERE phone = $1", [phone]);
+                  // Check if lead exists by phone AND company
+                  const checkLead = await pool.query(
+                    "SELECT id FROM crm_leads WHERE phone = $1 AND company_id = $2",
+                    [phone, resolvedCompanyId]
+                  );
 
                   if (checkLead.rows.length === 0) {
                     console.log(`[CRM] Auto-creating lead for UNSAVED contact ${phone}`);
                     await pool.query(
                       `INSERT INTO crm_leads (name, phone, stage_id, origin, company_id, instance, created_at, updated_at)
-                                 VALUES ($1, $2, $3, 'WhatsApp', $4, $5, NOW(), NOW())`,
+                                 VALUES ($1, $2, $3, 'WhatsApp', $4, $5, NOW(), NOW())
+                                 ON CONFLICT (phone, company_id) DO NOTHING`,
                       [pushName || phone, phone, leadsStageId, resolvedCompanyId, instance]
 
                     );
@@ -1847,49 +2276,75 @@ export const syncAllProfilePics = async (req: Request, res: Response) => {
     const user = (req as any).user;
     const companyId = user?.company_id;
 
-    // Fetch conversations without profile pics
-    let query = "SELECT external_id, phone FROM whatsapp_conversations WHERE (profile_pic_url IS NULL OR profile_pic_url = '') AND instance = $1";
-    const params = [EVOLUTION_INSTANCE];
-
-    if (user.role !== 'SUPERADMIN' || companyId) {
-      query += " AND (company_id = $2 OR company_id IS NULL)";
-      params.push(companyId);
-    }
+    // Fetch both conversations and contacts without profile pics for the current instance/company
+    let query = `
+      SELECT DISTINCT jid_or_phone, external_id, phone, is_group 
+      FROM (
+        SELECT external_id as jid_or_phone, external_id, phone, is_group FROM whatsapp_conversations 
+        WHERE (profile_pic_url IS NULL OR profile_pic_url = '') AND instance = $1 AND company_id = $2
+        UNION
+        SELECT jid as jid_or_phone, jid as external_id, phone, false as is_group FROM whatsapp_contacts 
+        WHERE (profile_pic_url IS NULL OR profile_pic_url = '') AND instance = $1 AND company_id = $2
+      ) sub
+    `;
+    const params = [EVOLUTION_INSTANCE, companyId];
 
     const { rows } = await pool.query(query, params);
 
     let count = 0;
     const baseUrl = EVOLUTION_API_URL.replace(/\/$/, "");
 
-    // Process in background and return immediate status if there are many, or wait if few
-    res.json({ success: true, message: `Syncing ${rows.length} profile pictures in background...`, totalFound: rows.length });
+    // Process in background and return immediate status
+    res.json({ success: true, message: `Sincronizando ${rows.length} fotos de perfil em segundo plano...`, totalFound: rows.length });
 
     // Process in background
     (async () => {
-      for (const conv of rows) {
+      console.log(`[SyncPics] Starting sync for ${rows.length} items on instance ${EVOLUTION_INSTANCE}`);
+      for (const item of rows) {
         try {
-          const phone = conv.external_id || conv.phone;
+          const target = item.jid_or_phone || item.external_id || item.phone;
+          if (!target) continue;
+
+          console.log(`[SyncPics] Fetching pic for ${target}...`);
           const response = await fetch(`${baseUrl}/chat/fetchProfilePictureUrl/${EVOLUTION_INSTANCE}`, {
             method: "POST",
             headers: { "Content-Type": "application/json", "apikey": EVOLUTION_API_KEY },
-            body: JSON.stringify({ number: phone })
+            body: JSON.stringify({ number: target })
           });
 
           if (response.ok) {
             const data = await response.json();
-            const picUrl = data.profilePictureUrl || data.url;
+            let picUrl = data.profilePictureUrl || data.url;
+
+            // Fallback for groups if fetchProfilePictureUrl didn't return a URL
+            if (!picUrl && item.is_group) {
+              console.log(`[SyncPics] Fallback to findGroup for group ${target}`);
+              const gRes = await fetch(`${baseUrl}/group/findGroup/${EVOLUTION_INSTANCE}?groupJid=${target}`, {
+                headers: { "apikey": EVOLUTION_API_KEY }
+              });
+              if (gRes.ok) {
+                const gData = await gRes.json();
+                picUrl = gData.profilePictureUrl || gData.pic || gData.picture;
+              }
+            }
+
             if (picUrl) {
               await Promise.all([
-                pool.query("UPDATE whatsapp_conversations SET profile_pic_url = $1 WHERE external_id = $2 AND instance = $3", [picUrl, conv.external_id, EVOLUTION_INSTANCE]),
-                pool.query("UPDATE whatsapp_contacts SET profile_pic_url = $1 WHERE jid = $2 AND instance = $3", [picUrl, conv.external_id, EVOLUTION_INSTANCE])
+                pool.query("UPDATE whatsapp_conversations SET profile_pic_url = $1 WHERE (external_id = $2 OR phone = $3) AND company_id = $4", [picUrl, item.external_id, item.phone, companyId]),
+                pool.query("UPDATE whatsapp_contacts SET profile_pic_url = $1 WHERE (jid = $2 OR phone = $3) AND company_id = $4", [picUrl, item.external_id, item.phone, companyId])
               ]);
               count++;
+              console.log(`[SyncPics] ✅ Updated pic for ${target}`);
+            } else {
+              console.log(`[SyncPics] ℹ️ No pic found for ${target}`);
             }
+          } else {
+            console.warn(`[SyncPics] ⚠️ API returned ${response.status} for ${target}`);
           }
-          // Small delay to be polite to the API
-          await new Promise(resolve => setTimeout(resolve, 500));
+          // Small delay to be polite to the API and avoid being flagged
+          await new Promise(resolve => setTimeout(resolve, 800));
         } catch (err) {
-          console.error(`Error syncing pic for ${conv.external_id}:`, err);
+          console.error(`[SyncPics] Error syncing pic for ${item.jid_or_phone}:`, err);
         }
       }
       console.log(`[SyncPics] Completed. Synced ${count} out of ${rows.length}.`);
@@ -1949,6 +2404,13 @@ export const refreshConversationMetadata = async (req: Request, res: Response) =
           await pool.query('UPDATE whatsapp_conversations SET contact_name = $1, group_name = $1 WHERE id = $2', [subject, conversationId]);
           console.log(`[Refresh] Updated group name: ${subject}`);
           nameFound = true;
+        }
+        // Extract picture if available in group metadata
+        const pic = gData.profilePictureUrl || gData.pic || gData.picture;
+        if (pic && !updatedPic) {
+          updatedPic = pic;
+          await pool.query('UPDATE whatsapp_conversations SET profile_pic_url = $1 WHERE id = $2', [pic, conversationId]);
+          console.log(`[Refresh] Updated group pic from metadata: ${pic}`);
         }
       } else {
         console.warn(`[Refresh] Failed to fetch group info: ${gRes.status}`);
@@ -2436,13 +2898,13 @@ export const getSystemWhatsappStatus = async (req: Request, res: Response) => {
           await pool!.query(
             `INSERT INTO company_instances (company_id, instance_key, api_key, status, phone, created_at, updated_at)
                   VALUES ($1, $2, $3, $4, $5, NOW(), NOW())
-                  ON CONFLICT (instance_key) DO UPDATE SET status = $4, updated_at = NOW()`,
+                  ON CONFLICT (instance_key) DO UPDATE SET status = $4`,
             [companyId, instance, apikey, finalStatus, 'Importado']
           );
         } else if (!targetInstance.is_legacy_check && targetInstance.status !== finalStatus) {
           // UPDATE Logic
           console.log(`[SystemStatus] Updating DB for ${instance}: ${targetInstance.status} -> ${finalStatus}`);
-          await pool!.query("UPDATE company_instances SET status = $1, updated_at = NOW() WHERE instance_key = $2", [finalStatus, instance]);
+          await pool!.query("UPDATE company_instances SET status = $1 WHERE instance_key = $2", [finalStatus, instance]);
         }
       }
 

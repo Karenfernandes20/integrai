@@ -3,6 +3,7 @@ import { incrementUsage } from './limitService';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { normalizePhone } from '../utils/phoneUtils';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -17,7 +18,8 @@ export async function sendWhatsAppMessage({
     mediaUrl,
     mediaType,
     campaignId,
-    followUpId
+    followUpId,
+    userName
 }: {
     companyId: number | null,
     phone: string,
@@ -28,7 +30,8 @@ export async function sendWhatsAppMessage({
     mediaUrl?: string | null,
     mediaType?: string | null,
     campaignId?: number,
-    followUpId?: number
+    followUpId?: number,
+    userName?: string
 }): Promise<{ success: boolean; error?: string }> {
     try {
         if (!pool) return { success: false, error: 'Database not configured' };
@@ -77,7 +80,7 @@ export async function sendWhatsAppMessage({
         evolution_url = compData.evolution_url;
         const baseUrl = (evolution_url || process.env.EVOLUTION_API_URL || "https://freelasdekaren-evolution-api.nhvvzr.easypanel.host").replace(/\/$/, "");
 
-        const cleanPhone = phone.replace(/\D/g, "");
+        const cleanPhone = normalizePhone(phone);
         console.log(`[sendWhatsAppMessage] Sending to ${cleanPhone} via instance ${evolution_instance}. Media: ${mediaUrl ? 'YES' : 'NO'}`);
 
         let targetUrl = '';
@@ -264,14 +267,14 @@ export async function sendWhatsAppMessage({
             conversationId = checkConv.rows[0].id;
             await pool.query(
                 `UPDATE whatsapp_conversations 
-                 SET last_message = $1, last_message_at = NOW(), status = 'OPEN', user_id = COALESCE(user_id, $2), company_id = COALESCE(company_id, $3), last_message_source = $5
+                 SET last_message = $1, last_message_at = NOW(), status = 'PENDING', user_id = COALESCE(user_id, $2), company_id = COALESCE(company_id, $3), last_message_source = $5
                  WHERE id = $4`,
                 [message, userId, companyId, conversationId, source]
             );
         } else {
             const newConv = await pool.query(
                 `INSERT INTO whatsapp_conversations (external_id, phone, contact_name, instance, status, user_id, last_message, last_message_at, company_id, last_message_source) 
-                 VALUES ($1, $2, $3, $4, 'OPEN', $5, $6, NOW(), $7, $8) RETURNING id`,
+                 VALUES ($1, $2, $3, $4, 'PENDING', $5, $6, NOW(), $7, $8) RETURNING id`,
                 [remoteJid, cleanPhone, contactName || cleanPhone, evolution_instance, userId, message, companyId, source]
             );
             conversationId = newConv.rows[0].id;
@@ -279,8 +282,8 @@ export async function sendWhatsAppMessage({
 
         const externalMessageId = data?.key?.id || data?.id || 'unknown';
         const insertedMsg = await pool.query(
-            'INSERT INTO whatsapp_messages (conversation_id, direction, content, sent_at, status, external_id, user_id, media_url, message_type, campaign_id, follow_up_id, company_id) VALUES ($1, $2, $3, NOW(), $4, $5, $6, $7, $8, $9, $10, $11) RETURNING id',
-            [conversationId, 'outbound', message, 'sent', externalMessageId, userId, mediaUrl || null, mediaType || 'text', campaignId || null, followUpId || null, companyId]
+            'INSERT INTO whatsapp_messages (conversation_id, direction, content, sent_at, status, external_id, user_id, media_url, message_type, campaign_id, follow_up_id, company_id, message_source, message_origin, sent_by_user_name) VALUES ($1, $2, $3, NOW(), $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14) RETURNING *',
+            [conversationId, 'outbound', message, 'sent', externalMessageId, userId, mediaUrl || null, mediaType || 'text', campaignId || null, followUpId || null, companyId, source || 'evolution_api', source || 'evolution_api', userName || (campaignId ? 'Campanha' : (followUpId ? 'Follow-Up' : null))]
         );
 
         if (companyId) {
@@ -300,7 +303,7 @@ export async function sendWhatsAppMessage({
                 remoteJid,
                 instance: evolution_instance,
                 company_id: companyId,
-                agent_name: campaignId ? "(Campanha)" : (followUpId ? "(Follow-Up)" : null),
+                agent_name: insertedMsg.rows[0].sent_by_user_name,
                 media_url: mediaUrl,
                 message_type: mediaType || 'text'
             };

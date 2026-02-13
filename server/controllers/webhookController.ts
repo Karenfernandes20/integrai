@@ -3,6 +3,12 @@ import { pool } from '../db';
 import { logEvent } from '../logger';
 import { triggerWorkflow } from './workflowController';
 import { processChatbotMessage } from '../services/chatbotService';
+import { ensureQueueSchema, getOrCreateQueueId } from './queueController';
+import { normalizePhone, extractPhoneFromJid, isGroupJid } from '../utils/phoneUtils';
+import { downloadMediaFromEvolution } from '../services/mediaService';
+import { returnToPending } from './conversationController';
+import { handleWhaticketGreeting } from '../services/whaticketService';
+import { getEvolutionConfig } from './evolutionController';
 
 // Tipo simplificado da mensagem
 interface WebhookMessage {
@@ -28,6 +34,8 @@ const pushPayload = (p: any) => {
     lastPayloads.unshift({ t: new Date().toISOString(), ...p });
     if (lastPayloads.length > 20) lastPayloads.pop();
 };
+
+const picSyncThrottle = new Map<string, number>();
 
 export const debugWebhookPayloads = (req: Request, res: Response) => {
     res.json(lastPayloads);
@@ -132,6 +140,9 @@ export const handleWebhook = async (req: Request, res: Response) => {
     (async () => {
         try {
             const body = req.body;
+            console.log('🔔 [WEBHOOK] RECEBIDO EM:', new Date().toLocaleString('pt-BR'));
+            console.log('🔔 [WEBHOOK] Tipo:', body?.type || body?.event);
+            console.log('🔔 [WEBHOOK] Instância:', body?.instance || body?.instanceName);
             if (!body) return;
 
             // ... logging logic ...
@@ -165,17 +176,34 @@ export const handleWebhook = async (req: Request, res: Response) => {
             }
 
             // CONNECTION UPDATE HANDLING
-            if (normalizedType === 'CONNECTION_UPDATE') {
-                const state = data?.state || body.state;
-                const rawNumber = data?.number || body.number;
+            // Evolution V2: event="CONNECTION_UPDATE", data={ state: "open"|"close"|"connecting", statusReason: number }
+            if (normalizedType === 'CONNECTION_UPDATE' || normalizedType === 'INSTANCE_UPDATE') {
+                const stateData = data || body;
+                const state = stateData.state || stateData.status;
+                const rawNumber = stateData.number;
                 const cleanNumber = rawNumber ? rawNumber.split(':')[0] : null;
 
+                const dbStatus = state === 'open' ? 'connected' : (state === 'close' ? 'disconnected' : (state || 'disconnected'));
+
                 if (instance && pool) {
+                    // Update DB
                     await pool.query(
-                        'UPDATE company_instances SET status = $1, phone = COALESCE($2, phone) WHERE instance_key = $3 OR name = $3',
-                        [state === 'open' ? 'connected' : (state || 'disconnected'), cleanNumber, instance]
+                        'UPDATE company_instances SET status = $1, phone = COALESCE($2, phone) WHERE instance_key = $3',
+                        [dbStatus, cleanNumber, instance]
                     );
-                    console.log(`[Webhook] Instance ${instance} connection status updated to ${state} (${cleanNumber})`);
+
+                    console.log(`[Webhook] Instance ${instance} connection status updated to ${dbStatus} (${state})`);
+
+                    // Emit Socket Event
+                    const io = req.app.get('io');
+                    if (io) {
+                        io.emit('instance:status', {
+                            instanceKey: instance,
+                            status: dbStatus,
+                            state: state
+                        });
+                        console.log(`[Webhook] Emitted instance:status for ${instance}`);
+                    }
                 }
                 return;
             }
@@ -185,7 +213,7 @@ export const handleWebhook = async (req: Request, res: Response) => {
 
             // ... rest of the function ...
 
-            // Accept various message event patterns (be exhaustive)
+            // Accept message and group/chat update event patterns
             const isMessageEvent = [
                 'MESSAGES_UPSERT', 'MESSAGES.UPSERT',
                 'MESSAGE_UPSERT', 'MESSAGE.UPSERT',
@@ -198,11 +226,40 @@ export const handleWebhook = async (req: Request, res: Response) => {
                 'SEND_MESSAGE', 'SEND.MESSAGE'
             ].includes(normalizedType);
 
-            if (!isMessageEvent) {
+            const isGroupOrChatUpdate = [
+                'GROUPS_UPDATE', 'GROUPS.UPDATE',
+                'GROUP_UPDATE', 'GROUP.UPDATE',
+                'CHATS_UPDATE', 'CHATS.UPDATE',
+                'CHATS_UPSERT', 'CHATS.UPSERT'
+            ].includes(normalizedType);
+
+            if (!isMessageEvent && !isGroupOrChatUpdate) {
                 // Silently ignore other events but log them for trace
-                const ignitionEvents = ['CONNECTION_UPDATE', 'PRESENCE_UPDATE', 'TYPEING_START', 'CHATS_UPSERT', 'CHATS_UPDATE'];
+                const ignitionEvents = ['CONNECTION_UPDATE', 'PRESENCE_UPDATE', 'TYPEING_START'];
                 if (!ignitionEvents.includes(normalizedType)) {
-                    console.log(`[Webhook] Ignoring non-message event: ${normalizedType}`);
+                    console.log(`[Webhook] Ignoring non-essential event: ${normalizedType}`);
+                }
+                return;
+            }
+
+            // If it's a group/chat update, we handle it and return
+            if (isGroupOrChatUpdate) {
+                const updateData = Array.isArray(data) ? data[0] : data;
+                const updateJid = updateData?.id || updateData?.remoteJid || updateData?.jid;
+                const updateName = updateData?.subject || updateData?.name || updateData?.title;
+
+                if (updateJid && updateJid.endsWith('@g.us') && updateName && pool) {
+                    console.log(`[Webhook] Updating group name for ${updateJid} to ${updateName}`);
+                    await pool.query(
+                        'UPDATE whatsapp_conversations SET group_name = $1, contact_name = $1, is_group = true WHERE external_id = $2',
+                        [updateName, updateJid]
+                    );
+
+                    // Emit socket update so frontend refreshes name
+                    const io = req.app.get('io');
+                    if (io) {
+                        io.emit('conversation:updated', { external_id: updateJid, group_name: updateName });
+                    }
                 }
                 return;
             }
@@ -237,24 +294,49 @@ export const handleWebhook = async (req: Request, res: Response) => {
                 console.log('[Webhook DEBUG] messages.update event structure:', JSON.stringify(msg, null, 2));
             }
 
-            // Normalize phone and JID
-            const cleanJid = (jid: string) => {
-                if (!jid) return jid;
-                // Remove device suffixes like :1 or :2 from JID (e.g. 5511999999999:1@s.whatsapp.net -> 5511999999999@s.whatsapp.net)
-                return jid.includes(':') && jid.includes('@')
-                    ? jid.split(':')[0] + '@' + jid.split('@')[1]
-                    : jid;
-            };
+            // -------------------------------------------------------------------------
+            // 🛑 CRITICAL FIX: RemoteJid & Group Handling (User Prompt Step 1)
+            // -------------------------------------------------------------------------
+            const rawRemoteJid = msg.key?.remoteJid || msg.remoteJid || msg.jid;
 
-            const remoteJid = msg.key?.remoteJid || msg.remoteJid || msg.jid;
-
-            // STRICT JID VALIDATION: Prevent processing of internal IDs or malformed JIDs
-            if (!remoteJid || !remoteJid.includes('@') || remoteJid.includes('status@broadcast')) {
-                console.warn(`[Webhook] Invalid or skipped remoteJid: "${remoteJid}". Ignoring event to prevent ghost cards.`);
+            // Validate JID presence
+            if (!rawRemoteJid || !rawRemoteJid.includes('@')) {
+                console.warn(`[Webhook] Invalid rawRemoteJid: "${rawRemoteJid}". Ignoring.`);
                 return;
             }
 
+            // Determine if it is a Group (hard rule)
+            // Treat as group if JID is group OR payload explicitly marks it as group.
+            const payloadIsGroup = msg?.isGroup === true || msg?.is_group === true || msg?.chat?.isGroup === true || msg?.key?.isGroup === true;
+            const isGroup = rawRemoteJid.endsWith('@g.us') || payloadIsGroup;
 
+            // Standardize remoteJid
+            // If Group: USE IT AS IS (Do not normalize/extract phone yet)
+            // If Individual: Normalize
+            let remoteJid = rawRemoteJid;
+            // Additional safety: ensure we are using the Group ID from key.remoteJid, NOT participant
+            if (isGroup && msg.key?.participant) {
+                // Double check: message.key.remoteJid IS the group.
+                // We rely on rawRemoteJid being correct.
+            }
+
+            // Normalize JID for DB (external_id)
+            // Groups: KEEP AS IS (e.g. 123456@g.us)
+            // Individuals: Extract phone and append @s.whatsapp.net (e.g. 55119999999@s.whatsapp.net)
+            let normalizedJid = remoteJid;
+            if (!isGroup) {
+                const phonePart = extractPhoneFromJid(remoteJid);
+                normalizedJid = phonePart + '@s.whatsapp.net';
+            } else {
+                // Ensure group JID consistency
+                // remove any weird prefixes/suffixes if necessary, but usually raw is fine for groups
+                if (!normalizedJid.endsWith('@g.us')) normalizedJid += '@g.us';
+            }
+
+            // STRICT VALIDATION
+            if (rawRemoteJid === 'status@broadcast') return;
+
+            // -------------------------------------------------------------------------
             // MODIFIED logic for robust isFromMe detection
             let isFromMe = false;
             let fromMeSource = "default(false)";
@@ -349,97 +431,185 @@ export const handleWebhook = async (req: Request, res: Response) => {
             const companyId = meta.companyId;
             const instanceId = meta.instanceId > 0 ? meta.instanceId : null;
             const instanceDisplayName = meta.instanceName;
+            await ensureQueueSchema();
+            const defaultQueueId = await getOrCreateQueueId(companyId, 'Recepcao');
 
             const direction = isFromMe ? 'outbound' : 'inbound';
             let messageSource: string | null = null;
             if (direction === 'outbound') {
-                // Enhanced Source Detection for Mobile
+                // ... outbound source detection ...
                 let rawSource = msg.source;
-
-                // If no explicit source but it's an UPSERT event not triggered by our API call (usually), assume Mobile sync
-                if (!rawSource && normalizedType.includes('UPSERT')) {
-                    rawSource = 'whatsapp_mobile';
-                }
-
-                // Fallback if still unknown but came from API send
-                if (!rawSource && normalizedType.includes('SEND')) {
-                    rawSource = 'api';
-                }
-
+                if (!rawSource && normalizedType.includes('UPSERT')) rawSource = 'whatsapp_mobile';
+                if (!rawSource && normalizedType.includes('SEND')) rawSource = 'api';
                 if (!rawSource) rawSource = 'unknown';
 
-                // Map common physical device sources to 'whatsapp_mobile'
-                if (['ios', 'android', 'web', 'whatsapp_mobile'].includes(rawSource)) {
+                if (['web', 'whatsapp_web'].includes(rawSource)) {
+                    messageSource = 'whatsapp_web';
+                } else if (['ios', 'android', 'whatsapp_mobile'].includes(rawSource)) {
                     messageSource = 'whatsapp_mobile';
                 } else {
                     messageSource = 'evolution_api';
                 }
             }
 
-            const normalizedJid = cleanJid(remoteJid);
-            const phone = normalizedJid.split('@')[0];
-            const name = msg.pushName || msg.pushname || phone;
-            const isGroup = normalizedJid.includes('@g.us');
+            const phone = extractPhoneFromJid(remoteJid);
+            // For groups, keep a group identifier in phone as well to avoid accidental private matching in old clients.
+            const normalizedPhone = isGroup ? normalizedJid : normalizePhone(phone);
+
+            // User Request: First time contact should show phone number. 
+            // We save pushName in its own column but use phone for the 'name' initially.
+            const name = normalizedPhone;
+
+            const groupNameFromPayload =
+                msg.groupName ||
+                msg.group_name ||
+                msg.chatName ||
+                msg.subject ||
+                msg.chat?.subject ||
+                msg.chat?.name ||
+                msg.groupMetadata?.subject ||
+                msg.data?.subject ||
+                msg.data?.group_name ||
+                null;
+            // isGroup already defined
+
+            // Correct Sender JID Logic
             const senderJidRaw = msg.key?.participant || msg.participant || (isGroup ? null : remoteJid);
-            const senderJid = cleanJid(senderJidRaw || "");
-            const senderName = msg.pushName || msg.pushname || (senderJid ? senderJid.split('@')[0] : null);
+            let senderJid: string | null = null;
+            if (senderJidRaw) {
+                const senderPhone = extractPhoneFromJid(senderJidRaw);
+                senderJid = senderPhone + (senderJidRaw.includes('@g.us') ? '@g.us' : '@s.whatsapp.net');
+            } else {
+                senderJid = normalizedJid;
+            }
+            let senderName = msg.pushName || msg.pushname || (senderJid ? senderJid.split('@')[0] : null);
+            // Group messages should display participant name above the bubble.
+            if (isGroup && senderJid) {
+                try {
+                    const senderContact = await pool.query(
+                        'SELECT name, push_name FROM whatsapp_contacts WHERE jid = $1 AND company_id = $2 LIMIT 1',
+                        [senderJid, companyId]
+                    );
+                    if (senderContact.rows.length > 0) {
+                        senderName = senderContact.rows[0].name || senderContact.rows[0].push_name || senderName;
+                    }
+                } catch (e) {
+                    console.warn('[Webhook] Failed to resolve sender name from contacts:', e);
+                }
+            }
 
             let groupName = null;
             if (isGroup) {
-                groupName = name || `Grupo ${phone.substring(0, 8)}...`;
-                console.log(`[Webhook] Detected GROUP message for JID: ${normalizedJid}`);
-            }
+                // Never use pushName (participant name) as the group title.
+                groupName = groupNameFromPayload;
 
-            // --- UNIFIED CONVERSATION LINKING LOGIC ---
-            let conversationId: number;
-            let currentStatus: string = 'PENDING';
-
-            // Normalize phone for data consistency
-            const normalizedPhone = phone.replace(/\D/g, '');
-
-            let checkConv = await pool.query(
-                `SELECT id, status, is_group, contact_name, group_name, profile_pic_url, external_id 
-                 FROM whatsapp_conversations 
-                 WHERE (external_id = $1 OR external_id = $2 OR phone = $3) AND company_id = $4`,
-                [normalizedJid, remoteJid, normalizedPhone, companyId]
-            );
-
-            // Phone check is now integrated in the primary query above
-
-            if (checkConv.rows.length > 0) {
-                const row = checkConv.rows[0];
-                conversationId = row.id;
-                currentStatus = row.status || 'PENDING';
-                let newStatus = currentStatus;
-
-                if (direction === 'inbound') {
-                    // Inbound messages always reopen CLOSED chats to PENDING
-                    if (currentStatus === 'CLOSED') newStatus = 'PENDING';
-                }
-                else if (direction === 'outbound') {
-                    // Start logic for User Request: Mobile-initiated -> PENDING
-                    const isMobile = messageSource === 'whatsapp_mobile';
-
-                    if (isMobile) {
-                        // If I initiate/reply on mobile, user wants it to be PENDING so they can 'open' it in system later
-                        // Applies if it's currently CLOSED.
-                        if (currentStatus === 'CLOSED') {
-                            newStatus = 'PENDING';
-                        }
-                        // If it's already OPEN, we keep it OPEN (assuming agent is working on it)
-                        // If it's PENDING, we keep it PENDING.
-                    } else {
-                        // API/System sent messages -> Auto Open
-                        if (currentStatus === 'CLOSED' || currentStatus === 'PENDING') {
-                            newStatus = 'OPEN';
-                        }
+                if (!groupName) {
+                    console.log(`[Webhook] Group message received for ${normalizedJid} but NO SUBJECT in payload. Triggering background refresh.`);
+                    // Proactively try to get metadata in background
+                    const { refreshConversationMetadata } = require('./evolutionController');
+                    if (refreshConversationMetadata) {
+                        // We don't await this as it might be slow
+                        refreshConversationMetadata({ params: { conversationId: normalizedJid }, query: { companyId } } as any, { json: () => { } } as any).catch(() => { });
                     }
                 }
 
+                console.log(`[Webhook] Detected GROUP message for JID: ${normalizedJid} | Name: ${groupName || 'PENDING REFRESH'}`);
+            }
+
+            // Upsert Contact to prevent loose contacts and handle name updates
+            if (!isGroup && companyId) {
+                try {
+                    // Update Contact without overwriting a manually set name
+                    await pool.query(`
+                        INSERT INTO whatsapp_contacts (jid, phone, name, push_name, instance, updated_at, company_id)
+                        VALUES ($1, $2, $3, $4, $5, NOW(), $6)
+                        ON CONFLICT (jid, company_id) 
+                        DO UPDATE SET 
+                            name = CASE 
+                                WHEN whatsapp_contacts.name IS NULL OR whatsapp_contacts.name = '' OR whatsapp_contacts.name = whatsapp_contacts.phone THEN EXCLUDED.name
+                                ELSE whatsapp_contacts.name 
+                            END,
+                            push_name = COALESCE(EXCLUDED.push_name, whatsapp_contacts.push_name),
+                            phone = EXCLUDED.phone,
+                            instance = EXCLUDED.instance,
+                            updated_at = NOW()
+                    `, [normalizedJid, normalizedPhone, name, msg.pushName || null, instance, companyId]);
+                } catch (err) {
+                    console.error('[Webhook] Error upserting contact:', err);
+                }
+            }
+
+            // --- UNIFIED CONVERSATION LINKING LOGIC (Anti-Duplication) ---
+            let conversationId: number;
+            let currentStatus: string = 'PENDING';
+            let isNewConversation = false;
+            let previousStatus = 'PENDING';
+
+            // 1. First Attempt: Match strictly by JID + Instance + Company (The Gold Standard)
+            let checkConv = await pool.query(
+                `SELECT id, status, is_group, contact_name, group_name, profile_pic_url, external_id, instance, phone 
+                 FROM whatsapp_conversations 
+                 WHERE company_id = $1 AND external_id = $2 AND instance = $3`,
+                [companyId, normalizedJid, instance]
+            );
+
+            // 2. Second Attempt (Individuals Only): Fallback to matching by cleaned Phone Number across ANY instance
+            // This prevents "Ghost Cards" or Duplicates when the same user appears on a different instance or with/without suffix
+            if (checkConv.rows.length === 0 && !isGroup) {
+                checkConv = await pool.query(
+                    `SELECT id, status, is_group, contact_name, group_name, profile_pic_url, external_id, instance, phone 
+                     FROM whatsapp_conversations 
+                     WHERE company_id = $1 AND is_group = false AND phone = $2
+                     ORDER BY last_message_at DESC LIMIT 1`,
+                    [companyId, normalizedPhone]
+                );
+                if (checkConv.rows.length > 0) {
+                    console.log(`[Webhook] Found conversation by phone match instead of JID/Instance for ${normalizedPhone}. Preventing duplication.`);
+                }
+            }
+
+            // If found, we use it. 
+            if (checkConv.rows.length > 0) {
+
+                const row = checkConv.rows[0];
+                conversationId = row.id;
+                previousStatus = row.status || 'PENDING';
+                currentStatus = row.status || 'PENDING';
+                let newStatus = currentStatus;
+
+                // User Request: EVERY message (inbound or outbound) moves conversation to PENDING
+                // regardless of its current state, unless manually changed to OPEN/CLOSED in system.
+                newStatus = 'PENDING';
+
                 currentStatus = newStatus;
-                if (newStatus !== row.status || (msg.pushName && !row.is_group && row.contact_name !== msg.pushName)) {
-                    pool.query(`UPDATE whatsapp_conversations SET status = $1, contact_name = COALESCE($2, contact_name) WHERE id = $3`,
-                        [newStatus, (msg.pushName && !row.is_group) ? msg.pushName : null, conversationId]
+                const shouldForceGroup = isGroup && row.is_group !== true;
+                const shouldUpdateGroupName = isGroup && !!groupNameFromPayload && row.group_name !== groupNameFromPayload;
+
+                // CRITICAL FIX: Ensure we don't use pushName (sender) for group titles
+                const isActuallyGroup = isGroup || row.is_group;
+
+                if (newStatus !== row.status || (!isActuallyGroup && msg.pushName && (row.contact_name === null || row.contact_name === '' || row.contact_name === row.phone)) || shouldForceGroup || shouldUpdateGroupName) {
+                    pool.query(
+                        `UPDATE whatsapp_conversations
+                         SET status = $1,
+                             contact_name = CASE 
+                                 WHEN contact_name IS NULL OR contact_name = '' OR contact_name = phone THEN COALESCE($2, contact_name)
+                                 ELSE contact_name
+                             END,
+                             is_group = CASE WHEN $4 THEN true ELSE is_group END,
+                             group_name = CASE 
+                                 WHEN $5 IS NOT NULL THEN $5
+                                 WHEN $4 THEN COALESCE(group_name, contact_name, $2, external_id)
+                                 ELSE group_name
+                             END
+                         WHERE id = $3`,
+                        [
+                            newStatus,
+                            isActuallyGroup ? (groupNameFromPayload || row.group_name || row.contact_name) : (msg.pushName || null),
+                            conversationId,
+                            shouldForceGroup,
+                            isActuallyGroup ? (groupNameFromPayload || row.group_name || row.contact_name) : null
+                        ]
                     ).catch(() => { });
                 }
             } else {
@@ -456,28 +626,26 @@ export const handleWebhook = async (req: Request, res: Response) => {
                     return;
                 }
 
-                if (direction === 'outbound') {
-                    // New Conversation Logic
-                    // Mobile -> PENDING
-                    // System -> OPEN
-                    const isMobile = messageSource === 'whatsapp_mobile';
-                    currentStatus = isMobile ? 'PENDING' : 'OPEN';
-                } else {
-                    currentStatus = 'PENDING';
-                }
+                // User Request: Every new conversation starts as PENDING
+                isNewConversation = true;
+                currentStatus = 'PENDING';
 
-                let finalName = isGroup ? (name || `Grupo ${phone.substring(0, 8)}`) : name;
+                const finalName = isGroup ? (groupName || `Grupo ${phone.substring(0, 8)}`) : name;
 
                 // Final Check for Duplication before Insert (Race Condition buffer)
-                const raceCheck = await pool.query('SELECT id FROM whatsapp_conversations WHERE external_id = $1 AND company_id = $2', [normalizedJid, companyId]);
+                // Must match UNIQUE constraint: (external_id, instance, company_id)
+                const raceCheck = await pool.query(
+                    'SELECT id FROM whatsapp_conversations WHERE external_id = $1 AND instance = $2 AND company_id = $3',
+                    [normalizedJid, instance, companyId]
+                );
                 if (raceCheck.rows.length > 0) {
                     conversationId = raceCheck.rows[0].id;
                     console.log(`[Webhook] Recovered conversation ${conversationId} from race condition check.`);
                 } else {
                     const newConv = await pool.query(
-                        `INSERT INTO whatsapp_conversations (external_id, phone, contact_name, instance, status, company_id, is_group, group_name, last_instance_key) 
-                         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $4) RETURNING id`,
-                        [normalizedJid, normalizedPhone, finalName, instance, currentStatus, companyId, isGroup, isGroup ? finalName : null]
+                        `INSERT INTO whatsapp_conversations (external_id, phone, contact_name, instance, status, company_id, is_group, group_name, last_instance_key, queue_id)
+                     VALUES ($1, $2, $3, $4::text, $5, $6, $7, $8, $4::text, $9) RETURNING id`,
+                        [normalizedJid, normalizedPhone, finalName, String(instance), currentStatus, companyId, isGroup, isGroup ? finalName : null, defaultQueueId]
                     );
                     conversationId = newConv.rows[0].id;
                 }
@@ -553,29 +721,41 @@ export const handleWebhook = async (req: Request, res: Response) => {
             } else if (realM.templateButtonReplyMessage) {
                 content = realM.templateButtonReplyMessage.selectedId || 'Botão selecionado';
             } else {
-                // Secondary extraction for less common fields
-                const textCandidates = ['text', 'caption', 'title', 'displayName', 'body'];
-                for (const candidate of textCandidates) {
-                    if (realM[candidate]) {
-                        content = realM[candidate];
-                        break;
-                    }
+            }
+
+            // Check for additional media sources from Evolution special fields (base64, publicUrl)
+            // if we are in a media-type message and mediaUrl is still missing or internal
+            const isMediaType = ['image', 'video', 'audio', 'document', 'sticker'].includes(messageType);
+            if (isMediaType && (!mediaUrl || mediaUrl.startsWith('http://localhost') || !mediaUrl.startsWith('http'))) {
+                const extraMedia = msg.base64 || msg.publicUrl || msg.data?.base64 || msg.data?.publicUrl;
+                if (extraMedia) {
+                    mediaUrl = extraMedia;
+                } else if (!isFromMe) {
+                    // Try to download from Evolution asynchronously
+                    downloadMediaFromEvolution(instance, msg, companyId).then(localUrl => {
+                        if (localUrl && pool) {
+                            pool.query('UPDATE whatsapp_messages SET media_url = $1 WHERE external_id = $2', [localUrl, externalId])
+                                .then(() => {
+                                    const io = req.app.get('io');
+                                    if (io) {
+                                        io.to(`company_${companyId}`).emit('message:media_update', {
+                                            external_id: externalId,
+                                            media_url: localUrl
+                                        });
+                                    }
+                                }).catch(e => console.error('[Webhook] DB update for media failed:', e));
+                        }
+                    }).catch(e => console.error('[Webhook] Media download error:', e));
                 }
+            }
 
-                if (!content) {
-                    // If this is an UPDATE event without content, skip it (it's just a status update)
-                    if (normalizedType.includes('UPDATE')) {
-                        console.log('[Webhook] Skipping messages.update without real content (status update only)');
-                        return;
-                    }
-
-                    const keys = Object.keys(realM);
-                    if (keys.length > 0) {
-                        const k = keys[0].replace('Message', '');
-                        content = `[${k}]`;
-                    } else {
-                        content = '[Mensagem]';
-                    }
+            if (!content) {
+                const keys = Object.keys(realM);
+                if (keys.length > 0) {
+                    const k = keys[0].replace('Message', '');
+                    content = `[${k}]`;
+                } else {
+                    content = '[Mensagem]';
                 }
             }
 
@@ -585,12 +765,12 @@ export const handleWebhook = async (req: Request, res: Response) => {
 
             console.log(`[Webhook] Preparing to save message: direction=${direction}, externalId=${externalId}, convId=${conversationId}, content="${content.substring(0, 30)}..."`);
 
-            // Insert Message into database with instance tracking
+            // Insert Message into database with instance tracking and source attribution
             const insertedMsg = await pool.query(
-                `INSERT INTO whatsapp_messages (conversation_id, direction, content, sent_at, status, external_id, message_type, media_url, user_id, sender_jid, sender_name, company_id, instance_id, instance_key, instance_name) 
-                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15) 
+                `INSERT INTO whatsapp_messages (conversation_id, direction, content, sent_at, status, external_id, message_type, media_url, user_id, sender_jid, sender_name, company_id, instance_id, instance_key, instance_name, message_source, message_origin) 
+                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17) 
                  ON CONFLICT (external_id) DO NOTHING RETURNING *`,
-                [conversationId, direction, content, sent_at, 'received', externalId, messageType, mediaUrl, null, senderJid, senderName, companyId, instanceId, instance, instanceDisplayName]
+                [conversationId, direction, content, sent_at.toISOString(), 'received', externalId, messageType, mediaUrl, null, senderJid, senderName, companyId, instanceId, instance, instanceDisplayName, messageSource, messageSource]
             );
 
             if (insertedMsg.rows.length > 0) {
@@ -605,6 +785,19 @@ export const handleWebhook = async (req: Request, res: Response) => {
                     phone,
                     details: { content: content.substring(0, 500), instance, externalId }
                 });
+
+                // Whaticket: handle greeting for new or reopened tickets
+                if (direction === 'inbound' && !isGroup) {
+                    const io = req.app.get('io');
+                    handleWhaticketGreeting(
+                        conversationId,
+                        companyId,
+                        phone,
+                        isNewConversation,
+                        previousStatus,
+                        io
+                    ).catch(e => console.error('[Whaticket Webhook] Error:', e));
+                }
             }
 
             // If duplicate message (conflict), we still want to emit conversation update
@@ -629,7 +822,7 @@ export const handleWebhook = async (req: Request, res: Response) => {
                         const payload = {
                             ...existingMsg,
                             phone: phone,
-                            contact_name: (checkConv.rows.length > 0 ? checkConv.rows[0].contact_name : name) || name,
+                            contact_name: (checkConv.rows.length > 0 ? checkConv.rows[0].contact_name : (isGroup ? groupName : name)) || (isGroup ? groupName : name),
                             is_group: checkConv.rows.length > 0 ? checkConv.rows[0].is_group : isGroup,
                             group_name: (checkConv.rows.length > 0 ? checkConv.rows[0].group_name : null) || groupName,
                             profile_pic_url: checkConv.rows.length > 0 ? checkConv.rows[0].profile_pic_url : null,
@@ -642,8 +835,8 @@ export const handleWebhook = async (req: Request, res: Response) => {
                             status: currentStatus,
                             sender_jid: existingMsg.sender_jid,
                             sender_name: existingMsg.sender_name,
-                            agent_name: existingMsg.agent_name || ((existingMsg.direction === 'outbound' && !existingMsg.user_id) ? (existingMsg.message_source === 'whatsapp_mobile' ? 'Celular' : 'Sistema') : null),
-                            message_origin: (existingMsg.direction === 'outbound' && !existingMsg.user_id) ? (existingMsg.message_source === 'whatsapp_mobile' ? 'whatsapp_mobile' : 'evolution_api') : 'system'
+                            agent_name: existingMsg.agent_name || existingMsg.sent_by_user_name || ((existingMsg.direction === 'outbound' && !existingMsg.user_id) ? (existingMsg.message_source === 'whatsapp_mobile' ? 'Celular' : (existingMsg.message_source === 'whatsapp_web' ? 'WhatsApp Web' : 'Sistema')) : null),
+                            message_origin: (existingMsg.direction === 'outbound' && !existingMsg.user_id) ? (existingMsg.message_source === 'whatsapp_mobile' ? 'whatsapp_mobile' : (existingMsg.message_source === 'whatsapp_web' ? 'whatsapp_web' : 'evolution_api')) : 'system'
                         };
                         console.log(`[Webhook] Emitting duplicate message to rooms ${room}, ${instanceRoom}, global | Direction: ${existingMsg.direction}`);
                         io.to(room).emit('message:received', payload);
@@ -708,7 +901,7 @@ export const handleWebhook = async (req: Request, res: Response) => {
                     const payload = {
                         ...insertedMsg.rows[0],
                         phone,
-                        contact_name: (checkConv.rows.length > 0 ? checkConv.rows[0].contact_name : name) || name,
+                        contact_name: (checkConv.rows.length > 0 ? checkConv.rows[0].contact_name : (isGroup ? groupName : name)) || (isGroup ? groupName : name),
                         is_group: checkConv.rows.length > 0 ? checkConv.rows[0].is_group : isGroup,
                         group_name: (checkConv.rows.length > 0 ? checkConv.rows[0].group_name : null) || groupName,
                         profile_pic_url: checkConv.rows.length > 0 ? checkConv.rows[0].profile_pic_url : null,
@@ -722,8 +915,8 @@ export const handleWebhook = async (req: Request, res: Response) => {
                         sender_jid: insertedMsg.rows[0].sender_jid,
                         sender_name: insertedMsg.rows[0].sender_name,
                         message_source: messageSource,
-                        agent_name: (direction === 'outbound' && !insertedMsg.rows[0].user_id) ? (messageSource === 'whatsapp_mobile' ? 'WhatsApp' : (msg.agent_name || 'Sistema')) : null,
-                        message_origin: (direction === 'outbound' && !insertedMsg.rows[0].user_id) ? (messageSource === 'whatsapp_mobile' ? 'whatsapp_mobile' : 'evolution_api') : 'system'
+                        agent_name: insertedMsg.rows[0].sent_by_user_name || ((direction === 'outbound' && !insertedMsg.rows[0].user_id) ? (messageSource === 'whatsapp_mobile' ? 'Celular' : (messageSource === 'whatsapp_web' ? 'WhatsApp Web' : (msg.agent_name || 'Sistema'))) : null),
+                        message_origin: (direction === 'outbound' && !insertedMsg.rows[0].user_id) ? (messageSource === 'whatsapp_mobile' ? 'whatsapp_mobile' : (messageSource === 'whatsapp_web' ? 'whatsapp_web' : 'evolution_api')) : 'system'
                     };
                     console.log(`[Webhook] Emitting message to rooms ${room}, ${instanceRoom}, global | Direction: ${insertedMsg.rows[0].direction}`);
                     io.to(room).emit('message:received', payload);
@@ -742,13 +935,13 @@ export const handleWebhook = async (req: Request, res: Response) => {
                          unread_count = CASE WHEN $3 = 'inbound' THEN unread_count + 1 ELSE unread_count END,
                          last_instance_key = $4
                      WHERE id = $5`,
-                    [sent_at, content, direction, instance, conversationId]
+                    [sent_at.toISOString(), content, direction, instance, conversationId]
                 );
                 // ... (rest of the block logic continues as is, no change needed in text replacement if I target carefully)
 
                 console.log(`[Webhook] Conversation ${conversationId} metadata updated.`);
 
-                const isGroup = remoteJid.endsWith('@g.us');
+                const isGroup = isGroupJid(remoteJid);
 
                 // Profile Pic & Name Fetch Logic (if missing or placeholder)
                 const row = checkConv.rows[0] || {};
@@ -765,10 +958,22 @@ export const handleWebhook = async (req: Request, res: Response) => {
                     console.log(`[Webhook] Fetching profile pic or group name for ${remoteJid}.`);
                     (async () => {
                         try {
-                            const compRes = await pool!.query('SELECT evolution_apikey FROM companies WHERE id = $1', [companyId]);
-                            if (compRes.rows.length > 0 && compRes.rows[0].evolution_apikey) {
-                                const apikey = compRes.rows[0].evolution_apikey;
-                                const baseUrl = process.env.EVOLUTION_API_URL || "https://freelasdekaren-evolution-api.nhvvzr.easypanel.host";
+                            const cfgRes = await pool!.query(
+                                `SELECT
+                                    COALESCE(ci.api_key, c.evolution_apikey) as api_key,
+                                    COALESCE(c.evolution_url, $3::text) as evolution_url
+                                 FROM companies c
+                                 LEFT JOIN company_instances ci
+                                   ON ci.company_id = c.id
+                                  AND (LOWER(ci.instance_key) = LOWER($2) OR LOWER(ci.name) = LOWER($2))
+                                 WHERE c.id = $1
+                                 ORDER BY CASE WHEN ci.api_key IS NOT NULL AND ci.api_key <> '' THEN 0 ELSE 1 END
+                                 LIMIT 1`,
+                                [companyId, instance, process.env.EVOLUTION_API_URL || "https://freelasdekaren-evolution-api.nhvvzr.easypanel.host"]
+                            );
+                            const apikey = cfgRes.rows[0]?.api_key;
+                            const baseUrl = String(cfgRes.rows[0]?.evolution_url || process.env.EVOLUTION_API_URL || "https://freelasdekaren-evolution-api.nhvvzr.easypanel.host");
+                            if (apikey) {
 
                                 // 1. Fetch Name if Group and placeholder
                                 if (isPlaceholderName) {
@@ -784,6 +989,12 @@ export const handleWebhook = async (req: Request, res: Response) => {
                                         if (realGroupName) {
                                             await pool!.query('UPDATE whatsapp_conversations SET contact_name = $1, group_name = $1 WHERE id = $2', [realGroupName, conversationId]);
                                             console.log(`[Webhook] Updated group name for ${remoteJid} to ${realGroupName}.`);
+                                        }
+                                        // Bonus: try to get pic from this same call
+                                        const pic = gData.profilePictureUrl || gData.pic || gData.picture;
+                                        if (pic && !hasPic) {
+                                            await pool!.query('UPDATE whatsapp_conversations SET profile_pic_url = $1 WHERE id = $2', [pic, conversationId]);
+                                            console.log(`[Webhook] Pre-emptively updated group pic from group metadata for ${remoteJid}.`);
                                         }
                                     } else {
                                         console.warn(`[Webhook] Failed to fetch group name for ${remoteJid}. Status: ${gRes.status}`);
@@ -806,7 +1017,7 @@ export const handleWebhook = async (req: Request, res: Response) => {
                                         if (picUrl) {
                                             await pool!.query('UPDATE whatsapp_conversations SET profile_pic_url = $1 WHERE id = $2', [picUrl, conversationId]);
                                             if (!isGroup) {
-                                                await pool!.query('UPDATE whatsapp_contacts SET profile_pic_url = $1 WHERE jid = $2 AND company_id = $3', [picUrl, remoteJid, companyId]);
+                                                await pool!.query('UPDATE whatsapp_contacts SET profile_pic_url = $1 WHERE (jid = $2 OR jid = $3) AND company_id = $4', [picUrl, remoteJid, normalizedJid, companyId]);
                                             }
                                             console.log(`[Webhook] Updated profile picture for ${remoteJid}.`);
                                         }
@@ -908,6 +1119,7 @@ export const handleWebhook = async (req: Request, res: Response) => {
 export const getConversations = async (req: Request, res: Response) => {
     try {
         if (!pool) return res.status(500).json({ error: 'Database not configured' });
+        await ensureQueueSchema();
 
         const user = (req as any).user;
         let companyId = req.query.companyId || user?.company_id;
@@ -921,12 +1133,38 @@ export const getConversations = async (req: Request, res: Response) => {
 
         let query = `
             SELECT c.*, 
+            (c.is_group = true OR c.external_id LIKE '%@g.us' OR c.phone LIKE '%@g.us') as computed_is_group,
             (SELECT content FROM whatsapp_messages WHERE conversation_id = c.id ORDER BY sent_at DESC LIMIT 1) as last_message,
             (SELECT sender_name FROM whatsapp_messages WHERE conversation_id = c.id AND sender_name IS NOT NULL LIMIT 1) as last_sender_name,
-            COALESCE(co.profile_pic_url, c.profile_pic_url) as profile_pic_url,
+            CASE
+              WHEN (c.is_group = true OR c.external_id LIKE '%@g.us' OR c.phone LIKE '%@g.us')
+                THEN COALESCE(c.profile_pic_url, co.profile_pic_url)
+              ELSE COALESCE(co.profile_pic_url, c.profile_pic_url)
+            END as profile_pic_url,
+            -- Prioritize Saved Name from whatsapp_contacts (Manually set in CRM)
+            COALESCE(
+                CASE WHEN (c.is_group = true OR c.external_id LIKE '%@g.us') THEN NULLIF(TRIM(c.group_name), '') ELSE NULL END,
+                NULLIF(TRIM(co.name), ''), 
+                NULLIF(TRIM(c.contact_name), ''),
+                NULLIF(TRIM(co.push_name), ''),
+                c.phone
+            ) as display_name,
+            CASE
+              WHEN co.name IS NULL OR btrim(co.name) = '' THEN NULL
+              WHEN co.name ~* 'https?://'
+                OR length(co.name) > 60
+                OR co.name ~ E'[\\r\\n]'
+                OR co.name ~ '^\\[[^\\]]+\\]$'
+              THEN NULL
+              ELSE co.name
+            END as contact_saved_name,
             co.push_name as contact_push_name,
             comp.name as company_name,
             COALESCE(ci.name, c.last_instance_key, c.instance) as instance_friendly_name,
+            ci.color as instance_color,
+            q.name as queue_name,
+            q.color as queue_color,
+            CASE WHEN c.status = 'OPEN' THEN au.full_name ELSE NULL END as assigned_user_name,
             COALESCE((
                 SELECT json_agg(json_build_object('id', t.id, 'name', t.name, 'color', t.color))
                 FROM conversations_tags ct
@@ -934,22 +1172,79 @@ export const getConversations = async (req: Request, res: Response) => {
                 WHERE ct.conversation_id = c.id
             ), '[]'::json) as tags
             FROM whatsapp_conversations c
-            LEFT JOIN whatsapp_contacts co ON (c.external_id = co.jid AND c.company_id = co.company_id)
+            LEFT JOIN LATERAL (
+                SELECT wc.profile_pic_url, wc.push_name, wc.name
+                FROM whatsapp_contacts wc
+                WHERE wc.company_id = c.company_id
+                  AND (
+                    (
+                      (c.is_group = true OR c.external_id LIKE '%@g.us' OR c.phone LIKE '%@g.us')
+                      AND (
+                        wc.jid = c.external_id
+                        OR wc.jid = REPLACE(c.external_id, '@g.us', '@c.us')
+                      )
+                    )
+                    OR
+                    (
+                      NOT (c.is_group = true OR c.external_id LIKE '%@g.us' OR c.phone LIKE '%@g.us')
+                      AND (
+                        wc.jid = c.external_id
+                        OR wc.jid = REPLACE(c.external_id, '@s.whatsapp.net', '@c.us')
+                        OR wc.phone = split_part(c.external_id, '@', 1)
+                        OR (
+                            REGEXP_REPLACE(COALESCE(wc.phone, ''), '\\D', '', 'g') <> ''
+                            AND REGEXP_REPLACE(COALESCE(wc.phone, ''), '\\D', '', 'g') = REGEXP_REPLACE(COALESCE(c.phone, ''), '\\D', '', 'g')
+                        )
+                      )
+                    )
+                  )
+                ORDER BY
+                  CASE
+                    WHEN wc.jid = c.external_id THEN 0
+                    WHEN (c.is_group = true OR c.external_id LIKE '%@g.us' OR c.phone LIKE '%@g.us')
+                         AND wc.jid = REPLACE(c.external_id, '@g.us', '@c.us') THEN 1
+                    WHEN NOT (c.is_group = true OR c.external_id LIKE '%@g.us' OR c.phone LIKE '%@g.us')
+                         AND wc.jid = REPLACE(c.external_id, '@s.whatsapp.net', '@c.us') THEN 1
+                    WHEN NOT (c.is_group = true OR c.external_id LIKE '%@g.us' OR c.phone LIKE '%@g.us')
+                         AND wc.phone = split_part(c.external_id, '@', 1) THEN 2
+                    WHEN NOT (c.is_group = true OR c.external_id LIKE '%@g.us' OR c.phone LIKE '%@g.us')
+                         AND (
+                            REGEXP_REPLACE(COALESCE(wc.phone, ''), '\\D', '', 'g') <> ''
+                            AND REGEXP_REPLACE(COALESCE(wc.phone, ''), '\\D', '', 'g') = REGEXP_REPLACE(COALESCE(c.phone, ''), '\\D', '', 'g')
+                         ) THEN 3
+                    ELSE 9
+                  END,
+                  CASE WHEN wc.profile_pic_url IS NOT NULL AND wc.profile_pic_url <> '' THEN 0 ELSE 1 END,
+                  wc.updated_at DESC NULLS LAST,
+                  wc.id DESC
+                LIMIT 1
+            ) co ON TRUE
             LEFT JOIN companies comp ON c.company_id = comp.id
             LEFT JOIN company_instances ci ON c.last_instance_key = ci.instance_key
+            LEFT JOIN queues q ON c.queue_id = q.id
+            LEFT JOIN app_users au ON au.id = c.user_id
             WHERE 1=1
         `;
         const params: any[] = [];
 
         if (user.role !== 'SUPERADMIN') {
-            query += ` AND c.company_id = $1`;
+            query += ` AND c.company_id = $${params.length + 1}`;
             params.push(user.company_id);
+
+            // Whaticket: Queue filter for non-admins
+            if (user.role !== 'ADMIN') {
+                query += ` AND (
+                    c.queue_id IS NULL 
+                    OR c.queue_id IN (SELECT queue_id FROM whatsapp_queues_users WHERE user_id = $${params.length + 1})
+                    OR c.user_id = $${params.length + 1}
+                )`;
+                params.push(user.id);
+            }
         } else {
             if (companyId) {
-                query += ` AND c.company_id = $1`;
+                query += ` AND c.company_id = $${params.length + 1}`;
                 params.push(companyId);
             }
-            // Superadmin without companyId now sees all companies/instances
         }
 
         // Lenient filter for valid conversations
@@ -1006,7 +1301,102 @@ export const getConversations = async (req: Request, res: Response) => {
             ];
             return res.json(mockConvs);
         }
-        res.json(result.rows);
+        const isUsableGroupName = (value?: string | null) => {
+            if (!value) return false;
+            const name = String(value).trim();
+            if (!name) return false;
+            if (/@g\.us$/i.test(name) || /@s\.whatsapp\.net$/i.test(name)) return false;
+            if (/^\d{8,16}$/.test(name)) return false;
+            return true;
+        };
+
+        const normalizedRows = result.rows.map((row: any) => {
+            const computedIsGroup = Boolean(row.computed_is_group);
+            const fallbackGroupName = computedIsGroup
+                ? (
+                    (isUsableGroupName(row.group_name) ? row.group_name : null) ||
+                    'Grupo'
+                )
+                : row.group_name;
+            return {
+                ...row,
+                is_group: computedIsGroup,
+                group_name: fallbackGroupName
+            };
+        });
+
+        // Lazy photo sync for existing conversations without profile_pic_url.
+        // This runs in background and is throttled per company to avoid excessive API traffic.
+        const syncCompanyId = user.role === 'SUPERADMIN' ? Number(companyId || 0) : Number(user.company_id || 0);
+        if (syncCompanyId) {
+            const throttleKey = `conv_pic_sync_${syncCompanyId}`;
+            const lastRun = picSyncThrottle.get(throttleKey) || 0;
+            const now = Date.now();
+            if (now - lastRun > 60_000) {
+                picSyncThrottle.set(throttleKey, now);
+                const missingPics = normalizedRows
+                    .filter((r: any) => !r.profile_pic_url && (r.external_id || r.phone))
+                    .slice(0, 20);
+
+                if (missingPics.length > 0) {
+                    (async () => {
+                        try {
+                            const cfg = await getEvolutionConfig((req as any).user, 'lazy_pic_sync', String(syncCompanyId));
+                            const baseUrl = String(cfg.url || '').replace(/\/$/, '');
+                            const apiKey = cfg.apikey;
+                            if (!baseUrl || !apiKey) return;
+
+                            for (const conv of missingPics) {
+                                try {
+                                    const instanceKey = String(conv.last_instance_key || conv.instance || cfg.instance || '').trim();
+                                    if (!instanceKey) continue;
+                                    const target = String(conv.external_id || conv.phone || '').trim();
+                                    if (!target) continue;
+
+                                    let picUrl: string | null = null;
+                                    const picRes = await fetch(`${baseUrl}/chat/fetchProfilePictureUrl/${instanceKey}`, {
+                                        method: 'POST',
+                                        headers: { 'Content-Type': 'application/json', apikey: apiKey },
+                                        body: JSON.stringify({ number: target })
+                                    });
+                                    if (picRes.ok) {
+                                        const picData = await picRes.json();
+                                        picUrl = picData.profilePictureUrl || picData.url || null;
+                                    }
+
+                                    if (!picUrl && conv.is_group) {
+                                        const grpRes = await fetch(`${baseUrl}/group/findGroup/${instanceKey}?groupJid=${encodeURIComponent(target)}`, {
+                                            method: 'GET',
+                                            headers: { 'Content-Type': 'application/json', apikey: apiKey }
+                                        });
+                                        if (grpRes.ok) {
+                                            const grpData = await grpRes.json();
+                                            picUrl = grpData.profilePictureUrl || grpData.pic || grpData.picture || null;
+                                        }
+                                    }
+
+                                    if (picUrl) {
+                                        await pool!.query('UPDATE whatsapp_conversations SET profile_pic_url = $1 WHERE id = $2', [picUrl, conv.id]);
+                                        if (!conv.is_group) {
+                                            await pool!.query(
+                                                'UPDATE whatsapp_contacts SET profile_pic_url = $1 WHERE (jid = $2 OR phone = $3) AND company_id = $4',
+                                                [picUrl, conv.external_id || conv.phone, String(conv.phone || '').replace(/\D/g, ''), syncCompanyId]
+                                            );
+                                        }
+                                    }
+                                } catch (e) {
+                                    console.warn('[getConversations] lazy photo sync item failed:', e);
+                                }
+                            }
+                        } catch (e) {
+                            console.warn('[getConversations] lazy photo sync failed:', e);
+                        }
+                    })();
+                }
+            }
+        }
+
+        res.json(normalizedRows);
     } catch (error) {
         console.error('Error fetching conversations:', error);
         res.status(500).json({ error: 'Failed to fetch conversations' });
@@ -1048,6 +1438,7 @@ export const getMessages = async (req: Request, res: Response) => {
                 `SELECT m.*, 
                         u.full_name as user_name,
                         wc.name as saved_name,
+                        COALESCE(m.sender_name, wc.name, split_part(m.sender_jid, '@', 1)) as sender_name,
                         CASE 
                             WHEN m.campaign_id IS NOT NULL THEN 'campaign'
                             WHEN m.follow_up_id IS NOT NULL THEN 'follow_up'
@@ -1058,11 +1449,13 @@ export const getMessages = async (req: Request, res: Response) => {
                         CASE 
                             WHEN m.campaign_id IS NOT NULL THEN 'Campanha'
                             WHEN m.follow_up_id IS NOT NULL THEN 'Follow-Up'
+                            WHEN m.sent_by_user_name IS NOT NULL THEN m.sent_by_user_name
                             WHEN m.user_id IS NOT NULL THEN u.full_name 
                             WHEN m.direction = 'outbound' AND m.user_id IS NULL THEN 'Agente de IA'
                             ELSE NULL 
                         END as agent_name,
-                        COALESCE(ci.name, m.instance_name, m.instance_key) as instance_friendly_name
+                        COALESCE(ci.name, m.instance_name, m.instance_key) as instance_friendly_name,
+                        ci.color as instance_color
                 FROM whatsapp_messages m 
                 LEFT JOIN app_users u ON m.user_id = u.id 
                 LEFT JOIN whatsapp_contacts wc ON (
@@ -1145,30 +1538,27 @@ export const getMessages = async (req: Request, res: Response) => {
 
 export const verifyInstagramWebhook = async (req: Request, res: Response) => {
     try {
-        const mode = req.query['hub.mode'];
-        const token = req.query['hub.token'];
-        const challenge = req.query['hub.challenge'];
+        const mode = String(req.query['hub.mode'] || '');
+        const token = String(req.query['hub.verify_token'] || '');
+        const challenge = String(req.query['hub.challenge'] || '');
 
-        // We can use a global verify token or check against companies?
-        // Simpler: Use a fixed token for the platform, or allow companies to set it?
-        // User instructions said "Webhook URL (read only)". Usually implies platform handles it.
-        // Let's us "integrai_instagram_verify_token" or check env.
-        const VERIFY_TOKEN = process.env.INSTAGRAM_VERIFY_TOKEN || 'integrai_verify_token';
+        const VERIFY_TOKEN = process.env.INSTAGRAM_VERIFY_TOKEN;
 
-        if (mode && token) {
-            if (mode === 'subscribe' && token === VERIFY_TOKEN) {
-                console.log('[Instagram Webhook] Verified successfully.');
-                res.status(200).send(challenge);
-            } else {
-                console.warn(`[Instagram Webhook] Verification failed. Token: ${token}, Mode: ${mode}`);
-                res.sendStatus(403);
-            }
-        } else {
-            res.sendStatus(400);
+        if (!VERIFY_TOKEN) {
+            console.error('[Instagram Webhook] INSTAGRAM_VERIFY_TOKEN is not set.');
+            return res.sendStatus(403);
         }
+
+        if (mode === 'subscribe' && token === VERIFY_TOKEN) {
+            console.log('[Instagram Webhook] Verified successfully.');
+            return res.status(200).send(challenge);
+        }
+
+        console.warn(`[Instagram Webhook] Verification failed. Mode: ${mode}`);
+        return res.sendStatus(403);
     } catch (e) {
         console.error('[Instagram Verify Error]', e);
-        res.sendStatus(500);
+        return res.sendStatus(403);
     }
 };
 
@@ -1254,13 +1644,14 @@ export const handleInstagramWebhook = async (req: Request, res: Response) => {
                                     await pool!.query('UPDATE whatsapp_conversations SET status = $1 WHERE id = $2', ['PENDING', conversationId]);
                                 }
                             } else {
+                                const defaultQueueId = await getOrCreateQueueId(company.id, 'Recepcao');
                                 // Create New Conversation
                                 const newConv = await pool!.query(`
                                     INSERT INTO whatsapp_conversations 
-                                    (company_id, external_id, phone, contact_name, status, channel, instagram_user_id, instagram_username, profile_pic_url)
-                                    VALUES ($1, $2, $3, $4, 'PENDING', 'instagram', $5, $6, $7)
+                                    (company_id, external_id, phone, contact_name, status, channel, instagram_user_id, instagram_username, profile_pic_url, queue_id)
+                                    VALUES ($1, $2, $3, $4, 'PENDING', 'instagram', $5, $6, $7, $8)
                                     RETURNING id
-                                `, [company.id, senderId, '0000000000', username, senderId, username, profilePic]);
+                                `, [company.id, senderId, '0000000000', username, senderId, username, profilePic, defaultQueueId]);
                                 conversationId = newConv.rows[0].id;
                             }
 

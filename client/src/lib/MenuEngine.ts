@@ -2,6 +2,8 @@
 import {
     LayoutDashboard,
     MessageCircle,
+    MessageSquare,
+    Flag,
     KanbanSquare,
     Wallet2,
     Users,
@@ -17,6 +19,7 @@ import {
     Activity,
     HelpCircle,
     Bot,
+    GitBranch,
     Fingerprint,
     LayoutTemplate,
     Map,
@@ -46,13 +49,16 @@ export interface MenuItem {
 const COMMON_ITEMS: MenuItem[] = [
     { label: "Atendimento", icon: MessageCircle, to: "/app/atendimento", requiredPermission: "crm.view" },
     { label: "Dashboard", icon: LayoutDashboard, to: "/app/dashboard", requiredPermission: "bi.view" },
+    { label: "Mensagens Rápidas", icon: MessageSquare, to: "/app/mensagens-rapidas" },
+    { label: "Filas", icon: GitBranch, to: "/app/filas" },
+    { label: "Campanhas", icon: FileText, to: "/app/campanhas" },
+    { label: "Motivos de Encerramento", icon: Flag, to: "/app/motivos-encerramento", requiredPermission: "settings.company" },
 ];
 
 const GENERIC_MENU: MenuItem[] = [
     ...COMMON_ITEMS,
     // Agenda removed from Generic
     { label: "Grupos", icon: Users, to: "/app/grupos", requiredPermission: "crm.view" },
-    { label: "Campanhas", icon: FileText, to: "/app/campanhas", requiredPermission: "campaigns.send" },
     { label: "Follow-up", icon: CalendarCheck, to: "/app/follow-up", requiredPermission: "crm.view" },
     { label: "Contatos", icon: Users, to: "/app/contatos", requiredPermission: "reg.clients" },
     { label: "CRM", icon: KanbanSquare, to: "/app/crm", requiredPermission: "crm.view" },
@@ -69,6 +75,9 @@ const GENERIC_MENU: MenuItem[] = [
 const CLINICA_MENU: MenuItem[] = [
     { label: "Atendimento", icon: MessageCircle, to: "/app/atendimento", requiredPermission: "crm.view" },
     { label: "Dashboard Clínico", icon: LayoutDashboard, to: "/app/dashboard", requiredPermission: "bi.view" },
+    { label: "Mensagens Rápidas", icon: MessageSquare, to: "/app/mensagens-rapidas" },
+    { label: "Filas", icon: GitBranch, to: "/app/filas" },
+    { label: "Campanhas", icon: FileText, to: "/app/campanhas" },
     { label: "Agenda Avançada", icon: CalendarCheck, to: "/app/agenda", requiredPermission: "schedule.view" },
     { label: "Pacientes", icon: Users, to: "/app/contatos", requiredPermission: "reg.clients" },
     { label: "Grupos", icon: Users, to: "/app/grupos", requiredPermission: "crm.view" },
@@ -79,6 +88,7 @@ const CLINICA_MENU: MenuItem[] = [
     { label: "Estoque", icon: Package, to: "/app/estoque", requiredPermission: "inventory.view" },
     { label: "BI Clínico", icon: TrendingUp, to: "/app/bi-clinico", requiredPermission: "bi.view" },
     { label: "Chatbot", icon: Bot, to: "/app/chatbot", requiredPermission: "bot.view" },
+    { label: "Motivos de Encerramento", icon: Flag, to: "/app/motivos-encerramento", requiredPermission: "settings.company" },
     { label: "QR Code", icon: QrCode, to: "/app/qr-code", requiredPermission: "settings.qrcode" },
     { label: "Configurações", icon: Settings, to: "/app/configuracoes", requiredPermission: "settings.company" },
 ];
@@ -86,23 +96,30 @@ const CLINICA_MENU: MenuItem[] = [
 const LOJA_MENU: MenuItem[] = [
     { label: "Atendimento", icon: MessageCircle, to: "/app/atendimento", requiredPermission: "crm.view" },
     { label: "Dashboard", icon: LayoutDashboard, to: "/app/dashboard", requiredPermission: "bi.view" },
+    { label: "Mensagens Rápidas", icon: MessageSquare, to: "/app/mensagens-rapidas" },
+    { label: "Filas", icon: GitBranch, to: "/app/filas" },
+    { label: "Campanhas", icon: FileText, to: "/app/campanhas" },
     { label: "Vendas", icon: ShoppingBag, to: "/app/loja/vendas", requiredPermission: "inventory.sale" },
     { label: "Clientes", icon: Users, to: "/app/contatos", requiredPermission: "reg.clients" }, // "Clientes" maps to Contatos
     { label: "Grupos", icon: Users, to: "/app/grupos", requiredPermission: "crm.view" },
+    { label: "CRM", icon: KanbanSquare, to: "/app/crm", requiredPermission: "crm.view" },
     { label: "Estoque", icon: Package, to: "/app/loja/estoque", requiredPermission: "inventory.view" },
     { label: "Financeiro", icon: Wallet2, to: "/app/financeiro", requiredPermission: "finance.view" },
     { label: "Fornecedores", icon: Truck, to: "/app/loja/fornecedores", requiredPermission: "reg.clients" },
-    { label: "Campanhas", icon: FileText, to: "/app/campanhas", requiredPermission: "campaigns.send" },
     { label: "Relatórios", icon: TrendingUp, to: "/app/relatorios", requiredPermission: "bi.view" },
     { label: "Metas & Equipe", icon: Target, to: "/app/loja/metas", requiredPermission: "bi.view" },
     { label: "QR Code", icon: QrCode, to: "/app/qr-code", requiredPermission: "settings.qrcode" },
     { label: "Chatbot", icon: Bot, to: "/app/chatbot", requiredPermission: "bot.view" },
+    { label: "Motivos de Encerramento", icon: Flag, to: "/app/motivos-encerramento", requiredPermission: "settings.company" },
     { label: "Configurações", icon: Settings, to: "/app/configuracoes", requiredPermission: "settings.company" },
 ];
 
 const RESTAURANTE_MENU: MenuItem[] = [
     { label: "Atendimento", icon: MessageCircle, to: "/app/atendimento", requiredPermission: "crm.view" },
     { label: "Dashboard", icon: LayoutDashboard, to: "/app/dashboard", requiredPermission: "bi.view" },
+    { label: "Mensagens Rápidas", icon: MessageSquare, to: "/app/mensagens-rapidas" },
+    { label: "Filas", icon: GitBranch, to: "/app/filas" },
+    { label: "Campanhas", icon: FileText, to: "/app/campanhas" },
     { label: "Pedidos", icon: ShoppingBag, to: "/app/pedidos", requiredPermission: "crm.view" },
     { label: "Mesas", icon: Coffee, to: "/app/mesas", requiredPermission: "crm.view" },
     { label: "Cozinha", icon: ChefHat, to: "/app/cozinha", requiredPermission: "crm.view" },
@@ -111,8 +128,8 @@ const RESTAURANTE_MENU: MenuItem[] = [
     { label: "Grupos", icon: Users, to: "/app/grupos", requiredPermission: "crm.view" },
     { label: "Entregas", icon: Truck, to: "/app/entregas", requiredPermission: "crm.view" },
     { label: "Financeiro", icon: Wallet2, to: "/app/financeiro", requiredPermission: "finance.view" },
-    { label: "Campanhas", icon: FileText, to: "/app/campanhas", requiredPermission: "campaigns.send" },
     { label: "Chatbot", icon: Bot, to: "/app/chatbot", requiredPermission: "bot.view" },
+    { label: "Motivos de Encerramento", icon: Flag, to: "/app/motivos-encerramento", requiredPermission: "settings.company" },
     { label: "Relatórios", icon: TrendingUp, to: "/app/relatorios", requiredPermission: "bi.view" },
     { label: "Equipe", icon: Users, to: "/app/usuarios", requiredPermission: "reg.users" },
     { label: "Configurações", icon: Settings, to: "/app/configuracoes", requiredPermission: "settings.company" },
@@ -121,6 +138,9 @@ const RESTAURANTE_MENU: MenuItem[] = [
 const LAVAJATO_MENU: MenuItem[] = [
     { label: "Atendimento", icon: MessageCircle, to: "/app/atendimento", requiredPermission: "crm.view" },
     { label: "Dashboard", icon: LayoutDashboard, to: "/app/dashboard", requiredPermission: "bi.view" },
+    { label: "Mensagens Rápidas", icon: MessageSquare, to: "/app/mensagens-rapidas" },
+    { label: "Filas", icon: GitBranch, to: "/app/filas" },
+    { label: "Campanhas", icon: FileText, to: "/app/campanhas" },
     { label: "Agenda", icon: CalendarCheck, to: "/app/agenda", requiredPermission: "schedule.view" },
     { label: "Clientes", icon: Users, to: "/app/contatos", requiredPermission: "reg.clients" },
     { label: "Grupos", icon: Users, to: "/app/grupos", requiredPermission: "crm.view" },
@@ -128,8 +148,8 @@ const LAVAJATO_MENU: MenuItem[] = [
     { label: "Serviços", icon: Wrench, to: "/app/servicos", requiredPermission: "reg.services" },
     { label: "Ordens de Serviço", icon: ClipboardList, to: "/app/os", requiredPermission: "crm.view" },
     { label: "Financeiro", icon: Wallet2, to: "/app/financeiro", requiredPermission: "finance.view" },
-    { label: "Campanhas", icon: FileText, to: "/app/campanhas", requiredPermission: "campaigns.send" },
     { label: "Chatbot", icon: Bot, to: "/app/chatbot", requiredPermission: "bot.view" },
+    { label: "Motivos de Encerramento", icon: Flag, to: "/app/motivos-encerramento", requiredPermission: "settings.company" },
     { label: "Relatórios", icon: TrendingUp, to: "/app/relatorios", requiredPermission: "bi.view" },
     { label: "Equipe", icon: Users, to: "/app/usuarios", requiredPermission: "reg.users" },
     { label: "Configurações", icon: Settings, to: "/app/configuracoes", requiredPermission: "settings.company" },

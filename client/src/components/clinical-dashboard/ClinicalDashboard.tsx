@@ -26,6 +26,8 @@ import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { toast } from "sonner";
 
+import { DashboardDateFilter } from "../DashboardDateFilter";
+
 interface ClinicalDashboardProps {
     company: CompanySummary;
 }
@@ -33,11 +35,34 @@ interface ClinicalDashboardProps {
 export const ClinicalDashboard = ({ company }: ClinicalDashboardProps) => {
     const { token } = useAuth();
     const navigate = useNavigate();
+
+    // Persistent date state
+    const [dateRange, setDateRange] = useState<{ start: string; end: string }>(() => {
+        const saved = localStorage.getItem('clinical_dashboard_date_range');
+        if (saved) {
+            try {
+                return JSON.parse(saved);
+            } catch (e) {
+                return { start: "", end: "" };
+            }
+        }
+        return { start: "", end: "" };
+    });
+
     const [stats, setStats] = useState<any>(null);
     const [financials, setFinancials] = useState<any>(null);
     const [todayAppointments, setTodayAppointments] = useState<any[]>([]);
     const [alerts, setAlerts] = useState<any[]>([]);
     const [isLoading, setIsLoading] = useState(true);
+
+    // Save to localStorage when changed
+    useEffect(() => {
+        if (dateRange.start || dateRange.end) {
+            localStorage.setItem('clinical_dashboard_date_range', JSON.stringify(dateRange));
+        } else {
+            localStorage.removeItem('clinical_dashboard_date_range');
+        }
+    }, [dateRange]);
 
     useEffect(() => {
         if (!token) return;
@@ -46,24 +71,29 @@ export const ClinicalDashboard = ({ company }: ClinicalDashboardProps) => {
             try {
                 const now = new Date();
                 const today = now.toISOString().split('T')[0];
-                const startMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-                const startMonthStr = startMonth.toISOString().split('T')[0];
 
-                // 1. BI Stats (Month)
-                const biRes = await fetch(`/api/crm/clinical-bi?start=${startMonthStr}&end=${today}`, {
+                // Defaults if no range
+                const startMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+                const defaultStart = startMonth.toISOString().split('T')[0];
+
+                const currentStart = dateRange.start || defaultStart;
+                const currentEnd = dateRange.end || today;
+
+                // 1. BI Stats
+                const biRes = await fetch(`/api/crm/clinical-bi?start=${currentStart}&end=${currentEnd}`, {
                     headers: { Authorization: `Bearer ${token}` }
                 });
                 const biData = await biRes.json();
                 setStats(biData);
 
-                // 2. Financials (Month)
-                const finRes = await fetch(`/api/finance/clinical/dashboard?startDate=${startMonthStr}&endDate=${today}`, {
+                // 2. Financials
+                const finRes = await fetch(`/api/finance/clinical/dashboard?startDate=${currentStart}&endDate=${currentEnd}`, {
                     headers: { Authorization: `Bearer ${token}` }
                 });
                 const finData = await finRes.json();
                 setFinancials(finData);
 
-                // 3. Today's Appointments
+                // 3. Today's Appointments (Always today for the list)
                 const todayRes = await fetch(`/api/crm/appointments?start=${today}T00:00:00&end=${today}T23:59:59`, {
                     headers: { Authorization: `Bearer ${token}` }
                 });
@@ -97,7 +127,7 @@ export const ClinicalDashboard = ({ company }: ClinicalDashboardProps) => {
         };
 
         fetchData();
-    }, [token]);
+    }, [token, dateRange]);
 
     if (isLoading) {
         return (
@@ -141,17 +171,23 @@ export const ClinicalDashboard = ({ company }: ClinicalDashboardProps) => {
                         </p>
                     </div>
                 </div>
-                <div className="flex items-center gap-3">
+                <div className="flex flex-wrap items-center gap-3">
+                    <DashboardDateFilter
+                        initialStart={dateRange.start}
+                        initialEnd={dateRange.end}
+                        onApply={(start, end) => setDateRange({ start, end })}
+                        onClear={() => setDateRange({ start: "", end: "" })}
+                    />
                     <Button
                         variant="outline"
-                        className="rounded-xl h-11 px-6 font-semibold border-slate-200 hover:bg-slate-50 transition-all"
+                        className="rounded-xl h-9 sm:h-11 px-4 sm:px-6 font-semibold border-slate-200 hover:bg-slate-50 transition-all text-xs sm:text-sm"
                         onClick={() => navigate('/app/agenda')}
                     >
                         <Calendar className="mr-2 h-4 w-4" />
                         Agenda Completa
                     </Button>
                     <Button
-                        className="rounded-xl h-11 px-6 font-semibold bg-blue-600 hover:bg-blue-700 shadow-md shadow-blue-500/10 transition-all border-none"
+                        className="rounded-xl h-9 sm:h-11 px-4 sm:px-6 font-semibold bg-blue-600 hover:bg-blue-700 shadow-md shadow-blue-500/10 transition-all border-none text-xs sm:text-sm"
                         onClick={() => navigate('/app/contatos')}
                     >
                         <UserCheck className="mr-2 h-4 w-4" />

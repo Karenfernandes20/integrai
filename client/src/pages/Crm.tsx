@@ -276,7 +276,7 @@ const CrmPage = () => {
   const fetchContacts = async () => {
     setIsLoadingContacts(true);
     try {
-      const res = await fetch('/api/crm/contacts', {
+      const res = await fetch('/api/evolution/contacts', {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       if (res.ok) {
@@ -650,7 +650,7 @@ const CrmPage = () => {
                   </CardHeader>
 
                   <DroppableColumn id={column.id.toString()}>
-                    <CardContent className="flex-1 p-1.5 overflow-y-auto scrollbar-thin scrollbar-thumb-zinc-200 dark:scrollbar-thumb-zinc-800">
+                    <CardContent className="flex-1 p-1.5 overflow-y-auto custom-scrollbar">
                       <SortableContext id={column.id.toString()} items={leadsByStage(column.id).map((l) => l.id)} strategy={verticalListSortingStrategy}>
                         <div className="flex flex-col gap-1 min-h-[150px]">
                           {leadsByStage(column.id).map((lead) => (

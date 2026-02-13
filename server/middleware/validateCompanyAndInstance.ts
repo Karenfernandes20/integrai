@@ -17,8 +17,22 @@ export const validateCompanyAndInstance = async (req: RequestWithInstance, res: 
         // Extract Instance ID
         let instanceId = req.headers['x-instance-id'] || req.query.instance_id || req.body.instance_id;
 
+        // Fallback: if not provided, resolve first available instance of this company
         if (!instanceId) {
-            return res.status(400).json({ error: 'Instance ID is required for Shop operations' });
+            const fallbackInstance = await pool!.query(
+                `SELECT id 
+                 FROM company_instances 
+                 WHERE company_id = $1
+                 ORDER BY CASE WHEN status IN ('open', 'connected') THEN 0 ELSE 1 END, id ASC
+                 LIMIT 1`,
+                [user.company_id]
+            );
+
+            if (fallbackInstance.rows.length === 0) {
+                return res.status(400).json({ error: 'Nenhuma instância configurada para esta empresa' });
+            }
+
+            instanceId = fallbackInstance.rows[0].id;
         }
 
         // Normalize

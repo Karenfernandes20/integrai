@@ -697,7 +697,7 @@ export const checkAndStartScheduledCampaigns = async (io?: any) => {
         // This is a simplified approach: if current time > campaign.end_time and it was meant to run
         await pool.query(`
             UPDATE whatsapp_campaign_contacts
-            SET status = 'expired', updated_at = NOW()
+            SET status = 'expired'
             WHERE status = 'pending' 
             AND campaign_id IN (
                 SELECT id FROM whatsapp_campaigns 

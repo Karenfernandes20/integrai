@@ -16,14 +16,38 @@ import { CommunityStats } from "../CommunityStats";
 
 
 
+import { DashboardDateFilter } from "../DashboardDateFilter";
+
 interface CrmDashboardProps {
     company: CompanySummary;
 }
 
 export const CrmDashboard = ({ company }: CrmDashboardProps) => {
-    const [dateRange, setDateRange] = useState<any>(null); // Placeholder for date state
+    // Persistent date state
+    const [dateRange, setDateRange] = useState<{ start: string; end: string }>(() => {
+        const saved = localStorage.getItem('dashboard_date_range');
+        if (saved) {
+            try {
+                return JSON.parse(saved);
+            } catch (e) {
+                return { start: "", end: "" };
+            }
+        }
+        return { start: "", end: "" };
+    });
+
     const [dashboardData, setDashboardData] = useState<any>(null);
+    const [closingAnalytics, setClosingAnalytics] = useState<any>(null);
     const [loading, setLoading] = useState(false);
+
+    // Save to localStorage when changed
+    useEffect(() => {
+        if (dateRange.start || dateRange.end) {
+            localStorage.setItem('dashboard_date_range', JSON.stringify(dateRange));
+        } else {
+            localStorage.removeItem('dashboard_date_range');
+        }
+    }, [dateRange]);
 
     useEffect(() => {
         const fetchDashboard = async () => {
@@ -61,6 +85,23 @@ export const CrmDashboard = ({ company }: CrmDashboardProps) => {
                     const data = await res.json();
                     setDashboardData(data);
                 }
+
+                let analyticsUrl = company.id && company.id !== 'superadmin-view'
+                    ? `/api/closing-reasons/analytics?companyId=${company.id}`
+                    : "/api/closing-reasons/analytics?";
+
+                if (dateRange?.start) analyticsUrl += `&startDate=${dateRange.start}`;
+                if (dateRange?.end) analyticsUrl += `&endDate=${dateRange.end}`;
+
+                const analyticsRes = await fetch(analyticsUrl, {
+                    headers: { "Authorization": `Bearer ${token}` }
+                });
+                if (analyticsRes.ok) {
+                    const analyticsData = await analyticsRes.json();
+                    setClosingAnalytics(analyticsData);
+                } else {
+                    setClosingAnalytics(null);
+                }
             } catch (e) {
                 console.error("Failed to fetch dashboard", e);
             } finally {
@@ -71,7 +112,7 @@ export const CrmDashboard = ({ company }: CrmDashboardProps) => {
         setLoading(true);
         fetchDashboard();
 
-        const interval = setInterval(fetchDashboard, 10000); // Polling every 10s
+        const interval = setInterval(fetchDashboard, 15000); // Polling every 15s
         return () => clearInterval(interval);
     }, [company.id, dateRange]);
 
@@ -110,39 +151,29 @@ export const CrmDashboard = ({ company }: CrmDashboardProps) => {
                     </div>
                 </div>
 
-                <div className="flex flex-wrap items-center gap-2">
-                    {/* Filters preserved... */}
-                    <div className="flex items-center gap-2 bg-background p-1 rounded-md border shadow-sm">
+                <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
+                    <DashboardDateFilter
+                        initialStart={dateRange.start}
+                        initialEnd={dateRange.end}
+                        onApply={(start, end) => setDateRange({ start, end })}
+                        onClear={() => setDateRange({ start: "", end: "" })}
+                    />
 
-                        <div className="flex items-center gap-1 mx-2">
-                            <input
-                                type="date"
-                                className="h-8 text-xs border rounded px-2 bg-transparent"
-                                value={dateRange?.start || ''}
-                                onChange={(e) => setDateRange(prev => ({ ...prev, start: e.target.value }))}
-                            />
-                            <span className="text-xs text-muted-foreground">-</span>
-                            <input
-                                type="date"
-                                className="h-8 text-xs border rounded px-2 bg-transparent"
-                                value={dateRange?.end || ''}
-                                onChange={(e) => setDateRange(prev => ({ ...prev, end: e.target.value }))}
-                            />
-                        </div>
+                    <div className="flex items-center gap-1 sm:gap-2 bg-background p-1 rounded-md border shadow-sm shrink-0">
 
                         <Select defaultValue="all">
-                            <SelectTrigger className="w-[140px] h-8 text-xs">
+                            <SelectTrigger className="flex-1 sm:w-[140px] h-8 text-xs">
                                 <SelectValue placeholder="Atendente" />
                             </SelectTrigger>
                             <SelectContent>
-                                <SelectItem value="all">Todos Atendentes</SelectItem>
+                                <SelectItem value="all">Todos</SelectItem>
                             </SelectContent>
                         </Select>
 
                         <Button
                             variant="ghost"
                             size="icon"
-                            className="h-8 w-8 text-muted-foreground hover:text-primary"
+                            className="h-8 w-8 text-muted-foreground hover:text-primary shrink-0"
                             onClick={() => window.location.reload()}
                         >
                             <RefreshCw className="h-4 w-4" />
@@ -159,6 +190,58 @@ export const CrmDashboard = ({ company }: CrmDashboardProps) => {
                 description="Criamos um Assistente Virtual pronto para uso. Ele pode responder seus clientes 24/7. Tente enviar uma mensagem para 'Teste' para ver a mágica acontecer."
             />
             <CrmOverviewCards data={dashboardData?.overview} />
+
+            <Card>
+                <CardHeader>
+                    <CardTitle>Motivos de Encerramento</CardTitle>
+                    <CardDescription>Distribuição dos encerramentos por motivo e qualidade.</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                        <div className="rounded-md border p-3">
+                            <p className="text-xs text-muted-foreground">Total</p>
+                            <p className="text-xl font-bold">{closingAnalytics?.summary?.totalClosures || 0}</p>
+                        </div>
+                        <div className="rounded-md border p-3">
+                            <p className="text-xs text-muted-foreground">Positivo</p>
+                            <p className="text-xl font-bold text-green-600">{closingAnalytics?.summary?.positivePct || 0}%</p>
+                        </div>
+                        <div className="rounded-md border p-3">
+                            <p className="text-xs text-muted-foreground">Negativo</p>
+                            <p className="text-xl font-bold text-red-600">{closingAnalytics?.summary?.negativePct || 0}%</p>
+                        </div>
+                        <div className="rounded-md border p-3">
+                            <p className="text-xs text-muted-foreground">Neutro</p>
+                            <p className="text-xl font-bold text-blue-600">{closingAnalytics?.summary?.neutralPct || 0}%</p>
+                        </div>
+                    </div>
+
+                    <div className="grid md:grid-cols-2 gap-4">
+                        <div className="rounded-md border p-3">
+                            <p className="text-sm font-semibold mb-2">Por motivo</p>
+                            <div className="space-y-1 text-sm">
+                                {(closingAnalytics?.byReason || []).slice(0, 6).map((item: any) => (
+                                    <div key={item.id} className="flex items-center justify-between">
+                                        <span className="truncate pr-3">{item.name}</span>
+                                        <span className="font-semibold">{item.total}</span>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                        <div className="rounded-md border p-3">
+                            <p className="text-sm font-semibold mb-2">Por categoria</p>
+                            <div className="space-y-1 text-sm">
+                                {(closingAnalytics?.byCategory || []).slice(0, 6).map((item: any) => (
+                                    <div key={item.category} className="flex items-center justify-between">
+                                        <span className="truncate pr-3">{item.category}</span>
+                                        <span className="font-semibold">{item.total}</span>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    </div>
+                </CardContent>
+            </Card>
 
             <div className="grid lg:grid-cols-3 gap-6">
                 <div className="lg:col-span-2 space-y-6">

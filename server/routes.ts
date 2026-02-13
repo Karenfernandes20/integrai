@@ -29,7 +29,11 @@ import { authenticateToken, authorizeRole, authorizePermission } from './middlew
 import { rateLimit } from './middleware/rateLimitMiddleware';
 import { PERMISSIONS } from './config/roles';
 import { getCompanies, createCompany, updateCompany, deleteCompany, getCompanyUsers, getCompany, getCompanyInstances, updateCompanyInstance } from './controllers/companyController';
-import { startConversation, closeConversation, updateContactNameWithAudit, deleteConversation, returnToPending } from './controllers/conversationController';
+import { startConversation, closeConversation, updateContactNameWithAudit, deleteConversation, returnToPending, transferConversationQueue } from './controllers/conversationController';
+import { listQueues, createQueue, updateQueue, deleteQueue } from './controllers/queueController';
+import { getQuickAnswers, createQuickAnswer, updateQuickAnswer, deleteQuickAnswer } from './controllers/whaticket/quickAnswerController';
+import { getUserQueues, setUserQueues } from './controllers/whaticket/userQueueController';
+import { getInternalMessages, sendInternalMessage, getUnreadInternalCount, markInternalAsRead } from './controllers/whaticket/internalChatController';
 import { getFollowUps, createFollowUp, updateFollowUp, deleteFollowUp, getFollowUpStats } from './controllers/followUpController';
 
 
@@ -72,10 +76,15 @@ router.post('/users/:id/reset-password', authenticateToken, authorizeRole(['SUPE
 
 
 // Evolution routes
-import { getEvolutionQrCode, setEvolutionWebhook, getEvolutionWebhook, deleteEvolutionInstance, sendEvolutionMessage, getEvolutionConnectionState, getEvolutionContacts, createEvolutionContact, updateEvolutionContact, deleteEvolutionContact, editEvolutionMessage, syncEvolutionContacts, handleEvolutionWebhook, getEvolutionContactsLive, deleteEvolutionMessage, getEvolutionConfig, getEvolutionMedia, getEvolutionProfilePic, syncAllProfilePics, sendEvolutionMedia, refreshConversationMetadata, deleteMessage, searchEverything, sendEvolutionReaction, getSystemWhatsappStatus } from './controllers/evolutionController';
+import { getEvolutionQrCode, setEvolutionWebhook, getEvolutionWebhook, deleteEvolutionInstance, sendEvolutionMessage, getEvolutionConnectionState, getEvolutionContacts, createEvolutionContact, updateEvolutionContact, deleteEvolutionContact, editEvolutionMessage, syncEvolutionContacts, syncEvolutionGroups, handleEvolutionWebhook, getEvolutionContactsLive, deleteEvolutionMessage, getEvolutionConfig, getEvolutionMedia, getEvolutionProfilePic, syncAllProfilePics, sendEvolutionMedia, refreshConversationMetadata, deleteMessage, searchEverything, sendEvolutionReaction, getSystemWhatsappStatus } from './controllers/evolutionController';
+
+// Contacts routes
+import { getContacts, getContact, createContact, updateContact, deleteContact, searchContacts } from './controllers/contactController';
+
 router.get('/evolution/search', authenticateToken, searchEverything);
 router.get('/evolution/status', authenticateToken, getEvolutionConnectionState);
 router.get('/system/whatsapp/status', authenticateToken, getSystemWhatsappStatus); // New Global Status
+router.get('/evolution/media/:messageId', authenticateToken, getEvolutionMedia);
 router.get('/evolution/contacts', authenticateToken, getEvolutionContacts);
 router.post('/evolution/contacts', authenticateToken, createEvolutionContact);
 router.get('/evolution/contacts/live', authenticateToken, getEvolutionContactsLive);
@@ -83,6 +92,36 @@ router.post('/evolution/contacts/sync', authenticateToken, syncEvolutionContacts
 router.put('/evolution/contacts/:id', authenticateToken, updateEvolutionContact);
 router.delete('/evolution/contacts/:id', authenticateToken, deleteEvolutionContact);
 router.delete('/evolution/disconnect', authenticateToken, deleteEvolutionInstance);
+router.put('/evolution/instance/:companyId/:instanceKey/api-key', authenticateToken, async (req: Request, res: Response) => {
+  try {
+    const { companyId, instanceKey } = req.params;
+    const { apiKey } = req.body;
+
+    if (!apiKey || apiKey.trim().length < 10) {
+      return res.status(400).json({ error: 'API Key must be at least 10 characters' });
+    }
+
+    // Update the instance with new API key
+    const result = await pool!.query(
+      'UPDATE company_instances SET api_key = $1 WHERE instance_key = $2 AND company_id = $3 RETURNING id, name, instance_key',
+      [apiKey.trim(), instanceKey, Number(companyId)]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: `Instance "${instanceKey}" not found for company ${companyId}` });
+    }
+
+    console.log(`[API KEY UPDATE] Instance ${instanceKey} API key updated successfully`);
+    res.json({
+      success: true,
+      message: `API Key updated for instance "${result.rows[0].name}"`,
+      instance: result.rows[0]
+    });
+  } catch (e: any) {
+    console.error('[API KEY UPDATE ERROR]', e);
+    res.status(500).json({ error: `Failed to update API key: ${e.message}` });
+  }
+});
 router.post('/evolution/messages/send', authenticateToken, rateLimit({ windowMs: 60000, max: 20 }), sendEvolutionMessage);
 router.post('/evolution/messages/media', authenticateToken, sendEvolutionMedia);
 router.post('/evolution/messages/react', authenticateToken, sendEvolutionReaction);
@@ -95,6 +134,53 @@ router.get('/evolution/debug/mapping', async (req, res) => {
   try {
     const result = await pool!.query('SELECT id, name, evolution_instance FROM companies');
     res.json(result.rows);
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+router.get('/evolution/debug/instance/:companyId/:instanceKey', authenticateToken, async (req: Request, res: Response) => {
+  try {
+    const { companyId, instanceKey } = req.params;
+
+    // Check instance in company_instances table
+    const instRes = await pool!.query(
+      'SELECT id, name, instance_key, api_key, status, created_at FROM company_instances WHERE instance_key = $1 AND company_id = $2',
+      [instanceKey, Number(companyId)]
+    );
+
+    if (instRes.rows.length === 0) {
+      return res.status(404).json({ error: `Instance "${instanceKey}" not found for company ${companyId}` });
+    }
+
+    const instance = instRes.rows[0];
+
+    // Check company evolution_url
+    const compRes = await pool!.query('SELECT evolution_url, evolution_instance FROM companies WHERE id = $1', [Number(companyId)]);
+    const company = compRes.rows[0];
+
+    res.json({
+      instance_found: true,
+      instance: {
+        id: instance.id,
+        name: instance.name,
+        instance_key: instance.instance_key,
+        api_key_exists: !!instance.api_key,
+        api_key_length: instance.api_key?.length || 0,
+        api_key_last_4: instance.api_key ? `...${instance.api_key.slice(-4)}` : 'N/A',
+        status: instance.status,
+        created_at: instance.created_at
+      },
+      company: {
+        evolution_url: company?.evolution_url || 'Default (from env)',
+        evolution_instance: company?.evolution_instance || 'N/A',
+      },
+      diagnostic: {
+        has_api_key: instance.api_key && instance.api_key.length > 10,
+        api_key_valid: instance.api_key && instance.api_key.length >= 10,
+        problem: !instance.api_key || instance.api_key.length < 10 ? 'API Key is missing or invalid' : 'OK'
+      }
+    });
   } catch (e: any) {
     res.status(500).json({ error: e.message });
   }
@@ -137,8 +223,12 @@ router.get('/evolution/webhook/get', authenticateToken, getEvolutionWebhook);
 router.post('/evolution/webhook/set', authenticateToken, setEvolutionWebhook);
 router.post('/evolution/webhook/:type', handleWebhook);
 router.post('/evolution/webhook', handleWebhook);
+// Alternative webhook routes for compatibility
+router.post('/webhooks/whatsapp', handleWebhook);
+router.post('/webhooks/whatsapp/:type', handleWebhook);
 router.get('/evolution/webhook-debug', debugWebhookPayloads);
 router.get('/evolution/conversations', authenticateToken, getConversations);
+router.post('/evolution/groups/sync', authenticateToken, syncEvolutionGroups);
 router.post('/evolution/conversations/:conversationId/refresh', authenticateToken, refreshConversationMetadata);
 router.get('/evolution/messages/:conversationId', authenticateToken, getMessages);
 router.get('/evolution/media/:messageId', authenticateToken, getEvolutionMedia);
@@ -160,6 +250,29 @@ router.get('/crm/dashboard', authenticateToken, getCrmDashboardStats);
 router.post('/crm/conversations/:id/start', authenticateToken, startConversation);
 router.post('/crm/conversations/:id/close', authenticateToken, closeConversation);
 router.post('/crm/conversations/:id/pending', authenticateToken, returnToPending);
+router.put('/crm/conversations/:id/queue', authenticateToken, transferConversationQueue);
+router.get('/queues', authenticateToken, listQueues);
+router.post('/queues', authenticateToken, authorizeRole(['ADMIN', 'SUPERADMIN']), createQueue);
+router.put('/queues/:id', authenticateToken, authorizeRole(['ADMIN', 'SUPERADMIN']), updateQueue);
+router.delete('/queues/:id', authenticateToken, authorizeRole(['ADMIN', 'SUPERADMIN']), deleteQueue);
+
+// User-Queue Association
+router.get('/whaticket/users/:userId/queues', authenticateToken, getUserQueues);
+router.post('/whaticket/users/:userId/queues', authenticateToken, authorizeRole(['ADMIN', 'SUPERADMIN']), setUserQueues);
+
+
+// Quick Answers Routes
+router.get('/whaticket/quick-answers', authenticateToken, getQuickAnswers);
+router.post('/whaticket/quick-answers', authenticateToken, createQuickAnswer);
+router.put('/whaticket/quick-answers/:id', authenticateToken, updateQuickAnswer);
+router.delete('/whaticket/quick-answers/:id', authenticateToken, authorizeRole(['ADMIN', 'SUPERADMIN']), deleteQuickAnswer);
+
+// Internal Chat Routes
+router.get('/whaticket/internal-chat/unread', authenticateToken, getUnreadInternalCount);
+router.get('/whaticket/internal-chat/:otherUserId', authenticateToken, getInternalMessages);
+router.post('/whaticket/internal-chat', authenticateToken, sendInternalMessage);
+router.post('/whaticket/internal-chat/:senderId/read', authenticateToken, markInternalAsRead);
+
 router.put('/crm/conversations/:id/name', authenticateToken, updateContactNameWithAudit);
 router.delete('/crm/conversations/:id', authenticateToken, deleteConversation);
 
@@ -199,6 +312,8 @@ router.get('/crm/leads', authenticateToken, getLeads);
 router.put('/crm/leads/:id', authenticateToken, authorizePermission('crm.move_cards'), updateLead);
 router.post('/crm/leads', authenticateToken, createLead);
 router.put('/crm/leads/:id/move', authenticateToken, authorizePermission('crm.move_cards'), updateLeadStage);
+router.get('/crm/contacts', authenticateToken, getContacts);
+
 
 // Bot Routes (Chatbot V2)
 import {
@@ -258,6 +373,14 @@ router.post('/crm/follow-ups', authenticateToken, createFollowUp);
 router.put('/crm/follow-ups/:id', authenticateToken, updateFollowUp);
 router.delete('/crm/follow-ups/:id', authenticateToken, deleteFollowUp);
 
+// Contacts Routes (WhatsApp Contacts Management)
+router.get('/contacts', authenticateToken, getContacts);
+router.get('/contacts/search', authenticateToken, searchContacts);
+router.get('/contacts/:id', authenticateToken, getContact);
+router.post('/contacts', authenticateToken, createContact);
+router.put('/contacts/:id', authenticateToken, updateContact);
+router.delete('/contacts/:id', authenticateToken, deleteContact);
+
 // Professionals Routes
 router.get('/crm/professionals', authenticateToken, getProfessionals);
 router.post('/crm/professionals', authenticateToken, authorizePermission('reg.professionals'), createProfessional);
@@ -282,11 +405,14 @@ router.get('/crm/clinical-bi', authenticateToken, getClinicalBIStats);
 import { getDRE, getBreakdown, getFinancialIndicators, getOperationalReports } from './controllers/reportsController';
 import { getConversionStats } from './controllers/analyticsController';
 
-router.get('/reports/dre', authenticateToken, authorizeRole(['SUPERADMIN', 'ADMIN']), getDRE);
-router.get('/reports/breakdown', authenticateToken, authorizeRole(['SUPERADMIN', 'ADMIN']), getBreakdown);
-router.get('/reports/indicators', authenticateToken, authorizeRole(['SUPERADMIN', 'ADMIN']), getFinancialIndicators);
-router.get('/reports/operational', authenticateToken, authorizeRole(['SUPERADMIN', 'ADMIN']), getOperationalReports);
-router.get('/reports/conversion', authenticateToken, authorizeRole(['SUPERADMIN']), getConversionStats);
+router.get('/reports/dre', authenticateToken, authorizeRole(['SUPERADMIN', 'ADMIN', 'USUARIO']), getDRE);
+router.get('/reports/breakdown', authenticateToken, authorizeRole(['SUPERADMIN', 'ADMIN', 'USUARIO']), getBreakdown);
+router.get('/reports/indicators', authenticateToken, authorizeRole(['SUPERADMIN', 'ADMIN', 'USUARIO']), getFinancialIndicators);
+router.get('/reports/operational', authenticateToken, authorizeRole(['SUPERADMIN', 'ADMIN', 'USUARIO']), getOperationalReports);
+router.get('/reports/conversion', authenticateToken, authorizeRole(['SUPERADMIN', 'ADMIN', 'USUARIO']), getConversionStats);
+
+// CRM Contacts route (Alias for generic contacts)
+router.get('/crm/contacts', authenticateToken, getContacts);
 
 
 import { getPayables, getReceivables, getReceivablesByCity, getCashFlow, getFinancialStats, createFinancialTransaction, updateFinancialTransaction, deleteFinancialTransaction, reactivateFinancialTransaction, markAsPaid, getCategories, createCategory, deleteCategory } from './controllers/financialController';
@@ -514,6 +640,32 @@ router.put('/config/templates/:id', authenticateToken, authorizeRole(['ADMIN', '
 router.delete('/config/templates/:id', authenticateToken, authorizeRole(['ADMIN', 'SUPERADMIN']), deleteTemplate);
 router.get('/config/templates/:id/history', authenticateToken, getTemplateHistory);
 
+// Closing Reasons
+import {
+  listClosingReasons,
+  createClosingReason,
+  updateClosingReason,
+  deleteClosingReason,
+  getClosingReasonsAnalytics
+} from './controllers/closingReasonController';
+router.get('/closing-reasons', authenticateToken, listClosingReasons);
+router.get('/closing-reasons/analytics', authenticateToken, getClosingReasonsAnalytics);
+router.post('/closing-reasons', authenticateToken, authorizeRole(['ADMIN', 'SUPERADMIN']), createClosingReason);
+router.put('/closing-reasons/:id', authenticateToken, authorizeRole(['ADMIN', 'SUPERADMIN']), updateClosingReason);
+router.delete('/closing-reasons/:id', authenticateToken, authorizeRole(['ADMIN', 'SUPERADMIN']), deleteClosingReason);
+
+// Quick Messages
+import {
+  listQuickMessages,
+  createQuickMessage,
+  updateQuickMessage,
+  deleteQuickMessage
+} from './controllers/quickMessageController';
+router.get('/quick-messages', authenticateToken, listQuickMessages);
+router.post('/quick-messages', authenticateToken, authorizeRole(['ADMIN', 'SUPERADMIN']), upload.single('file'), createQuickMessage);
+router.put('/quick-messages/:id', authenticateToken, authorizeRole(['ADMIN', 'SUPERADMIN']), upload.single('file'), updateQuickMessage);
+router.delete('/quick-messages/:id', authenticateToken, authorizeRole(['ADMIN', 'SUPERADMIN']), deleteQuickMessage);
+
 
 // Roadmap
 import { getRoadmapItems, createRoadmapItem, updateRoadmapItem, deleteRoadmapItem, getRoadmapComments, addRoadmapComment, linkTaskToRoadmap } from './controllers/roadmapController';
@@ -584,19 +736,25 @@ import {
   getShopDashboard,
   getSales,
   createSale,
+  updateSaleStatus,
   getInventory,
   createInventoryItem,
   updateInventoryItem,
   getSuppliers,
   createSupplier,
   getPayments,
-  getReceivables as getShopReceivables
+  getReceivables as getShopReceivables,
+  getGoalsOverview,
+  createGoal,
+  distributeRevenueGoalBySellers,
+  getGoalSellers
 } from './controllers/shopController';
 import { validateCompanyAndInstance } from './middleware/validateCompanyAndInstance';
 
 router.get('/shop/dashboard', authenticateToken, validateCompanyAndInstance, getShopDashboard);
 router.get('/shop/sales', authenticateToken, validateCompanyAndInstance, getSales);
 router.post('/shop/sales', authenticateToken, validateCompanyAndInstance, createSale);
+router.put('/shop/sales/:id/status', authenticateToken, validateCompanyAndInstance, updateSaleStatus);
 router.get('/shop/inventory', authenticateToken, validateCompanyAndInstance, getInventory);
 router.post('/shop/inventory', authenticateToken, authorizePermission('inventory.create_prod'), validateCompanyAndInstance, createInventoryItem);
 router.put('/shop/inventory/:id', authenticateToken, authorizePermission('inventory.edit_prod'), validateCompanyAndInstance, updateInventoryItem);
@@ -604,5 +762,47 @@ router.get('/shop/suppliers', authenticateToken, validateCompanyAndInstance, get
 router.post('/shop/suppliers', authenticateToken, validateCompanyAndInstance, createSupplier);
 router.get('/shop/payments', authenticateToken, validateCompanyAndInstance, getPayments);
 router.get('/shop/receivables', authenticateToken, validateCompanyAndInstance, getShopReceivables);
+router.get('/shop/goals/overview', authenticateToken, validateCompanyAndInstance, getGoalsOverview);
+router.get('/shop/goals/sellers', authenticateToken, validateCompanyAndInstance, getGoalSellers);
+router.post('/shop/goals', authenticateToken, validateCompanyAndInstance, createGoal);
+router.post('/shop/goals/distribute', authenticateToken, validateCompanyAndInstance, distributeRevenueGoalBySellers);
+
+// DEBUG CHATBOT
+router.post('/debug-activate-karen', async (req, res) => {
+  try {
+    await pool!.query(`
+            INSERT INTO chatbot_instances (chatbot_id, instance_key, is_active)
+            VALUES (2, 'karenloja', true)
+            ON CONFLICT (chatbot_id, instance_key) DO UPDATE SET is_active = true;
+        `);
+    res.json({ success: true, message: "Activated on karenloja" });
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+router.get('/debug-chatbot-status', async (req, res) => {
+  try {
+    const bots = await pool!.query(`
+            SELECT
+                c.id as bot_id,
+                c.name as bot_name,
+                c.status as bot_status,
+                ci.instance_key,
+                ci.is_active as instance_active,
+                comp.name as company_name,
+                comp.evolution_instance,
+                comp_inst.instance_key as real_instance_key,
+                comp_inst.status as real_status
+            FROM chatbots c
+            LEFT JOIN chatbot_instances ci ON ci.chatbot_id = c.id
+            LEFT JOIN companies comp ON comp.id = c.company_id
+            LEFT JOIN company_instances comp_inst ON comp_inst.company_id = c.company_id
+        `);
+    res.json(bots.rows);
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
 
 export default router;

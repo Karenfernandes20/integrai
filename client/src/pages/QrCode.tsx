@@ -3,6 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter }
 import { Button } from "../components/ui/button";
 import { QrCode as QrIcon, RefreshCcw, Instagram, MessageCircle, MessageSquare, Settings, Link2, Link2Off, ChevronRight, CheckCircle2, XCircle, AlertCircle, Info, ExternalLink } from "lucide-react";
 import { useAuth } from "../contexts/AuthContext";
+import { io } from "socket.io-client";
 import { cn } from "../lib/utils";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "../components/ui/dialog";
 import { Input } from "../components/ui/input";
@@ -11,6 +12,40 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from ".
 import { Badge } from "../components/ui/badge";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "../components/ui/accordion";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../components/ui/tooltip";
+
+
+
+type InstagramInstanceConfig = {
+  callback_url: string;
+  webhook_token: string;
+};
+
+const generateWebhookToken = (companyId: string | number | null | undefined, index: number) => {
+  const safeCompany = String(companyId || 'empresa');
+  const rand = Math.random().toString(36).slice(2, 8);
+  return `ig_${safeCompany}_${index + 1}_${rand}`;
+};
+
+const buildInstagramCallbackUrl = (_tokenValue?: string, _companyId?: string | number | null | undefined, _index?: number) => {
+  const origin = typeof window !== 'undefined' ? window.location.origin : '';
+  return `${origin}/api/webhooks/instagram`;
+};
+
+const normalizeInstagramConfigs = (
+  rawConfigs: any,
+  limit: number,
+  companyId: string | number | null | undefined
+): InstagramInstanceConfig[] => {
+  const parsed = Array.isArray(rawConfigs) ? rawConfigs : [];
+  return Array.from({ length: Math.max(1, limit) }).map((_, index) => {
+    const current = parsed[index] || {};
+    const token = (current.webhook_token || '').trim() || generateWebhookToken(companyId, index);
+    return {
+      callback_url: (current.callback_url || '').trim() || buildInstagramCallbackUrl(),
+      webhook_token: token
+    };
+  });
+};
 
 const QrCodePage = () => {
   const { token, user } = useAuth();
@@ -33,6 +68,8 @@ const QrCodePage = () => {
   const [isWaModalOpen, setIsWaModalOpen] = useState(false);
   const [isIgModalOpen, setIsIgModalOpen] = useState(false);
   const [isMeModalOpen, setIsMeModalOpen] = useState(false);
+  const [selectedInstagramIndex, setSelectedInstagramIndex] = useState(0);
+  const [instagramInstanceConfigs, setInstagramInstanceConfigs] = useState<InstagramInstanceConfig[]>([]);
 
   const getApiUrl = (endpoint: string, overrideInstanceKey?: string) => {
     const params = new URLSearchParams();
@@ -56,7 +93,10 @@ const QrCodePage = () => {
       });
       if (res.ok) {
         const data = await res.json();
-        setCompany(data);
+        const igLimit = Number(data?.instagram_limit || 1);
+        const normalizedIgConfigs = normalizeInstagramConfigs(data?.instagram_instances_config, igLimit, data?.id);
+        setCompany({ ...data, instagram_instances_config: normalizedIgConfigs });
+        setInstagramInstanceConfigs(normalizedIgConfigs);
       }
     } catch (e) {
       console.error("Error fetching company", e);
@@ -112,17 +152,19 @@ const QrCodePage = () => {
 
       const targetId = selectedCompanyId || user?.company_id;
 
-      // This ensures the backend uses the correct Instance Key and API Key
-      // skipSave is used when we call this FROM handleSaveCompany (which already saved)
+      // If we need to save the instance first, do it
       if (company?.whatsapp_type === 'evolution' && !skipSave) {
-        // We call handleSaveCompany logic inline but without closing the modal
-        const allInstances = [...instances];
-        if (targetInstance) {
-          if (targetInstance.id) {
-            const idx = allInstances.findIndex(i => i.id === targetInstance.id);
-            if (idx !== -1) allInstances[idx] = targetInstance;
-          } else if (targetInstance.slot_index !== undefined && allInstances[targetInstance.slot_index]) {
-            allInstances[targetInstance.slot_index] = targetInstance;
+        // Build a proper allInstances array
+        const maxSlots = Number(company?.whatsapp_limit || 1);
+        const allInstances: any[] = [];
+
+        for (let i = 0; i < maxSlots; i++) {
+          const existingInst = instances[i];
+          // If we're editing this slot and it matches, use the updated version
+          if (targetInstance && (!targetInstance.id && targetInstance.slot_index === i) || (targetInstance.id && existingInst?.id === targetInstance.id)) {
+            allInstances.push(targetInstance);
+          } else if (existingInst) {
+            allInstances.push(existingInst);
           }
         }
 
@@ -149,7 +191,8 @@ const QrCodePage = () => {
               body: JSON.stringify({
                 name: targetInstance.name,
                 instance_key: targetInstance.instance_key,
-                api_key: targetInstance.api_key
+                api_key: targetInstance.api_key,
+                color: targetInstance.color
               })
             });
             // Refresh instances to get any sanitized versions if needed
@@ -202,27 +245,128 @@ const QrCodePage = () => {
     }
   };
 
-  const handleDisconnect = async () => {
+  const handleDisconnect = async (instance?: any) => {
     try {
-      if (!confirm(`Tem certeza que deseja desconectar o WhatsApp da instância ${instanceName}?`)) return;
+      const targetInstance = instance || selectedInstance;
+      if (!targetInstance) {
+        setError("Nenhuma instância selecionada para desconectar");
+        return;
+      }
+
+      if (!confirm(`Tem certeza que deseja desconectar "${targetInstance.name || targetInstance.instance_key}"?`)) return;
+
       setIsLoading(true);
       setError(null);
       const targetId = selectedCompanyId || user?.company_id;
-      const instanceKey = selectedInstance?.instance_key;
-      const url = getApiUrl(`/api/evolution/disconnect`);
+
+      if (!targetId) {
+        throw new Error("Company ID não disponível");
+      }
+
+      console.log("[QrCode] Disconnecting instance:", {
+        companyId: targetId,
+        instanceKey: targetInstance.instance_key,
+        instanceId: targetInstance.id
+      });
+
+      // Build URL with both companyId and instanceKey
+      const params = new URLSearchParams();
+      params.append("companyId", String(targetId));
+      params.append("instanceKey", targetInstance.instance_key);
+      const url = `/api/evolution/disconnect?${params.toString()}`;
+
+      console.log("[Disconnect] Calling:", url);
+
       const response = await fetch(url, {
         method: "DELETE",
         headers: { Authorization: `Bearer ${token}` }
       });
-      if (!response.ok) throw new Error("Erro ao desconectar");
+
+      if (!response.ok) {
+        const body = await response.text();
+        let errorMsg = "Erro ao desconectar da instância";
+        try {
+          const jsonBody = JSON.parse(body);
+          errorMsg = jsonBody.error || jsonBody.message || errorMsg;
+        } catch (e) {
+          errorMsg = body || errorMsg;
+        }
+        console.error("[Disconnect] Error response:", { status: response.status, body });
+        throw new Error(errorMsg);
+      }
+
+      console.log("[Disconnect] Success! Response OK");
+
+      // Refresh instances to get updated status
+      const instRes = await fetch(`/api/companies/${targetId}/instances?sync=true`, {
+        headers: { "Authorization": `Bearer ${token}` }
+      });
+
+      if (instRes.ok) {
+        const updatedInstances = await instRes.json();
+        console.log("[Disconnect] Updated instances:", updatedInstances);
+        if (Array.isArray(updatedInstances)) {
+          setInstances(updatedInstances);
+          // Update selected instance
+          const updated = updatedInstances.find((i: any) => i.id === targetInstance.id);
+          if (updated) {
+            console.log("[Disconnect] Updated selected instance:", updated);
+            setSelectedInstance(updated);
+          }
+        }
+      }
+
       setQrCode(null);
-      setConnectionState("close");
+      setConnectionState("disconnected");
+      alert("Instância desconectada com sucesso!");
     } catch (err: any) {
+      console.error("[Disconnect Error]:", err);
       setError(err?.message || "Erro ao desconectar");
+      alert(err?.message || "Erro ao desconectar");
     } finally {
       setIsLoading(false);
     }
   };
+
+  // WebSocket Listener for Real-Time Status
+  useEffect(() => {
+    const socket = io();
+
+    socket.on('instance:status', (data: any) => {
+      console.log('[QrCode] Socket instance update (Real-Time):', data);
+
+      const { instanceKey, status, state } = data;
+
+      // Update global instances list
+      setInstances(prev => prev.map(inst => {
+        if (inst.instance_key === instanceKey || inst.name === instanceKey) {
+          const newStatus = status; // 'connected' | 'disconnected'
+          console.log(`[QrCode] TROPICAL UPDATING INSTANCE ${inst.instance_key} -> ${newStatus}`);
+          return { ...inst, status: newStatus };
+        }
+        return inst;
+      }));
+
+      // Update active selected instance state if matches
+      // Use callback to access current selectedInstance
+      setSelectedInstance(current => {
+        if (current && (current.instance_key === instanceKey || current.name === instanceKey)) {
+          const newStatus = status;
+          // Also update connectionState (visual state for scanning/etc)
+          if (newStatus === 'connected') setConnectionState('open');
+          else if (newStatus === 'disconnected') setConnectionState('close');
+          else setConnectionState(state || 'unknown');
+
+          return { ...current, status: newStatus };
+        }
+        return current;
+      });
+    });
+
+    return () => {
+      socket.disconnect();
+    };
+  }, []);
 
   useEffect(() => {
     if (token) {
@@ -265,6 +409,37 @@ const QrCodePage = () => {
     }
   }, [token, selectedCompanyId, selectedInstance, company]);
 
+
+  useEffect(() => {
+    if (!company) return;
+    const normalized = normalizeInstagramConfigs(
+      company.instagram_instances_config,
+      Number(company.instagram_limit || 1),
+      company.id
+    );
+    setInstagramInstanceConfigs(normalized);
+    setCompany((prev: any) => ({ ...prev, instagram_instances_config: normalized }));
+    if (selectedInstagramIndex >= normalized.length) {
+      setSelectedInstagramIndex(0);
+    }
+  }, [company?.id, company?.instagram_limit]);
+
+  const handleInstagramInstanceConfigChange = (index: number, field: keyof InstagramInstanceConfig, value: string) => {
+    setInstagramInstanceConfigs((prev) => {
+      const next = [...prev];
+      if (!next[index]) {
+        const token = generateWebhookToken(company?.id, index);
+        next[index] = {
+          callback_url: buildInstagramCallbackUrl(),
+          webhook_token: token
+        };
+      }
+      next[index] = { ...next[index], [field]: value };
+      setCompany((prevCompany: any) => ({ ...prevCompany, instagram_instances_config: next }));
+      return next;
+    });
+  };
+
   const handleCompanyChange = (field: string, value: any) => {
     setCompany((prev: any) => ({ ...prev, [field]: value }));
   };
@@ -305,18 +480,38 @@ const QrCodePage = () => {
         ...selectedInstance,
         name: selectedInstance.name?.trim() || "",
         instance_key: selectedInstance.instance_key?.trim() || "",
-        api_key: selectedInstance.api_key?.trim() || ""
+        api_key: selectedInstance.api_key?.trim() || "",
+        color: selectedInstance.color || "#3b82f6"
       } : null;
 
-      const allInstances = [...instances];
-      if (trimmedInstance) {
-        if (trimmedInstance.id) {
-          const idx = allInstances.findIndex(i => i.id === trimmedInstance.id);
-          if (idx !== -1) allInstances[idx] = trimmedInstance;
-        } else if (trimmedInstance.slot_index !== undefined) {
-          allInstances[trimmedInstance.slot_index] = trimmedInstance;
+      // Build a proper allInstances array that includes all current instances
+      const allInstances: any[] = [];
+      const maxSlots = Number(company?.whatsapp_limit || 1);
+
+      for (let i = 0; i < maxSlots; i++) {
+        const existingInst = instances[i];
+        // If we're editing this slot and it matches, use the updated version
+        const isEditingThisSlot = trimmedInstance && (
+          (!trimmedInstance.id && trimmedInstance.slot_index === i) ||
+          (trimmedInstance.id && existingInst?.id === trimmedInstance.id)
+        );
+
+        if (isEditingThisSlot) {
+          console.log(`[QrCode] Adding edited instance at index ${i}:`, trimmedInstance);
+          allInstances.push(trimmedInstance);
+        } else if (existingInst) {
+          console.log(`[QrCode] Keeping existing instance at index ${i}:`, { id: existingInst.id, name: existingInst.name });
+          allInstances.push(existingInst);
+        } else {
+          console.log(`[QrCode] Skipping empty slot ${i}`);
         }
       }
+
+      console.log("[QrCode] Building instanceDefinitions:", {
+        maxSlots,
+        selectedInstance: trimmedInstance,
+        allInstances
+      });
 
       const res = await fetch(`/api/companies/${targetId}`, {
         method: "PUT",
@@ -329,14 +524,23 @@ const QrCodePage = () => {
           instanceDefinitions: allInstances
         })
       });
+
+      console.log("[QrCode] Save response status:", res.status);
+
       if (res.ok) {
         // Also save instance if selected
         if (company?.whatsapp_type === 'evolution' && trimmedInstance) {
           const instancePayload = {
             name: trimmedInstance.name,
             instance_key: trimmedInstance.instance_key,
-            api_key: trimmedInstance.api_key
+            api_key: trimmedInstance.api_key,
+            color: trimmedInstance.color
           };
+
+          console.log("[QrCode] Saving individual instance:", {
+            instanceId: trimmedInstance.id,
+            payload: { ...instancePayload, api_key: '***' }
+          });
 
           if (trimmedInstance.id) {
             await fetch(`/api/companies/${targetId}/instances/${trimmedInstance.id}`, {
@@ -347,6 +551,8 @@ const QrCodePage = () => {
               },
               body: JSON.stringify(instancePayload)
             });
+          } else {
+            console.warn("[QrCode] Instance has no ID yet - will be created via instanceDefinitions");
           }
         }
 
@@ -356,34 +562,43 @@ const QrCodePage = () => {
         });
         const updatedInstances = await instRes.json();
 
+        console.log("[QrCode] Updated instances from server:", updatedInstances);
+
         if (Array.isArray(updatedInstances)) {
           setInstances(updatedInstances);
           // Update selected instance with fresh data from DB to ensure IDs are synced
           if (selectedInstance) {
-            // Try to find by ID first, then by matching key/name if it was new
+            // Try to find by ID first, then by matching key if it was new
             let updated = updatedInstances.find((i: any) => i.id === selectedInstance.id);
             if (!updated && selectedInstance.slot_index !== undefined) {
               updated = updatedInstances[selectedInstance.slot_index];
             }
-            if (updated) setSelectedInstance(updated);
+            if (!updated && selectedInstance.instance_key) {
+              // Last resort: match by instance_key
+              updated = updatedInstances.find((i: any) => i.instance_key === selectedInstance.instance_key);
+            }
+            if (updated) {
+              console.log("[QrCode] Synchronized selectedInstance with DB data:", updated);
+              setSelectedInstance(updated);
+            }
           }
         }
 
         if (startConnection) {
           // Trigger QR Code generation
-          // We must wait a tiny bit for state to settle? No, we have updatedInstances.
-          // But handleGenerateQrKey uses selectedInstance from state or override.
-          // Let's pass the updated instance if possible.
-
           let instanceToConnect = selectedInstance;
           if (Array.isArray(updatedInstances)) {
             let updated = updatedInstances.find((i: any) => i.id === selectedInstance?.id);
             if (!updated && selectedInstance?.slot_index !== undefined) {
               updated = updatedInstances[selectedInstance.slot_index];
             }
+            if (!updated && selectedInstance?.instance_key) {
+              updated = updatedInstances.find((i: any) => i.instance_key === selectedInstance.instance_key);
+            }
             if (updated) instanceToConnect = updated;
           }
 
+          console.log("[QrCode] Starting QR generation with instance:", instanceToConnect);
           await handleGenerateQrKey(instanceToConnect, true);
         } else {
           alert("Configurações salvas com sucesso!");
@@ -403,6 +618,7 @@ const QrCodePage = () => {
   };
 
   const isConnected = connectionState === 'open';
+  const selectedInstagramConfig = instagramInstanceConfigs[selectedInstagramIndex];
 
   const ChannelCard = ({
     type,
@@ -412,13 +628,21 @@ const QrCodePage = () => {
     connected,
     onConfigure,
     onDisconnect,
-    statusText
+    statusText,
+    color = '#3b82f6'
   }: any) => {
     if (!enabled) return null;
 
     return (
-      <Card className="overflow-hidden border-zinc-200 dark:border-zinc-800 shadow-sm hover:shadow-md transition-all duration-300 bg-white/50 dark:bg-zinc-900/50 backdrop-blur-sm group">
-        <CardHeader className="pb-3 flex flex-row items-center justify-between space-y-0">
+      <Card className="overflow-hidden border-zinc-200 dark:border-zinc-800 shadow-sm hover:shadow-md transition-all duration-300 bg-white/50 dark:bg-zinc-900/50 backdrop-blur-sm group relative">
+        {/* Color Stripe */}
+        {type === 'whatsapp' && (
+          <div
+            className="absolute left-0 top-0 bottom-0 w-1.5 transition-all duration-300 group-hover:w-2"
+            style={{ backgroundColor: color }}
+          />
+        )}
+        <CardHeader className="pb-3 flex flex-row items-center justify-between space-y-0 pl-6">
           <div className="flex items-center gap-3">
             <div className={cn(
               "p-2.5 rounded-xl transition-all duration-500 group-hover:scale-110",
@@ -531,17 +755,19 @@ const QrCodePage = () => {
                 icon={MessageSquare}
                 enabled={true}
                 connected={isInstConnected}
+                color={instance?.color || '#3b82f6'}
                 onConfigure={() => {
                   const instToEdit = instance || {
                     name: `WhatsApp ${i + 1}`,
                     instance_key: `${(company?.name || 'empresa').split(' ')[0].toLowerCase().replace(/[^a-z0-9]/g, '')}_${i + 1}`,
                     api_key: '',
-                    slot_index: i
+                    slot_index: i,
+                    color: '#3b82f6'
                   };
                   setSelectedInstance({ ...instToEdit });
                   setIsWaModalOpen(true);
                 }}
-                onDisconnect={() => instance ? handleDisconnect() : null}
+                onDisconnect={() => instance ? handleDisconnect(instance) : null}
                 statusText={isInstConnected ? `Conectado (${instance?.name || "Instância"})` : (instance ? "Desconectado" : "Aguardando Configuração")}
               />
             );
@@ -556,7 +782,7 @@ const QrCodePage = () => {
               icon={Instagram}
               enabled={true}
               connected={i === 0 && company?.instagram_status === 'ATIVO'}
-              onConfigure={() => setIsIgModalOpen(true)}
+              onConfigure={() => { setSelectedInstagramIndex(i); setIsIgModalOpen(true); }}
               onDisconnect={() => {/* Disconnect Logic */ }}
               statusText={i === 0 && company?.instagram_status === 'ATIVO' ? "Página Vinculada" : "Aguardando Configuração"}
             />
@@ -652,8 +878,7 @@ const QrCodePage = () => {
                     )}
                   </div>
                 )}
-
-                {(company?.whatsapp_type || 'evolution') === 'evolution' && selectedInstance && (
+                {selectedInstance && (
                   <div className="grid grid-cols-2 gap-4 animate-in fade-in duration-300">
                     <div className="space-y-2">
                       <Label className="text-[10px] font-bold uppercase text-zinc-500">API Key da Instância <span className="text-red-500">*</span></Label>
@@ -668,16 +893,37 @@ const QrCodePage = () => {
                       </div>
                     </div>
                     <div className="space-y-2">
-                      <Label className="text-[10px] font-bold uppercase text-zinc-500">URL do Servidor Evolution</Label>
-                      <Input
-                        value={company?.evolution_url || ""}
-                        onChange={(e) => handleCompanyChange('evolution_url', e.target.value)}
-                        className="h-10 rounded-xl bg-white dark:bg-zinc-900 border-zinc-200 dark:border-zinc-800"
-                        placeholder="https://sua-api.com"
-                      />
+                      <Label className="text-[10px] font-bold uppercase text-zinc-500">Cor do Canal (Identificação)</Label>
+                      <div className="flex gap-2">
+                        <Input
+                          type="color"
+                          value={selectedInstance.color || "#3b82f6"}
+                          onChange={(e) => setSelectedInstance(prev => prev ? { ...prev, color: e.target.value } : null)}
+                          className="w-12 h-10 p-1 rounded-lg cursor-pointer bg-white dark:bg-zinc-900 border-zinc-200 dark:border-zinc-800"
+                        />
+                        <Input
+                          type="text"
+                          value={selectedInstance.color || "#3b82f6"}
+                          onChange={(e) => setSelectedInstance(prev => prev ? { ...prev, color: e.target.value } : null)}
+                          className="flex-1 h-10 rounded-xl bg-white dark:bg-zinc-900 border-zinc-200 dark:border-zinc-800 text-xs font-mono"
+                          placeholder="#000000"
+                        />
+                      </div>
                     </div>
                   </div>
                 )}
+              </div>
+
+              <div className="bg-zinc-50 dark:bg-zinc-900/50 p-4 rounded-2xl border border-zinc-100 dark:border-zinc-800 mt-4">
+                <div className="space-y-2">
+                  <Label className="text-[10px] font-bold uppercase text-zinc-500">URL do Servidor Evolution</Label>
+                  <Input
+                    value={company?.evolution_url || ""}
+                    onChange={(e) => handleCompanyChange('evolution_url', e.target.value)}
+                    className="h-10 rounded-xl bg-white dark:bg-zinc-900 border-zinc-200 dark:border-zinc-800"
+                    placeholder="https://sua-api.com"
+                  />
+                </div>
               </div>
 
               <div className="bg-zinc-50 dark:bg-zinc-900/50 p-4 rounded-2xl border border-zinc-100 dark:border-zinc-800">
@@ -710,58 +956,82 @@ const QrCodePage = () => {
                 {/* EVOLUTION VIEW - QR CODE SECTION */}
                 {(company?.whatsapp_type || 'evolution') === 'evolution' && (
                   <div className="animate-in fade-in duration-500">
-                    {/* Only show this section if we are connecting, connected, or have a QR code */}
-                    {(isConnected || connectionState === 'connecting' || connectionState === 'scanning' || qrCode) && (
-                      <div className="flex flex-col items-center justify-center p-6 border-2 border-dashed rounded-3xl bg-white dark:bg-zinc-900 transition-all hover:border-primary/50 mt-4 relative overflow-hidden">
+                    {/* VALIDATION: Only show QR section if instance is properly configured */}
+                    {selectedInstance?.instance_key && selectedInstance?.api_key && (
+                      <>
+                        {/* Only show QR code area if we are connecting, connected, or have a QR code */}
+                        {(isConnected || connectionState === 'connecting' || connectionState === 'scanning' || qrCode) && (
+                          <div className="flex flex-col items-center justify-center p-6 border-2 border-dashed rounded-3xl bg-white dark:bg-zinc-900 transition-all hover:border-primary/50 mt-4 relative overflow-hidden">
 
-                        {/* Status Badge */}
-                        <div className="absolute top-4 right-4">
-                          <Badge className={cn(
-                            "uppercase tracking-widest",
-                            isConnected ? "bg-green-100 text-green-700" : "bg-yellow-100 text-yellow-700"
-                          )}>
-                            {isConnected ? "Conectado" : "Aguardando Conexão"}
-                          </Badge>
-                        </div>
+                            {/* Status Badge */}
+                            <div className="absolute top-4 right-4">
+                              <Badge className={cn(
+                                "uppercase tracking-widest",
+                                isConnected ? "bg-green-100 text-green-700" : "bg-yellow-100 text-yellow-700"
+                              )}>
+                                {isConnected ? "Conectado" : "Aguardando Conexão"}
+                              </Badge>
+                            </div>
 
-                        {/* Info Block */}
-                        <div className="w-full text-left mb-4 border-b pb-4 border-zinc-100 dark:border-zinc-800">
-                          <p className="text-xs font-bold text-zinc-400 uppercase tracking-widest">Instância</p>
-                          <p className="text-lg font-bold text-zinc-800 dark:text-white">{selectedInstance?.instance_key || "..."}</p>
-                          <p className="text-xs text-zinc-500 mt-1 flex items-center gap-1">
-                            Status: <span className={cn("font-bold", isConnected ? "text-green-500" : "text-yellow-500")}>{isConnected ? "Online" : "Pendente"}</span>
-                          </p>
-                        </div>
+                            {/* Info Block */}
+                            <div className="w-full text-left mb-4 border-b pb-4 border-zinc-100 dark:border-zinc-800">
+                              <p className="text-xs font-bold text-zinc-400 uppercase tracking-widest">Instância</p>
+                              <p className="text-lg font-bold text-zinc-800 dark:text-white">{selectedInstance?.instance_key || "..."}</p>
+                              <p className="text-xs text-zinc-500 mt-1 flex items-center gap-1">
+                                Status: <span className={cn("font-bold", isConnected ? "text-green-500" : "text-yellow-500")}>{isConnected ? "Online" : "Pendente"}</span>
+                              </p>
+                            </div>
 
-                        {isConnected ? (
-                          <div className="text-center space-y-4 w-full">
-                            <div className="h-20 w-20 bg-green-100 dark:bg-green-900/30 rounded-full flex items-center justify-center mx-auto mb-2 animate-in zoom-in duration-300">
-                              <CheckCircle2 className="h-10 w-10 text-green-600" />
-                            </div>
-                            <div className="space-y-1">
-                              <p className="font-bold text-lg text-green-700 dark:text-green-400">Tudo Pronto!</p>
-                              <p className="text-sm text-zinc-500">Sua instância está conectada e operando.</p>
-                            </div>
-                            <Button variant="destructive" size="sm" onClick={handleDisconnect} className="rounded-xl w-full max-w-xs mt-4">
-                              Desconectar Instância
-                            </Button>
-                          </div>
-                        ) : qrCode ? (
-                          <div className="text-center space-y-4 w-full animate-in zoom-in duration-300">
-                            <div className="p-4 bg-white rounded-3xl shadow-xl border border-zinc-100 inline-block text-center mb-2 mx-auto">
-                              <img src={qrCode} alt="QR" className="w-48 h-48 mix-blend-multiply" />
-                            </div>
-                            <div className="space-y-2">
-                              <p className="text-xs font-bold text-primary animate-pulse uppercase tracking-widest">Digitalize o código acima</p>
-                              <p className="text-xs text-zinc-400 max-w-xs mx-auto">Abra o WhatsApp {'>'} Configurações {'>'} Aparelhos Conectados {'>'} Conectar Aparelho</p>
-                            </div>
-                          </div>
-                        ) : (
-                          <div className="text-center py-8">
-                            <div className="animate-spin h-8 w-8 border-4 border-primary border-t-transparent rounded-full mx-auto mb-4"></div>
-                            <p className="text-sm font-medium text-zinc-500">Gerando QR Code...</p>
+                            {isConnected ? (
+                              <div className="text-center space-y-4 w-full">
+                                <div className="h-20 w-20 bg-green-100 dark:bg-green-900/30 rounded-full flex items-center justify-center mx-auto mb-2 animate-in zoom-in duration-300">
+                                  <CheckCircle2 className="h-10 w-10 text-green-600" />
+                                </div>
+                                <div className="space-y-1">
+                                  <p className="font-bold text-lg text-green-700 dark:text-green-400">Tudo Pronto!</p>
+                                  <p className="text-sm text-zinc-500">Sua instância está conectada e operando.</p>
+                                </div>
+                                <Button variant="destructive" size="sm" onClick={handleDisconnect} className="rounded-xl w-full max-w-xs mt-4">
+                                  Desconectar Instância
+                                </Button>
+                              </div>
+                            ) : qrCode ? (
+                              <div className="text-center space-y-4 w-full animate-in zoom-in duration-300">
+                                <div className="p-4 bg-white rounded-3xl shadow-xl border border-zinc-100 inline-block text-center mb-2 mx-auto">
+                                  <img src={qrCode} alt="QR" className="w-48 h-48 mix-blend-multiply" />
+                                </div>
+                                <div className="space-y-2">
+                                  <p className="text-xs font-bold text-primary animate-pulse uppercase tracking-widest">Digitalize o código acima</p>
+                                  <p className="text-xs text-zinc-400 max-w-xs mx-auto">Abra o WhatsApp {'>'} Configurações {'>'} Aparelhos Conectados {'>'} Conectar Aparelho</p>
+                                </div>
+                              </div>
+                            ) : (
+                              <div className="text-center py-8">
+                                <div className="animate-spin h-8 w-8 border-4 border-primary border-t-transparent rounded-full mx-auto mb-4"></div>
+                                <p className="text-sm font-medium text-zinc-500">Gerando QR Code...</p>
+                              </div>
+                            )}
                           </div>
                         )}
+                      </>
+                    )}
+
+                    {/* Instruction message if not configured yet */}
+                    {(!selectedInstance?.instance_key || !selectedInstance?.api_key) && (
+                      <div className="mt-4 p-4 bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-900 rounded-xl">
+                        <div className="flex items-start gap-3">
+                          <Info className="h-5 w-5 text-blue-600 flex-shrink-0 mt-0.5" />
+                          <div className="space-y-1">
+                            <p className="text-sm font-bold text-blue-900 dark:text-blue-300">Configure a instância primeiro</p>
+                            <p className="text-xs text-blue-700 dark:text-blue-400">
+                              Preencha os campos obrigatórios acima:<br />
+                              • <strong>Nome Amigável</strong> (Ex: Recepção, Comercial)<br />
+                              • <strong>Chave da Instância</strong> (Ex: integrai)<br />
+                              • <strong>API Key da Instância</strong><br />
+                              Depois clique em "Salvar e Conectar" para gerar o QR Code.
+                            </p>
+                          </div>
+                        </div>
                       </div>
                     )}
                   </div>
@@ -841,6 +1111,47 @@ const QrCodePage = () => {
                 <Label className="text-[11px] font-bold uppercase text-zinc-400">Access Token (Permanente)</Label>
                 <Input type="password" value={company?.instagram_access_token || ""} onChange={(e) => handleCompanyChange('instagram_access_token', e.target.value)} className="rounded-xl h-10" placeholder="Token Meta" />
               </div>
+
+              <div className="space-y-2 border-t pt-4 mt-2">
+                <Label className="text-[11px] font-bold uppercase text-zinc-400">Instância do Instagram</Label>
+                <Select value={String(selectedInstagramIndex)} onValueChange={(value) => setSelectedInstagramIndex(Number(value))}>
+                  <SelectTrigger className="rounded-xl h-10">
+                    <SelectValue placeholder="Selecione a instância" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {Array.from({ length: Number(company?.instagram_limit || 1) }).map((_, idx) => (
+                      <SelectItem key={`ig-modal-${idx}`} value={String(idx)}>
+                        Instagram {idx + 1}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="grid gap-4 md:grid-cols-2">
+                <div className="space-y-2 md:col-span-2">
+                  <Label className="text-[11px] font-bold uppercase text-zinc-400">URL de Callback (Instância {selectedInstagramIndex + 1})</Label>
+                  <Input
+                    value={selectedInstagramConfig?.callback_url || ""}
+                    onChange={(e) => handleInstagramInstanceConfigChange(selectedInstagramIndex, 'callback_url', e.target.value)}
+                    className="rounded-xl h-10"
+                    placeholder="https://seudominio.com/api/webhooks/instagram"
+                  />
+                </div>
+                <div className="space-y-2 md:col-span-2">
+                  <Label className="text-[11px] font-bold uppercase text-zinc-400">Token de Webhook (Instância {selectedInstagramIndex + 1})</Label>
+                  <Input
+                    value={selectedInstagramConfig?.webhook_token || ""}
+                    onChange={(e) => {
+                      const nextToken = e.target.value;
+                      handleInstagramInstanceConfigChange(selectedInstagramIndex, 'webhook_token', nextToken);
+                    }}
+                    className="rounded-xl h-10"
+                    placeholder="token_exclusivo_da_instancia"
+                  />
+                </div>
+              </div>
+
               <Button
                 className="w-full h-11 rounded-xl font-bold bg-gradient-to-r from-purple-600 to-pink-600 border-none shadow-lg mt-2"
                 disabled={isLoading}

@@ -444,15 +444,15 @@ const FinanceiroPage = () => {
       <Table>
         <TableHeader className="bg-zinc-50/50">
           <TableRow>
-            <TableHead className="w-[30%] min-w-[200px] text-[10px] font-bold uppercase">Descrição / Origem</TableHead>
-            <TableHead className="w-[15%] text-[10px] font-bold uppercase">Categoria</TableHead>
-            <TableHead className="w-[10%] text-center text-[10px] font-bold uppercase">Emissão</TableHead>
-            <TableHead className="w-[10%] text-center text-[10px] font-bold uppercase">
+            <TableHead className="w-[30%] min-w-[200px] text-[10px] font-bold uppercase whitespace-nowrap">Descrição / Origem</TableHead>
+            <TableHead className="w-[15%] text-[10px] font-bold uppercase whitespace-nowrap">Categoria</TableHead>
+            <TableHead className="w-[10%] text-center text-[10px] font-bold uppercase whitespace-nowrap">Emissão</TableHead>
+            <TableHead className="w-[10%] text-center text-[10px] font-bold uppercase whitespace-nowrap">
               {mainTab === 'revenues' ? 'Recebimento' : 'Vencimento'}
             </TableHead>
-            <TableHead className="w-[15%] text-right text-[10px] font-bold uppercase">Valor</TableHead>
-            <TableHead className="w-[10%] text-center text-[10px] font-bold uppercase">Status</TableHead>
-            <TableHead className="w-[10%] text-center text-[10px] font-bold uppercase w-[150px]">Ações</TableHead>
+            <TableHead className="w-[15%] text-right text-[10px] font-bold uppercase whitespace-nowrap">Valor</TableHead>
+            <TableHead className="w-[10%] text-center text-[10px] font-bold uppercase whitespace-nowrap">Status</TableHead>
+            <TableHead className="w-[10%] text-center text-[10px] font-bold uppercase whitespace-nowrap w-[150px]">Ações</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>

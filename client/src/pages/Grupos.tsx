@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useMemo } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useAuth } from "../contexts/AuthContext";
 import {
     Search,
@@ -6,13 +6,8 @@ import {
     Paperclip,
     Send,
     CheckCheck,
-    Image,
     FileText,
     Mic,
-    Video,
-    MapPin,
-    Contact,
-    Sticker,
     MoreVertical,
     RefreshCw
 } from "lucide-react";
@@ -34,6 +29,7 @@ interface GroupConversation {
     last_message_at?: string;
     unread_count?: number;
     is_group: boolean;
+    computed_is_group?: boolean;
     profile_pic_url?: string;
 }
 
@@ -91,6 +87,7 @@ const AuthAudio = ({ src, token }: { src: string, token: string }) => {
 };
 
 const GruposPage = () => {
+    const SAO_PAULO_TZ = "America/Sao_Paulo";
     const { token, user } = useAuth();
     const [groups, setGroups] = useState<GroupConversation[]>([]);
     const [searchTerm, setSearchTerm] = useState("");
@@ -100,6 +97,7 @@ const GruposPage = () => {
     const [isLoadingMessages, setIsLoadingMessages] = useState(false);
     const [newMessage, setNewMessage] = useState("");
     const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+    const [isSyncingGroups, setIsSyncingGroups] = useState(false);
 
     const scrollRef = useRef<HTMLDivElement>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
@@ -121,7 +119,7 @@ const GruposPage = () => {
             });
             if (res.ok) {
                 const data = await res.json();
-                const groupsOnly = data.filter((c: any) => c.is_group === true);
+                const groupsOnly = data.filter((c: any) => c.is_group === true || c.computed_is_group === true);
                 setGroups(groupsOnly);
             }
         } catch (error) {
@@ -159,18 +157,14 @@ const GruposPage = () => {
 
         const groupsToRefresh = groups.filter(g => {
             const name = g.group_name || g.contact_name;
-            // Refresh if name is missing, generic "Grupo", matches phone, or matches generic pattern
-            return !name || name === 'Grupo' || name === g.phone || /^Grupo \d+/.test(name) || /@g\.us$/.test(name);
+            return !name || name === 'Grupo' || name === g.phone || /^Grupo \d+/.test(name) || /@g\.us$/.test(name) || !g.profile_pic_url;
         });
 
         if (groupsToRefresh.length === 0) return;
 
-        console.log(`[AutoRefresh] Found ${groupsToRefresh.length} groups to refresh.`);
-
         const processQueue = async () => {
             for (const group of groupsToRefresh) {
                 try {
-                    console.log(`[AutoRefresh] Refreshing group ${group.id}...`);
                     const res = await fetch(`/api/evolution/conversations/${group.id}/refresh`, {
                         method: "POST",
                         headers: { "Authorization": `Bearer ${token}` }
@@ -178,7 +172,6 @@ const GruposPage = () => {
 
                     if (res.ok) {
                         const data = await res.json();
-                        // Update local state immediately
                         setGroups(prev => prev.map(c =>
                             c.id === group.id ? { ...c, group_name: data.name, contact_name: data.name, profile_pic_url: data.pic } : c
                         ));
@@ -186,7 +179,6 @@ const GruposPage = () => {
                             setSelectedGroup(prev => prev ? { ...prev, group_name: data.name, contact_name: data.name, profile_pic_url: data.pic } : null);
                         }
                     }
-                    // Delay to prevent rate limits
                     await new Promise(r => setTimeout(r, 1000));
                 } catch (e) {
                     console.error(`[AutoRefresh] Failed to refresh group ${group.id}`, e);
@@ -195,8 +187,7 @@ const GruposPage = () => {
         };
 
         processQueue();
-
-    }, [groups.length]); // Only run when groups array length changes (initially loaded)
+    }, [groups.length]);
 
     useEffect(() => {
         fetchGroups();
@@ -232,6 +223,28 @@ const GruposPage = () => {
             socket.disconnect();
         };
     }, [token, user?.company_id]);
+
+    const handleSyncAllGroups = async () => {
+        setIsSyncingGroups(true);
+        const toastId = toast.loading("Sincronizando grupos da API...");
+        try {
+            const res = await fetch("/api/evolution/groups/sync", {
+                method: "POST",
+                headers: { "Authorization": `Bearer ${token}` }
+            });
+            if (res.ok) {
+                const data = await res.json();
+                toast.success(data.message || "Grupos sincronizados!", { id: toastId });
+                fetchGroups();
+            } else {
+                toast.error("Falha ao sincronizar", { id: toastId });
+            }
+        } catch (e) {
+            toast.error("Erro de conexão", { id: toastId });
+        } finally {
+            setIsSyncingGroups(false);
+        }
+    };
 
     const handleSendMessage = async (e?: React.FormEvent) => {
         if (e) e.preventDefault();
@@ -298,7 +311,7 @@ const GruposPage = () => {
     const filteredGroups = groups.filter(group => {
         if (!searchTerm) return true;
         const search = searchTerm.toLowerCase();
-        const name = (group.group_name || group.contact_name || "").toLowerCase();
+        const name = getGroupDisplayName(group).toLowerCase();
         return name.includes(search);
     });
 
@@ -310,9 +323,33 @@ const GruposPage = () => {
         const hours = diff / (1000 * 60 * 60);
 
         if (hours < 24) {
-            return date.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+            return new Intl.DateTimeFormat('pt-BR', {
+                timeZone: SAO_PAULO_TZ,
+                hour: '2-digit',
+                minute: '2-digit',
+                hour12: false
+            }).format(date);
         }
-        return date.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
+        return new Intl.DateTimeFormat('pt-BR', {
+            timeZone: SAO_PAULO_TZ,
+            day: '2-digit',
+            month: '2-digit'
+        }).format(date);
+    };
+
+    const isUsableGroupName = (value?: string | null) => {
+        if (!value) return false;
+        const name = String(value).trim();
+        if (!name) return false;
+        if (/@g\.us$/i.test(name) || /@s\.whatsapp\.net$/i.test(name)) return false;
+        if (/^\d{8,16}$/.test(name)) return false;
+        return true;
+    };
+
+    const getGroupDisplayName = (group?: GroupConversation | null) => {
+        if (!group) return "Grupo";
+        if (isUsableGroupName(group.group_name)) return String(group.group_name).trim();
+        return "Grupo";
     };
 
     const handleRefreshMetadata = async () => {
@@ -326,7 +363,6 @@ const GruposPage = () => {
             if (res.ok) {
                 const data = await res.json();
                 toast.success(`Atualizado: ${data.name || 'Sem nome'}`, { id: toastId });
-                // Local update
                 setGroups(prev => prev.map(c =>
                     c.id === selectedGroup.id ? { ...c, group_name: data.name, contact_name: data.name, profile_pic_url: data.pic } : c
                 ));
@@ -341,13 +377,24 @@ const GruposPage = () => {
 
     return (
         <div className="flex h-[calc(100vh-64px)] overflow-hidden bg-background">
-            {/* Sidebar - Group List */}
             <div className="w-[350px] flex-none border-r flex flex-col bg-card">
                 <div className="p-4 border-b space-y-4">
-                    <h2 className="text-xl font-bold flex items-center gap-2">
-                        <Users className="h-5 w-5" />
-                        Grupos
-                    </h2>
+                    <div className="flex items-center justify-between">
+                        <h2 className="text-xl font-bold flex items-center gap-2">
+                            <Users className="h-5 w-5" />
+                            Grupos
+                        </h2>
+                        <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={handleSyncAllGroups}
+                            disabled={isSyncingGroups}
+                            className="h-8 gap-2 border-primary/20 hover:bg-primary/5 text-primary"
+                        >
+                            <RefreshCw className={cn("h-3.5 w-3.5", isSyncingGroups && "animate-spin")} />
+                            Sincronizar
+                        </Button>
+                    </div>
                     <div className="relative">
                         <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
                         <Input
@@ -360,7 +407,7 @@ const GruposPage = () => {
                 </div>
 
                 <ScrollArea className="flex-1">
-                    <div className="px-3 py-2 space-y-1">
+                    <div className="pl-2 pr-4 py-2 space-y-1">
                         {isLoading ? (
                             <div className="text-center py-8 text-muted-foreground text-sm">
                                 Carregando grupos...
@@ -375,7 +422,7 @@ const GruposPage = () => {
                                     key={group.id}
                                     onClick={() => setSelectedGroup(group)}
                                     className={cn(
-                                        "group flex items-center gap-2.5 p-1.5 rounded-lg cursor-pointer transition-all duration-200 border border-transparent",
+                                        "group mr-1 flex items-center gap-2.5 p-1.5 rounded-lg cursor-pointer transition-all duration-200 border border-transparent",
                                         selectedGroup?.id === group.id
                                             ? "bg-[#e7fce3] dark:bg-[#005c4b]/30 border-[#00a884]/20 shadow-sm"
                                             : "hover:bg-zinc-50 dark:hover:bg-zinc-900 border-zinc-100/50 dark:border-zinc-800/50"
@@ -383,7 +430,7 @@ const GruposPage = () => {
                                 >
                                     <div className="relative shrink-0">
                                         <Avatar className="h-9 w-9 border-2 border-white dark:border-zinc-900 shadow-sm">
-                                            <AvatarImage src={group.profile_pic_url || `https://api.dicebear.com/7.x/initials/svg?seed=${group.group_name || group.contact_name || "G"}`} />
+                                            <AvatarImage src={group.profile_pic_url || `https://api.dicebear.com/7.x/initials/svg?seed=${getGroupDisplayName(group)}`} />
                                             <AvatarFallback className="bg-blue-100 text-blue-600">
                                                 <Users className="h-4 w-4" />
                                             </AvatarFallback>
@@ -396,7 +443,7 @@ const GruposPage = () => {
                                                 "font-semibold truncate text-[13px]",
                                                 selectedGroup?.id === group.id ? "text-[#008069] dark:text-[#00a884]" : "text-zinc-900 dark:text-zinc-100"
                                             )}>
-                                                {group.group_name || group.contact_name || "Grupo"}
+                                                {getGroupDisplayName(group)}
                                             </span>
                                             <span className="text-[10px] text-muted-foreground whitespace-nowrap ml-2 opacity-80">
                                                 {formatTime(group.last_message_at)}
@@ -419,9 +466,7 @@ const GruposPage = () => {
                 </ScrollArea>
             </div>
 
-            {/* Main Chat Area */}
             <div className="flex-1 flex flex-col bg-[#efeae2] dark:bg-zinc-950 relative">
-                {/* Background Pattern Overlay */}
                 <div className="absolute inset-0 opacity-[0.05] dark:opacity-[0.03] pointer-events-none bg-[url('https://w0.peakpx.com/wallpaper/818/148/wallpaper-whatsapp-background.jpg')] bg-repeat"></div>
 
                 {!selectedGroup ? (
@@ -433,15 +478,14 @@ const GruposPage = () => {
                     </div>
                 ) : (
                     <>
-                        {/* Chat Header */}
                         <div className="h-16 flex-none bg-zinc-100 dark:bg-zinc-800 flex items-center justify-between px-4 border-b border-zinc-200 dark:border-zinc-700 relative z-10 shadow-sm">
                             <div className="flex items-center gap-3">
                                 <Avatar className="h-10 w-10">
-                                    <AvatarImage src={selectedGroup.profile_pic_url || `https://api.dicebear.com/7.x/initials/svg?seed=${selectedGroup.group_name || selectedGroup.contact_name || "G"}`} />
-                                    <AvatarFallback>{(selectedGroup.group_name || "G")[0]}</AvatarFallback>
+                                    <AvatarImage src={selectedGroup.profile_pic_url || `https://api.dicebear.com/7.x/initials/svg?seed=${getGroupDisplayName(selectedGroup)}`} />
+                                    <AvatarFallback>{(getGroupDisplayName(selectedGroup) || "G")[0]}</AvatarFallback>
                                 </Avatar>
                                 <div className="flex flex-col">
-                                    <span className="font-semibold text-sm">{selectedGroup.group_name || selectedGroup.contact_name}</span>
+                                    <span className="font-semibold text-sm">{getGroupDisplayName(selectedGroup)}</span>
                                     <span className="text-[10px] text-muted-foreground">ID: {selectedGroup.phone}</span>
                                 </div>
                             </div>
@@ -455,10 +499,9 @@ const GruposPage = () => {
                             </div>
                         </div>
 
-                        {/* Message List */}
                         <div
                             ref={scrollRef}
-                            className="flex-1 overflow-y-auto p-4 flex flex-col gap-2 relative z-10 scrollbar-thin scrollbar-thumb-zinc-300 dark:scrollbar-thumb-zinc-800"
+                            className="flex-1 overflow-y-auto p-4 flex flex-col gap-2 relative z-10"
                         >
                             {isLoadingMessages ? (
                                 <div className="flex-1 flex items-center justify-center text-muted-foreground italic text-sm">
@@ -485,18 +528,14 @@ const GruposPage = () => {
                                                     : "bg-white dark:bg-[#202c33] text-zinc-900 dark:text-zinc-100 self-start mr-auto rounded-lg rounded-tl-none"
                                             )}
                                         >
-                                            {/* Render sender name for inbound group messages */}
                                             {msg.direction === 'inbound' && (
                                                 <span className="text-[10px] font-bold text-orange-600 dark:text-orange-400 mb-0.5 block">
                                                     {msg.sender_name || (msg.participant ? msg.participant.split('@')[0] : 'Desconhecido')}
                                                 </span>
                                             )}
 
-                                            {/* Render Content with Proxy */}
                                             {(() => {
                                                 const type = msg.message_type || 'text';
-
-                                                // Proxy URL
                                                 const proxyUrl = `/api/evolution/media/${msg.id}`;
 
                                                 if (type === 'image') {
@@ -512,13 +551,8 @@ const GruposPage = () => {
                                                     );
                                                 }
                                                 if (type === 'audio') {
-                                                    return (
-                                                        <div className="flex flex-col gap-1 min-w-[200px]">
-                                                            <AuthAudio src={proxyUrl} token={token || ""} />
-                                                        </div>
-                                                    )
+                                                    return <AuthAudio src={proxyUrl} token={token || ""} />;
                                                 }
-                                                // Simplified other types
                                                 if (['video', 'document', 'sticker'].includes(type) && msg.media_url) {
                                                     return (
                                                         <div className="flex items-center gap-2 p-1">
@@ -539,7 +573,6 @@ const GruposPage = () => {
                             )}
                         </div>
 
-                        {/* Input Area */}
                         <div className="h-16 flex-none bg-zinc-100 dark:bg-zinc-800 px-4 py-2 flex items-center gap-2 border-t border-zinc-200 dark:border-zinc-700 relative z-20 shadow-inner">
                             {showEmojiPicker && (
                                 <div className="absolute bottom-20 left-4 z-50 shadow-2xl">

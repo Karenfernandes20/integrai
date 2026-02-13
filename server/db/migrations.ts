@@ -1,5 +1,6 @@
 
 import { pool } from './index';
+import { runWhaticketMigrations } from './migrations/whaticket_migration';
 
 export const runMigrations = async () => {
     if (!pool) return;
@@ -200,8 +201,18 @@ export const runMigrations = async () => {
 
         try {
             await pool.query("ALTER TABLE crm_leads ADD COLUMN IF NOT EXISTS instance VARCHAR(100)");
+
+            // Ensure unique leads per company/phone to allow UPSERTs or prevent duplicates
+            await pool.query(`
+                DELETE FROM crm_leads a USING crm_leads b 
+                WHERE a.id < b.id AND a.phone = b.phone AND a.company_id = b.company_id
+            `);
+            await pool.query(`
+                CREATE UNIQUE INDEX IF NOT EXISTS idx_crm_leads_phone_company 
+                ON crm_leads (phone, company_id)
+            `);
         } catch (e) {
-            console.error("Error adding instance column to crm_leads:", e);
+            console.error("Error updating crm_leads constraints:", e);
         }
 
 
@@ -269,6 +280,8 @@ export const runMigrations = async () => {
             console.log("Verified table: system_settings");
         } catch (e) { console.error("Error creating system_settings:", e); }
 
+        await runWhaticketMigrations();
+
         console.log("Migrations finished.");
     } catch (e) {
         console.error("Migration Error:", e);
@@ -278,6 +291,22 @@ export const runMigrations = async () => {
 const runWhatsappMigrations = async () => {
     if (!pool) return;
     try {
+        // queues table (Whaticket base)
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS queues (
+                id SERIAL PRIMARY KEY,
+                company_id INTEGER NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
+                name TEXT NOT NULL,
+                is_active BOOLEAN NOT NULL DEFAULT true,
+                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                greeting_message TEXT,
+                out_of_hours_message TEXT,
+                color VARCHAR(7) DEFAULT '#3b82f6',
+                UNIQUE(company_id, name)
+            );
+        `);
+        console.log("Verified table: queues");
+
         // whatsapp_conversations
         await pool.query(`
             CREATE TABLE IF NOT EXISTS whatsapp_conversations (
@@ -404,6 +433,33 @@ const runWhatsappMigrations = async () => {
             await pool.query(`
                 CREATE UNIQUE INDEX IF NOT EXISTS idx_whatsapp_contacts_jid_instance 
                 ON whatsapp_contacts (jid, instance);
+            `);
+
+            // 3. Add missing columns for enhanced contact management
+            await pool.query(`
+                ALTER TABLE whatsapp_contacts 
+                ADD COLUMN IF NOT EXISTS phone VARCHAR(20),
+                ADD COLUMN IF NOT EXISTS email VARCHAR(255),
+                ADD COLUMN IF NOT EXISTS company_id INTEGER REFERENCES companies(id) ON DELETE CASCADE;
+            `);
+
+            // 4. Populate phone from jid if empty
+            await pool.query(`
+                UPDATE whatsapp_contacts 
+                SET phone = split_part(jid, '@', 1) 
+                WHERE phone IS NULL OR phone = '';
+            `);
+
+            // 5. Create index on phone for faster searches
+            await pool.query(`
+                CREATE INDEX IF NOT EXISTS idx_whatsapp_contacts_phone 
+                ON whatsapp_contacts (phone);
+            `);
+
+            // 6. Create index on company_id for multi-tenancy
+            await pool.query(`
+                CREATE INDEX IF NOT EXISTS idx_whatsapp_contacts_company 
+                ON whatsapp_contacts (company_id);
             `);
         } catch (e) {
             console.error("Warning: Could not enforce unique constraint on whatsapp_contacts:", e);

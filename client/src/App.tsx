@@ -65,6 +65,7 @@ import FinanceiroPage from "./pages/Financeiro";
 import UsuariosPage from "./pages/Usuarios";
 import CidadesPage from "./pages/Cidades";
 import QrCodePage from "./pages/QrCode";
+import InstanceDiagnostics from "./pages/InstanceDiagnostics";
 import ConfiguracoesPage from "./pages/Configuracoes";
 import ForgotPasswordPage from "./pages/ForgotPassword";
 import ResetPasswordPage from "./pages/ResetPassword";
@@ -91,6 +92,9 @@ import ClinicalBIPage from "./pages/ClinicalBI";
 import TemplatesPage from "./pages/Templates";
 import RoadmapPage from "./pages/Roadmap";
 import ConversionReports from "./pages/ConversionReports";
+import QuickMessagesPage from "./pages/QuickMessages";
+import ClosingReasonsPage from "./pages/ClosingReasons";
+import FilasPage from "./pages/Filas";
 
 // Lavajato Pages
 import AgendaWrapper from "./pages/AgendaWrapper";
@@ -166,10 +170,14 @@ const App = () => (
                   <Route path="cidades" element={<CidadesPage />} />
                   <Route path="estoque" element={<EstoquePage />} />
                   <Route path="qr-code" element={<QrCodePage />} />
+                  <Route path="diagnosticos/instancia" element={<InstanceDiagnostics />} />
                   <Route path="chatbot" element={<ChatbotPage />} />
                   <Route path="ia" element={<ChatbotPage />} />
                   <Route path="configuracoes" element={<ConfiguracoesPage />} />
                   <Route path="contatos" element={<ContatosPage />} />
+                  <Route path="mensagens-rapidas" element={<QuickMessagesPage />} />
+                  <Route path="filas" element={<FilasPage />} />
+                  <Route path="motivos-encerramento" element={<ClosingReasonsPage />} />
                   <Route path="follow-up" element={<FollowUpPage />} />
                   <Route path="faq" element={<FaqPage />} />
                   <Route path="tags" element={<TagsPage />} />

@@ -54,6 +54,7 @@ import {
   Lock,
   Calendar,
   Stethoscope,
+  GitBranch,
 } from "lucide-react";
 import RelationshipManager from "../components/RelationshipManager";
 import { Badge } from "../components/ui/badge";
@@ -65,7 +66,7 @@ import { Input } from "../components/ui/input";
 import { Button } from "../components/ui/button";
 import { ScrollArea } from "../components/ui/scroll-area";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "../components/ui/tabs";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "../components/ui/dialog";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "../components/ui/sheet";
 import {
   DropdownMenu,
@@ -83,6 +84,7 @@ import {
 import { io } from "socket.io-client";
 import { TagManager } from "../components/TagManager";
 import { ContactDetailsPanel } from "../components/ContactDetailsPanel";
+import { InstanceTag } from "../components/InstanceTag";
 import type { FormEvent } from "react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -106,13 +108,24 @@ interface Conversation {
   is_group?: boolean;
   group_name?: string;
   company_name?: string;
+  contact_saved_name?: string;
   contact_push_name?: string;
   last_sender_name?: string;
   last_message_source?: string;
   instance?: string;
   instance_friendly_name?: string;
+  instance_color?: string;
+  queue_color?: string;
   tags?: { id: number; name: string; color: string }[];
   user_name?: string;
+  queue_name?: string | null;
+  queue_id?: number | null;
+  assigned_user_name?: string | null;
+}
+
+interface QueueOption {
+  id: number;
+  name: string;
 }
 
 interface Message {
@@ -130,6 +143,7 @@ interface Message {
   reply_to?: string;
   reply_to_content?: string;
   instance_friendly_name?: string;
+  instance_color?: string;
   reactions?: { emoji: string; senderId: string; fromMe: boolean; timestamp: number }[];
   external_id?: string;
   message_type?: string;
@@ -140,6 +154,8 @@ interface Message {
   user_name?: string;
   remoteJid?: string;
   message_origin?: string;
+  message_source?: string;
+  sent_by_user_name?: string;
   saved_name?: string;
   t?: number;
 }
@@ -150,6 +166,24 @@ interface Contact {
   phone: string;
   profile_pic_url?: string;
   push_name?: string;
+}
+
+type QuickMessageType = 'text' | 'image' | 'audio' | 'document';
+
+interface QuickMessage {
+  id: number;
+  key: string;
+  type: QuickMessageType;
+  content: string;
+  fileName?: string | null;
+}
+
+interface ClosingReason {
+  id: number;
+  name: string;
+  category?: string | null;
+  type: 'positivo' | 'negativo' | 'neutro';
+  isActive: boolean;
 }
 
 import { useSearchParams, useNavigate } from "react-router-dom";
@@ -251,7 +285,7 @@ const AtendimentoPage = () => {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
 
-  const [viewMode, setViewMode] = useState<'PENDING' | 'OPEN' | 'CLOSED'>('PENDING');
+  const [viewMode, setViewMode] = useState<'PENDING' | 'OPEN' | 'CLOSED'>('OPEN');
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [pendingConversations, setPendingConversations] = useState<Conversation[]>([]);
   const [openConversations, setOpenConversations] = useState<Conversation[]>([]);
@@ -274,6 +308,8 @@ const AtendimentoPage = () => {
   const newContactFormRef = useRef<HTMLFormElement | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const messageInputRef = useRef<HTMLTextAreaElement>(null);
+  const quickMenuRef = useRef<HTMLDivElement>(null);
   const isNearBottomRef = useRef(true);
   const isInitialLoadRef = useRef(true);
   const [selectedCompanyFilter, setSelectedCompanyFilter] = useState<string | null>(null);
@@ -293,6 +329,18 @@ const AtendimentoPage = () => {
   const [isContactInfoOpen, setIsContactInfoOpen] = useState(false);
 
   const [messageInput, setMessageInput] = useState("");
+  const [quickMessages, setQuickMessages] = useState<QuickMessage[]>([]);
+  const [isQuickMenuOpen, setIsQuickMenuOpen] = useState(false);
+  const [quickSearch, setQuickSearch] = useState("");
+  const [quickSelectedIndex, setQuickSelectedIndex] = useState(0);
+  const [pendingQuickAttachment, setPendingQuickAttachment] = useState<QuickMessage | null>(null);
+  const [closingReasons, setClosingReasons] = useState<ClosingReason[]>([]);
+  const [isClosingModalOpen, setIsClosingModalOpen] = useState(false);
+  const [closingReasonId, setClosingReasonId] = useState("");
+  const [closingReasonSearch, setClosingReasonSearch] = useState("");
+  const [closingObservation, setClosingObservation] = useState("");
+  const [pendingCloseConversation, setPendingCloseConversation] = useState<Conversation | null>(null);
+  const [isClosingSubmitting, setIsClosingSubmitting] = useState(false);
   const [replyingTo, setReplyingTo] = useState<Message | null>(null);
   const [importedContacts, setImportedContacts] = useState<Contact[]>([]);
   const [isLoadingContacts, setIsLoadingContacts] = useState(false);
@@ -312,6 +360,46 @@ const AtendimentoPage = () => {
       fetchConversations();
     }
   }, [token]);
+
+  const fetchClosingReasons = async () => {
+    if (!token) return;
+    try {
+      const res = await fetch("/api/closing-reasons?onlyActive=true", {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (!res.ok) {
+        throw new Error("Falha ao carregar motivos de encerramento");
+      }
+      const data = await res.json();
+      setClosingReasons(Array.isArray(data) ? data : []);
+    } catch (error) {
+      console.error("Erro ao carregar motivos de encerramento:", error);
+      setClosingReasons([]);
+    }
+  };
+
+  useEffect(() => {
+    if (token) {
+      fetchClosingReasons();
+      fetchQueues();
+    }
+  }, [token]);
+
+  const fetchQueues = async () => {
+    if (!token) return;
+    try {
+      const res = await fetch("/api/queues", {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setQueues(Array.isArray(data) ? data : []);
+      }
+    } catch (e) {
+      console.error("Error fetching queues:", e);
+    }
+  };
+
 
   // Global search effect (Debounced)
   useEffect(() => {
@@ -375,6 +463,10 @@ const AtendimentoPage = () => {
   });
   const [isRelationshipModalOpen, setIsRelationshipModalOpen] = useState(false);
   const [isNewContactModalOpen, setIsNewContactModalOpen] = useState(false);
+  const [isTransferModalOpen, setIsTransferModalOpen] = useState(false);
+  const [queues, setQueues] = useState<QueueOption[]>([]);
+  const [transferringQueue, setTransferringQueue] = useState(false);
+
 
   const volumeRef = useRef(notificationVolume);
   const mutedRef = useRef(isNotificationMuted);
@@ -436,14 +528,22 @@ const AtendimentoPage = () => {
     return p.replace(/\D/g, '');
   };
 
-  // Robust normalization for matching (ignores 55 at start for BR numbers)
   const normalizePhoneForMatch = (p: string) => {
-    let digits = (p || '').replace(/\D/g, '');
+    if (!p) return '';
+    if (p.includes('@g.us')) return p;
+
+    // Take part before @ or : (handles 551199999999:1@s.whatsapp.net)
+    let base = p.split('@')[0].split(':')[0];
+
+    let digits = base.replace(/\D/g, '');
+
+    // BR Normalization: 55 + DDD (2) + Number (8 or 9) -> 12 or 13 digits
     if (digits.startsWith('55') && (digits.length === 12 || digits.length === 13)) {
       return digits.slice(2);
     }
     return digits;
   };
+
 
   // Notification Sound Function (iPhone 16 "Rebound" style synthesis)
   const playNotificationSound = async (isGroup?: boolean) => {
@@ -521,23 +621,67 @@ const AtendimentoPage = () => {
 
     // For groups, prioritize group_name
     if (conv.is_group) {
-      return conv.group_name || conv.contact_name || 'Grupo';
+      const isUsableGroupName = (value?: string | null) => {
+        if (!value) return false;
+        const name = String(value).trim();
+        if (!name) return false;
+        if (/@g\.us$/i.test(name) || /@s\.whatsapp\.net$/i.test(name)) return false;
+        if (/^\d{8,16}$/.test(name)) return false;
+        return true;
+      };
+
+      if (isUsableGroupName(conv.group_name)) return String(conv.group_name).trim();
+      if (isUsableGroupName(conv.contact_name)) return String(conv.contact_name).trim();
+      return 'Grupo';
     }
 
-    // Priority 1: Check contacts database (saved in "Contatos" tab)
+    const isUsableName = (value?: string | null) => {
+      if (!value) return false;
+      const name = String(value).trim();
+      if (!name) return false;
+      if (name.includes('@')) return false;
+      const digitsOnly = name.replace(/\D/g, "");
+      // Ignore raw phone-like names used as fallback
+      if (digitsOnly.length >= 8 && digitsOnly.length <= 15 && digitsOnly === name.replace(/\s/g, "")) return false;
+      return true;
+    };
+
+    // Priority 1: Explicit group name for groups (Subject)
+    if (conv.is_group && isUsableName(conv.group_name)) {
+      return String(conv.group_name).trim();
+    }
+
+    // Priority 2: Backend computed display_name (Which now prioritizes saved contacts for individuals)
+    const backendName = (conv as any).display_name;
+    if (isUsableName(backendName)) {
+      return String(backendName).trim();
+    }
+
+    // Priority 2: Saved name from whatsapp_contacts join
+    if (isUsableName(conv.contact_saved_name)) {
+      return String(conv.contact_saved_name).trim();
+    }
+
+    // Priority 3: Check contacts database (saved in "Contatos" tab)
     const raw = conv.phone.replace(/\D/g, "");
-    const fromDB = contactMap.get(raw);
-    if (fromDB) {
+    // Try both absolute raw and potentially trimmed version
+    const fromDB = contactMap.get(raw) || (raw.startsWith('55') ? contactMap.get(raw.slice(2)) : contactMap.get('55' + raw));
+    if (isUsableName(fromDB)) {
       return fromDB;
     }
 
-    // Priority 2: Push Name from WhatsApp (name the person set on their WhatsApp)
-    const normalize = (s: string) => s ? s.replace(/\D/g, "") : "";
-    if (conv.contact_push_name && normalize(conv.contact_push_name) !== normalize(conv.phone)) {
+    // Priority 4: Name persisted in conversation
+    if (isUsableName(conv.contact_name)) {
+      return String(conv.contact_name).trim();
+    }
+
+    // Priority 5: Push Name from WhatsApp (name the person set on their WhatsApp)
+    const normalizeDigits = (s: string) => s ? s.replace(/\D/g, "") : "";
+    if (isUsableName(conv.contact_push_name) && normalizeDigits(conv.contact_push_name || '') !== normalizeDigits(conv.phone)) {
       return conv.contact_push_name;
     }
 
-    // Priority 3: Phone number (formatted)
+    // Priority 6: Phone number (formatted)
     return conv.phone?.replace(/\D/g, "") || "";
   }, [contactMap]);
 
@@ -971,23 +1115,30 @@ const AtendimentoPage = () => {
       // 2. Atualiza a lista de conversas
       setConversations((prev) => {
         const msgPhoneMatch = normalizePhoneForMatch(newMessage.phone);
-        const existingIndex = prev.findIndex((c) => normalizePhoneForMatch(c.phone) === msgPhoneMatch || c.id == newMessage.conversation_id);
-        let conversationToUpdate: Conversation;
+        const msgIdMatch = String(newMessage.conversation_id);
 
+        const existingIndex = prev.findIndex((c) => {
+          const cPhoneMatch = normalizePhoneForMatch(c.phone);
+          return (cPhoneMatch === msgPhoneMatch && cPhoneMatch !== '') || String(c.id) === msgIdMatch;
+        });
+
+        let conversationToUpdate: Conversation;
         const isChatOpen = selectedConvRef.current?.phone === newMessage.phone;
 
         if (existingIndex >= 0) {
           const existing = prev[existingIndex];
+          console.log(`[Socket] Updating existing conversation card (Phone: ${existing.phone}, ID: ${existing.id})`);
 
           conversationToUpdate = {
             ...existing,
+            id: newMessage.conversation_id || existing.id, // Update temp ID if needed
             last_message: newMessage.content,
             last_message_at: newMessage.sent_at,
-            // Incrementa unread se chat não estiver aberto e for inbound
             unread_count: (existing.unread_count || 0) + (newMessage.direction === 'inbound' && !isChatOpen ? 1 : 0),
             status: newMessage.status || existing.status
           };
         } else {
+          console.log(`[Socket] Creating new conversation card (Phone: ${newMessage.phone}, ID: ${newMessage.conversation_id})`);
           conversationToUpdate = {
             id: newMessage.conversation_id,
             phone: newMessage.phone,
@@ -1007,16 +1158,16 @@ const AtendimentoPage = () => {
         // Create a Map to prevent duplicates (keyed by conversation ID)
         const conversationMap = new Map<string | number, Conversation>();
 
-        // Add all existing conversations except the one we're updating
+        // Add all existing conversations
         prev.forEach(c => {
-          if (existingIndex >= 0 && String(c.id) === String(prev[existingIndex].id)) {
-            // Skip the old version of the conversation we're updating
+          // If this is the one we're updating, skip it for now (we'll add the updated version later)
+          if (existingIndex >= 0 && (String(c.id) === String(prev[existingIndex].id) || normalizePhoneForMatch(c.phone) === msgPhoneMatch)) {
             return;
           }
           conversationMap.set(String(c.id), c);
         });
 
-        // Add the updated conversation
+        // Add the updated/new conversation
         conversationMap.set(String(conversationToUpdate.id), conversationToUpdate);
 
         // Convert back to array and sort by most recent message
@@ -1026,6 +1177,17 @@ const AtendimentoPage = () => {
 
         return updatedList;
       });
+
+    });
+
+    socket.on("message:media_update", (data: any) => {
+      // data: { external_id, media_url }
+      console.log(`[Socket] Media update for msg ${data.external_id}`);
+      setMessages(prev => prev.map(m =>
+        (m.external_id === data.external_id)
+          ? { ...m, media_url: data.media_url }
+          : m
+      ));
     });
 
     socket.on("contact:update", (data: any) => {
@@ -1716,10 +1878,106 @@ const AtendimentoPage = () => {
     }
   };
 
+  const resolveQuickTemplateValue = (raw: string) => {
+    const name = selectedConversation ? getDisplayName(selectedConversation) : "";
+    const phone = selectedConversation?.phone || "";
+    const today = new Intl.DateTimeFormat("pt-BR", { timeZone: SAO_PAULO_TZ }).format(new Date());
+    const companyName = user?.company?.name || "";
+
+    return String(raw || "").replace(/\{\{\s*(nome|telefone|data|empresa)\s*\}\}/gi, (_m, key) => {
+      const normalized = String(key).toLowerCase();
+      if (normalized === "nome") return name;
+      if (normalized === "telefone") return phone;
+      if (normalized === "data") return today;
+      if (normalized === "empresa") return companyName;
+      return "";
+    });
+  };
+
+  const applyQuickMessage = (item: QuickMessage) => {
+    setIsQuickMenuOpen(false);
+    setQuickSelectedIndex(0);
+    setQuickSearch("");
+
+    if (item.type === "text") {
+      setPendingQuickAttachment(null);
+      setMessageInput(resolveQuickTemplateValue(item.content));
+      return;
+    }
+
+    setPendingQuickAttachment(item);
+    // Caption is optional for media; keep what user already typed unless it was slash command.
+    if (messageInput.startsWith("/")) {
+      setMessageInput("");
+    }
+  };
+
+  const filteredQuickMessages = useMemo(() => {
+    const q = quickSearch.trim().toLowerCase();
+    if (!q) return quickMessages;
+    return quickMessages.filter((m) => m.key.toLowerCase().startsWith(q));
+  }, [quickMessages, quickSearch]);
+
+  const filteredClosingReasons = useMemo(() => {
+    const q = closingReasonSearch.trim().toLowerCase();
+    if (!q) return closingReasons;
+    return closingReasons.filter((r) => {
+      const name = String(r.name || "").toLowerCase();
+      const category = String(r.category || "").toLowerCase();
+      return name.includes(q) || category.includes(q);
+    });
+  }, [closingReasons, closingReasonSearch]);
+
+  useEffect(() => {
+    if (filteredQuickMessages.length === 0) {
+      setQuickSelectedIndex(0);
+      return;
+    }
+    setQuickSelectedIndex((prev) => Math.min(prev, filteredQuickMessages.length - 1));
+  }, [filteredQuickMessages.length]);
+
+  useEffect(() => {
+    if (!token) return;
+    const loadQuickMessages = async () => {
+      try {
+        const companyHint = (selectedConversation as any)?.company_id || selectedCompanyFilter;
+        const url = companyHint
+          ? `/api/quick-messages?companyId=${companyHint}`
+          : "/api/quick-messages";
+        const res = await fetch(url, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        if (!res.ok) return;
+        const data = await res.json();
+        setQuickMessages(Array.isArray(data) ? data : []);
+      } catch (error) {
+        console.error("Erro ao carregar mensagens rápidas:", error);
+      }
+    };
+
+    loadQuickMessages();
+  }, [token, selectedCompanyFilter, selectedConversation?.id]);
+
+  useEffect(() => {
+    const onDocClick = (event: MouseEvent) => {
+      if (!isQuickMenuOpen) return;
+      const target = event.target as Node;
+      if (quickMenuRef.current && !quickMenuRef.current.contains(target) && messageInputRef.current && !messageInputRef.current.contains(target)) {
+        setIsQuickMenuOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", onDocClick);
+    return () => document.removeEventListener("mousedown", onDocClick);
+  }, [isQuickMenuOpen]);
+
   const handleSendMessage = async (e?: FormEvent | React.MouseEvent) => {
     e?.preventDefault();
+    if (!selectedConversation || selectedConversation.status !== 'OPEN' || isReadOnly) {
+      toast.error("Atendimento ainda não iniciado. Clique em Atender para responder.");
+      return;
+    }
     const contentToSend = messageInput.trim();
-    if (!contentToSend || !selectedConversation) return;
+    if ((!contentToSend && !pendingQuickAttachment) || !selectedConversation) return;
 
     console.log("Tentando enviar mensagem...");
 
@@ -1736,14 +1994,53 @@ const AtendimentoPage = () => {
     }
 
     const messageContent = contentToSend;
-    setMessageInput("");
+
 
     // 1. Validation (Strict)
-    if (!messageContent || !messageContent.trim()) {
+    if (!pendingQuickAttachment && (!messageContent || !messageContent.trim())) {
       alert("A mensagem não pode estar vazia.");
       return;
     }
 
+    if (pendingQuickAttachment) {
+      const toastId = toast.loading(`Enviando ${pendingQuickAttachment.type}...`);
+      try {
+        const mediaRes = await fetch("/api/evolution/messages/media", {
+          method: "POST",
+          headers: {
+            "Authorization": `Bearer ${token}`,
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({
+            phone: selectedConversation.phone,
+            media: pendingQuickAttachment.content,
+            mediaType: pendingQuickAttachment.type === 'document' ? 'document' : pendingQuickAttachment.type,
+            fileName: pendingQuickAttachment.fileName || pendingQuickAttachment.key,
+            caption: messageContent || pendingQuickAttachment.key,
+            companyId: (selectedConversation as any).company_id || selectedCompanyFilter,
+            instanceKey: (selectedConversation as any).instance
+          })
+        });
+
+        if (!mediaRes.ok) {
+          const err = await mediaRes.json().catch(() => ({}));
+          toast.error(err?.error || "Falha ao enviar mídia", { id: toastId });
+          return;
+        }
+
+        toast.success("Mídia enviada!", { id: toastId });
+        setPendingQuickAttachment(null);
+        setMessageInput("");
+        fetchMessages(selectedConversation.id);
+        return;
+      } catch (error) {
+        console.error("Erro ao enviar mídia rápida:", error);
+        toast.error("Erro ao enviar mídia", { id: toastId });
+        return;
+      }
+    }
+
+    setMessageInput("");
     const tempMessageId = `temp-${Date.now()}`;
     try {
       // 2. Optimistic Update (Immediate Feedback)
@@ -1846,7 +2143,7 @@ const AtendimentoPage = () => {
                 id: convId || c.id,
                 last_message: messageContent,
                 last_message_at: new Date().toISOString(),
-                status: 'OPEN' as 'OPEN' // Force open status locally
+                status: 'PENDING' as 'PENDING' // User Request: All messages go to PENDING
               };
             }
             return c;
@@ -1870,7 +2167,7 @@ const AtendimentoPage = () => {
           id: convId || prev.id,
           last_message: messageContent,
           last_message_at: new Date().toISOString(),
-          status: 'OPEN' as 'OPEN'
+          status: 'PENDING' as 'PENDING'
         } : null);
       }
     } catch (err) {
@@ -1882,6 +2179,10 @@ const AtendimentoPage = () => {
   };
 
   const startRecording = async () => {
+    if (!selectedConversation || selectedConversation.status !== 'OPEN' || isReadOnly) {
+      toast.error("Atendimento ainda não iniciado. Clique em Atender para responder.");
+      return;
+    }
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
 
@@ -1957,7 +2258,10 @@ const AtendimentoPage = () => {
   };
 
   const handleSendAudio = async (blob: Blob) => {
-    if (!selectedConversation) return;
+    if (!selectedConversation || selectedConversation.status !== 'OPEN' || isReadOnly) {
+      toast.error("Atendimento ainda não iniciado. Clique em Atender para responder.");
+      return;
+    }
 
     try {
       // Create reader to convert blob to data url
@@ -2040,34 +2344,53 @@ const AtendimentoPage = () => {
     setNewContactPhone("");
   };
 
-  const formatTime = (dateString: string) => {
+  const SAO_PAULO_TZ = "America/Sao_Paulo";
+
+  const formatTime = (dateString?: string) => {
     if (!dateString) return "";
-    return new Date(dateString).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+    try {
+      return new Intl.DateTimeFormat("pt-BR", {
+        timeZone: SAO_PAULO_TZ,
+        hour: "2-digit",
+        minute: "2-digit",
+        hour12: false
+      }).format(new Date(dateString));
+    } catch (e) {
+      return "";
+    }
   };
 
-  const isSameDay = (d1: Date, d2: Date) => {
-    return d1.getFullYear() === d2.getFullYear() &&
-      d1.getMonth() === d2.getMonth() &&
-      d1.getDate() === d2.getDate();
+  const toSPDateKey = (dateValue: Date | string) => {
+    const d = typeof dateValue === "string" ? new Date(dateValue) : dateValue;
+    return new Intl.DateTimeFormat("en-CA", {
+      timeZone: SAO_PAULO_TZ,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit"
+    }).format(d);
+  };
+
+  const isSameDay = (d1: Date | string, d2: Date | string) => {
+    return toSPDateKey(d1) === toSPDateKey(d2);
   };
 
   const formatDateLabel = (dateString: string) => {
     if (!dateString) return "";
     const date = new Date(dateString);
     const today = new Date();
-    const yesterday = new Date();
-    yesterday.setDate(today.getDate() - 1);
+    const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000);
 
     if (isSameDay(date, today)) {
       return "Hoje";
     } else if (isSameDay(date, yesterday)) {
       return "Ontem";
     } else {
-      return date.toLocaleDateString("pt-BR", {
+      return new Intl.DateTimeFormat("pt-BR", {
+        timeZone: SAO_PAULO_TZ,
         day: "2-digit",
         month: "2-digit",
         year: "numeric"
-      });
+      }).format(date);
     }
   };
 
@@ -2075,26 +2398,82 @@ const AtendimentoPage = () => {
     if (!dateString) return "";
     const date = new Date(dateString);
     const today = new Date();
-    const yesterday = new Date();
-    yesterday.setDate(today.getDate() - 1);
+    const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000);
 
     if (isSameDay(date, today)) {
-      return "HOJE";
+      return formatTime(dateString);
     } else if (isSameDay(date, yesterday)) {
-      return "ONTEM";
+      return "Ontem";
     } else {
-      return date.toLocaleDateString("pt-BR", {
+      return new Intl.DateTimeFormat("pt-BR", {
+        timeZone: SAO_PAULO_TZ,
         day: "2-digit",
-        month: "2-digit"
-      });
+        month: "2-digit",
+        year: "numeric"
+      }).format(date);
     }
   };
 
+
   const onEmojiClick = (emojiData: EmojiClickData) => {
+    if (!selectedConversation || selectedConversation.status !== 'OPEN' || isReadOnly) {
+      toast.error("Atendimento ainda não iniciado. Clique em Atender para responder.");
+      return;
+    }
     setMessageInput((prev) => prev + emojiData.emoji);
   };
 
+  const getMessageSourceLabel = (msg: Message): { label: string; className: string; instanceName?: string; instanceColor?: string } => {
+    const origin = String(msg.message_origin || "").toLowerCase();
+    const source = String(msg.message_source || "").toLowerCase();
+    const systemUserName = (msg.agent_name || msg.sent_by_user_name || msg.user_name || "").trim();
+    const hasSystemUserId = msg.user_id !== null && msg.user_id !== undefined && String(msg.user_id).trim() !== "";
+
+    const result = {
+      label: "",
+      className: "",
+      instanceName: msg.instance_friendly_name,
+      instanceColor: msg.instance_color
+    };
+
+    if (hasSystemUserId || origin === "system_user") {
+      result.label = systemUserName;
+      result.className = "text-[#64748B]";
+      return result;
+    }
+
+    const isWhatsAppWebOrApp =
+      source.includes("whatsapp_mobile") ||
+      source.includes("whatsapp_web") ||
+      origin.includes("whatsapp_mobile") ||
+      origin.includes("whatsapp_web");
+
+    const isKnownApiOrigin =
+      origin === "api" ||
+      origin === "evolution_api" ||
+      origin === "ai_agent" ||
+      origin === "campaign" ||
+      origin === "follow_up" ||
+      origin === "instagram" ||
+      source === "api" ||
+      source === "system";
+
+    if (isWhatsAppWebOrApp || (msg.direction === "inbound" && !isKnownApiOrigin)) {
+      result.label = "WEB";
+      result.className = "text-[#64748B]";
+      return result;
+    }
+
+    result.label = "API";
+    result.className = "text-[#1E3A8A]";
+    return result;
+  };
+
   const handleAttachmentClick = () => {
+    if (!selectedConversation || selectedConversation.status !== 'OPEN' || isReadOnly) {
+      toast.error("Atendimento ainda não iniciado. Clique em Atender para responder.");
+      return;
+    }
     if (fileInputRef.current) {
       fileInputRef.current.click();
     }
@@ -2103,6 +2482,12 @@ const AtendimentoPage = () => {
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file || !selectedConversation) return;
+    if (selectedConversation.status !== 'OPEN' || isReadOnly) {
+      toast.error("Atendimento ainda não iniciado. Clique em Atender para responder.");
+      if (fileInputRef.current) fileInputRef.current.value = "";
+      return;
+    }
+    setPendingQuickAttachment(null);
 
     // Validate size (e.g. 15MB)
     if (file.size > 15 * 1024 * 1024) {
@@ -2324,14 +2709,42 @@ const AtendimentoPage = () => {
       toast.error("Nenhuma conversa selecionada");
       return;
     }
-    if (!window.confirm("Deseja realmente encerrar este atendimento?")) return;
+    if (closingReasons.length === 0) {
+      await fetchClosingReasons();
+    }
+    setPendingCloseConversation(conv);
+    setClosingReasonId("");
+    setClosingReasonSearch("");
+    setClosingObservation("");
+    setIsClosingModalOpen(true);
+  };
 
+  const handleConfirmCloseAtendimento = async () => {
+    const conv = pendingCloseConversation;
+    if (!conv) {
+      toast.error("Nenhuma conversa selecionada");
+      return;
+    }
+    if (!closingReasonId) {
+      toast.error("Selecione um motivo para encerrar o atendimento");
+      return;
+    }
+
+    setIsClosingSubmitting(true);
     const toastId = toast.loading("Encerrando atendimento...");
     try {
       const res = await fetch(`/api/crm/conversations/${conv.id}/close`, {
         method: "POST",
-        headers: { "Authorization": `Bearer ${token}` }
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          closingReasonId: Number(closingReasonId),
+          closingObservation: closingObservation.trim() || null
+        })
       });
+
       if (res.ok) {
         setConversations(prev => prev.map(c =>
           String(c.id) === String(conv.id) ? { ...c, status: 'CLOSED' as const } : c
@@ -2339,14 +2752,18 @@ const AtendimentoPage = () => {
         if (selectedConversation && String(selectedConversation.id) === String(conv.id)) {
           setSelectedConversation(prev => prev ? { ...prev, status: 'CLOSED' as const } : null);
         }
+        setIsClosingModalOpen(false);
+        setPendingCloseConversation(null);
         toast.success("Atendimento encerrado com sucesso", { id: toastId });
       } else {
-        const err = await res.json();
+        const err = await res.json().catch(() => ({}));
         toast.error(err.error || "Erro ao encerrar atendimento", { id: toastId });
       }
     } catch (e) {
       console.error(e);
-      toast.error("Erro de conexão ao servidor", { id: toastId });
+      toast.error("Erro de conexao ao servidor", { id: toastId });
+    } finally {
+      setIsClosingSubmitting(false);
     }
   };
 
@@ -2396,6 +2813,8 @@ const AtendimentoPage = () => {
   // - Open conversations assigned to someone else
   const isReadOnly = isClosed || isPending || (selectedConversation?.status === 'OPEN' && selectedConversation?.user_id && selectedConversation.user_id !== user?.id);
   // Note: if user_id is null/undefined on an OPEN chat, we allow messaging as it's the 'unclaimed' state.
+  const isPendingConversation = !!selectedConversation && (!selectedConversation.status || selectedConversation.status === 'PENDING');
+  const canRespondToConversation = !!selectedConversation && selectedConversation.status === 'OPEN' && !isReadOnly;
 
 
   const fetchContactAgenda = async (phone: string) => {
@@ -2474,9 +2893,9 @@ const AtendimentoPage = () => {
   const renderConversationCard = (conv: Conversation) => {
     const isSelected = selectedConversation?.id === conv.id;
     const statusColor =
-      conv.status === 'OPEN' && conv.user_id ? "bg-blue-500" :
-        conv.status === 'CLOSED' ? "bg-slate-500" :
-          "bg-emerald-500"; // Pending
+      conv.status === 'OPEN' && conv.user_id ? "bg-[#2563EB]" :
+        conv.status === 'CLOSED' ? "bg-gray-400" :
+          "bg-[#16A34A]"; // Pending
 
     return (
       <div
@@ -2486,27 +2905,30 @@ const AtendimentoPage = () => {
           setConversations(prev => prev.map(c => c.id === conv.id ? { ...c, unread_count: 0 } : c));
         }}
         className={cn(
-          "group relative flex flex-col p-3 cursor-pointer transition-all duration-200 border-l-[3px]",
+          "group relative flex flex-col p-3 cursor-pointer transition-all duration-200 border-l-[3px] rounded-lg",
           isSelected
-            ? `bg-slate-800/80 border-${conv.status === 'OPEN' ? 'blue' : 'emerald'}-500 shadow-md`
-            : "bg-transparent border-transparent hover:bg-slate-800/40 hover:border-slate-700"
+            ? `bg-[#EFF6FF] shadow-sm`
+            : "bg-transparent border-transparent hover:bg-[#F8FAFC] hover:border-[#E2E8F0]"
         )}
+        style={{
+          borderLeftColor: conv.queue_color || conv.instance_color || (isSelected ? '#2563EB' : 'transparent')
+        }}
       >
         <div className="flex items-start gap-3 w-full">
           {/* Avatar Area */}
           <div className="relative shrink-0">
-            <Avatar className="h-11 w-11 rounded-xl shadow-sm border border-slate-700/50">
+            <Avatar className="h-11 w-11 rounded-xl shadow-sm border border-[#E2E8F0]">
               <AvatarImage src={conv.profile_pic_url || `https://api.dicebear.com/7.x/initials/svg?seed=${getDisplayName(conv)}`} />
-              <AvatarFallback className="bg-slate-700 text-slate-300 font-bold rounded-xl">
+              <AvatarFallback className="bg-[#F1F5F9] text-[#0F172A] font-bold rounded-xl">
                 {(getDisplayName(conv)?.[0] || "?").toUpperCase()}
               </AvatarFallback>
             </Avatar>
             {/* Online/Status Badge */}
             {conv.status === 'OPEN' && (
-              <span className="absolute -bottom-1 -right-1 w-3.5 h-3.5 bg-blue-500 border-2 border-slate-900 rounded-full" title="Em Atendimento"></span>
+              <span className="absolute -bottom-1 -right-1 w-3.5 h-3.5 bg-[#16A34A] border-2 border-white rounded-full" title="Em Atendimento"></span>
             )}
             {conv.unread_count && conv.unread_count > 0 ? (
-              <span className="absolute -top-1.5 -right-1.5 min-w-[18px] h-[18px] bg-emerald-500 text-[#0F172A] text-[10px] font-bold flex items-center justify-center rounded-full px-1 shadow-sm border border-[#0F172A]">
+              <span className="absolute -top-1.5 -right-1.5 min-w-[18px] h-[18px] bg-[#DC2626] text-white text-[10px] font-bold flex items-center justify-center rounded-full px-1 shadow-sm border border-white">
                 {conv.unread_count}
               </span>
             ) : null}
@@ -2517,13 +2939,13 @@ const AtendimentoPage = () => {
             <div className="flex justify-between items-center">
               <h3 className={cn(
                 "text-[14.5px] font-semibold truncate leading-tight tracking-tight",
-                isSelected ? "text-slate-100" : "text-slate-300 group-hover:text-slate-200"
+                isSelected ? "text-[#0F172A]" : "text-[#475569] group-hover:text-[#0F172A]"
               )}>
                 {getDisplayName(conv)}
               </h3>
               <span className={cn(
-                "text-[10px] tabular-nums shrink-0 font-medium opacity-60",
-                isSelected ? "text-slate-300" : "text-slate-500"
+                "text-[10px] tabular-nums shrink-0 font-medium opacity-70",
+                isSelected ? "text-[#64748B]" : "text-[#94A3B8]"
               )}>
                 {conv.last_message_at ? formatListDate(conv.last_message_at) : ""}
               </span>
@@ -2541,22 +2963,41 @@ const AtendimentoPage = () => {
               )}
             </div>
 
+            <div className="flex flex-wrap items-center gap-2 text-[10px]">
+              <span
+                className="px-1.5 py-0.5 rounded-[4px] font-bold uppercase tracking-tight shadow-sm border"
+                style={{
+                  backgroundColor: `${conv.queue_color || '#16A34A'}1A`,
+                  color: conv.queue_color || '#16A34A',
+                  borderColor: `${conv.queue_color || '#16A34A'}33`
+                }}
+              >
+                Fila: {conv.queue_name || "Recepção"}
+              </span>
+              {conv.status === 'OPEN' && (
+                <span className="px-1.5 py-0.5 rounded-[4px] bg-[#EFF6FF] text-[#1D4ED8] border border-[#BFDBFE] font-semibold">
+                  Responsavel: {conv.assigned_user_name || conv.user_name || "-"}
+                </span>
+              )}
+            </div>
+
             <div className="flex justify-between items-end mt-0.5">
               <p className={cn(
                 "text-[13px] leading-snug truncate max-w-[75%]",
-                isSelected ? "text-slate-400" : "text-slate-500 group-hover:text-slate-400"
+                isSelected ? "text-[#64748B]" : "text-[#94A3B8] group-hover:text-[#64748B]"
               )}>
                 {/* Sender Prefix */}
-                {conv.is_group && conv.last_sender_name && <span className="text-slate-300 mr-1">{conv.last_sender_name}:</span>}
+                {conv.is_group && conv.last_sender_name && <span className="text-[#64748B] mr-1">{conv.last_sender_name}:</span>}
                 {conv.last_message || <span className="italic opacity-50 flex items-center gap-1"><Sparkles className="w-3 h-3" /> Iniciar conversa...</span>}
               </p>
 
               <div className="flex flex-col items-end gap-1 shrink-0">
-                {conv.instance_friendly_name && (
-                  <span className="px-1.5 py-0.5 rounded-[4px] text-[7.5px] font-bold bg-blue-500/10 text-blue-400 border border-blue-500/20 uppercase tracking-widest mb-0.5 shadow-sm">
-                    {conv.instance_friendly_name}
-                  </span>
-                )}
+                <InstanceTag
+                  instanceName={conv.instance_friendly_name}
+                  color={conv.instance_color}
+                  variant="compact"
+                  className="mb-0.5"
+                />
 
                 {/* Quick Action Trigger */}
                 <div className={cn(
@@ -2568,24 +3009,24 @@ const AtendimentoPage = () => {
                       <Button
                         variant="ghost"
                         size="icon"
-                        className="h-7 w-7 text-slate-500 hover:text-slate-100 hover:bg-slate-800 rounded-lg"
+                        className="h-7 w-7 text-[#94A3B8] hover:text-[#0F172A] hover:bg-[#F1F5F9] rounded-lg"
                         onClick={(e) => e.stopPropagation()}
                       >
                         <MoreHorizontal className="h-4 w-4" />
                       </Button>
                     </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end" className="bg-[#1e293b] border-slate-700 text-slate-200 w-52 shadow-2xl z-[100]">
+                    <DropdownMenuContent align="end" className="bg-white border-[#E2E8F0] text-[#0F172A] w-52 shadow-xl z-[100]">
                       <DropdownMenuItem
                         onClick={(e) => { e.stopPropagation(); setSelectedConversation(conv); handleRenameContact(); }}
-                        className="gap-2 focus:bg-slate-800 focus:text-slate-100 cursor-pointer"
+                        className="gap-2 focus:bg-[#F1F5F9] focus:text-[#2563EB] cursor-pointer"
                       >
-                        <Pencil className="h-3.5 w-3.5 text-slate-400" /> Renomear Contato
+                        <Pencil className="h-3.5 w-3.5 text-[#64748B]" /> Renomear Contato
                       </DropdownMenuItem>
 
                       {(!conv.status || conv.status === 'PENDING') && (
                         <DropdownMenuItem
                           onClick={(e) => { e.stopPropagation(); handleStartAtendimento(conv); }}
-                          className="gap-2 focus:bg-emerald-500/10 focus:text-emerald-400 cursor-pointer text-emerald-500"
+                          className="gap-2 focus:bg-[#16A34A]/10 focus:text-[#16A34A] cursor-pointer text-[#16A34A]"
                         >
                           <Play className="h-3.5 w-3.5" /> Iniciar Atendimento
                         </DropdownMenuItem>
@@ -2594,14 +3035,20 @@ const AtendimentoPage = () => {
                       {conv.status === 'OPEN' && (
                         <>
                           <DropdownMenuItem
+                            onClick={(e) => { e.stopPropagation(); setSelectedConversation(conv); setIsTransferModalOpen(true); }}
+                            className="gap-2 focus:bg-[#2563EB]/10 focus:text-[#2563EB] cursor-pointer text-[#2563EB]"
+                          >
+                            <GitBranch className="h-3.5 w-3.5" /> Transferir Fila
+                          </DropdownMenuItem>
+                          <DropdownMenuItem
                             onClick={(e) => { e.stopPropagation(); handleReturnToPending(conv); }}
-                            className="gap-2 focus:bg-amber-500/10 focus:text-amber-400 cursor-pointer text-amber-500"
+                            className="gap-2 focus:bg-amber-100 focus:text-amber-600 cursor-pointer text-amber-600"
                           >
                             <ArrowLeft className="h-3.5 w-3.5" /> Devolver para Fila
                           </DropdownMenuItem>
                           <DropdownMenuItem
                             onClick={(e) => { e.stopPropagation(); handleCloseAtendimento(conv); }}
-                            className="gap-2 focus:bg-red-500/10 focus:text-red-400 cursor-pointer text-red-500"
+                            className="gap-2 focus:bg-[#DC2626]/10 focus:text-[#DC2626] cursor-pointer text-[#DC2626]"
                           >
                             <XCircle className="h-3.5 w-3.5" /> Encerrar Atendimento
                           </DropdownMenuItem>
@@ -2611,7 +3058,7 @@ const AtendimentoPage = () => {
                       {conv.status === 'CLOSED' && (
                         <DropdownMenuItem
                           onClick={(e) => { e.stopPropagation(); handleReopenAtendimento(conv); }}
-                          className="gap-2 focus:bg-emerald-500/10 focus:text-emerald-400 cursor-pointer text-emerald-500"
+                          className="gap-2 focus:bg-[#16A34A]/10 focus:text-[#16A34A] cursor-pointer text-[#16A34A]"
                         >
                           <RotateCcw className="h-3.5 w-3.5" /> Reabrir Conversa
                         </DropdownMenuItem>
@@ -2628,26 +3075,26 @@ const AtendimentoPage = () => {
 
         {/* Hover Actions Overlay (Bottom) */}
         {isSelected && (
-          <div className="flex gap-2 mt-3 pt-2 border-t border-slate-700/50 justify-between items-center animate-in slide-in-from-top-1">
+          <div className="flex gap-2 mt-3 pt-2 border-t border-[#E2E8F0] justify-between items-center animate-in slide-in-from-top-1">
             <div className="flex gap-1">
               {(!conv.status || conv.status === 'PENDING') && (
-                <Button size="sm" variant="ghost" className="h-7 px-2 text-emerald-400 hover:text-emerald-300 hover:bg-emerald-500/10 text-[10px] uppercase font-bold tracking-wide" onClick={(e) => { e.stopPropagation(); handleStartAtendimento(conv); }}>
+                <Button size="sm" variant="ghost" className="h-7 px-2 text-[#16A34A] hover:text-[#15803d] hover:bg-[#16A34A]/10 text-[10px] uppercase font-bold tracking-wide" onClick={(e) => { e.stopPropagation(); handleStartAtendimento(conv); }}>
                   <Play className="h-3 w-3 mr-1.5 fill-current" /> Atender
                 </Button>
               )}
               {conv.status === 'OPEN' && (
-                <Button size="sm" variant="ghost" className="h-7 px-2 text-amber-400 hover:text-amber-300 hover:bg-amber-500/10 text-[10px] uppercase font-bold tracking-wide" onClick={(e) => { e.stopPropagation(); handleReturnToPending(conv); }}>
+                <Button size="sm" variant="ghost" className="h-7 px-2 text-amber-600 hover:text-amber-700 hover:bg-amber-100 text-[10px] uppercase font-bold tracking-wide" onClick={(e) => { e.stopPropagation(); handleReturnToPending(conv); }}>
                   <ArrowLeft className="h-3 w-3 mr-1.5" /> Devolver
                 </Button>
               )}
             </div>
 
             {conv.status !== 'CLOSED' ? (
-              <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-slate-500 hover:text-red-400 rounded-full" onClick={(e) => { e.stopPropagation(); handleCloseAtendimento(conv); }} title="Encerrar">
+              <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-[#94A3B8] hover:text-[#DC2626] rounded-full" onClick={(e) => { e.stopPropagation(); handleCloseAtendimento(conv); }} title="Encerrar">
                 <X className="h-3.5 w-3.5" />
               </Button>
             ) : (
-              <Button size="sm" variant="ghost" className="h-7 w-full text-slate-400 hover:text-slate-200 bg-slate-800 hover:bg-slate-700 text-[10px]" onClick={(e) => { e.stopPropagation(); handleReopenAtendimento(conv); }}>
+              <Button size="sm" variant="ghost" className="h-7 w-full text-[#94A3B8] hover:text-[#16A34A] bg-[#F1F5F9] hover:bg-[#EFF6FF] text-[10px]" onClick={(e) => { e.stopPropagation(); handleReopenAtendimento(conv); }}>
                 <RotateCcw className="h-3 w-3 mr-1.5" /> Reabrir
               </Button>
             )}
@@ -2657,39 +3104,69 @@ const AtendimentoPage = () => {
     );
   };
 
-  return (
-    <div className="flex h-screen w-full overflow-hidden bg-[#0F172A] font-sans selection:bg-blue-500/30 text-slate-200" onClick={() => setShowEmojiPicker(false)}>
+  const handleTransferQueue = async (queueId: number) => {
+    if (!selectedConversation) return;
+    setTransferringQueue(true);
+    try {
+      const res = await fetch(`/api/crm/conversations/${selectedConversation.id}/queue`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ queueId })
+      });
 
-      {/* Sidebar - ELEGANT DARK THEME */}
+      if (res.ok) {
+        toast.success("Conversa transferida com sucesso!");
+        setIsTransferModalOpen(false);
+        fetchConversations();
+      } else {
+        const err = await res.json();
+        toast.error(err.error || "Erro ao transferir");
+      }
+    } catch (e) {
+      console.error(e);
+      toast.error("Erro na transferência");
+    } finally {
+      setTransferringQueue(false);
+    }
+  };
+
+
+  return (
+    <div className="flex h-screen w-full overflow-hidden bg-[#F8FAFC] font-sans selection:bg-[#2563EB]/30 text-[#0F172A]" onClick={() => setShowEmojiPicker(false)}>
+
+      {/* Sidebar - WhatsApp Light Theme */}
       <div className={cn(
-        "flex flex-col bg-[#0F172A] border-r border-slate-800 shrink-0 z-20 transition-all shadow-xl",
+        "flex flex-col bg-white border-r border-[#E2E8F0] shrink-0 z-20 transition-all shadow-sm",
         "w-full md:w-[380px]",
         selectedConversation ? "hidden md:flex" : "flex"
       )}>
         {/* HEADER SIDEBAR */}
-        <div className="h-[68px] shrink-0 px-4 flex items-center justify-between border-b border-slate-800 bg-[#0F172A]">
+        <div className="h-[68px] shrink-0 px-4 flex items-center justify-between border-b border-[#E2E8F0] bg-white">
           <div className="flex items-center gap-3">
             <div className="relative group cursor-pointer" title={`Status: ${whatsappStatus}`}>
-              <Avatar className="h-10 w-10 ring-2 ring-slate-800 group-hover:ring-slate-700 transition-all">
-                <AvatarFallback className="bg-blue-600 text-white font-bold text-xs">EU</AvatarFallback>
+              <Avatar className="h-10 w-10 ring-2 ring-[#E2E8F0] group-hover:ring-[#2563EB] transition-all">
+                <AvatarFallback className="bg-[#2563EB] text-white font-bold text-xs">EU</AvatarFallback>
               </Avatar>
               <div className={cn(
-                "absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 border-[3px] border-[#0F172A] rounded-full",
-                whatsappStatus === 'open' ? "bg-emerald-500" : whatsappStatus === 'connecting' ? "bg-amber-500 animate-pulse" : "bg-red-500"
+                "absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 border-[3px] border-white rounded-full",
+                whatsappStatus === 'open' ? "bg-[#16A34A]" : whatsappStatus === 'connecting' ? "bg-amber-500 animate-pulse" : "bg-[#DC2626]"
               )} />
             </div>
 
             {/* Tabs Switcher */}
-            <div className="flex bg-slate-900 rounded-lg p-1 border border-slate-800">
+            <div className="flex bg-[#F1F5F9] rounded-lg p-1 border border-[#E2E8F0]">
               <button
                 onClick={() => setActiveTab('conversas')}
-                className={cn("px-3 py-1.5 rounded-md text-xs font-bold transition-all flex items-center gap-2", activeTab === 'conversas' ? "bg-slate-800 text-slate-100 shadow-sm ring-1 ring-slate-700 from-slate-800 to-slate-900 bg-gradient-to-b" : "text-slate-500 hover:text-slate-300")}
+                className={cn("px-3 py-1.5 rounded-md text-xs font-bold transition-all flex items-center gap-2", activeTab === 'conversas' ? "bg-white text-[#2563EB] shadow-sm ring-1 ring-[#E2E8F0]" : "text-[#64748B] hover:text-[#0F172A]")}
               >
                 <MessageCircle className="w-3.5 h-3.5" /> Chats
               </button>
               <button
                 onClick={() => setActiveTab('contatos')}
-                className={cn("px-3 py-1.5 rounded-md text-xs font-bold transition-all flex items-center gap-2", activeTab === 'contatos' ? "bg-slate-800 text-slate-100 shadow-sm ring-1 ring-slate-700 bg-gradient-to-b from-slate-800 to-slate-900" : "text-slate-500 hover:text-slate-300")}
+                className={cn("px-3 py-1.5 rounded-md text-xs font-bold transition-all flex items-center gap-2", activeTab === 'contatos' ? "bg-white text-[#2563EB] shadow-sm ring-1 ring-[#E2E8F0]" : "text-[#64748B] hover:text-[#0F172A]")}
               >
                 <Users className="w-3.5 h-3.5" /> Contatos
               </button>
@@ -2697,24 +3174,24 @@ const AtendimentoPage = () => {
           </div>
 
           <div className="flex items-center gap-1">
-            <Button size="icon" variant="ghost" className="h-8 w-8 text-slate-500 hover:text-slate-200 hover:bg-slate-800 rounded-full" onClick={() => setIsNotificationMuted(!isNotificationMuted)}>
-              {isNotificationMuted ? <VolumeX className="h-4 w-4 text-red-400" /> : <Volume2 className="h-4 w-4 text-emerald-400" />}
+            <Button size="icon" variant="ghost" className="h-8 w-8 text-[#94A3B8] hover:text-[#0F172A] hover:bg-[#F1F5F9] rounded-full" onClick={() => setIsNotificationMuted(!isNotificationMuted)}>
+              {isNotificationMuted ? <VolumeX className="h-4 w-4 text-[#DC2626]" /> : <Volume2 className="h-4 w-4 text-[#16A34A]" />}
             </Button>
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button size="icon" variant="ghost" className="h-8 w-8 text-slate-500 hover:text-slate-200 hover:bg-slate-800 rounded-full">
+                <Button size="icon" variant="ghost" className="h-8 w-8 text-[#94A3B8] hover:text-[#0F172A] hover:bg-[#F1F5F9] rounded-full">
                   <MoreVertical className="h-4 w-4" />
                 </Button>
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="bg-slate-900 border-slate-800 text-slate-200 w-56 shadow-xl">
-                <DropdownMenuItem onClick={syncAllPhotos} className="focus:bg-slate-800 focus:text-slate-100 cursor-pointer">
+              <DropdownMenuContent align="end" className="bg-white border-[#E2E8F0] text-[#0F172A] w-56 shadow-lg">
+                <DropdownMenuItem onClick={syncAllPhotos} className="focus:bg-[#F1F5F9] focus:text-[#2563EB] cursor-pointer">
                   <RefreshCcw className="mr-2 h-4 w-4" /> Sincronizar Fotos
                 </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => playNotificationSound(false)} className="focus:bg-slate-800 focus:text-slate-100 cursor-pointer">
+                <DropdownMenuItem onClick={() => playNotificationSound(false)} className="focus:bg-[#F1F5F9] focus:text-[#2563EB] cursor-pointer">
                   🔔 Testar Som
                 </DropdownMenuItem>
                 {user?.role === 'SUPERADMIN' && (
-                  <DropdownMenuItem onClick={() => setSelectedCompanyFilter(null)} className="focus:bg-slate-800 focus:text-slate-100 cursor-pointer">
+                  <DropdownMenuItem onClick={() => setSelectedCompanyFilter(null)} className="focus:bg-[#F1F5F9] focus:text-[#2563EB] cursor-pointer">
                     🏢 Todas Empresas
                   </DropdownMenuItem>
                 )}
@@ -2724,60 +3201,60 @@ const AtendimentoPage = () => {
         </div>
 
         {/* CONTENT AREA (Search + Lists) */}
-        <div className="flex-1 overflow-hidden flex flex-col bg-[#0F172A]">
+        <div className="flex-1 flex flex-col overflow-hidden bg-white">
 
           {/* TAB: CONVERSAS */}
           {activeTab === 'conversas' && (
             <>
-              <div className="px-3 pt-3 pb-0 space-y-3 bg-[#0F172A] z-10">
+              <div className="px-2 md:px-3 pt-2 md:pt-3 pb-0 space-y-2 md:space-y-3 bg-white z-10">
                 <div className="relative group">
-                  <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-500 group-focus-within:text-blue-500 transition-colors" />
+                  <Search className="absolute left-3 top-2.5 h-3.5 w-3.5 text-[#94A3B8] group-focus-within:text-[#2563EB] transition-colors" />
                   <Input
                     ref={sidebarSearchInputRef}
-                    placeholder="Pesquisar conversas..."
-                    className="pl-9 h-10 bg-slate-900 border-slate-800 focus:border-blue-500/50 text-slate-200 placeholder:text-slate-600 rounded-xl transition-all font-medium text-sm shadow-inner"
+                    placeholder="Pesquisar..."
+                    className="pl-9 h-9 md:h-10 bg-[#F1F5F9] border-[#E2E8F0] focus:border-[#2563EB] text-[#0F172A] placeholder:text-[#64748B] rounded-lg transition-all font-medium text-xs md:text-sm"
                     value={conversationSearchTerm}
                     onChange={(e) => setConversationSearchTerm(e.target.value)}
                   />
                 </div>
 
                 {/* Status Filters */}
-                <div className="flex p-1 bg-slate-900 border border-slate-800 rounded-xl gap-1">
-                  {(['PENDING', 'OPEN', 'CLOSED'] as const).map(tab => (
+                <div className="flex p-0.5 md:p-1 bg-[#F1F5F9] border border-[#E2E8F0] rounded-lg md:rounded-xl gap-0.5 md:gap-1">
+                  {(['OPEN', 'PENDING', 'CLOSED'] as const).map(tab => (
                     <button
                       key={tab}
                       onClick={() => setViewMode(tab)}
                       className={cn(
-                        "flex-1 py-1.5 text-[10px] font-bold uppercase tracking-wider rounded-lg transition-all",
+                        "flex-1 py-1 md:py-1.5 text-[8px] md:text-[10px] font-bold uppercase tracking-tighter md:tracking-widest rounded-md md:rounded-lg transition-all",
                         viewMode === tab ? (
-                          tab === 'PENDING' ? "bg-slate-800 text-emerald-400 shadow-sm ring-1 ring-slate-700" :
-                            tab === 'OPEN' ? "bg-slate-800 text-blue-400 shadow-sm ring-1 ring-slate-700" :
-                              "bg-slate-800 text-slate-300 shadow-sm ring-1 ring-slate-700"
-                        ) : "text-slate-600 hover:text-slate-300 hover:bg-slate-800/50"
+                          tab === 'PENDING' ? "bg-[#16A34A] text-white shadow-sm ring-1 ring-[#16A34A]/30" :
+                            tab === 'OPEN' ? "bg-[#2563EB] text-white shadow-sm ring-1 ring-[#2563EB]/30" :
+                              "bg-gray-400 text-white shadow-sm ring-1 ring-gray-400/30"
+                        ) : "text-[#64748B] hover:text-[#0F172A] hover:bg-white"
                       )}
                     >
-                      {tab === 'PENDING' ? 'Pendentes' : tab === 'OPEN' ? 'Abertos' : 'Fechados'}
+                      {tab === 'PENDING' ? 'PENDENTES' : tab === 'OPEN' ? 'ABERTOS' : 'FECHADOS'}
                     </button>
                   ))}
                 </div>
               </div>
 
-              <div className="flex-1 overflow-y-auto custom-scrollbar pt-2 px-0 pb-20 space-y-0.5">
+              <div className="flex-1 min-h-0 flex flex-col">
 
                 {/* Loading State */}
                 {isLoadingConversations && !conversationSearchTerm && (
                   <div className="flex flex-col items-center justify-center p-8 opacity-60 mt-10">
-                    <Loader2 className="h-8 w-8 animate-spin text-blue-500 mb-2" />
-                    <span className="text-xs text-slate-500 font-medium">Sincronizando...</span>
+                    <Loader2 className="h-8 w-8 animate-spin text-[#2563EB] mb-2" />
+                    <span className="text-xs text-[#94A3B8] font-medium">Sincronizando...</span>
                   </div>
                 )}
 
                 {/* Error State */}
                 {apiError && !isLoadingConversations && (
-                  <div className="flex flex-col items-center justify-center p-6 text-center m-4 bg-red-500/5 rounded-xl border border-red-500/10">
-                    <ShieldAlert className="h-8 w-8 text-red-500 mb-2" />
-                    <p className="text-xs text-red-400 mb-3">{apiError}</p>
-                    <Button variant="outline" size="sm" onClick={() => fetchConversations()} className="h-7 text-xs border-red-500/20 text-red-400 hover:bg-red-500/10 hover:text-red-300">
+                  <div className="flex flex-col items-center justify-center p-6 text-center m-4 bg-[#DC2626]/5 rounded-xl border border-[#DC2626]/10">
+                    <ShieldAlert className="h-8 w-8 text-[#DC2626] mb-2" />
+                    <p className="text-xs text-[#DC2626] mb-3">{apiError}</p>
+                    <Button variant="outline" size="sm" onClick={() => fetchConversations()} className="h-7 text-xs border-[#DC2626]/20 text-[#DC2626] hover:bg-[#DC2626]/10">
                       Tentar Novamente
                     </Button>
                   </div>
@@ -2785,24 +3262,24 @@ const AtendimentoPage = () => {
 
                 {/* Global Search Results */}
                 {!isLoadingConversations && !apiError && conversationSearchTerm && conversationSearchTerm.length >= 2 ? (
-                  <div className="flex flex-col">
+                  <div className="flex flex-col flex-1 overflow-y-auto custom-scrollbar pb-10">
                     {isSearchingGlobal ? (
                       <div className="py-8 flex flex-col items-center">
-                        <Loader2 className="h-6 w-6 animate-spin text-blue-500 mb-2" />
-                        <span className="text-xs text-slate-500">Buscando no histórico...</span>
+                        <Loader2 className="h-6 w-6 animate-spin text-[#2563EB] mb-2" />
+                        <span className="text-xs text-[#94A3B8]">Buscando no histórico...</span>
                       </div>
                     ) : (
                       <>
                         {globalSearchResults.conversations.length > 0 && (
                           <div>
-                            <div className="px-4 py-2 text-[10px] font-bold text-slate-500 uppercase tracking-wider bg-slate-900/50">Conversas Encontradas</div>
+                            <div className="px-4 py-2 text-[10px] font-bold text-[#94A3B8] uppercase tracking-wider bg-[#F1F5F9]">Conversas Encontradas</div>
                             {globalSearchResults.conversations.map(conv => renderConversationCard(conv))}
                           </div>
                         )}
 
                         {globalSearchResults.messages.length > 0 && (
                           <div className="mt-2">
-                            <div className="px-4 py-2 text-[10px] font-bold text-slate-500 uppercase tracking-wider bg-slate-900/50">Mensagens Encontradas</div>
+                            <div className="px-4 py-2 text-[10px] font-bold text-[#94A3B8] uppercase tracking-wider bg-[#F1F5F9]">Mensagens Encontradas</div>
                             {globalSearchResults.messages.map(msg => (
                               <div
                                 key={msg.id}
@@ -2818,22 +3295,22 @@ const AtendimentoPage = () => {
                                   setSelectedConversation(conv);
                                   setConversationSearchTerm("");
                                 }}
-                                className="px-4 py-3 hover:bg-slate-800/50 cursor-pointer flex gap-3 transition-colors group border-b border-slate-800/50"
+                                className="px-4 py-3 hover:bg-[#F1F5F9] cursor-pointer flex gap-3 transition-colors group border-b border-[#E2E8F0]"
                               >
-                                <Avatar className="h-9 w-9 shrink-0 ring-1 ring-slate-700">
+                                <Avatar className="h-9 w-9 shrink-0 ring-1 ring-[#E2E8F0]">
                                   <AvatarImage src={msg.profile_pic_url} />
-                                  <AvatarFallback className="bg-slate-800 text-[10px] font-bold text-slate-400">
+                                  <AvatarFallback className="bg-[#F1F5F9] text-[10px] font-bold text-[#64748B]">
                                     {((msg.contact_name || msg.group_name || "?")[0]).toUpperCase()}
                                   </AvatarFallback>
                                 </Avatar>
                                 <div className="flex flex-col gap-0.5 min-w-0 flex-1">
                                   <div className="flex justify-between items-center w-full">
-                                    <span className="font-semibold text-sm text-slate-200 truncate flex-1 pr-2">
+                                    <span className="font-semibold text-sm text-[#0F172A] truncate flex-1 pr-2">
                                       {msg.contact_name || msg.group_name || msg.chat_phone}
                                     </span>
-                                    <span className="text-[10px] text-slate-500 font-medium shrink-0">{formatListDate(msg.sent_at)}</span>
+                                    <span className="text-[10px] text-[#94A3B8] font-medium shrink-0">{formatListDate(msg.sent_at)}</span>
                                   </div>
-                                  <p className="text-xs text-slate-400 line-clamp-2 leading-relaxed opacity-80">
+                                  <p className="text-xs text-[#64748B] line-clamp-2 leading-relaxed opacity-80">
                                     <HighlightedText text={msg.content} highlight={conversationSearchTerm} />
                                   </p>
                                 </div>
@@ -2844,35 +3321,35 @@ const AtendimentoPage = () => {
 
                         {globalSearchResults.conversations.length === 0 && globalSearchResults.messages.length === 0 && (
                           <div className="py-12 flex flex-col items-center opacity-50">
-                            <Search className="h-8 w-8 text-slate-600 mb-2" />
-                            <span className="text-sm text-slate-500">Nada encontrado</span>
+                            <Search className="h-8 w-8 text-[#94A3B8] mb-2" />
+                            <span className="text-sm text-[#94A3B8]">Nada encontrado</span>
                           </div>
                         )}
                       </>
                     )}
                   </div>
                 ) : (
-                  <div className="flex flex-col flex-1 pb-10">
+                  <div className="flex flex-col flex-1 pb-10 overflow-y-auto custom-scrollbar pr-1">
                     {/* Lists by ViewMode */}
                     {viewMode === 'PENDING' && pendingConversations.length > 0 &&
-                      pendingConversations.slice((pendingPage - 1) * ITEMS_PER_PAGE, pendingPage * ITEMS_PER_PAGE).map(conv => renderConversationCard(conv))
+                      pendingConversations.map(conv => renderConversationCard(conv))
                     }
                     {viewMode === 'OPEN' && openConversations.length > 0 &&
-                      openConversations.slice((openPage - 1) * ITEMS_PER_PAGE, openPage * ITEMS_PER_PAGE).map(conv => renderConversationCard(conv))
+                      openConversations.map(conv => renderConversationCard(conv))
                     }
                     {viewMode === 'CLOSED' && closedConversations.length > 0 &&
-                      closedConversations.slice((closedPage - 1) * ITEMS_PER_PAGE, closedPage * ITEMS_PER_PAGE).map(conv => renderConversationCard(conv))
+                      closedConversations.map(conv => renderConversationCard(conv))
                     }
 
                     {/* Empty States */}
                     {((viewMode === 'PENDING' && pendingConversations.length === 0) ||
                       (viewMode === 'OPEN' && openConversations.length === 0) ||
                       (viewMode === 'CLOSED' && closedConversations.length === 0)) && (
-                        <div className="flex flex-col items-center justify-center text-center p-8 opacity-40 mt-10">
-                          <div className="w-16 h-16 bg-slate-900/50 rounded-full flex items-center justify-center mb-3">
-                            <MessageSquare className="h-6 w-6 text-slate-600" />
+                        <div className="flex flex-col items-center justify-center text-center p-8 opacity-60 mt-10">
+                          <div className="w-16 h-16 bg-[#F1F5F9] rounded-full flex items-center justify-center mb-3">
+                            <MessageSquare className="h-6 w-6 text-[#94A3B8]" />
                           </div>
-                          <p className="text-sm font-medium text-slate-500">
+                          <p className="text-sm font-medium text-[#64748B]">
                             {viewMode === 'PENDING' ? 'Tudo certo! Nenhuma conversa pendente.' :
                               viewMode === 'OPEN' ? 'Nenhum atendimento em aberto.' :
                                 'Nenhuma conversa finalizada recentemente.'}
@@ -2887,17 +3364,17 @@ const AtendimentoPage = () => {
 
           {/* TAB: CONTATOS */}
           {activeTab === 'contatos' && (
-            <div className="flex flex-col h-full animate-in slide-in-from-left-4 duration-300 bg-[#0F172A]">
-              <div className="p-3 bg-[#0F172A] border-b border-transparent z-10 space-y-3">
+            <div className="flex flex-col h-full animate-in slide-in-from-left-4 duration-300 bg-white">
+              <div className="p-3 bg-white border-b border-[#E2E8F0] z-10 space-y-3">
                 <div className="flex items-center justify-between">
-                  <h3 className="text-sm font-bold text-slate-200">Meus Contatos</h3>
-                  <div className="text-xs text-slate-500 font-medium">{filteredContacts.length} contatos</div>
+                  <h3 className="text-sm font-bold text-[#0F172A]">Meus Contatos</h3>
+                  <div className="text-xs text-[#64748B] font-medium">{filteredContacts.length} contatos</div>
                 </div>
                 <div className="relative group">
-                  <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-500" />
+                  <Search className="absolute left-3 top-2.5 h-4 w-4 text-[#94A3B8]" />
                   <Input
                     placeholder="Filtrar por nome ou número..."
-                    className="pl-9 h-10 bg-slate-900 border-slate-800 text-slate-200 rounded-xl focus:border-blue-500/50"
+                    className="pl-9 h-10 bg-[#F1F5F9] border-[#E2E8F0] text-[#0F172A] rounded-xl focus:border-[#2563EB]/50"
                     value={contactSearchTerm}
                     onChange={(e) => setContactSearchTerm(e.target.value)}
                   />
@@ -2906,38 +3383,38 @@ const AtendimentoPage = () => {
 
               <div className="flex-1 overflow-y-auto custom-scrollbar px-2 pb-20">
                 {/* Novo Contato BTN */}
-                <button onClick={() => setIsNewContactModalOpen(true)} className="w-full flex items-center gap-3 p-3 hover:bg-slate-800/50 rounded-xl transition-all group mb-2 border border-dashed border-slate-800 hover:border-slate-700">
-                  <div className="w-10 h-10 rounded-full bg-slate-800 flex items-center justify-center text-blue-500 group-hover:bg-blue-500 group-hover:text-white transition-colors">
+                <button onClick={() => setIsNewContactModalOpen(true)} className="w-full flex items-center gap-3 p-3 hover:bg-[#F1F5F9] rounded-xl transition-all group mb-2 border border-dashed border-[#E2E8F0] hover:border-[#2563EB]">
+                  <div className="w-10 h-10 rounded-full bg-[#EFF6FF] flex items-center justify-center text-[#2563EB] group-hover:bg-[#2563EB] group-hover:text-white transition-colors">
                     <UserPlus className="h-5 w-5" />
                   </div>
                   <div className="text-left">
-                    <span className="block text-sm font-semibold text-slate-300 group-hover:text-white">Adicionar Contato</span>
-                    <span className="block text-xs text-slate-500">Iniciar nova conversa</span>
+                    <span className="block text-sm font-semibold text-[#0F172A] group-hover:text-[#2563EB]">Adicionar Contato</span>
+                    <span className="block text-xs text-[#64748B]">Iniciar nova conversa</span>
                   </div>
                 </button>
 
                 {/* Contact List */}
                 {filteredContacts.map(contact => (
-                  <div key={contact.id} className="group flex items-center gap-3 p-2.5 hover:bg-slate-800/40 rounded-xl cursor-pointer border border-transparent hover:border-slate-800/50 transition-all">
-                    <Avatar className="h-10 w-10 shrink-0 ring-1 ring-slate-800">
+                  <div key={contact.id} className="group flex items-center gap-3 p-2.5 hover:bg-[#F1F5F9] rounded-xl cursor-pointer border border-transparent hover:border-[#E2E8F0] transition-all">
+                    <Avatar className="h-10 w-10 shrink-0 ring-1 ring-[#E2E8F0]">
                       <AvatarImage src={contact.profile_pic_url} />
-                      <AvatarFallback className="bg-slate-700 text-[10px] text-slate-300 font-bold">
+                      <AvatarFallback className="bg-[#F1F5F9] text-[10px] text-[#94A3B8] font-bold">
                         {((contact.name || contact.push_name || "?")[0]).toUpperCase()}
                       </AvatarFallback>
                     </Avatar>
                     <div className="flex-1 min-w-0">
-                      <div className="text-sm font-medium text-slate-200 truncate">{contact.name || contact.push_name}</div>
-                      <div className="text-xs text-slate-500 font-mono tracking-tight">{getContactPhone(contact)}</div>
+                      <div className="text-sm font-medium text-[#0F172A] truncate">{contact.name || contact.push_name}</div>
+                      <div className="text-xs text-[#94A3B8] font-mono tracking-tight">{getContactPhone(contact)}</div>
                     </div>
-                    <Button size="icon" variant="ghost" className="h-8 w-8 text-blue-500 opacity-0 group-hover:opacity-100 bg-blue-500/10 hover:bg-blue-500/20 rounded-full transition-all" onClick={(e) => { e.stopPropagation(); handleStartConversationFromContact(contact); }}>
+                    <Button size="icon" variant="ghost" className="h-8 w-8 text-[#2563EB] opacity-0 group-hover:opacity-100 bg-[#2563EB]/10 hover:bg-[#2563EB]/20 rounded-full transition-all" onClick={(e) => { e.stopPropagation(); handleStartConversationFromContact(contact); }}>
                       <MessageCircle className="h-4 w-4" />
                     </Button>
                   </div>
                 ))}
 
                 {filteredContacts.length === 0 && !isLoadingContacts && (
-                  <div className="text-center p-8 opacity-50">
-                    <p className="text-xs text-slate-500">Nenhum contato encontrado.</p>
+                  <div className="text-center p-8 opacity-60">
+                    <p className="text-xs text-[#94A3B8]">Nenhum contato encontrado.</p>
                   </div>
                 )}
               </div>
@@ -2954,17 +3431,17 @@ const AtendimentoPage = () => {
         !selectedConversation ? "hidden md:flex" : "flex"
       )}>
         {!selectedConversation ? (
-          <div className="flex-1 flex flex-col items-center justify-center bg-[#020617] text-center p-8">
+          <div className="flex-1 flex flex-col items-center justify-center bg-[#F8FAFC] text-center p-8">
             <div className="relative mb-8">
-              <div className="absolute inset-0 bg-blue-500/20 blur-[100px] rounded-full" />
-              <div className="relative w-72 h-72 bg-slate-900/40 border border-slate-800 rounded-full flex items-center justify-center backdrop-blur-sm">
+              <div className="absolute inset-0 bg-[#2563EB]/10 blur-[100px] rounded-full" />
+              <div className="relative w-72 h-72 bg-white border border-[#E2E8F0] rounded-full flex items-center justify-center backdrop-blur-sm">
                 <div className="flex flex-col items-center gap-4">
-                  <div className="p-5 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-2xl shadow-lg shadow-blue-500/20">
+                  <div className="p-5 bg-[#2563EB] rounded-2xl shadow-lg shadow-[#2563EB]/20">
                     <Zap className="h-10 w-10 text-white" />
                   </div>
                   <div className="flex -space-x-3">
                     {[1, 2, 3].map(i => (
-                      <div key={i} className="w-10 h-10 rounded-full border-2 border-[#020617] bg-slate-800 flex items-center justify-center text-[10px] font-bold">
+                      <div key={i} className="w-10 h-10 rounded-full border-2 border-white bg-[#2563EB] flex items-center justify-center text-[10px] font-bold text-white">
                         {String.fromCharCode(64 + i)}
                       </div>
                     ))}
@@ -2972,91 +3449,92 @@ const AtendimentoPage = () => {
                 </div>
               </div>
             </div>
-            <h2 className="text-3xl font-bold text-white mb-4 tracking-tight">IntegrAI <span className="text-blue-500 text-sm font-medium border border-blue-500/30 px-2 py-0.5 rounded-full ml-2 uppercase tracking-widest">Command Center</span></h2>
-            <p className="text-slate-400 text-lg max-w-md leading-relaxed">
+            <h2 className="text-3xl font-bold text-[#0F172A] mb-4 tracking-tight">IntegrAI <span className="text-[#2563EB] text-sm font-medium border border-[#2563EB]/30 px-2 py-0.5 rounded-full ml-2 uppercase tracking-widest">Command Center</span></h2>
+            <p className="text-[#64748B] text-lg max-w-md leading-relaxed">
               Inicie um atendimento selecionando uma conversa ao lado ou comece uma nova via contatos.
             </p>
-            <div className="mt-12 flex items-center gap-6 px-6 py-3 bg-slate-900/50 border border-slate-800 rounded-2xl text-slate-500 text-sm">
-              <div className="flex items-center gap-2"><div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" /> IA Pronta</div>
-              <div className="w-px h-4 bg-slate-800" />
+            <div className="mt-12 flex items-center gap-6 px-6 py-3 bg-[#F1F5F9] border border-[#E2E8F0] rounded-2xl text-[#64748B] text-sm">
+              <div className="flex items-center gap-2"><div className="w-2 h-2 rounded-full bg-[#16A34A] animate-pulse" /> IA Pronta</div>
+              <div className="w-px h-4 bg-[#E2E8F0]" />
               <div className="flex items-center gap-2"><LayoutGrid className="w-4 h-4" /> CRM Ativo</div>
-              <div className="w-px h-4 bg-slate-800" />
+              <div className="w-px h-4 bg-[#E2E8F0]" />
               <div className="flex items-center gap-2"><Lock className="w-4 h-4" /> LGPD Secure</div>
             </div>
           </div>
         ) : (
           <>
             {/* Chat Header - MODERN & CLEAN */}
-            <div className="h-[76px] bg-[#020617]/80 backdrop-blur-md border-b border-white/5 flex items-center justify-between px-6 shrink-0 z-30">
-              <div className="flex items-center gap-4 overflow-hidden">
+            <div className="h-[60px] md:h-[76px] bg-[#EFF6FF] border-b-2 md:border-b-[3px] border-[#2563EB] flex items-center justify-between px-3 md:px-6 shrink-0 z-30 shadow-sm">
+              <div className="flex items-center gap-2 md:gap-4 overflow-hidden">
                 <Button
                   variant="ghost"
                   size="icon"
-                  className="md:hidden -ml-2 text-slate-400 hover:text-white hover:bg-white/5 rounded-full"
+                  className="md:hidden -ml-2 text-[#2563EB] hover:text-[#1D4ED8] hover:bg-white rounded-full h-8 w-8"
                   onClick={() => setSelectedConversation(null)}
                 >
-                  <ChevronLeft className="h-6 w-6" />
+                  <ChevronLeft className="h-5 w-5" />
                 </Button>
 
                 <div className="relative">
-                  <Avatar className="h-11 w-11 ring-2 ring-slate-800 cursor-pointer hover:ring-blue-500/50 transition-all" onClick={() => setIsContactInfoOpen(true)}>
+                  <Avatar className="h-9 md:h-11 w-9 md:w-11 ring-2 ring-[#E2E8F0] cursor-pointer hover:ring-[#2563EB] transition-all" onClick={() => setIsContactInfoOpen(true)}>
                     <AvatarImage src={selectedConversation.profile_pic_url || `https://api.dicebear.com/7.x/initials/svg?seed=${getDisplayName(selectedConversation)}`} />
-                    <AvatarFallback className="bg-slate-800 text-slate-300 font-bold uppercase text-xs">{(getDisplayName(selectedConversation)?.[0] || "?")}</AvatarFallback>
+                    <AvatarFallback className="bg-[#F1F5F9] text-[#0F172A] font-bold uppercase text-xs">{(getDisplayName(selectedConversation)?.[0] || "?")}</AvatarFallback>
                   </Avatar>
                   {selectedConversation.status === 'OPEN' && (
-                    <div className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 bg-emerald-500 border-[3px] border-[#020617] rounded-full" />
+                    <div className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 bg-[#16A34A] border-[3px] border-white rounded-full" />
                   )}
                 </div>
 
                 <div className="flex flex-col cursor-pointer min-w-0" onClick={() => setIsContactInfoOpen(true)}>
-                  <div className="flex items-center gap-2">
-                    <span className="text-[16px] font-bold text-slate-100 truncate leading-tight">
+                  <div className="flex items-center gap-1 md:gap-2">
+                    <span className="text-sm md:text-[16px] font-bold text-[#0F172A] truncate leading-tight">
                       {getDisplayName(selectedConversation)}
                     </span>
                     {selectedConversation.is_group && (
-                      <Badge variant="outline" className="text-[9px] h-4 bg-blue-500/10 text-blue-400 border-blue-500/20 font-bold uppercase tracking-tighter">Grupo</Badge>
+                      <Badge variant="outline" className="text-[7px] md:text-[9px] h-4 bg-[#2563EB]/10 text-[#2563EB] border-[#2563EB]/20 font-bold uppercase tracking-tighter">Grupo</Badge>
                     )}
-                    {(selectedConversation.instance_friendly_name || selectedConversation.instance) && (
-                      <div className="flex items-center gap-1 bg-slate-900 border border-slate-800 px-1.5 py-0.5 rounded text-[9px] font-mono text-slate-500">
-                        <Zap className="w-2.5 h-2.5" /> {selectedConversation.instance_friendly_name || selectedConversation.instance}
-                      </div>
-                    )}
+                    <InstanceTag
+                      instanceName={selectedConversation.instance_friendly_name}
+                      color={selectedConversation.instance_color}
+                      variant="compact"
+                    />
+
                   </div>
-                  <div className="flex items-center gap-2 text-xs">
+                  <div className="flex items-center gap-1 md:gap-2 text-[11px] md:text-xs">
                     <span className={cn(
                       "font-medium",
-                      selectedConversation.status === 'OPEN' ? "text-emerald-500/80" : "text-slate-500"
+                      selectedConversation.status === 'OPEN' ? "text-[#16A34A]" : "text-[#94A3B8]"
                     )}>
                       {selectedConversation.status === 'OPEN' ? (
-                        <span className="flex items-center gap-1"><div className="w-1 h-1 rounded-full bg-emerald-500" /> em atendimento</span>
+                        <span className="flex items-center gap-1"><div className="w-1 h-1 rounded-full bg-[#16A34A]" /> em atendimento</span>
                       ) : "cliente / paciente"}
                     </span>
-                    {selectedConversation.user_name && (
+                    {selectedConversation.status === 'OPEN' && selectedConversation.user_name && (
                       <>
-                        <span className="text-slate-700">•</span>
-                        <span className="text-slate-500 italic">Resp: {selectedConversation.user_name}</span>
+                        <span className="text-[#E2E8F0]">•</span>
+                        <span className="text-[#64748B] italic">Resp: {selectedConversation.user_name}</span>
                       </>
                     )}
                   </div>
                 </div>
               </div>
 
-              <div className="flex items-center gap-2">
-                <div className="flex items-center bg-slate-900/50 border border-white/5 rounded-full p-1 mr-2 invisible group-hover:visible lg:visible">
-                  <Button variant="ghost" size="icon" className="h-8 w-8 text-slate-500 hover:text-white rounded-full transition-all">
-                    <Phone className="h-4 w-4" />
+              <div className="flex items-center gap-1 md:gap-2">
+                <div className="flex items-center bg-[#F1F5F9] border border-[#E2E8F0] rounded-full p-1 mr-0 md:mr-2 hidden md:flex lg:flex">
+                  <Button variant="ghost" size="icon" className="h-8 w-8 text-[#94A3B8] hover:text-[#2563EB] rounded-full transition-all">
+                    <Phone className="h-3.5 w-3.5 md:h-4 md:w-4" />
                   </Button>
                   <Button
                     variant="ghost"
                     size="icon"
-                    className="h-8 w-8 text-slate-500 hover:text-white rounded-full transition-all"
+                    className="h-8 w-8 text-[#94A3B8] hover:text-[#2563EB] rounded-full transition-all"
                     onClick={() => {
                       setIsAgendaListOpen(true);
                       fetchContactAgenda(selectedConversation.phone);
                     }}
                     title="Agenda do contato"
                   >
-                    <Calendar className="h-4 w-4" />
+                    <Calendar className="h-3.5 w-3.5 md:h-4 md:w-4" />
                   </Button>
                 </div>
 
@@ -3066,44 +3544,49 @@ const AtendimentoPage = () => {
                       <Button
                         variant="ghost"
                         size="icon"
-                        className={cn("h-10 w-10 text-slate-400 hover:text-white hover:bg-white/5 rounded-full transition-all", isMessageSearchOpen && "bg-white/10 text-white")}
+                        className={cn("h-8 md:h-10 w-8 md:w-10 text-[#94A3B8] hover:text-[#0F172A] hover:bg-[#F1F5F9] rounded-full transition-all", isMessageSearchOpen && "bg-[#EFF6FF] text-[#2563EB]")}
                         onClick={() => setIsMessageSearchOpen(!isMessageSearchOpen)}
                       >
-                        <Search className="h-5 w-5" />
+                        <Search className="h-4 md:h-5 w-4 md:w-5" />
                       </Button>
                     </TooltipTrigger>
-                    <TooltipContent side="bottom" className="bg-slate-800 border-slate-700 text-slate-100">Procurar histórico</TooltipContent>
+                    <TooltipContent side="bottom" className="bg-white border-[#E2E8F0] text-[#0F172A]">Procurar histórico</TooltipContent>
                   </Tooltip>
                 </TooltipProvider>
 
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
-                    <Button variant="ghost" size="icon" className="h-10 w-10 text-slate-400 hover:text-white hover:bg-white/5 rounded-full">
-                      <MoreVertical className="h-5 w-5" />
+                    <Button variant="ghost" size="icon" className="h-8 md:h-10 w-8 md:w-10 text-[#94A3B8] hover:text-[#0F172A] hover:bg-[#F1F5F9] rounded-full">
+                      <MoreVertical className="h-4 md:h-5 w-4 md:w-5" />
                     </Button>
                   </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end" className="bg-slate-900 border-white/10 text-slate-200 w-56 shadow-2xl">
-                    <DropdownMenuItem onClick={() => { setAppointmentInitialData({ conversation_id: selectedConversation.id, client_name: getDisplayName(selectedConversation), phone: selectedConversation.phone }); setIsAppointmentModalOpen(true); }} className="gap-3 py-2.5 focus:bg-slate-800 cursor-pointer font-medium">
-                      <CalendarCheck className="h-4 w-4 text-emerald-400" /> Agendar / Novo Agendamento
+                  <DropdownMenuContent align="end" className="bg-white border-[#E2E8F0] text-[#0F172A] w-48 md:w-56 shadow-xl">
+                    <DropdownMenuItem onClick={() => { setAppointmentInitialData({ conversation_id: selectedConversation.id, client_name: getDisplayName(selectedConversation), phone: selectedConversation.phone }); setIsAppointmentModalOpen(true); }} className="gap-2 md:gap-3 py-2 md:py-2.5 focus:bg-[#F1F5F9] cursor-pointer font-medium text-xs md:text-sm">
+                      <CalendarCheck className="h-4 w-4 text-[#16A34A]" /> Agendar / Novo Agendamento
                     </DropdownMenuItem>
-                    <DropdownMenuItem onClick={() => { setFollowUpInitialData({ conversation_id: selectedConversation.id, contact_name: getDisplayName(selectedConversation), phone: selectedConversation.phone, origin: 'Atendimento' }); setIsFollowUpModalOpen(true); }} className="gap-3 py-2.5 focus:bg-slate-800 cursor-pointer font-medium">
-                      <Clock className="h-4 w-4 text-amber-400" /> Novo Follow-up
+                    <DropdownMenuItem onClick={() => { setFollowUpInitialData({ conversation_id: selectedConversation.id, contact_name: getDisplayName(selectedConversation), phone: selectedConversation.phone, origin: 'Atendimento' }); setIsFollowUpModalOpen(true); }} className="gap-2 md:gap-3 py-2 md:py-2.5 focus:bg-[#F1F5F9] cursor-pointer font-medium text-xs md:text-sm">
+                      <Clock className="h-4 w-4 text-amber-600" /> Novo Follow-up
                     </DropdownMenuItem>
-                    <DropdownMenuItem onClick={() => setIsRelationshipModalOpen(true)} className="gap-3 py-2.5 focus:bg-slate-800 cursor-pointer font-medium">
-                      <Link2 className="h-4 w-4 text-blue-400" /> Ver Relacionamentos
+                    <DropdownMenuItem onClick={() => setIsRelationshipModalOpen(true)} className="gap-2 md:gap-3 py-2 md:py-2.5 focus:bg-[#F1F5F9] cursor-pointer font-medium text-xs md:text-sm">
+                      <Link2 className="h-4 w-4 text-[#2563EB]" /> Ver Relacionamentos
                     </DropdownMenuItem>
-                    <DropdownMenuItem onClick={handleRenameContact} className="gap-3 py-2.5 focus:bg-slate-800 cursor-pointer font-medium">
-                      <UserCircle className="h-4 w-4 text-slate-400" /> Editar Ficha
+                    <DropdownMenuItem onClick={handleRenameContact} className="gap-2 md:gap-3 py-2 md:py-2.5 focus:bg-[#F1F5F9] cursor-pointer font-medium text-xs md:text-sm">
+                      <UserCircle className="h-4 w-4 text-[#64748B]" /> Editar Ficha
                     </DropdownMenuItem>
-                    <DropdownMenuSeparator className="bg-white/5" />
+                    <DropdownMenuSeparator className="bg-[#E2E8F0]" />
+                    <DropdownMenuItem onClick={() => setIsTransferModalOpen(true)} className="gap-2 md:gap-3 py-2 md:py-2.5 focus:bg-[#F1F5F9] cursor-pointer font-medium text-xs md:text-sm">
+                      <GitBranch className="h-4 w-4 text-[#2563EB]" /> Transferir Fila
+                    </DropdownMenuItem>
+                    <DropdownMenuSeparator className="bg-[#E2E8F0]" />
                     {selectedConversation.status !== 'OPEN' ? (
-                      <DropdownMenuItem onClick={() => handleStartAtendimento()} className="gap-3 py-2.5 focus:bg-emerald-500/20 text-emerald-500 font-bold cursor-pointer">
+                      <DropdownMenuItem onClick={() => handleStartAtendimento()} className="gap-3 py-2.5 focus:bg-[#16A34A]/10 text-[#16A34A] font-bold cursor-pointer">
                         <Zap className="h-4 w-4" /> Iniciar Atendimento
                       </DropdownMenuItem>
                     ) : (
-                      <DropdownMenuItem onClick={() => handleCloseAtendimento()} className="gap-3 py-2.5 focus:bg-amber-500/20 text-amber-500 font-bold cursor-pointer">
-                        <CheckSquare className="h-4 w-4" /> Finalizar / Concluir
+                      <DropdownMenuItem onClick={() => handleCloseAtendimento()} className="gap-3 py-2.5 focus:bg-amber-100 text-amber-600 font-bold cursor-pointer">
+                        <CheckSquare className="h-4 w-4" /> Encerrar Atendimento
                       </DropdownMenuItem>
+
                     )}
                   </DropdownMenuContent>
                 </DropdownMenu>
@@ -3112,41 +3595,41 @@ const AtendimentoPage = () => {
 
             {/* MESSAGE SEARCH BAR (COLLAPSIBLE) */}
             {isMessageSearchOpen && (
-              <div className="bg-slate-900 border-b border-white/5 p-3 flex items-center gap-3 animate-in slide-in-from-top-4 duration-200">
-                <Search className="w-4 h-4 text-slate-500 ml-2" />
+              <div className="bg-[#F1F5F9] border-b border-[#E2E8F0] p-3 flex items-center gap-3 animate-in slide-in-from-top-4 duration-200">
+                <Search className="w-4 h-4 text-[#94A3B8] ml-2" />
                 <Input
                   placeholder="Filtrar mensagens nesta conversa..."
-                  className="flex-1 bg-slate-950 border-white/5 h-9 text-xs text-slate-100 placeholder:text-slate-600 focus-visible:ring-1 focus-visible:ring-blue-500/40"
+                  className="flex-1 bg-white border-[#E2E8F0] h-9 text-xs text-[#0F172A] placeholder:text-[#94A3B8] focus-visible:ring-1 focus-visible:ring-[#2563EB]/40"
                   value={messageSearchTerm}
                   onChange={(e) => setMessageSearchTerm(e.target.value)}
                   autoFocus
                 />
-                <Button size="sm" variant="ghost" onClick={() => { setIsMessageSearchOpen(false); setMessageSearchTerm(""); }} className="h-8 text-slate-500 hover:text-white">Fechar</Button>
+                <Button size="sm" variant="ghost" onClick={() => { setIsMessageSearchOpen(false); setMessageSearchTerm(""); }} className="h-8 text-[#94A3B8] hover:text-[#0F172A]">Fechar</Button>
               </div>
             )}
 
-            {/* MESSAGES AREA - DARK FLOW */}
+            {/* MESSAGES AREA - LIGHT FLOW */}
             <div className="flex-1 flex flex-col min-h-0 relative">
               <div
                 ref={scrollRef}
                 onScroll={handleScroll}
                 className={cn(
-                  "flex-1 overflow-y-auto px-4 py-8 flex flex-col gap-6 relative z-10 custom-scrollbar-thin",
-                  "bg-[#020617]",
+                  "flex-1 overflow-y-auto px-4 py-8 flex flex-col gap-6 relative z-10 custom-scrollbar",
+                  "bg-[#F8FAFC]",
                   messages.length === 0 && "items-center justify-center"
                 )}
                 style={{
-                  backgroundImage: `radial-gradient(circle at 50% 50%, rgba(30, 41, 59, 0.2) 0%, transparent 100%)`,
+                  backgroundImage: `radial-gradient(circle at 50% 50%, rgba(37, 99, 235, 0.02) 0%, transparent 100%)`,
                 }}
               >
                 {/* DATE LABELS & MESSAGES LOGIC INJECTED HERE */}
                 {messages.length === 0 && !isLoadingMessages && (
                   <div className="flex flex-col items-center justify-center p-12 text-center max-w-sm">
-                    <div className="w-20 h-20 bg-slate-900/50 rounded-full flex items-center justify-center mb-6 ring-1 ring-white/5">
-                      <MessageSquare className="h-8 w-8 text-slate-700" />
+                    <div className="w-20 h-20 bg-[#EFF6FF] rounded-full flex items-center justify-center mb-6 ring-1 ring-[#2563EB]/20">
+                      <MessageSquare className="h-8 w-8 text-[#94A3B8]" />
                     </div>
-                    <h3 className="text-slate-300 font-semibold mb-2">Mensagens Criptografadas</h3>
-                    <p className="text-slate-500 text-xs leading-relaxed">
+                    <h3 className="text-[#0F172A] font-semibold mb-2">Mensagens Criptografadas</h3>
+                    <p className="text-[#64748B] text-xs leading-relaxed">
                       As mensagens desta conversa são protegidas de ponta a ponta. Você verá o histórico assim que o cliente enviar uma nova mensagem ou você responder.
                     </p>
                   </div>
@@ -3194,7 +3677,7 @@ const AtendimentoPage = () => {
                       <React.Fragment key={`group-${groupIdx}-${firstMsg.id}`}>
                         {showDate && (
                           <div className="flex justify-center my-6 sticky top-2 z-10">
-                            <div className="px-4 py-1.5 bg-slate-900/80 backdrop-blur-sm border border-white/5 rounded-full text-[10px] uppercase tracking-widest font-bold text-slate-500 shadow-xl">
+                            <div className="px-4 py-1.5 bg-white border border-[#E2E8F0] backdrop-blur-sm rounded-full text-[10px] uppercase tracking-widest font-bold text-[#64748B] shadow-sm">
                               {msgDateLabel}
                             </div>
                           </div>
@@ -3215,41 +3698,145 @@ const AtendimentoPage = () => {
                               <div className={cn(
                                 "px-4 py-2 my-0.5 rounded-2xl text-sm transition-all relative overflow-hidden",
                                 isOutbound
-                                  ? "bg-gradient-to-br from-blue-600 to-indigo-700 text-white shadow-lg shadow-blue-900/10 rounded-tr-sm"
-                                  : "bg-slate-900 text-slate-200 border border-white/5 rounded-tl-sm",
-                                msg.status === 'DELETED' && "italic opacity-40 bg-transparent border-slate-800"
+                                  ? "bg-[#EAF2FF] text-[#0F172A] border border-[#DBEAFE] shadow-sm shadow-[#2563EB]/5 rounded-tr-sm"
+                                  : "bg-[#F8FAFC] text-[#0F172A] border border-[#E2E8F0] shadow-sm rounded-tl-sm",
+                                msg.status === 'DELETED' && "italic opacity-40 bg-[#F1F5F9] border-[#E2E8F0]"
                               )}>
                                 {/* Content Rendering (Text/Image/Audio/etc) - Simplified for brevity */}
                                 {msg.status === 'DELETED' ? "🚫 Esta mensagem foi apagada" : (
                                   <div className="flex flex-col gap-1">
                                     {msg.reply_to_content && (
-                                      <div className="mb-2 p-2 bg-black/10 rounded border-l-2 border-white/30 text-[11px] opacity-80 truncate max-w-[200px]">
+                                      <div className={cn(
+                                        "mb-2 p-2 rounded border-l-2 text-[11px] opacity-80 truncate max-w-[200px]",
+                                        isOutbound ? "bg-[#DBEAFE]/40 border-[#2563EB]/20 text-[#1E3A8A]" : "bg-[#F1F5F9] border-[#94A3B8]"
+                                      )}>
                                         {msg.reply_to_content}
                                       </div>
                                     )}
                                     <div className="whitespace-pre-wrap leading-relaxed break-words">
-                                      {msg.type === 'image' && msg.media_url && (
-                                        <div className="rounded-lg overflow-hidden mb-1 ring-1 ring-white/10">
-                                          <img src={msg.media_url} alt="Media" className="max-h-64 object-cover cursor-pointer hover:scale-[1.02] transition-transform" onClick={() => window.open(msg.media_url, '_blank')} />
+                                      {/* Media Rendering */}
+                                      {(msg.type === 'image' || msg.message_type === 'image') && getMediaUrl(msg) && (
+                                        <div className="rounded-lg overflow-hidden mb-2 ring-1 ring-[#E2E8F0] bg-black/5">
+                                          <img
+                                            src={getMediaUrl(msg)}
+                                            alt="Media"
+                                            className="max-h-80 w-full object-contain cursor-pointer hover:opacity-90 transition-opacity"
+                                            onClick={() => window.open(getMediaUrl(msg), '_blank')}
+                                          />
                                         </div>
                                       )}
-                                      {msg.body || msg.content}
+
+
+                                      {(msg.type === 'video' || msg.message_type === 'video') && getMediaUrl(msg) && (
+                                        <div className="rounded-lg overflow-hidden mb-2 ring-1 ring-[#E2E8F0] bg-black/5">
+                                          <video
+                                            src={getMediaUrl(msg)}
+                                            controls
+                                            className="max-h-80 w-full"
+                                          />
+                                        </div>
+                                      )}
+
+                                      {/* Sticker Rendering */}
+                                      {(msg.type === 'sticker' || msg.message_type === 'sticker' || msg.message_type === 'stickerMessage') && getMediaUrl(msg) && (
+                                        <div className="mb-2">
+                                          <img
+                                            src={getMediaUrl(msg)}
+                                            alt="Sticker"
+                                            className="w-32 h-32 object-contain select-none pointer-events-none"
+                                          />
+                                        </div>
+                                      )}
+
+
+                                      {(msg.type === 'audio' || msg.message_type === 'audio') && getMediaUrl(msg) && (
+                                        <div className={cn(
+                                          "mb-2 p-2 rounded-xl flex items-center gap-3 min-w-[240px]",
+                                          isOutbound ? "bg-[#DBEAFE]/30" : "bg-[#F1F5F9]"
+                                        )}>
+                                          <div className={cn(
+                                            "w-8 h-8 rounded-full flex items-center justify-center shrink-0",
+                                            isOutbound ? "bg-[#2563EB]/10 text-[#2563EB]" : "bg-white text-[#2563EB] shadow-sm"
+                                          )}
+                                            onClick={() => handleAudioSpeedToggle(msg.id, document.getElementById(`audio-${msg.id}`) as HTMLAudioElement)}
+                                          >
+                                            <span className="text-[10px] font-bold">
+                                              {audioSpeeds[msg.id] ? `${audioSpeeds[msg.id]}x` : '1x'}
+                                            </span>
+                                          </div>
+                                          <audio
+                                            id={`audio-${msg.id}`}
+                                            src={getMediaUrl(msg)}
+                                            controls
+                                            className="h-8 flex-1"
+                                            controlsList="nodownload noplaybackrate"
+                                          />
+                                        </div>
+                                      )}
+
+
+                                      {(msg.type === 'document' || msg.message_type === 'document') && getMediaUrl(msg) && (
+                                        <div
+                                          className={cn(
+                                            "mb-2 p-3 rounded-xl flex items-center gap-3 border cursor-pointer transition-all hover:scale-[1.01]",
+                                            isOutbound
+                                              ? "bg-[#DBEAFE]/20 border-[#DBEAFE] hover:bg-[#DBEAFE]/30"
+                                              : "bg-[#F8FAFC] border-[#E2E8F0] hover:bg-white"
+                                          )}
+                                          onClick={() => window.open(getMediaUrl(msg), '_blank')}
+                                        >
+                                          <div className={cn(
+                                            "w-10 h-10 rounded-lg flex items-center justify-center shrink-0",
+                                            isOutbound ? "bg-[#2563EB]/10 text-[#2563EB]" : "bg-[#EFF6FF] text-[#2563EB]"
+                                          )}>
+                                            <FileText className="w-6 h-6" />
+                                          </div>
+                                          <div className="flex-1 min-w-0">
+                                            <p className={cn(
+                                              "text-xs font-bold truncate",
+                                              isOutbound ? "text-[#0F172A]" : "text-[#0F172A]"
+                                            )}>
+                                              {msg.content || 'Documento'}
+                                            </p>
+                                            <p className={cn(
+                                              "text-[9px] uppercase tracking-wider font-medium opacity-70",
+                                              isOutbound ? "text-[#64748B]" : "text-[#64748B]"
+                                            )}>
+                                              PDF / Documento • Abrir
+                                            </p>
+                                          </div>
+                                          <Download className={cn("w-4 h-4 text-[#94A3B8]")} />
+                                        </div>
+                                      )}
+
+                                      {/* Text Content */}
+                                      <div className="whitespace-pre-wrap leading-relaxed break-words">
+                                        {msg.body || msg.content}
+                                      </div>
                                     </div>
                                     <div className={cn(
                                       "flex items-center gap-2 mt-1 self-end",
                                       isOutbound ? "justify-end" : "justify-start"
                                     )}>
-                                      {msg.instance_friendly_name && (
-                                        <span className="text-[7px] font-black uppercase tracking-tighter bg-white/10 px-1 py-0 rounded border border-white/5 opacity-40">
-                                          {msg.instance_friendly_name}
-                                        </span>
-                                      )}
-                                      <span className="text-[10px] opacity-60 font-mono tracking-tighter">
-                                        {new Date(msg.sent_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                      {(() => {
+                                        const sourceLabel = getMessageSourceLabel(msg);
+                                        return (
+                                          <div className="flex items-center gap-1.5 translate-y-[2px]">
+                                            <span className={cn("text-[8px] font-bold uppercase tracking-tight", sourceLabel.className)}>
+                                              {sourceLabel.label}
+                                            </span>
+                                          </div>
+                                        );
+                                      })()}
+                                      <span className={cn(
+                                        "text-[10px] opacity-60 font-mono tracking-tighter",
+                                        isOutbound ? "text-[#64748B]" : "text-[#64748B]"
+                                      )}>
+                                        {formatTime(msg.sent_at)}
                                       </span>
                                       {isOutbound && (
                                         <div className="flex">
-                                          <CheckCheck className={cn("w-3.5 h-3.5", msg.status === 'READ' ? "text-emerald-400" : "text-slate-400")} />
+                                          <CheckCheck className={cn("w-3.5 h-3.5", msg.status === 'READ' ? "text-[#3B82F6]" : "text-[#94A3B8]")} />
                                         </div>
                                       )}
                                     </div>
@@ -3262,8 +3849,14 @@ const AtendimentoPage = () => {
                                 "opacity-0 group-hover/msg:opacity-100 transition-opacity flex gap-1",
                                 isOutbound ? "mr-1" : "ml-1"
                               )}>
-                                <button className="p-1 hover:bg-slate-800 rounded-full text-slate-500" onClick={() => setReplyingTo(msg)}><CornerUpLeft className="w-3.5 h-3.5" /></button>
-                                <button className="p-1 hover:bg-slate-800 rounded-full text-slate-500" onClick={() => handleSendReaction(msg, '❤️')}><Heart className="w-3.5 h-3.5" /></button>
+                                <button className={cn(
+                                  "p-1 rounded-full",
+                                  isOutbound ? "hover:bg-[#2563EB]/10 text-[#94A3B8] hover:text-[#2563EB]" : "hover:bg-[#F1F5F9] text-[#94A3B8]"
+                                )} onClick={() => setReplyingTo(msg)}><CornerUpLeft className="w-3.5 h-3.5" /></button>
+                                <button className={cn(
+                                  "p-1 rounded-full",
+                                  isOutbound ? "hover:bg-red-50 text-[#94A3B8] hover:text-red-500" : "hover:bg-red-100 text-red-500"
+                                )} onClick={() => handleSendReaction(msg, '❤️')}><Heart className="w-3.5 h-3.5" /></button>
                               </div>
                             </div>
                           ))}
@@ -3290,98 +3883,227 @@ const AtendimentoPage = () => {
               </div>
 
 
-              {/* INPUT AREA - ULTRA MODERN INTEGRATED */}
-              <div className="relative bg-[#020617] p-6 z-20 shrink-0">
-                <div className="max-w-6xl mx-auto bg-slate-900/40 border border-white/5 rounded-[28px] p-2 pr-4 shadow-2xl backdrop-blur-xl">
-                  <div className="flex items-end gap-2">
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button variant="ghost" size="icon" className="h-10 w-10 shrink-0 text-slate-400 hover:text-white rounded-full">
-                          <Plus className="h-5 w-5" />
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent side="top" align="start" className="bg-slate-900 border-white/10 text-slate-200 w-48 mb-2">
-                        <DropdownMenuItem onClick={handleAttachmentClick} className="gap-3 py-2.5 cursor-pointer"><Image className="h-4 w-4" /> Fotos & Vídeos</DropdownMenuItem>
-                        <DropdownMenuItem onClick={handleAttachmentClick} className="gap-3 py-2.5 cursor-pointer"><FileText className="h-4 w-4" /> Documentos</DropdownMenuItem>
-                        <DropdownMenuItem onClick={handleAttachmentClick} className="gap-3 py-2.5 cursor-pointer"><Mic className="h-4 w-4" /> Áudio</DropdownMenuItem>
-                        <DropdownMenuItem onClick={() => { setAppointmentInitialData({ conversation_id: selectedConversation?.id, client_name: getDisplayName(selectedConversation), phone: selectedConversation?.phone }); setIsAppointmentModalOpen(true); }} className="gap-3 py-2.5 cursor-pointer text-blue-400"><Calendar className="h-4 w-4" /> Enviar Horário / Agendar</DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-
-                    <Button variant="ghost" size="icon" className="h-10 w-10 shrink-0 text-slate-400 hover:text-white rounded-full" onClick={() => setShowEmojiPicker(!showEmojiPicker)}>
-                      <Smile className="h-5 w-5" />
-                    </Button>
-
-                    <div className="flex-1 min-h-[40px] flex flex-col justify-center">
-                      <textarea
-                        rows={1}
-                        placeholder="Digite uma mensagem ou comando /..."
-                        className="w-full bg-transparent border-none text-slate-100 placeholder:text-slate-600 focus:ring-0 text-sm py-2.5 resize-none max-h-48 custom-scrollbar scroll-py-2"
-                        value={messageInput}
-                        onChange={(e) => {
-                          setMessageInput(e.target.value);
-                          e.target.style.height = 'auto';
-                          e.target.style.height = e.target.scrollHeight + 'px';
-                        }}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter' && !e.shiftKey) {
-                            e.preventDefault();
-                            handleSendMessage();
-                          }
-                        }}
-                      />
+              {/* INPUT AREA - LIGHT MODE CLEAN */}
+              <div className="relative bg-[#F8FAFC] p-2 md:p-6 z-20 shrink-0 border-t border-[#E2E8F0]">
+                {isPendingConversation && (
+                  <div className="max-w-6xl mx-auto rounded-xl border border-[#BBF7D0] bg-[#F0FDF4] p-4 md:p-5">
+                    <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+                      <div>
+                        <p className="text-sm font-semibold text-[#166534]">Atendimento ainda não iniciado</p>
+                        <p className="text-xs text-[#15803D]">Clique em "Atender" para começar a responder.</p>
+                      </div>
+                      <Button onClick={() => handleStartAtendimento()} className="bg-[#16A34A] hover:bg-[#15803D] text-white">
+                        <Play className="h-4 w-4 mr-2 fill-current" /> Atender Conversa
+                      </Button>
                     </div>
+                  </div>
+                )}
 
-                    <div className="flex items-center self-end mb-1 gap-2">
-                      {isRecording ? (
-                        <div className="flex items-center gap-3 bg-slate-800/80 px-4 py-1.5 rounded-full border border-blue-500/30 animate-in zoom-in-95">
-                          <div className="flex items-center gap-2">
-                            <div className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
-                            <span className="text-[11px] font-mono text-slate-100">{formatDuration(recordingDuration)}</span>
+                {!isPendingConversation && !canRespondToConversation && (
+                  <div className="max-w-6xl mx-auto rounded-xl border border-[#E2E8F0] bg-white p-4 md:p-5">
+                    <p className="text-sm font-semibold text-[#334155]">Conversa em modo leitura</p>
+                    <p className="text-xs text-[#64748B]">O envio de mensagens está disponível apenas quando a conversa está em aberto para você.</p>
+                  </div>
+                )}
+
+                {canRespondToConversation && (
+                  <>
+                    <div className="max-w-6xl mx-auto bg-white border border-[#E2E8F0] rounded-xl md:rounded-2xl p-1 md:p-2 pr-2 md:pr-4 shadow-sm">
+                      <div className="flex items-end gap-0.5 md:gap-2">
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button variant="ghost" size="icon" className="h-8 md:h-10 w-8 md:w-10 shrink-0 text-[#94A3B8] hover:text-[#2563EB] rounded-full">
+                              <Plus className="h-4 md:h-5 w-4 md:w-5" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent side="top" align="start" className="bg-white border-[#E2E8F0] text-[#0F172A] w-40 md:w-48 mb-2 shadow-lg">
+                            <DropdownMenuItem onClick={handleAttachmentClick} className="gap-2 md:gap-3 py-2 md:py-2.5 cursor-pointer focus:bg-[#F1F5F9] text-xs md:text-sm"><Image className="h-4 w-4" /> Fotos & Vídeos</DropdownMenuItem>
+                            <DropdownMenuItem onClick={handleAttachmentClick} className="gap-2 md:gap-3 py-2 md:py-2.5 cursor-pointer focus:bg-[#F1F5F9] text-xs md:text-sm"><FileText className="h-4 w-4" /> Documentos</DropdownMenuItem>
+                            <DropdownMenuItem onClick={handleAttachmentClick} className="gap-2 md:gap-3 py-2 md:py-2.5 cursor-pointer focus:bg-[#F1F5F9] text-xs md:text-sm"><Mic className="h-4 w-4" /> Áudio</DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => { setAppointmentInitialData({ conversation_id: selectedConversation?.id, client_name: getDisplayName(selectedConversation), phone: selectedConversation?.phone }); setIsAppointmentModalOpen(true); }} className="gap-2 md:gap-3 py-2 md:py-2.5 cursor-pointer focus:bg-[#F1F5F9] text-[#2563EB] text-xs md:text-sm"><Calendar className="h-4 w-4" /> Enviar Horário / Agendar</DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+
+                        <Button variant="ghost" size="icon" className="h-8 md:h-10 w-8 md:w-10 shrink-0 text-[#94A3B8] hover:text-[#2563EB] rounded-full" onClick={() => setShowEmojiPicker(!showEmojiPicker)}>
+                          <Smile className="h-4 md:h-5 w-4 md:w-5" />
+                        </Button>
+
+                        {pendingQuickAttachment && (
+                          <div className="self-center max-w-[220px] md:max-w-[280px] px-2 py-1 rounded-lg border border-[#DBEAFE] bg-[#EFF6FF] text-[#1E3A8A] text-[10px] md:text-xs flex items-center gap-2">
+                            <span className="truncate font-medium">
+                              /{pendingQuickAttachment.key} ({pendingQuickAttachment.type})
+                            </span>
+                            <button
+                              type="button"
+                              className="text-[#1D4ED8] hover:text-[#1E3A8A]"
+                              onClick={() => setPendingQuickAttachment(null)}
+                              title="Remover anexo rápido"
+                            >
+                              <X className="h-3.5 w-3.5" />
+                            </button>
                           </div>
-                          <div className="flex gap-1 border-l border-white/10 pl-2">
+                        )}
+
+                        <div className="flex-1 min-h-[36px] md:min-h-[40px] flex flex-col justify-center relative">
+                          <textarea
+                            ref={messageInputRef}
+                            rows={1}
+                            placeholder="Digite uma mensagem..."
+                            className="w-full bg-transparent border-none text-[#0F172A] placeholder:text-[#94A3B8] focus:ring-0 text-xs md:text-sm py-1.5 md:py-2.5 resize-none max-h-48 custom-scrollbar scroll-py-2"
+                            value={messageInput}
+                            onChange={(e) => {
+                              const value = e.target.value;
+                              setMessageInput(value);
+                              e.target.style.height = 'auto';
+                              e.target.style.height = e.target.scrollHeight + 'px';
+
+                              if (!value.startsWith("/")) {
+                                setIsQuickMenuOpen(false);
+                                setQuickSearch("");
+                                return;
+                              }
+
+                              const slashQuery = value.slice(1);
+                              if (slashQuery.includes(" ")) {
+                                setIsQuickMenuOpen(false);
+                                return;
+                              }
+
+                              setQuickSearch(slashQuery.toLowerCase());
+                              setQuickSelectedIndex(0);
+                              setIsQuickMenuOpen(true);
+                            }}
+                            onKeyDown={(e) => {
+                              if (isQuickMenuOpen && filteredQuickMessages.length > 0) {
+                                if (e.key === 'ArrowDown') {
+                                  e.preventDefault();
+                                  setQuickSelectedIndex((prev) => Math.min(prev + 1, filteredQuickMessages.length - 1));
+                                  return;
+                                }
+                                if (e.key === 'ArrowUp') {
+                                  e.preventDefault();
+                                  setQuickSelectedIndex((prev) => Math.max(prev - 1, 0));
+                                  return;
+                                }
+                                if (e.key === 'Escape') {
+                                  e.preventDefault();
+                                  setIsQuickMenuOpen(false);
+                                  return;
+                                }
+                                if (e.key === 'Enter' && !e.shiftKey) {
+                                  e.preventDefault();
+                                  const selectedQuick = filteredQuickMessages[quickSelectedIndex] || filteredQuickMessages[0];
+                                  if (selectedQuick) {
+                                    applyQuickMessage(selectedQuick);
+                                    return;
+                                  }
+                                }
+                              }
+
+                              if (isQuickMenuOpen && e.key === 'Escape') {
+                                e.preventDefault();
+                                setIsQuickMenuOpen(false);
+                                return;
+                              }
+
+                              if (isQuickMenuOpen && e.key === 'Enter' && !e.shiftKey) {
+                                e.preventDefault();
+                                return;
+                              }
+
+                              if (e.key === 'Enter' && !e.shiftKey) {
+                                e.preventDefault();
+                                handleSendMessage();
+                              }
+                            }}
+                          />
+
+                          {isQuickMenuOpen && (
+                            <div ref={quickMenuRef} className="absolute left-0 right-0 bottom-full mb-2 rounded-xl border border-[#E2E8F0] bg-white shadow-xl z-40 max-h-56 overflow-y-auto">
+                              {filteredQuickMessages.length === 0 ? (
+                                <div className="px-3 py-2 text-xs text-[#94A3B8]">Nenhuma chave encontrada</div>
+                              ) : (
+                                filteredQuickMessages.map((item, idx) => (
+                                  <button
+                                    key={item.id}
+                                    type="button"
+                                    className={cn(
+                                      "w-full text-left px-3 py-2 border-b border-[#F1F5F9] last:border-b-0 text-xs md:text-sm",
+                                      idx === quickSelectedIndex ? "bg-[#EFF6FF] text-[#1D4ED8]" : "hover:bg-[#F8FAFC] text-[#0F172A]"
+                                    )}
+                                    onMouseEnter={() => setQuickSelectedIndex(idx)}
+                                    onClick={() => applyQuickMessage(item)}
+                                  >
+                                    <div className="font-mono font-semibold">/{item.key}</div>
+                                    <div className="text-[11px] text-[#64748B] truncate">
+                                      {item.type === 'text' ? item.content : (item.fileName || item.type)}
+                                    </div>
+                                  </button>
+                                ))
+                              )}
+                            </div>
+                          )}
+                        </div>
+
+                        <div className="flex items-center self-end mb-0 md:mb-1 gap-1 md:gap-2">
+                          {isRecording ? (
+                            <div className="flex items-center gap-2 md:gap-3 bg-[#FEE2E2] px-2 md:px-4 py-1 md:py-1.5 rounded-full border border-[#DC2626]/30 animate-in zoom-in-95 text-[9px] md:text-[11px]">
+                              <div className="flex items-center gap-2">
+                                <div className="w-1.5 h-1.5 md:w-2 md:h-2 rounded-full bg-[#DC2626] animate-pulse" />
+                                <span className="font-mono text-[#DC2626]">{formatDuration(recordingDuration)}</span>
+                              </div>
+                              <div className="flex gap-1 border-l border-[#DC2626]/20 pl-1 md:pl-2">
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-6 md:h-8 w-6 md:w-8 text-[#DC2626] hover:text-[#991b1b]"
+                                  onClick={cancelRecording}
+                                >
+                                  <Trash2 className="h-3 md:h-4 w-3 md:w-4" />
+                                </Button>
+                                <Button
+                                  size="icon"
+                                  className="h-6 md:h-8 w-6 md:w-8 bg-[#2563EB] hover:bg-[#1D4ED8] text-white rounded-full"
+                                  onClick={stopAndSendRecording}
+                                >
+                                  <Send className="h-3 md:h-4 w-3 md:w-4" />
+                                </Button>
+                              </div>
+                            </div>
+                          ) : (messageInput.trim() || pendingQuickAttachment) ? (
+                            <Button
+                              onClick={handleSendMessage}
+                              className="h-8 md:h-9 w-8 md:w-9 bg-[#2563EB] hover:bg-[#1D4ED8] text-white rounded-full p-0 shadow-sm shadow-[#2563EB]/20 shrink-0"
+                            >
+                              <Send className="h-3.5 md:h-4 w-3.5 md:w-4" />
+                            </Button>
+                          ) : (
                             <Button
                               variant="ghost"
                               size="icon"
-                              className="h-8 w-8 text-slate-400 hover:text-red-400"
-                              onClick={cancelRecording}
+                              className="h-8 md:h-10 w-8 md:w-10 text-[#94A3B8] hover:text-[#2563EB] rounded-full shrink-0"
+                              onClick={startRecording}
                             >
-                              <Trash2 className="h-4 w-4" />
+                              <Mic className="h-4 md:h-5 w-4 md:w-5" />
                             </Button>
-                            <Button
-                              size="icon"
-                              className="h-8 w-8 bg-blue-600 hover:bg-blue-500 text-white rounded-full"
-                              onClick={stopAndSendRecording}
-                            >
-                              <Send className="h-4 w-4" />
-                            </Button>
-                          </div>
+                          )}
                         </div>
-                      ) : messageInput.trim() ? (
-                        <Button
-                          onClick={handleSendMessage}
-                          className="h-9 w-9 bg-blue-600 hover:bg-blue-500 text-white rounded-full p-0 shadow-lg shadow-blue-500/20"
-                        >
-                          <Send className="h-4 w-4" />
-                        </Button>
-                      ) : (
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-10 w-10 text-slate-400 hover:text-blue-500 rounded-full"
-                          onClick={startRecording}
-                        >
-                          <Mic className="h-5 w-5" />
-                        </Button>
-                      )}
+                      </div>
                     </div>
-                  </div>
-                </div>
 
-                {/* Typing Indicator */}
-                <div className="h-4 mt-2 px-8">
-                  {/* Logica de typing seria injetada aqui */}
-                </div>
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      className="hidden"
+                      onChange={handleFileChange}
+                    />
+
+                    {/* Typing Indicator */}
+                    <div className="h-4 mt-2 px-8">
+                      {/* Logica de typing seria injetada aqui */}
+                    </div>
+                  </>
+                )}
               </div>
             </div>
           </>
@@ -3396,20 +4118,20 @@ const AtendimentoPage = () => {
               <DialogTitle>Chamada Recebida</DialogTitle>
             </DialogHeader>
             <div className="py-6 flex flex-col items-center gap-4">
-              <div className="h-24 w-24 rounded-full bg-slate-100 flex items-center justify-center animate-pulse">
-                <Phone className="h-10 w-10 text-slate-500" />
+              <div className="h-24 w-24 rounded-full bg-[#EFF6FF] flex items-center justify-center animate-pulse">
+                <Phone className="h-10 w-10 text-[#2563EB]" />
               </div>
               <div>
-                <h3 className="text-xl font-bold">{incomingCall.contact_name}</h3>
-                <p className="text-sm text-muted-foreground">{incomingCall.remote_jid.split('@')[0]}</p>
-                <p className="text-sm font-medium text-green-600 animate-pulse mt-2">Chamando...</p>
+                <h3 className="text-xl font-bold text-[#0F172A]">{incomingCall.contact_name}</h3>
+                <p className="text-sm text-[#64748B]">{incomingCall.remote_jid.split('@')[0]}</p>
+                <p className="text-sm font-medium text-[#16A34A] animate-pulse mt-2">Chamando...</p>
               </div>
             </div>
             <div className="flex gap-4 justify-center">
-              <Button variant="destructive" size="lg" className="rounded-full h-12 w-12 p-0" onClick={() => handleRejectCall(incomingCall)}>
+              <Button variant="destructive" size="lg" className="rounded-full h-12 w-12 p-0 bg-[#DC2626] hover:bg-[#991b1b]" onClick={() => handleRejectCall(incomingCall)}>
                 <Phone className="h-5 w-5 rotate-[135deg]" />
               </Button>
-              <Button variant="default" size="lg" className="rounded-full h-12 w-12 p-0 bg-green-500 hover:bg-green-600" onClick={() => handleAcceptCall(incomingCall)}>
+              <Button variant="default" size="lg" className="rounded-full h-12 w-12 p-0 bg-[#16A34A] hover:bg-[#15803d]" onClick={() => handleAcceptCall(incomingCall)}>
                 <Phone className="h-5 w-5" />
               </Button>
             </div>
@@ -3418,15 +4140,15 @@ const AtendimentoPage = () => {
       )}
 
       {activeCall && (
-        <div className="fixed top-4 right-4 z-50 bg-white dark:bg-slate-800 shadow-xl rounded-lg p-4 border border-green-500/20 flex items-center gap-4 animate-in slide-in-from-right w-80">
-          <div className="h-10 w-10 rounded-full bg-green-100 flex items-center justify-center">
-            <Phone className="h-5 w-5 text-green-600" />
+        <div className="fixed top-4 right-4 z-50 bg-white shadow-lg rounded-lg p-4 border border-[#16A34A]/20 flex items-center gap-4 animate-in slide-in-from-right w-80">
+          <div className="h-10 w-10 rounded-full bg-[#DCFCE7] flex items-center justify-center">
+            <Phone className="h-5 w-5 text-[#16A34A]" />
           </div>
           <div className="flex-1 min-w-0">
-            <h4 className="font-semibold truncate">{activeCall.contact_name}</h4>
-            <p className="text-xs text-muted-foreground">Em chamada...</p>
+            <h4 className="font-semibold truncate text-[#0F172A]">{activeCall.contact_name}</h4>
+            <p className="text-xs text-[#64748B]">Em chamada...</p>
           </div>
-          <Button variant="destructive" size="icon" className="h-8 w-8 rounded-full" onClick={() => { setActiveCall(null); toast.info("Chamada encerrada"); }}>
+          <Button variant="destructive" size="icon" className="h-8 w-8 rounded-full bg-[#DC2626] hover:bg-[#991b1b]" onClick={() => { setActiveCall(null); toast.info("Chamada encerrada"); }}>
             <Phone className="h-4 w-4 rotate-[135deg]" />
           </Button>
         </div>
@@ -3487,6 +4209,107 @@ const AtendimentoPage = () => {
         </div>
       )}
 
+      <Dialog
+        open={isClosingModalOpen}
+        onOpenChange={(open) => {
+          if (isClosingSubmitting) return;
+          setIsClosingModalOpen(open);
+          if (!open) {
+            setPendingCloseConversation(null);
+            setClosingReasonId("");
+            setClosingReasonSearch("");
+            setClosingObservation("");
+          }
+        }}
+      >
+        <DialogContent className="sm:max-w-[500px] border border-[#E2E8F0] bg-white text-[#0F172A] shadow-xl p-0 overflow-hidden">
+          <DialogHeader className="px-6 pt-6 pb-2">
+            <DialogTitle className="text-xl font-bold flex items-center gap-2">
+              <CheckSquare className="w-5 h-5 text-[#2563EB]" /> Finalizar Atendimento
+            </DialogTitle>
+            <DialogDescription className="text-[#64748B]">
+              Selecione o motivo do encerramento para concluir esta conversa.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="px-6 py-2 space-y-4">
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#94A3B8]" />
+              <Input
+                value={closingReasonSearch}
+                onChange={(e) => setClosingReasonSearch(e.target.value)}
+                placeholder="Filtrar motivos..."
+                className="pl-9 bg-[#F8FAFC] border-[#E2E8F0] h-10 focus-visible:ring-[#2563EB]/20"
+              />
+            </div>
+
+            <div className="grid grid-cols-1 gap-2 max-h-[350px] overflow-y-auto pr-1 custom-scrollbar pb-2">
+              {filteredClosingReasons.length === 0 ? (
+                <div className="text-center py-8 text-[#94A3B8] text-sm italic">
+                  Nenhum motivo encontrado.
+                </div>
+              ) : (
+                filteredClosingReasons.map((reason) => (
+                  <button
+                    key={reason.id}
+                    type="button"
+                    onClick={() => setClosingReasonId(String(reason.id))}
+                    className={cn(
+                      "w-full flex items-start gap-3 p-4 rounded-xl border-2 transition-all text-left group",
+                      closingReasonId === String(reason.id)
+                        ? "border-[#2563EB] bg-[#EFF6FF] shadow-sm"
+                        : "border-[#F1F5F9] bg-[#F8FAFC] hover:border-[#E2E8F0] hover:bg-white"
+                    )}
+                  >
+                    <div className={cn(
+                      "mt-1 w-4 h-4 rounded-full border-2 flex items-center justify-center shrink-0 transition-colors",
+                      closingReasonId === String(reason.id) ? "border-[#2563EB] bg-[#2563EB]" : "border-[#CBD5E1] group-hover:border-[#94A3B8]"
+                    )}>
+                      {closingReasonId === String(reason.id) && <div className="w-1.5 h-1.5 rounded-full bg-white" />}
+                    </div>
+                    <div className="flex flex-col gap-0.5">
+                      <span className={cn(
+                        "font-bold text-sm leading-tight",
+                        closingReasonId === String(reason.id) ? "text-[#1E40AF]" : "text-[#334155]"
+                      )}>
+                        {reason.name}
+                      </span>
+                      {reason.category && (
+                        <span className="text-[10px] uppercase font-bold tracking-wider text-[#94A3B8]">
+                          {reason.category}
+                        </span>
+                      )}
+                    </div>
+                  </button>
+                ))
+              )}
+            </div>
+          </div>
+
+          <div className="px-6 py-4 bg-[#F8FAFC] border-t border-[#E2E8F0] flex items-center justify-between">
+            <Button
+              type="button"
+              variant="ghost"
+              disabled={isClosingSubmitting}
+              onClick={() => setIsClosingModalOpen(false)}
+              className="text-[#64748B] hover:text-[#0F172A]"
+            >
+              Cancelar
+            </Button>
+            <Button
+              type="button"
+              disabled={isClosingSubmitting || !closingReasonId}
+              onClick={handleConfirmCloseAtendimento}
+              className="bg-[#2563EB] hover:bg-[#1D4ED8] text-white px-8 font-bold shadow-lg shadow-[#2563EB]/20 h-11"
+            >
+              {isClosingSubmitting ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <CheckSquare className="w-4 h-4 mr-2" />}
+              Encerrar Conversa
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+
 
       {/* Relationship Dialog */}
       <Dialog open={isRelationshipModalOpen} onOpenChange={setIsRelationshipModalOpen}>
@@ -3513,16 +4336,16 @@ const AtendimentoPage = () => {
       )}
       {/* Delete Message Dialog */}
       <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
-        <DialogContent className="sm:max-w-[400px] border-none bg-[#233138] text-[#E9EDEF] shadow-2xl">
+        <DialogContent className="sm:max-w-[400px] border border-[#E2E8F0] bg-white text-[#0F172A] shadow-lg">
           <DialogHeader>
             <DialogTitle>Apagar mensagem?</DialogTitle>
           </DialogHeader>
           <div className="py-4 space-y-4">
-            <p className="text-sm text-[#8696A0]">Você deseja apagar esta mensagem?</p>
+            <p className="text-sm text-[#64748B]">Você deseja apagar esta mensagem?</p>
             <div className="flex flex-col gap-2">
               <Button
                 variant="destructive"
-                className="w-full bg-[#EA0038] hover:bg-[#EA0038]/90 text-white rounded-full font-bold h-11"
+                className="w-full bg-[#DC2626] hover:bg-[#991b1b] text-white rounded-lg font-bold h-11"
                 onClick={handleDeleteForMe}
               >
                 Apagar para mim
@@ -3530,7 +4353,7 @@ const AtendimentoPage = () => {
               {messageToDelete?.direction === 'outbound' && (
                 <Button
                   variant="destructive"
-                  className="w-full bg-[#EA0038] hover:bg-[#EA0038]/90 text-white rounded-full font-bold h-11"
+                  className="w-full bg-[#DC2626] hover:bg-[#991b1b] text-white rounded-lg font-bold h-11"
                   onClick={handleDeleteForEveryone}
                 >
                   Apagar para todos
@@ -3538,7 +4361,7 @@ const AtendimentoPage = () => {
               )}
               <Button
                 variant="ghost"
-                className="w-full text-[#00a884] hover:bg-white/5 rounded-full font-bold h-11"
+                className="w-full text-[#16A34A] hover:bg-[#DCFCE7] rounded-lg font-bold h-11"
                 onClick={() => setDeleteDialogOpen(false)}
               >
                 Cancelar
@@ -3598,13 +4421,13 @@ const AtendimentoPage = () => {
 
       {/* Contact Agenda Sheet */}
       <Sheet open={isAgendaListOpen} onOpenChange={setIsAgendaListOpen}>
-        <SheetContent className="w-full sm:w-[420px] p-0 bg-[#0F172A] border-slate-800 text-slate-100 flex flex-col">
-          <SheetHeader className="h-[76px] px-6 flex flex-row items-center justify-between border-b border-white/5 space-y-0 shrink-0">
-            <SheetTitle className="text-slate-100">Agenda do Contato</SheetTitle>
+        <SheetContent className="w-full sm:w-[420px] p-0 bg-white border-[#E2E8F0] text-[#0F172A] flex flex-col">
+          <SheetHeader className="h-[76px] px-6 flex flex-row items-center justify-between border-b border-[#E2E8F0] space-y-0 shrink-0">
+            <SheetTitle className="text-[#0F172A]">Agenda do Contato</SheetTitle>
             <Button
               variant="outline"
               size="sm"
-              className="h-8 gap-2 border-emerald-500/20 bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20 hover:text-emerald-300"
+              className="h-8 gap-2 border-[#16A34A]/20 bg-[#DCFCE7] text-[#16A34A] hover:bg-[#C6F6D5]"
               onClick={() => {
                 if (selectedConversation) {
                   setAppointmentInitialData({
@@ -3622,54 +4445,54 @@ const AtendimentoPage = () => {
 
           <div className="flex-1 overflow-y-auto p-6 space-y-4 custom-scrollbar">
             {isLoadingAgenda ? (
-              <div className="flex flex-col items-center justify-center py-12 space-y-3 opacity-50">
-                <Loader2 className="h-8 w-8 animate-spin text-blue-500" />
-                <span className="text-sm text-slate-400 font-medium">Carregando agendamentos...</span>
+              <div className="flex flex-col items-center justify-center py-12 space-y-3 opacity-60">
+                <Loader2 className="h-8 w-8 animate-spin text-[#2563EB]" />
+                <span className="text-sm text-[#94A3B8] font-medium">Carregando agendamentos...</span>
               </div>
             ) : contactAgenda.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-12 text-center space-y-4">
-                <div className="w-16 h-16 bg-slate-900 rounded-full flex items-center justify-center ring-1 ring-white/5">
-                  <Calendar className="h-8 w-8 text-slate-700" />
+                <div className="w-16 h-16 bg-[#F1F5F9] rounded-full flex items-center justify-center ring-1 ring-[#E2E8F0]">
+                  <Calendar className="h-8 w-8 text-[#94A3B8]" />
                 </div>
                 <div className="space-y-1">
-                  <p className="text-slate-300 font-medium">Nenhum agendamento</p>
-                  <p className="text-slate-500 text-xs">Este contato não possui follow-ups agendados.</p>
+                  <p className="text-[#0F172A] font-medium">Nenhum agendamento</p>
+                  <p className="text-[#64748B] text-xs">Este contato não possui follow-ups agendados.</p>
                 </div>
               </div>
             ) : (
               contactAgenda.map((item) => (
-                <div key={item.id} className="bg-slate-900/50 border border-white/5 rounded-xl p-4 space-y-3 hover:border-white/10 transition-all group">
+                <div key={item.id} className="bg-[#F1F5F9] border border-[#E2E8F0] rounded-xl p-4 space-y-3 hover:border-[#2563EB]/30 transition-all group">
                   <div className="flex justify-between items-start">
                     <div className="space-y-1">
-                      <h4 className="font-bold text-slate-100 text-sm group-hover:text-blue-400 transition-colors uppercase tracking-tight">{item.title}</h4>
-                      <div className="flex items-center gap-1.5 text-[11px] text-slate-400 font-medium bg-slate-950/50 px-2 py-1 rounded w-fit">
-                        <Clock className="w-3 h-3 text-blue-500" />
+                      <h4 className="font-bold text-[#0F172A] text-sm group-hover:text-[#2563EB] transition-colors uppercase tracking-tight">{item.title}</h4>
+                      <div className="flex items-center gap-1.5 text-[11px] text-[#64748B] font-medium bg-white px-2 py-1 rounded w-fit border border-[#E2E8F0]">
+                        <Clock className="w-3 h-3 text-[#2563EB]" />
                         {item.scheduled_at ? format(new Date(item.scheduled_at), "dd 'de' MMMM 'às' HH:mm", { locale: ptBR }) : 'Sem data'}
                       </div>
                     </div>
                     <Badge className={cn(
                       "text-[9px] uppercase font-black tracking-widest px-1.5 h-5",
-                      item.status === 'pending' || item.status === 'scheduled' ? "bg-amber-500/10 text-amber-400 border-amber-500/20" :
-                        item.status === 'completed' ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20" :
-                          "bg-red-500/10 text-red-400 border-red-500/20"
+                      item.status === 'pending' || item.status === 'scheduled' ? "bg-amber-100 text-amber-700 border-amber-200" :
+                        item.status === 'completed' ? "bg-[#DCFCE7] text-[#16A34A] border-[#86EFAC]" :
+                          "bg-[#FEE2E2] text-[#DC2626] border-[#FCA5A5]"
                     )}>
                       {item.status === 'pending' || item.status === 'scheduled' ? 'Pendente' : item.status === 'completed' ? 'Concluído' : 'Atrasado'}
                     </Badge>
                   </div>
                   {item.description && (
-                    <p className="text-[11px] text-slate-500 leading-relaxed italic border-l-2 border-slate-800 pl-3">
+                    <p className="text-[11px] text-[#64748B] leading-relaxed italic border-l-2 border-[#E2E8F0] pl-3">
                       {item.description}
                     </p>
                   )}
-                  <div className="flex items-center justify-between pt-2 border-t border-white/5">
-                    <span className="text-[9px] font-bold text-slate-500 bg-slate-950 px-2 py-0.5 rounded border border-white/5 uppercase">
+                  <div className="flex items-center justify-between pt-2 border-t border-[#E2E8F0]">
+                    <span className="text-[9px] font-bold text-[#64748B] bg-white px-2 py-0.5 rounded border border-[#E2E8F0] uppercase">
                       {item.type || 'Ação'}
                     </span>
                     <div className="flex gap-1">
                       <Button
                         variant="ghost"
                         size="sm"
-                        className="h-7 text-[10px] text-blue-400 hover:text-blue-300 hover:bg-blue-500/10"
+                        className="h-7 text-[10px] text-[#2563EB] hover:text-[#1D4ED8] hover:bg-[#EFF6FF]"
                         onClick={() => {
                           setFollowUpInitialData({ ...item, id: item.id });
                           setIsFollowUpModalOpen(true);
@@ -3685,8 +4508,42 @@ const AtendimentoPage = () => {
           </div>
         </SheetContent>
       </Sheet>
+      {/* Modal Transferir Fila */}
+      <Dialog open={isTransferModalOpen} onOpenChange={setIsTransferModalOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Transferir para Fila</DialogTitle>
+          </DialogHeader>
+          <div className="grid gap-4 py-4">
+            <p className="text-sm text-muted-foreground">Escolha o departamento para onde esta conversa será movida.</p>
+            <div className="grid grid-cols-1 gap-2">
+              {queues.length === 0 ? (
+                <p className="text-sm text-amber-600">Nenhuma fila disponível para transferência.</p>
+              ) : (
+                queues.map(q => (
+                  <Button
+                    key={q.id}
+                    variant="outline"
+                    className="justify-start gap-3 h-12 hover:bg-[#F1F5F9] hover:text-[#2563EB] hover:border-[#2563EB]/30 transition-all font-semibold"
+                    onClick={() => handleTransferQueue(q.id)}
+                    disabled={transferringQueue || selectedConversation?.queue_id === q.id}
+                  >
+                    <div className="w-4 h-4 rounded-full" style={{ backgroundColor: (q as any).color || '#3b82f6' }} />
+                    {q.name}
+                    {selectedConversation?.queue_id === q.id && <span className="ml-auto text-[10px] uppercase opacity-50">(Fila atual)</span>}
+                  </Button>
+                ))
+              )}
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div >
   );
 };
 
 export default AtendimentoPage;
+
+const SAO_PAULO_TZ = "America/Sao_Paulo";
+
+

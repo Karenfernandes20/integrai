@@ -16,9 +16,10 @@ interface CreateProductDrawerProps {
     open: boolean;
     onOpenChange: (open: boolean) => void;
     onSuccess: () => void;
+    instanceId: number | null;
 }
 
-export function CreateProductDrawer({ open, onOpenChange, onSuccess }: CreateProductDrawerProps) {
+export function CreateProductDrawer({ open, onOpenChange, onSuccess, instanceId }: CreateProductDrawerProps) {
     const { token, user } = useAuth();
     const [loading, setLoading] = useState(false);
     const isHealthMode = user?.company?.operation_type === 'pacientes' || user?.company?.operational_profile === 'CLINICA' || user?.company?.category === 'clinica';
@@ -55,15 +56,18 @@ export function CreateProductDrawer({ open, onOpenChange, onSuccess }: CreatePro
 
     // Fetch Suppliers
     useEffect(() => {
-        if (open && token) {
-            fetch('/api/shop/suppliers', {
-                headers: { Authorization: `Bearer ${token}` }
+        if (open && token && instanceId) {
+            fetch(`/api/shop/suppliers?instance_id=${instanceId}`, {
+                headers: {
+                    Authorization: `Bearer ${token}`,
+                    'x-instance-id': String(instanceId)
+                }
             })
                 .then(res => res.json())
                 .then(data => setSuppliers(Array.isArray(data) ? data : []))
                 .catch(console.error);
         }
-    }, [open, token]);
+    }, [open, token, instanceId]);
 
     // Calculate Margin
     const margin = React.useMemo(() => {
@@ -86,6 +90,11 @@ export function CreateProductDrawer({ open, onOpenChange, onSuccess }: CreatePro
 
         setLoading(true);
         try {
+            if (!instanceId) {
+                toast({ title: "Instância não encontrada", description: "Selecione/conecte uma instância para salvar produtos.", variant: "destructive" });
+                setLoading(false);
+                return;
+            }
             const payload = {
                 name,
                 category,
@@ -102,14 +111,16 @@ export function CreateProductDrawer({ open, onOpenChange, onSuccess }: CreatePro
                 supplier_id: supplierId ? parseInt(supplierId) : null,
                 channels,
                 batch_number: batchNumber,
-                expiration_date: expirationDate || null
+                expiration_date: expirationDate || null,
+                instance_id: instanceId
             };
 
             const res = await fetch('/api/shop/inventory', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
-                    Authorization: `Bearer ${token}`
+                    Authorization: `Bearer ${token}`,
+                    'x-instance-id': String(instanceId)
                 },
                 body: JSON.stringify(payload)
             });
