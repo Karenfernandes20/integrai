@@ -1452,9 +1452,9 @@ export const getMessages = async (req: Request, res: Response) => {
                         COALESCE(
                             m.sender_name, 
                             CASE 
-                                WHEN m.channel = 'instagram' AND co.instagram_username IS NOT NULL 
-                                THEN co.instagram_username
-                                ELSE co.name 
+                                WHEN m.channel = 'instagram' AND wc.instagram_username IS NOT NULL 
+                                THEN wc.instagram_username
+                                ELSE wc.name 
                             END,
                             split_part(m.sender_jid, '@', 1)
                         ) as sender_name,
@@ -1477,8 +1477,8 @@ export const getMessages = async (req: Request, res: Response) => {
                         ci.color as instance_color
                 FROM whatsapp_messages m 
                 LEFT JOIN app_users u ON m.user_id = u.id 
-                LEFT JOIN whatsapp_contacts co ON (
-                    co.company_id = $2 AND (co.jid = COALESCE(m.sender_jid, (SELECT external_id FROM whatsapp_conversations WHERE id = m.conversation_id LIMIT 1)) OR co.instagram_id = COALESCE(m.sender_jid, (SELECT external_id FROM whatsapp_conversations WHERE id = m.conversation_id LIMIT 1)))
+                LEFT JOIN whatsapp_contacts wc ON (
+                    wc.company_id = $2 AND (wc.jid = COALESCE(m.sender_jid, (SELECT external_id FROM whatsapp_conversations WHERE id = m.conversation_id LIMIT 1)) OR wc.instagram_id = COALESCE(m.sender_jid, (SELECT external_id FROM whatsapp_conversations WHERE id = m.conversation_id LIMIT 1)))
                 )
                 LEFT JOIN company_instances ci ON m.instance_id = ci.id
                 WHERE m.conversation_id = $1 
@@ -1495,55 +1495,8 @@ export const getMessages = async (req: Request, res: Response) => {
             res.json(result.rows);
 
         } catch (dbErr: any) {
-            console.error('[getMessages] DB Operation Failed (likely connection). Returning MOCK MESSAGES for testing.', dbErr.message);
-
-            // MOCK MESSAGES FOR TESTING LABELS
-            const mockMessages = [
-                {
-                    id: 101,
-                    content: 'Oi Karen! Mensagem de cliente entrando...',
-                    direction: 'inbound',
-                    saved_name: 'Karen Fernandes (Mock)', // Testing Input Label
-                    status: 'received',
-                    sent_at: new Date(Date.now() - 10000000).toISOString()
-                },
-                {
-                    id: 102,
-                    content: 'Olá! Esta é uma mensagem de Campanha Automática.',
-                    direction: 'outbound',
-                    message_origin: 'campaign', // Testing Campaign Label
-                    status: 'read',
-                    sent_at: new Date(Date.now() - 9000000).toISOString()
-                },
-                {
-                    id: 103,
-                    content: 'Tudo bem? Este é um Follow-Up.',
-                    direction: 'outbound',
-                    message_origin: 'follow_up', // Testing Follow-Up Label
-                    status: 'sent',
-                    sent_at: new Date(Date.now() - 8000000).toISOString()
-                },
-                {
-                    id: 104,
-                    content: 'Respondendo via Celular (app) ou IA (sem usuário).',
-                    direction: 'outbound',
-                    message_origin: 'whatsapp_mobile', // Testing Celular Label
-                    status: 'sent',
-                    user_id: null,
-                    sent_at: new Date(Date.now() - 7000000).toISOString()
-                },
-                {
-                    id: 105,
-                    content: 'Mensagem enviada pelo Atendente Manual.',
-                    direction: 'outbound',
-                    message_origin: 'system_user',
-                    user_name: 'Atendente Mock', // Testing User Name
-                    user_id: 1,
-                    status: 'read',
-                    sent_at: new Date(Date.now() - 6000000).toISOString()
-                }
-            ];
-            return res.json(mockMessages);
+            console.error('[getMessages] Database error:', dbErr);
+            throw new Error('Database unavailable');
         }
 
     } catch (error) {

@@ -10,7 +10,6 @@ interface CachedProfile {
     instagram_id: string;
     instagram_username: string | null;
     name: string | null;
-    instagram_updated_at: Date | null;
 }
 
 /**
@@ -25,7 +24,7 @@ export async function getInstagramProfile(
     try {
         // 1. Verificar cache no banco (whatsapp_contacts)
         const cacheCheck = await pool!.query<CachedProfile>(
-            `SELECT instagram_id, instagram_username, name, instagram_updated_at 
+            `SELECT instagram_id, instagram_username, name 
        FROM whatsapp_contacts 
        WHERE instagram_id = $1 AND company_id = $2
        LIMIT 1`,
@@ -35,13 +34,7 @@ export async function getInstagramProfile(
         // 2. Se tem cache válido (< 24h), retornar
         if (cacheCheck.rows.length > 0) {
             const cached = cacheCheck.rows[0];
-            const lastUpdate = cached.instagram_updated_at;
-
-            if (
-                cached.instagram_username &&
-                lastUpdate &&
-                Date.now() - new Date(lastUpdate).getTime() < 24 * 60 * 60 * 1000
-            ) {
+            if (cached.instagram_username) {
                 console.log(`[Instagram Profile] Cache hit for ${senderId}`);
                 return {
                     username: cached.instagram_username,
@@ -70,13 +63,12 @@ export async function getInstagramProfile(
         // 4. Atualizar cache no banco
         await pool!.query(
             `INSERT INTO whatsapp_contacts 
-       (jid, instagram_id, instagram_username, name, instagram_updated_at, company_id, instance, updated_at)
-       VALUES ($1, $2, $3, $4, NOW(), $5, 'instagram', NOW())
+       (jid, instagram_id, instagram_username, name, company_id, instance, updated_at)
+       VALUES ($1, $2, $3, $4, $5, 'instagram', NOW())
        ON CONFLICT (jid, instance, company_id) 
        DO UPDATE SET
          instagram_username = EXCLUDED.instagram_username,
          name = EXCLUDED.name,
-         instagram_updated_at = NOW(),
          updated_at = NOW()`,
             [senderId, senderId, username, name, companyId]
         );
