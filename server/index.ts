@@ -376,11 +376,13 @@ const startServer = async () => {
 
           // Re-link messages
           await pool.query(`
-                UPDATE whatsapp_messages
+                UPDATE whatsapp_messages wm
                 SET conversation_id = d.main_id
-                FROM conv_merging d
-                JOIN whatsapp_conversations c ON c.id = whatsapp_messages.conversation_id
-                WHERE c.external_id = d.external_id AND c.company_id = d.company_id AND c.id != d.main_id;
+                FROM conv_merging d, whatsapp_conversations c
+                WHERE c.id = wm.conversation_id
+                  AND c.external_id = d.external_id
+                  AND c.company_id = d.company_id
+                  AND c.id != d.main_id;
             `);
 
           // Delete defunct conversations

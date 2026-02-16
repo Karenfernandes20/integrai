@@ -1005,7 +1005,8 @@ export const handleWebhook = async (req: Request, res: Response) => {
 
                     const io = req.app.get('io');
                     if (io) {
-                        const room = `company_${companyId}`;
+                        const conversationCompanyId = Number(checkConv.rows[0]?.company_id || companyId);
+                        const room = `company_${conversationCompanyId}`;
                         const instanceRoom = `instance_${instance}`;
                         const payload = {
                             ...existingMsg,
@@ -1019,7 +1020,7 @@ export const handleWebhook = async (req: Request, res: Response) => {
                             instance_id: instanceId,
                             instance_name: instanceDisplayName,
                             instance_friendly_name: instanceDisplayName,
-                            company_id: companyId,
+                            company_id: conversationCompanyId,
                             status: currentStatus,
                             sender_jid: existingMsg.sender_jid,
                             sender_name: existingMsg.sender_name,
@@ -1061,6 +1062,7 @@ export const handleWebhook = async (req: Request, res: Response) => {
                 // Emit Socket (Critical Path for UI Responsiveness)
                 const io = req.app.get('io');
                 if (io) {
+                    const conversationCompanyId = Number(checkConv.rows[0]?.company_id || companyId);
                     // Contention Rule: AI Fallback
                     if (direction === 'outbound' && !insertedMsg.rows[0].user_id) {
                         const invalidPatterns = ['error', 'falha', 'invalid', 'null', 'undefined', 'n/a'];
@@ -1084,7 +1086,7 @@ export const handleWebhook = async (req: Request, res: Response) => {
                         }
                     }
 
-                    const room = `company_${companyId}`;
+                    const room = `company_${conversationCompanyId}`;
                     const instanceRoom = `instance_${instance}`;
                     const payload = {
                         ...insertedMsg.rows[0],
@@ -1098,7 +1100,7 @@ export const handleWebhook = async (req: Request, res: Response) => {
                         instance_id: instanceId,
                         instance_name: instanceDisplayName,
                         instance_friendly_name: instanceDisplayName,
-                        company_id: companyId,
+                        company_id: conversationCompanyId,
                         status: currentStatus,
                         sender_jid: insertedMsg.rows[0].sender_jid,
                         sender_name: insertedMsg.rows[0].sender_name,
@@ -1308,9 +1310,11 @@ export const getConversations = async (req: Request, res: Response) => {
     try {
         if (!pool) return res.status(500).json({ error: 'Database not configured' });
         await ensureQueueSchema();
+        const supportsGroupSubject = await hasGroupSubjectColumn();
 
         const user = (req as any).user;
         let companyId = req.query.companyId || user?.company_id;
+        const groupSubjectExpr = supportsGroupSubject ? "NULLIF(TRIM(c.group_subject), '')" : 'NULL::text';
 
         // --- OPTIMISTIC REPAIR FOR NULL COMPANY_IDS (DISABLED FOR MOCK MODE) ---
         // if (user.role === 'SUPERADMIN') {
@@ -1322,8 +1326,11 @@ export const getConversations = async (req: Request, res: Response) => {
         let query = `
             SELECT c.*, 
             (c.is_group = true OR c.external_id LIKE '%@g.us' OR c.phone LIKE '%@g.us') as computed_is_group,
-            (SELECT content FROM whatsapp_messages WHERE conversation_id = c.id ORDER BY sent_at DESC LIMIT 1) as last_message,
-            (SELECT sender_name FROM whatsapp_messages WHERE conversation_id = c.id AND sender_name IS NOT NULL LIMIT 1) as last_sender_name,
+            lm.content as last_message,
+            lm.sender_name as last_sender_name,
+            lm.message_type as last_message_type,
+            lm.direction as last_message_direction,
+            lm.sent_at as last_message_at,
             CASE
               WHEN (c.is_group = true OR c.external_id LIKE '%@g.us' OR c.phone LIKE '%@g.us')
                 THEN COALESCE(c.profile_pic_url, co.profile_pic_url)
@@ -1331,7 +1338,7 @@ export const getConversations = async (req: Request, res: Response) => {
             END as profile_pic_url,
             -- Prioritize Name/Username from contacts
             COALESCE(
-                CASE WHEN (c.is_group = true OR c.external_id LIKE '%@g.us') THEN NULLIF(TRIM(c.group_subject), '') ELSE NULL END,
+                CASE WHEN (c.is_group = true OR c.external_id LIKE '%@g.us') THEN ${groupSubjectExpr} ELSE NULL END,
                 CASE WHEN (c.is_group = true OR c.external_id LIKE '%@g.us') THEN NULLIF(TRIM(c.group_name), '') ELSE NULL END,
                 NULLIF(TRIM(co.name), ''),
                 CASE WHEN c.channel = 'instagram' AND co.push_name IS NOT NULL THEN '@' || co.push_name ELSE co.push_name END,
@@ -1361,6 +1368,13 @@ export const getConversations = async (req: Request, res: Response) => {
                 WHERE ct.conversation_id = c.id
             ), '[]'::json) as tags
             FROM whatsapp_conversations c
+            LEFT JOIN LATERAL (
+                SELECT wm.content, wm.sender_name, wm.message_type, wm.direction, wm.sent_at
+                FROM whatsapp_messages wm
+                WHERE wm.conversation_id = c.id
+                ORDER BY wm.sent_at DESC NULLS LAST, wm.id DESC
+                LIMIT 1
+            ) lm ON TRUE
             LEFT JOIN LATERAL (
                 SELECT co.profile_pic_url as profile_pic_url, co.instagram_username as push_name, co.name
                 FROM whatsapp_contacts co
@@ -1422,52 +1436,12 @@ export const getConversations = async (req: Request, res: Response) => {
             OR c.external_id IS NOT NULL
         )`;
 
-        // Optional: Only show conversations with messages (but let's be safe and allow all for now)
-        // query += ` AND EXISTS (SELECT 1 FROM whatsapp_messages m WHERE m.conversation_id = c.id)`;
+        // Only valid conversations that already have at least one message
+        query += ` AND EXISTS (SELECT 1 FROM whatsapp_messages m WHERE m.conversation_id = c.id)`;
 
         query += ` ORDER BY c.last_message_at DESC NULLS LAST`;
 
-        let result;
-        try {
-            result = await pool.query(query, params);
-        } catch (dbError: any) {
-            console.error('[getConversations] DB Failed, returning MOCK DATA for testing:', dbError.message);
-            // MOCK DATA RETURN
-            const mockConvs = [
-                {
-                    id: 9991,
-                    external_id: '5511999999999@s.whatsapp.net',
-                    phone: '5511999999999',
-                    contact_name: 'Karen Fernandes (Mock)', // Saved Name
-                    contact_push_name: 'Karen Whatsapp',
-                    last_message: 'Teste de Mock Data',
-                    last_message_at: new Date().toISOString(),
-                    unread_count: 2,
-                    profile_pic_url: null,
-                    status: 'OPEN',
-                    is_group: false,
-                    company_id: 1,
-                    instance: 'integrai',
-                    user_id: 1
-                },
-                {
-                    id: 9992,
-                    external_id: '12036302392@g.us',
-                    phone: '12036302392@g.us', // Group JID often stored in phone col for groups
-                    contact_name: 'Grupo Teste',
-                    last_message: 'Mensagem no grupo',
-                    last_message_at: new Date(Date.now() - 3600000).toISOString(),
-                    unread_count: 0,
-                    status: 'PENDING',
-                    is_group: true,
-                    group_name: 'Grupo de Teste Mock',
-                    company_id: 1,
-                    instance: 'integrai',
-                    user_id: null
-                }
-            ];
-            return res.json(mockConvs);
-        }
+        const result = await pool.query(query, params);
         const isUsableGroupName = (value?: string | null) => {
             if (!value) return false;
             const name = String(value).trim();
@@ -1566,7 +1540,16 @@ export const getConversations = async (req: Request, res: Response) => {
 
         res.json(normalizedRows);
     } catch (error) {
-        console.error('Error fetching conversations:', error);
+        const sqlState = (error as any)?.code;
+        console.error('[getConversations] Error fetching conversations:', error);
+
+        if (sqlState === '42703') {
+            return res.status(500).json({
+                error: 'Schema mismatch while fetching conversations',
+                details: 'Uma coluna esperada não existe. Rode as migrations e tente novamente.'
+            });
+        }
+
         res.status(500).json({ error: 'Failed to fetch conversations' });
     }
 };
