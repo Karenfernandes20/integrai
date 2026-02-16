@@ -38,6 +38,15 @@ const pushPayload = (p: any) => {
 const picSyncThrottle = new Map<string, number>();
 let hasGroupSubjectColumnCache: boolean | null = null;
 
+
+const resolveConversationChannel = (instanceKey?: string | null): 'whatsapp' | 'instagram' => {
+    const normalized = String(instanceKey || '').toLowerCase();
+    if (normalized.includes('instagram') || normalized.includes('ig')) {
+        return 'instagram';
+    }
+    return 'whatsapp';
+};
+
 const hasGroupSubjectColumn = async () => {
     if (!pool) return false;
     if (hasGroupSubjectColumnCache !== null) return hasGroupSubjectColumnCache;
@@ -604,7 +613,7 @@ export const handleWebhook = async (req: Request, res: Response) => {
 
             // 1. First Attempt: Match strictly by JID + Instance + Company (The Gold Standard)
             let checkConv = await pool.query(
-                `SELECT id, status, is_group, contact_name, group_name, ${supportsGroupSubject ? 'group_subject,' : 'NULL AS group_subject,'} profile_pic_url, external_id, instance, phone 
+                `SELECT id, status, is_group, contact_name, group_name, ${supportsGroupSubject ? 'group_subject,' : 'NULL AS group_subject,'} profile_pic_url, external_id, instance, phone, channel 
                  FROM whatsapp_conversations 
                  WHERE company_id = $1 AND external_id = $2 AND instance = $3`,
                 [companyId, normalizedJid, instance]
@@ -614,7 +623,7 @@ export const handleWebhook = async (req: Request, res: Response) => {
             // This prevents "Ghost Cards" or Duplicates when the same user appears on a different instance or with/without suffix
             if (checkConv.rows.length === 0 && !isGroup) {
                 checkConv = await pool.query(
-                    `SELECT id, status, is_group, contact_name, group_name, ${supportsGroupSubject ? 'group_subject,' : 'NULL AS group_subject,'} profile_pic_url, external_id, instance, phone 
+                    `SELECT id, status, is_group, contact_name, group_name, ${supportsGroupSubject ? 'group_subject,' : 'NULL AS group_subject,'} profile_pic_url, external_id, instance, phone, channel 
                      FROM whatsapp_conversations 
                      WHERE company_id = $1 AND is_group = false AND phone = $2
                      ORDER BY last_message_at DESC LIMIT 1`,
@@ -642,6 +651,7 @@ export const handleWebhook = async (req: Request, res: Response) => {
                 const shouldForceGroup = isGroup && row.is_group !== true;
                 const shouldUpdateGroupName = isGroup && !!groupNameFromPayload && row.group_name !== groupNameFromPayload;
                 const shouldUpdateGroupSubject = isGroup && !!groupNameFromPayload && row.group_subject !== groupNameFromPayload;
+                const resolvedChannel = row.channel || resolveConversationChannel(instance);
 
                 // CRITICAL FIX: Ensure we don't use pushName (sender) for group titles
                 const isActuallyGroup = isGroup || row.is_group;
@@ -652,7 +662,8 @@ export const handleWebhook = async (req: Request, res: Response) => {
                         isActuallyGroup ? (groupNameFromPayload || row.group_name || row.contact_name) : (msg.pushName || null),
                         conversationId,
                         shouldForceGroup,
-                        isActuallyGroup ? (groupNameFromPayload || row.group_name || row.contact_name) : null
+                        isActuallyGroup ? (groupNameFromPayload || row.group_name || row.contact_name) : null,
+                        resolvedChannel
                     ];
 
                     const updateSql = supportsGroupSubject
@@ -675,7 +686,8 @@ export const handleWebhook = async (req: Request, res: Response) => {
                                group_last_sync = CASE
                                    WHEN $4 AND $5 IS NOT NULL THEN NOW()
                                    ELSE group_last_sync
-                               END
+                               END,
+                               channel = COALESCE(channel, $6)
                            WHERE id = $3`
                         : `UPDATE whatsapp_conversations
                            SET status = $1,
@@ -692,7 +704,8 @@ export const handleWebhook = async (req: Request, res: Response) => {
                                group_last_sync = CASE
                                    WHEN $4 AND $5 IS NOT NULL THEN NOW()
                                    ELSE group_last_sync
-                               END
+                               END,
+                               channel = COALESCE(channel, $6)
                            WHERE id = $3`;
 
                     pool.query(updateSql, updateParams).catch(() => { });
@@ -714,6 +727,7 @@ export const handleWebhook = async (req: Request, res: Response) => {
                 // User Request: Every new conversation starts as PENDING
                 isNewConversation = true;
                 currentStatus = 'PENDING';
+                const channel = resolveConversationChannel(instance);
 
                 const finalName = isGroup ? (groupName || 'Grupo (Nome não sincronizado)') : name;
 
@@ -729,14 +743,14 @@ export const handleWebhook = async (req: Request, res: Response) => {
                 } else {
                     const newConv = supportsGroupSubject
                         ? await pool.query(
-                            `INSERT INTO whatsapp_conversations (external_id, phone, contact_name, instance, status, company_id, is_group, group_name, group_subject, group_last_sync, last_instance_key, queue_id)
-                             VALUES ($1, $2, $3, $4::text, $5, $6, $7, $8, $9, $10, $4::text, $11) RETURNING id`,
-                            [normalizedJid, normalizedPhone, finalName, String(instance), currentStatus, companyId, isGroup, isGroup ? finalName : null, isGroup ? groupName : null, isGroup && groupName ? new Date() : null, defaultQueueId]
+                            `INSERT INTO whatsapp_conversations (external_id, phone, contact_name, instance, status, company_id, is_group, group_name, group_subject, group_last_sync, last_instance_key, queue_id, channel)
+                             VALUES ($1, $2, $3, $4::text, $5, $6, $7, $8, $9, $10, $4::text, $11, $12) RETURNING id`,
+                            [normalizedJid, normalizedPhone, finalName, String(instance), currentStatus, companyId, isGroup, isGroup ? finalName : null, isGroup ? groupName : null, isGroup && groupName ? new Date() : null, defaultQueueId, channel]
                         )
                         : await pool.query(
-                            `INSERT INTO whatsapp_conversations (external_id, phone, contact_name, instance, status, company_id, is_group, group_name, group_last_sync, last_instance_key, queue_id)
-                             VALUES ($1, $2, $3, $4::text, $5, $6, $7, $8, $9, $4::text, $10) RETURNING id`,
-                            [normalizedJid, normalizedPhone, finalName, String(instance), currentStatus, companyId, isGroup, isGroup ? finalName : null, isGroup && groupName ? new Date() : null, defaultQueueId]
+                            `INSERT INTO whatsapp_conversations (external_id, phone, contact_name, instance, status, company_id, is_group, group_name, group_last_sync, last_instance_key, queue_id, channel)
+                             VALUES ($1, $2, $3, $4::text, $5, $6, $7, $8, $9, $4::text, $10, $11) RETURNING id`,
+                            [normalizedJid, normalizedPhone, finalName, String(instance), currentStatus, companyId, isGroup, isGroup ? finalName : null, isGroup && groupName ? new Date() : null, defaultQueueId, channel]
                         );
                     conversationId = newConv.rows[0].id;
                 }
@@ -1313,8 +1327,46 @@ export const getConversations = async (req: Request, res: Response) => {
         const supportsGroupSubject = await hasGroupSubjectColumn();
 
         const user = (req as any).user;
+        const onlyGroups = String(req.query.onlyGroups || '').toLowerCase() === 'true';
         let companyId = req.query.companyId || user?.company_id;
         const groupSubjectExpr = supportsGroupSubject ? "NULLIF(TRIM(c.group_subject), '')" : 'NULL::text';
+
+
+        if (onlyGroups) {
+            const groupQuery = `
+                SELECT
+                    c.id,
+                    ${groupSubjectExpr} AS group_subject,
+                    COALESCE(NULLIF(TRIM(c.channel), ''), 'whatsapp') AS channel,
+                    c.profile_pic_url AS profile_picture,
+                    COALESCE(c.last_instance_key, c.instance) AS instance_key,
+                    c.status,
+                    c.external_id AS remote_jid,
+                    c.company_id,
+                    c.updated_at
+                FROM whatsapp_conversations c
+                WHERE c.is_group = true
+            `;
+
+            const params: any[] = [];
+            let finalQuery = groupQuery;
+
+            if (user.role !== 'SUPERADMIN') {
+                finalQuery += ` AND c.company_id = $${params.length + 1}`;
+                params.push(user.company_id);
+            } else if (companyId) {
+                finalQuery += ` AND c.company_id = $${params.length + 1}`;
+                params.push(companyId);
+            }
+
+            finalQuery += ` ORDER BY c.updated_at DESC`;
+            const groupResult = await pool.query(finalQuery, params);
+
+            return res.json(groupResult.rows.map((row: any) => ({
+                ...row,
+                group_subject: row.group_subject || (row.channel === 'instagram' ? 'Grupo Instagram' : 'Grupo WhatsApp')
+            })));
+        }
 
         // --- OPTIMISTIC REPAIR FOR NULL COMPANY_IDS (DISABLED FOR MOCK MODE) ---
         // if (user.role === 'SUPERADMIN') {

@@ -1621,8 +1621,8 @@ export const syncEvolutionGroups = async (req: Request, res: Response) => {
               // but the schema only has external_id as UNIQUE currently.
               await pool.query(`
                 INSERT INTO whatsapp_conversations (
-                    external_id, phone, contact_name, group_name, group_subject, group_last_sync, is_group, instance, company_id, profile_pic_url, updated_at, status
-                ) VALUES ($1, $2, $3, $4, $5, $6, true, $7, $8, $9, NOW(), 'PENDING')
+                    external_id, phone, contact_name, group_name, group_subject, group_last_sync, is_group, instance, company_id, profile_pic_url, updated_at, status, channel
+                ) VALUES ($1, $2, $3, $4, $5, $6, true, $7, $8, $9, NOW(), 'PENDING', 'whatsapp')
                 ON CONFLICT (external_id) 
                 DO UPDATE SET 
                     group_name = EXCLUDED.group_name,
@@ -1632,6 +1632,7 @@ export const syncEvolutionGroups = async (req: Request, res: Response) => {
                     is_group = true,
                     profile_pic_url = COALESCE(EXCLUDED.profile_pic_url, whatsapp_conversations.profile_pic_url),
                     instance = COALESCE(whatsapp_conversations.instance, EXCLUDED.instance),
+                    channel = COALESCE(whatsapp_conversations.channel, 'whatsapp'),
                     updated_at = NOW()
                 WHERE whatsapp_conversations.company_id = EXCLUDED.company_id
               `, [jid, jid, name, name, name, name ? new Date() : null, instance_key, resolvedCompanyId, pic]);
@@ -2521,7 +2522,7 @@ export const refreshConversationMetadata = async (req: Request, res: Response) =
 
         if (subject) {
           updatedName = subject;
-          await pool.query('UPDATE whatsapp_conversations SET contact_name = $1, group_name = $1 WHERE id = $2', [subject, conversationId]);
+          await pool.query('UPDATE whatsapp_conversations SET contact_name = $1, group_name = $1, group_subject = $1, group_last_sync = NOW() WHERE id = $2', [subject, conversationId]);
           console.log(`[Refresh] Updated group name: ${subject}`);
         }
 
