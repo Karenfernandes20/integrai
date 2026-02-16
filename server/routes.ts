@@ -140,7 +140,9 @@ router.get('/evolution/debug/mapping', async (req, res) => {
 });
 // Instagram routes
 import { testInstagramConnection } from './services/instagramService';
+import { testWhatsappMetaConnection } from './services/whatsappMetaService';
 router.post('/instagram/test-connection', authenticateToken, testInstagramConnection);
+router.post('/whatsapp/meta/test-connection', authenticateToken, testWhatsappMetaConnection);
 
 router.get('/evolution/debug/instance/:companyId/:instanceKey', authenticateToken, async (req: Request, res: Response) => {
   try {

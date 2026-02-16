@@ -227,7 +227,36 @@ const startServer = async () => {
             
             -- WhatsApp API Plus
             ADD COLUMN IF NOT EXISTS whatsapp_api_plus_token TEXT,
-            
+
+            -- WhatsApp Meta / API Plus (QR Code)
+            ADD COLUMN IF NOT EXISTS provider VARCHAR(50),
+            ADD COLUMN IF NOT EXISTS channel_type VARCHAR(50),
+            ADD COLUMN IF NOT EXISTS connection_mode VARCHAR(50),
+            ADD COLUMN IF NOT EXISTS business_manager_id VARCHAR(100),
+            ADD COLUMN IF NOT EXISTS waba_id VARCHAR(100),
+            ADD COLUMN IF NOT EXISTS phone_number_id VARCHAR(100),
+            ADD COLUMN IF NOT EXISTS meta_app_id VARCHAR(100),
+            ADD COLUMN IF NOT EXISTS meta_app_secret TEXT,
+            ADD COLUMN IF NOT EXISTS access_token TEXT,
+            ADD COLUMN IF NOT EXISTS verify_token VARCHAR(255),
+            ADD COLUMN IF NOT EXISTS webhook_url TEXT,
+            ADD COLUMN IF NOT EXISTS callback_url TEXT,
+            ADD COLUMN IF NOT EXISTS api_version VARCHAR(20) DEFAULT 'v18.0',
+            ADD COLUMN IF NOT EXISTS instance_key VARCHAR(100),
+            ADD COLUMN IF NOT EXISTS instance_name VARCHAR(120),
+            ADD COLUMN IF NOT EXISTS whatsapp_number VARCHAR(30),
+            ADD COLUMN IF NOT EXISTS id_numero_meta VARCHAR(100),
+            ADD COLUMN IF NOT EXISTS id_conta_comercial VARCHAR(100),
+            ADD COLUMN IF NOT EXISTS sandbox_mode BOOLEAN DEFAULT FALSE,
+            ADD COLUMN IF NOT EXISTS server_region VARCHAR(50) DEFAULT 'sa-east-1',
+            ADD COLUMN IF NOT EXISTS receive_messages BOOLEAN DEFAULT TRUE,
+            ADD COLUMN IF NOT EXISTS receive_status BOOLEAN DEFAULT TRUE,
+            ADD COLUMN IF NOT EXISTS receive_contacts BOOLEAN DEFAULT TRUE,
+            ADD COLUMN IF NOT EXISTS receive_chat_updates BOOLEAN DEFAULT TRUE,
+            ADD COLUMN IF NOT EXISTS subscription_fields JSONB DEFAULT '["messages","messaging_postbacks","message_status","message_reactions"]'::jsonb,
+            ADD COLUMN IF NOT EXISTS whatsapp_meta_status VARCHAR(40) DEFAULT 'inactive',
+            ADD COLUMN IF NOT EXISTS whatsapp_meta_last_sync TIMESTAMPTZ,
+
             -- Instagram (Already partially exists, but ensuring completeness)
             ADD COLUMN IF NOT EXISTS instagram_app_id VARCHAR(255),
             ADD COLUMN IF NOT EXISTS instagram_app_secret VARCHAR(255),
@@ -250,6 +279,10 @@ const startServer = async () => {
             ADD COLUMN IF NOT EXISTS instagram_limit INTEGER DEFAULT 1,
             ADD COLUMN IF NOT EXISTS messenger_limit INTEGER DEFAULT 1;
         `);
+
+        await pool.query(`CREATE UNIQUE INDEX IF NOT EXISTS uq_companies_instance_key_per_company ON companies(id, instance_key) WHERE instance_key IS NOT NULL;`);
+        await pool.query(`CREATE UNIQUE INDEX IF NOT EXISTS uq_companies_phone_number_id_unique ON companies(phone_number_id) WHERE phone_number_id IS NOT NULL AND phone_number_id <> '';`);
+
         await pool.query(`
             ALTER TABLE whatsapp_conversations
             ADD COLUMN IF NOT EXISTS channel VARCHAR(50) DEFAULT 'whatsapp',

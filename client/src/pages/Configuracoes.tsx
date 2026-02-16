@@ -28,6 +28,7 @@ import { useAuth } from "../contexts/AuthContext";
 import { toast } from "sonner";
 import { EvolutionStatus } from "../components/EvolutionStatus";
 import { InstagramStatus } from "../components/InstagramStatus";
+import { WhatsAppMetaStatus } from "../components/WhatsAppMetaStatus";
 
 type AccessType = "admin" | "gerente" | "vendedor" | "atendimento";
 type BillingStatus = "active" | "past_due" | "cancelled" | "trialing" | string;
@@ -631,7 +632,17 @@ const ConfiguracoesPage = () => {
         </TabsContent>
 
         <TabsContent value="integrations" className="mt-6">
-          <div className="grid gap-6 md:grid-cols-2">
+          <div className="grid gap-6 md:grid-cols-1">
+            <Card>
+              <CardHeader>
+                <CardTitle>WhatsApp (QR Code + API Plus + Meta)</CardTitle>
+                <CardDescription>Configuração completa do canal oficial com validação Meta.</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <WhatsAppMetaStatus />
+              </CardContent>
+            </Card>
+
             <Card>
               <CardHeader>
                 <CardTitle>WhatsApp (Evolution API)</CardTitle>
