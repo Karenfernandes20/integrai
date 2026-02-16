@@ -53,6 +53,24 @@ import { Avatar, AvatarFallback, AvatarImage } from "./ui/avatar";
 
 const items: any[] = []; // Placeholder to avoid breaking if referenced elsewhere, but unused now.
 
+const PERMISSION_FALLBACKS: Record<string, string[]> = {
+  // Compatibilidade com permissões antigas e papéis que só possuem `crm.attend`
+  "crm.view": ["crm.attend", "crm"],
+  "bi.view": ["dashboard", "relatorios"],
+  "finance.view": ["financeiro"],
+  "settings.company": ["configuracoes"],
+};
+
+const hasPermission = (userPermissions: string[] | undefined, requiredPermission?: string) => {
+  if (!requiredPermission) return true;
+  if (!userPermissions?.length) return false;
+
+  if (userPermissions.includes(requiredPermission)) return true;
+
+  const fallbacks = PERMISSION_FALLBACKS[requiredPermission] || [];
+  return fallbacks.some((permission) => userPermissions.includes(permission));
+};
+
 export function AppSidebar() {
   const location = useLocation();
   const navigate = useNavigate();
@@ -178,13 +196,7 @@ export function AppSidebar() {
     if (user?.role === 'SUPERADMIN') return true;
 
     // 3. Permission Check
-    // If no permission requirements, show it
-    if (!item.requiredPermission) return true;
-
-    // If user has no permissions array (and not admin), hide restricted
-    if (!user?.permissions) return false;
-
-    return user.permissions.includes(item.requiredPermission);
+    return hasPermission(user?.permissions, item.requiredPermission);
   });
 
   const getInitials = (name: string) => {
