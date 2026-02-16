@@ -1388,6 +1388,8 @@ export const getConversations = async (req: Request, res: Response) => {
                 THEN COALESCE(c.profile_pic_url, co.profile_pic_url)
               ELSE COALESCE(co.profile_pic_url, c.profile_pic_url)
             END as profile_pic_url,
+            co.instagram_username,
+            co.instagram_id,
             -- Prioritize Name/Username from contacts
             COALESCE(
                 CASE WHEN (c.is_group = true OR c.external_id LIKE '%@g.us') THEN ${groupSubjectExpr} ELSE NULL END,
@@ -1421,6 +1423,7 @@ export const getConversations = async (req: Request, res: Response) => {
             ), '[]'::json) as tags
             FROM whatsapp_conversations c
             LEFT JOIN LATERAL (
+<<<<<<< HEAD
                 SELECT wm.content, wm.sender_name, wm.message_type, wm.direction, wm.sent_at
                 FROM whatsapp_messages wm
                 WHERE wm.conversation_id = c.id
@@ -1430,6 +1433,14 @@ export const getConversations = async (req: Request, res: Response) => {
             LEFT JOIN LATERAL (
                 SELECT co.profile_pic_url as profile_pic_url, co.instagram_username as push_name, co.name
                 FROM whatsapp_contacts co
+=======
+                SELECT 
+                    co.profile_picture as profile_pic_url, 
+                    co.instagram_username,
+                    co.username as push_name, 
+                    COALESCE(co.name, co.instagram_username, co.username) as name
+                FROM contacts co
+>>>>>>> b92d89d (att)
                 WHERE co.company_id = c.company_id
                   AND (
                     (c.channel = 'instagram' AND co.instagram_id = c.external_id)
@@ -1640,16 +1651,9 @@ export const getMessages = async (req: Request, res: Response) => {
             const result = await pool.query(
                 `SELECT m.*, 
                         u.full_name as user_name,
+<<<<<<< HEAD
                         wc.name as saved_name,
-                        COALESCE(
-                            m.sender_name, 
-                            CASE 
-                                WHEN m.channel = 'instagram' AND wc.instagram_username IS NOT NULL 
-                                THEN wc.instagram_username
-                                ELSE wc.name 
-                            END,
-                            split_part(m.sender_jid, '@', 1)
-                        ) as sender_name,
+                        COALESCE(co.name, co.instagram_username, co.username, m.sender_name, split_part(m.sender_jid, '@', 1)) as sender_name,
                         CASE 
                             WHEN m.campaign_id IS NOT NULL THEN 'campaign'
                             WHEN m.follow_up_id IS NOT NULL THEN 'follow_up'
@@ -1661,16 +1665,16 @@ export const getMessages = async (req: Request, res: Response) => {
                             WHEN m.campaign_id IS NOT NULL THEN 'Campanha'
                             WHEN m.follow_up_id IS NOT NULL THEN 'Follow-Up'
                             WHEN m.sent_by_user_name IS NOT NULL THEN m.sent_by_user_name
-                            WHEN m.user_id IS NOT NULL THEN u.full_name 
+                            WHEN m.user_id IS NOT NULL THEN u.full_name
                             WHEN m.direction = 'outbound' AND m.user_id IS NULL THEN 'Agente de IA'
-                            ELSE NULL 
+                            ELSE NULL
                         END as agent_name,
-                        COALESCE(ci.name, m.instance_name, m.instance_key) as instance_friendly_name,
+                        ci.name as instance_friendly_name,
                         ci.color as instance_color
-                FROM whatsapp_messages m 
-                LEFT JOIN app_users u ON m.user_id = u.id 
-                LEFT JOIN whatsapp_contacts wc ON (
-                    wc.company_id = $2 AND (wc.jid = COALESCE(m.sender_jid, (SELECT external_id FROM whatsapp_conversations WHERE id = m.conversation_id LIMIT 1)) OR wc.instagram_id = COALESCE(m.sender_jid, (SELECT external_id FROM whatsapp_conversations WHERE id = m.conversation_id LIMIT 1)))
+                FROM whatsapp_messages m
+                LEFT JOIN app_users u ON m.user_id = u.id
+                LEFT JOIN contacts co ON (
+                    co.company_id = $2 AND co.external_id = COALESCE(m.sender_jid, (SELECT external_id FROM whatsapp_conversations WHERE id = m.conversation_id LIMIT 1))
                 )
                 LEFT JOIN company_instances ci ON m.instance_id = ci.id
                 WHERE m.conversation_id = $1 
@@ -1789,12 +1793,19 @@ export const handleInstagramWebhook = async (req: Request, res: Response) => {
 
                             console.log(`[Instagram Webhook] Msg from ${senderId}: ${text}`);
 
-                            // Get User Profile via Service (with 24h cache)
+                            // Get User Profile via Service (Meta Graph API)
                             const { getInstagramProfile, formatInstagramUsername } = await import('../services/instagramProfileService.js');
                             const profile = await getInstagramProfile(senderId, company.instagram_access_token, company.id);
-                            const username = profile.username || senderId;
+
+                            const username = profile.username || senderId; // Username real ou ID numérico
+                            const realName = profile.name || null;         // Nome completo (ex: "John Doe")
                             const profilePic = profile.profilePic || null;
-                            const formattedName = formatInstagramUsername(username);
+                            const displayUsername = formatInstagramUsername(username); // @username ou "Instagram User"
+
+                            // Prioridade de exibição: Nome Real > @username
+                            const finalDisplayName = realName || displayUsername;
+
+                            console.log(`[Instagram Webhook] Resolved Profile: @${username} | Name: ${realName} | Display: ${finalDisplayName}`);
 
                             // Create/Update Conversation
                             // Check existing conversation
@@ -1806,7 +1817,7 @@ export const handleInstagramWebhook = async (req: Request, res: Response) => {
                             let conversationId;
                             if (convRes.rows.length > 0) {
                                 conversationId = convRes.rows[0].id;
-                                // Update status and name/username automatically
+                                // Update status and name/username/pic
                                 await pool!.query(`
                                     UPDATE whatsapp_conversations 
                                     SET status = CASE WHEN status = 'CLOSED' THEN 'PENDING' ELSE status END,
@@ -1815,7 +1826,7 @@ export const handleInstagramWebhook = async (req: Request, res: Response) => {
                                         profile_pic_url = COALESCE($3, profile_pic_url),
                                         updated_at = NOW()
                                     WHERE id = $4
-                                `, [formattedName, username, profilePic, conversationId]);
+                                `, [finalDisplayName, username, profilePic, conversationId]);
                             } else {
                                 const defaultQueueId = await getOrCreateQueueId(company.id, 'Recepcao');
                                 // Create New Conversation
@@ -1824,24 +1835,27 @@ export const handleInstagramWebhook = async (req: Request, res: Response) => {
                                     (company_id, external_id, phone, contact_name, status, channel, instagram_user_id, instagram_username, profile_pic_url, queue_id, created_at, updated_at)
                                     VALUES ($1, $2, $3, $4, 'PENDING', 'instagram', $5, $6, $7, $8, NOW(), NOW())
                                     RETURNING id
-                                `, [company.id, senderId, '0000000000', formattedName, senderId, username, profilePic, defaultQueueId]);
+                                `, [company.id, senderId, '0000000000', finalDisplayName, senderId, username, profilePic, defaultQueueId]);
                                 conversationId = newConv.rows[0].id;
                             }
 
-                            // Sync to whatsapp_contacts for consistency
+                            // Sync to contacts for consistency (Omnichannel)
                             await pool!.query(`
-                                INSERT INTO whatsapp_contacts 
-                                (company_id, jid, phone, name, profile_pic_url, instagram_id, instagram_username, instance, updated_at)
-                                VALUES ($1, $2, $3, $4, $5, $6, $7, 'instagram', NOW())
-                                ON CONFLICT (jid, instance, company_id)
+                                INSERT INTO contacts 
+                                (company_id, channel, external_id, name, instagram_username, username, phone, instagram_id, profile_picture, updated_at)
+                                VALUES ($1, 'instagram', $2, $3, $4, $4, $5, $6, $7, NOW())
+                                ON CONFLICT (company_id, channel, external_id) 
                                 DO UPDATE SET
-                                    name = EXCLUDED.name,
-                                    profile_pic_url = COALESCE(EXCLUDED.profile_pic_url, whatsapp_contacts.profile_pic_url),
-                                    instagram_id = EXCLUDED.instagram_id,
                                     instagram_username = EXCLUDED.instagram_username,
+                                    username = EXCLUDED.username,
+                                    profile_picture = COALESCE(EXCLUDED.profile_picture, contacts.profile_picture),
+                                    instagram_id = EXCLUDED.instagram_id,
+                                    name = CASE 
+                                        WHEN contacts.name IS NULL OR contacts.name = '' OR contacts.name = contacts.external_id OR contacts.name = 'Instagram User' THEN EXCLUDED.name 
+                                        ELSE contacts.name 
+                                    END,
                                     updated_at = NOW()
-                            `, [company.id, senderId, '0000000000', formattedName || 'Instagram User', profilePic, senderId, username]);
-
+                            `, [company.id, senderId, finalDisplayName, username, '0000000000', senderId, profilePic]);
                             // Determine Message Type
                             let msgType = 'text';
                             let mediaUrl = null;
@@ -1868,22 +1882,22 @@ export const handleInstagramWebhook = async (req: Request, res: Response) => {
 
                             // Save Message
                             const insertedMsg = await pool!.query(`
-                                INSERT INTO whatsapp_messages 
+                                INSERT INTO whatsapp_messages
                                 (company_id, conversation_id, direction, content, message_type, media_url, status, external_id, channel, sender_name, sent_at)
-                                VALUES ($1, $2, 'inbound', $3, $4, $5, 'received', $6, 'instagram', $7, NOW())
-                                RETURNING *
-                            `, [company.id, conversationId, content, msgType, mediaUrl, messageId, formattedName]);
+                            VALUES($1, $2, 'inbound', $3, $4, $5, 'received', $6, 'instagram', $7, NOW())
+                            RETURNING *
+                                `, [company.id, conversationId, content, msgType, mediaUrl, messageId, finalDisplayName]);
 
                             // Emit Socket
                             const io = req.app.get('io');
                             if (io) {
                                 const payload = {
                                     ...insertedMsg.rows[0],
-                                    contact_name: formattedName,
+                                    contact_name: finalDisplayName,
                                     profile_pic_url: profilePic,
                                     message_origin: 'instagram'
                                 };
-                                io.to(`company_${company.id}`).emit('message:received', payload);
+                                io.to(`company_${company.id} `).emit('message:received', payload);
                             }
 
                             // Trigger Workflow (Unified)

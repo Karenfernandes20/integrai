@@ -6,12 +6,6 @@ interface InstagramProfile {
     profile_pic?: string;
 }
 
-interface CachedProfile {
-    instagram_id: string;
-    instagram_username: string | null;
-    name: string | null;
-}
-
 /**
  * Busca o perfil do Instagram via Graph API e cacheia no banco
  * Evita requisições excessivas implementando cache de 24h
@@ -22,82 +16,84 @@ export async function getInstagramProfile(
     companyId: number
 ): Promise<{ username: string; name?: string; profilePic?: string }> {
     try {
-        // 1. Verificar cache no banco (whatsapp_contacts)
-        const cacheCheck = await pool!.query<CachedProfile>(
-            `SELECT instagram_id, instagram_username, name 
-       FROM whatsapp_contacts 
-       WHERE instagram_id = $1 AND company_id = $2
-       LIMIT 1`,
+        if (!senderId || !pageAccessToken || !pool) {
+            return { username: senderId };
+        }
+
+        // 1. Verificar cache no banco (Tabela contacts é a principal para omnichannel)
+        const cacheCheck = await pool.query(
+            `SELECT username, name, profile_picture, updated_at 
+             FROM contacts 
+             WHERE external_id = $1 AND company_id = $2 AND channel = 'instagram'
+             LIMIT 1`,
             [senderId, companyId]
         );
 
-        // 2. Se tem cache válido (< 24h), retornar
         if (cacheCheck.rows.length > 0) {
             const cached = cacheCheck.rows[0];
-            if (cached.instagram_username) {
-                console.log(`[Instagram Profile] Cache hit for ${senderId}`);
+            const lastUpdate = cached.updated_at;
+            const isRecent = lastUpdate && (Date.now() - new Date(lastUpdate).getTime() < 24 * 60 * 60 * 1000);
+
+            // Só retorna cache se tiver um username real (não o ID numérico) e for recente
+            if (cached.username && cached.username !== senderId && isRecent) {
+                console.log(`[Instagram Profile] Cache hit for ${senderId}: @${cached.username}`);
                 return {
-                    username: cached.instagram_username,
-                    name: cached.name || undefined
+                    username: cached.username,
+                    name: cached.name || undefined,
+                    profilePic: cached.profile_picture || undefined
                 };
             }
         }
 
-        // 3. Cache expirado ou inexistente - buscar na Graph API
-        console.log(`[Instagram Profile] Fetching from Graph API for ${senderId}`);
-        const url = `https://graph.facebook.com/v19.0/${senderId}?fields=username,name&access_token=${pageAccessToken}`;
+        // 2. Buscar na Graph API da Meta
+        console.log(`[Instagram Profile] Fetching from Meta Graph API for ${senderId}...`);
+        const url = `https://graph.facebook.com/v18.0/${senderId}?fields=username,name,profile_pic&access_token=${pageAccessToken}`;
 
         const response = await fetch(url);
+        const data = await response.json();
 
         if (!response.ok) {
-            console.warn(`[Instagram Profile] Graph API failed for ${senderId}:`, response.status);
-            // Se falhar, retornar ID como fallback
+            if (data.error) {
+                const { message, type, code, error_subcode } = data.error;
+                console.error(`[Instagram Profile] Meta API Error: ${message} (Code: ${code}, Subcode: ${error_subcode}, Type: ${type})`);
+
+                if (code === 190) {
+                    console.error('[Instagram Profile] 🚨 TOKEN INVÁLIDO OU EXPIRADO. Reautentique a conta.');
+                } else if (code === 10 || code === 200 || code === 400) {
+                    console.error('[Instagram Profile] 🚨 ERRO DE PERMISSÃO. Verifique se o token tem: instagram_basic, instagram_manage_messages, pages_read_engagement.');
+                }
+            } else {
+                console.warn(`[Instagram Profile] Graph API failed with status ${response.status}`);
+            }
             return { username: senderId };
         }
 
-        const profile: InstagramProfile = await response.json();
-        const rawUsername = profile.username?.trim();
-        const username = rawUsername
-            ? (rawUsername.startsWith('@') ? rawUsername : `@${rawUsername}`)
-            : senderId;
-        const name = profile.name?.trim() || (rawUsername || 'Instagram User');
+        const profile: InstagramProfile = data;
+        const username = profile.username || senderId;
+        const name = profile.name || null;
+        const profilePic = profile.profile_pic || null;
 
-        // 4. Atualizar cache no banco
-        await pool!.query(
-            `INSERT INTO whatsapp_contacts 
-       (jid, instagram_id, instagram_username, name, company_id, instance, updated_at)
-       VALUES ($1, $2, $3, $4, $5, 'instagram', NOW())
-       ON CONFLICT (jid, instance, company_id) 
-       DO UPDATE SET
-         instagram_username = EXCLUDED.instagram_username,
-         name = EXCLUDED.name,
-         updated_at = NOW()`,
-            [senderId, senderId, username, name, companyId]
-        );
-
-        console.log(`[Instagram Profile] Cached profile for ${senderId}: ${username}`);
+        console.log(`[Instagram Profile] Successfully resolved: @${username} (${name || 'No name'})`);
 
         return {
             username,
             name: name || undefined,
-            profilePic: profile.profile_pic
+            profilePic: profilePic || undefined
         };
 
     } catch (error) {
-        console.error(`[Instagram Profile] Error fetching profile for ${senderId}:`, error);
-        // Fallback: retornar o ID mesmo
+        console.error(`[Instagram Profile] Unexpected error fetching profile for ${senderId}:`, error);
         return { username: senderId };
     }
 }
 
 /**
  * Formata o username do Instagram para exibição
- * Adiciona @ se não tiver
  */
 export function formatInstagramUsername(username: string): string {
     if (!username) return 'Instagram User';
 
-    // Não exibir ID numérico
+    // Se for apenas números, é o ID técnico, ocultamos
     if (/^\d+$/.test(username)) {
         return 'Instagram User';
     }

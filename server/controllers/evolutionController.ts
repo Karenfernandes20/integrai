@@ -56,6 +56,51 @@ export async function resolveInstanceByCompany(companyId: number) {
   throw new Error(`No active instance found for company ${companyId}`);
 }
 
+/**
+ * Resolves Company Data from Instance Key (Webhook inbound)
+ */
+export async function resolveCompanyByInstanceKey(instanceKey: string) {
+  if (!instanceKey || !pool) return null;
+
+  console.log(`[Webhook Resolver] Buscando empresa para instância: ${instanceKey}`);
+
+  // 1. Check company_instances (Multi-instance structure)
+  const instRes = await pool.query(
+    'SELECT company_id, id as instance_id, name FROM company_instances WHERE instance_key = $1 OR name = $1 LIMIT 1',
+    [instanceKey]
+  );
+
+  if (instRes.rows.length > 0) {
+    const row = instRes.rows[0];
+    console.log(`[Webhook Resolver] ✅ Encontrado em company_instances. CompanyID: ${row.company_id}`);
+    return {
+      id: row.company_id,
+      instance_id: row.instance_id,
+      instance_name: row.name
+    };
+  }
+
+  // 2. Fallback to Companies table (Legacy/Single instance per company)
+  // Use evolution_instance column as it is the current database schema
+  const compRes = await pool.query(
+    'SELECT id, name FROM companies WHERE evolution_instance = $1 LIMIT 1',
+    [instanceKey]
+  );
+
+  if (compRes.rows.length > 0) {
+    const row = compRes.rows[0];
+    console.log(`[Webhook Resolver] ✅ Encontrado em companies. CompanyID: ${row.id}`);
+    return {
+      id: row.id,
+      instance_id: null,
+      instance_name: instanceKey
+    };
+  }
+
+  console.warn(`[Webhook Resolver] ❌ Nenhuma empresa encontrada para instância: ${instanceKey}`);
+  return null;
+}
+
 export const getEvolutionConfig = async (user: any, source: string = 'unknown', targetCompanyId?: number | string, targetInstanceKey?: string) => {
   // Base configuration from env (fallback for URL/Key only)
   let config = {
@@ -1847,195 +1892,172 @@ export const createEvolutionContact = async (req: Request, res: Response) => {
 // ... (previous code)
 
 // Handle Evolution Webhooks
+// Handle Evolution Webhooks
 export const handleEvolutionWebhook = async (req: Request, res: Response) => {
   try {
     const body = req.body;
-    // console.log("[Evolution] Webhook received:", JSON.stringify(body, null, 2));
-
     const { type, data, instance } = body;
-
-    // Resolve Company ID from Instance
-    let resolvedCompanyId: number | null = null;
-    if (instance && pool) {
-      const ciRes = await pool.query('SELECT company_id FROM company_instances WHERE instance_key = $1', [instance]);
-      if (ciRes.rows.length > 0) {
-        resolvedCompanyId = ciRes.rows[0].company_id;
-      } else {
-        const cRes = await pool.query('SELECT id FROM companies WHERE evolution_instance = $1', [instance]);
-        if (cRes.rows.length > 0) resolvedCompanyId = cRes.rows[0].id;
-      }
-    }
-
-    // V2 structure compatibility: sometimes data is inside 'data' or top level depending on event
-    // Typical V2 TEXT_MESSAGE: type: "MESSAGES_UPSERT", data: { messages: [...] } OR directly messages: [...]
-
-    // We focus on MESSAGES_UPSERT or MESSAGES_UPDATE
-    // Check event type
     const eventType = type || body.event;
 
+    console.log(`[Webhook] Recebido: ${eventType} | Instância: ${instance}`);
+
+    if (!instance) {
+      console.warn("[Webhook] Webhook ignorado: instância não informada no body.");
+      return res.status(200).send("No instance");
+    }
+
+    // 1. Resolve Company
+    const company = await resolveCompanyByInstanceKey(instance);
+    if (!company) {
+      console.warn(`[Webhook] ❌ Instância ${instance} não mapeada para nenhuma empresa. Abortando.`);
+      return res.status(200).send("Instance not recognized");
+    }
+
+    const resolvedCompanyId = company.id;
+    console.log(`[Webhook] Processando para Empresa ID: ${resolvedCompanyId}`);
+
+    // CONNECTION UPDATE HANDLING
     if (eventType === "CONNECTION_UPDATE") {
       const state = data?.state || body.state;
-      // Evolution v2 number is usually in data.number or body.number, format "5511999999999:1"
       const rawNumber = data?.number || body.number;
       const cleanNumber = rawNumber ? rawNumber.split(':')[0] : null;
 
-      if (instance && pool) {
+      if (pool) {
         await pool.query(
-          'UPDATE company_instances SET status = $1, phone = COALESCE($2, phone) WHERE instance_key = $3',
-          [state === 'open' ? 'connected' : (state || 'disconnected'), cleanNumber, instance]
+          'UPDATE company_instances SET status = $1, phone = COALESCE($2, phone) WHERE (instance_key = $3 OR name = $3) AND company_id = $4',
+          [state === 'open' ? 'connected' : (state || 'disconnected'), cleanNumber, instance, resolvedCompanyId]
         );
-        console.log(`[Webhook] Instance ${instance} connection status updated to ${state} (${cleanNumber})`);
+        console.log(`[Webhook] Status da instância ${instance} atualizado para ${state}`);
       }
+      return res.status(200).send("OK");
     }
 
-    if (eventType === "MESSAGES_UPSERT") {
-      const messages = data?.messages || body.messages || []; // V2 usually sends array
+    // MESSAGES HANDLING
+    if (eventType === "MESSAGES_UPSERT" || eventType === "MESSAGES_UPDATE") {
+      const messages = data?.messages || body.messages || (data?.key ? [data] : []);
 
       for (const msg of messages) {
         if (!msg.key) continue;
 
         const remoteJid = msg.key.remoteJid;
-        const fromMe = msg.key.fromMe;
-        const id = msg.key.id;
-        const pushName = msg.pushName;
-        const messageType = msg.messageType || Object.keys(msg.message)[0];
-
-        // Extract content
-        let content = "";
-        if (messageType === 'conversation') content = msg.message.conversation;
-        else if (messageType === 'extendedTextMessage') content = msg.message.extendedTextMessage.text;
-        else if (messageType === 'imageMessage') content = msg.message.imageMessage.caption || "[Imagem]";
-        else if (messageType === 'audioMessage') content = "[Áudio]";
-        else if (messageType === 'videoMessage') content = "[Vídeo]";
-        else content = JSON.stringify(msg.message); // Fallback
-
-        // Ignore status updates
         if (remoteJid === "status@broadcast") continue;
 
-        // Ensure Conversation Exists
-        let conversationId: number | null = null;
+        const fromMe = msg.key.fromMe;
+        const externalId = msg.key.id;
+        const pushName = msg.pushName;
+        const messageType = msg.messageType || (msg.message ? Object.keys(msg.message)[0] : 'unknown');
+
+        // Extract content robustly
+        let content = "";
+        const m = msg.message || {};
+        if (m.conversation) content = m.conversation;
+        else if (m.extendedTextMessage?.text) content = m.extendedTextMessage.text;
+        else if (m.imageMessage) content = m.imageMessage.caption || "[Imagem]";
+        else if (m.audioMessage) content = "[Áudio]";
+        else if (m.videoMessage) content = m.videoMessage.caption || "[Vídeo]";
+        else if (m.documentMessage) content = m.documentMessage.fileName || "[Documento]";
+        else if (m.stickerMessage) content = "[Figurinha]";
+        else content = "[Mensagem]";
 
         if (pool) {
-          // Helper: clean phone
           const phone = remoteJid.split('@')[0];
 
-          // 0. Resolve Contact Name from Saved Contacts
-          // Priority: Saved Name > PushName > Phone
+          // 0. Resolve Contact Name
           let finalContactName = pushName || phone;
-          let isSavedContact = false;
-
           try {
             const savedContactRes = await pool.query(
-              "SELECT name FROM whatsapp_contacts WHERE jid = $1 OR phone = $2 LIMIT 1",
-              [remoteJid, phone]
+              "SELECT name FROM whatsapp_contacts WHERE (jid = $1 OR phone = $2) AND company_id = $3 LIMIT 1",
+              [remoteJid, phone, resolvedCompanyId]
             );
-            if (savedContactRes.rows.length > 0) {
+            if (savedContactRes.rows.length > 0 && savedContactRes.rows[0].name) {
               finalContactName = savedContactRes.rows[0].name;
-              isSavedContact = true;
             }
           } catch (err) {
-            console.error("Error looking up saved contact:", err);
+            console.error("[Webhook] Erro ao buscar contato:", err);
           }
 
           // 1. Upsert Conversation
-          // We need to check by external_id AND instance
+          let conversationId: number;
           const existing = await pool.query(
-            `SELECT id FROM whatsapp_conversations WHERE external_id = $1 AND instance = $2`,
-            [remoteJid, instance]
+            `SELECT id FROM whatsapp_conversations WHERE external_id = $1 AND company_id = $2`,
+            [remoteJid, resolvedCompanyId]
           );
 
           if (existing.rows.length > 0) {
             conversationId = existing.rows[0].id;
-            // Update last message AND contact_name (to keep it in sync with saved contacts)
+            console.log(`[Webhook] Conversa encontrada: ${conversationId}`);
+
             await pool.query(
               `UPDATE whatsapp_conversations SET 
-                                last_message = $1, 
-                                last_message_at = NOW(), 
-                                unread_count = unread_count + $3,
-                                contact_name = $4
-                             WHERE id = $2`,
-              [content, conversationId, fromMe ? 0 : 1, finalContactName]
+                  last_message = $1, 
+                  last_message_at = NOW(), 
+                  unread_count = CASE WHEN $3 = true THEN unread_count ELSE unread_count + 1 END,
+                  contact_name = $4,
+                  instance = $5
+                WHERE id = $2`,
+              [content, conversationId, fromMe, finalContactName, instance]
             );
           } else {
-            // Create new
+            console.log(`[Webhook] Criando nova conversa para ${remoteJid}`);
             const newConv = await pool.query(
               `INSERT INTO whatsapp_conversations 
-                                (external_id, phone, contact_name, instance, last_message, last_message_at, unread_count, company_id)
-                             VALUES ($1, $2, $3, $4, $5, NOW(), $6, $7)
-                             RETURNING id`,
-              [remoteJid, phone, finalContactName, instance, content, fromMe ? 0 : 1, resolvedCompanyId]
+                  (external_id, phone, contact_name, instance, last_message, last_message_at, unread_count, company_id, status)
+                VALUES ($1, $2, $3, $4, $5, NOW(), $6, $7, $8)
+                RETURNING id`,
+              [remoteJid, phone, finalContactName, instance, content, fromMe ? 0 : 1, resolvedCompanyId, 'PENDING']
             );
             conversationId = newConv.rows[0].id;
+            console.log(`[Webhook] Nova conversa criada: ${conversationId}`);
 
-            // --- CRM INTEGRATION: Auto-create Lead ---
-            // Condition: 
-            // 1. Message is INBOUND (from user)
-            // 2. Contact is NOT SAVED in whatsapp_contacts (isSavedContact === false)
-            if (!fromMe && !isSavedContact) {
+            // Auto-lead creation
+            if (!fromMe) {
               try {
-                const leadStageRes = await pool.query(
-                  "SELECT id FROM crm_stages WHERE name = 'Leads' AND company_id = $1 LIMIT 1",
-                  [resolvedCompanyId]
-                );
-
-                if (leadStageRes.rows.length > 0) {
-                  const leadsStageId = leadStageRes.rows[0].id;
-
-                  // Check if lead exists by phone AND company
-                  const checkLead = await pool.query(
-                    "SELECT id FROM crm_leads WHERE phone = $1 AND company_id = $2",
-                    [phone, resolvedCompanyId]
+                const stageRes = await pool.query("SELECT id FROM crm_stages WHERE name = 'Leads' AND company_id = $1 LIMIT 1", [resolvedCompanyId]);
+                if (stageRes.rows.length > 0) {
+                  await pool.query(
+                    `INSERT INTO crm_leads (name, phone, stage_id, origin, company_id, instance, created_at, updated_at)
+                      VALUES ($1, $2, $3, 'WhatsApp', $4, $5, NOW(), NOW())
+                      ON CONFLICT (phone, company_id) DO NOTHING`,
+                    [finalContactName, phone, stageRes.rows[0].id, resolvedCompanyId, instance]
                   );
-
-                  if (checkLead.rows.length === 0) {
-                    console.log(`[CRM] Auto-creating lead for UNSAVED contact ${phone}`);
-                    await pool.query(
-                      `INSERT INTO crm_leads (name, phone, stage_id, origin, company_id, instance, created_at, updated_at)
-                                 VALUES ($1, $2, $3, 'WhatsApp', $4, $5, NOW(), NOW())
-                                 ON CONFLICT (phone, company_id) DO NOTHING`,
-                      [pushName || phone, phone, leadsStageId, resolvedCompanyId, instance]
-
-                    );
-                  }
-                } else {
-                  console.warn("[CRM] 'Leads' stage not found. Skipping auto-lead creation.");
                 }
-              } catch (crmError) {
-                console.error("[CRM] Error auto-creating lead:", crmError);
-              }
+              } catch (crmE) { console.error("[Webhook] Erro auto-lead:", crmE); }
             }
-            // -----------------------------------------
           }
 
           // 2. Insert Message
-          // Check for duplicates first? (id is unique usually but let's trust uniqueness of id is not guaranteed globally unless we constrain it)
-          // Actually let's assume valid new message.
-          await pool.query(
+          const insertedMsg = await pool.query(
             `INSERT INTO whatsapp_messages 
-                            (conversation_id, direction, content, sent_at, status, message_type)
-                         VALUES ($1, $2, $3, NOW(), $4, $5)`,
-            [conversationId, fromMe ? 'outbound' : 'inbound', content, 'received', messageType]
+                (conversation_id, direction, content, sent_at, status, message_type, external_id, company_id, instance_key)
+              VALUES ($1, $2, $3, NOW(), $4, $5, $6, $7, $8)
+              ON CONFLICT (external_id) DO NOTHING
+              RETURNING *`,
+            [conversationId, fromMe ? 'outbound' : 'inbound', content, 'received', messageType, externalId, resolvedCompanyId, instance]
           );
 
-          // 3. Emit Socket Event
-          const io = req.app.get('io');
-          if (io) {
-            // Payload expected by frontend:
-            // { conversation_id, phone, contact_name, content, sent_at, direction, id, ... }
+          if (insertedMsg.rows.length > 0) {
+            console.log(`[Webhook] ✅ Mensagem salva: ${insertedMsg.rows[0].id}`);
 
-            io.emit("message:received", {
-              id: Date.now(), // Temp ID for socket
-              conversation_id: conversationId,
-              platform: "whatsapp",
-              direction: fromMe ? "outbound" : "inbound",
-              content: content,
-              status: "received",
-              sent_at: new Date(),
-              phone: phone, // Frontend uses phone to match conversation (using the clean phone variable)
-              contact_name: pushName || remoteJid,
-              remoteJid: remoteJid,
-              instance: instance
-            });
+            // 3. Emit Socket Event
+            const io = req.app.get('io');
+            if (io) {
+              const payload = {
+                ...insertedMsg.rows[0],
+                conversation_id: conversationId,
+                phone: phone,
+                contact_name: finalContactName,
+                instance: instance
+              };
+
+              const room = `company_${resolvedCompanyId}`;
+              console.log(`[Webhook] Emitindo para sala: ${room}`);
+              io.to(room).emit("message:received", payload);
+
+              // Emit to instance room for specific instance monitoring
+              io.to(`instance_${instance}`).emit("message:received", payload);
+            }
+          } else {
+            console.log(`[Webhook] Mensagem duplicada ignorada: ${externalId}`);
           }
         }
       }
@@ -2046,6 +2068,13 @@ export const handleEvolutionWebhook = async (req: Request, res: Response) => {
     console.error("Error processing webhook:", e);
     return res.status(500).send("Error");
   }
+};
+
+return res.status(200).send("OK");
+  } catch (e) {
+  console.error("Error processing webhook:", e);
+  return res.status(500).send("Error");
+}
 };
 
 

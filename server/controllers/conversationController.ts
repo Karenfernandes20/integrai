@@ -165,7 +165,15 @@ export const updateContactNameWithAudit = async (req: AuthenticatedRequest, res:
         // Update Local DB (Conversation + Contacts)
         await pool.query('UPDATE whatsapp_conversations SET contact_name = $1, company_id = COALESCE(company_id, $2) WHERE id = $3', [name, companyId, id]);
 
-        // Also update the global contacts table
+        // Also update the global contacts table (Omnichannel)
+        const channel = (check.rows[0] as any).channel || 'whatsapp';
+        await pool.query(`
+            UPDATE contacts 
+            SET name = $1, updated_at = NOW() 
+            WHERE external_id = $2 AND company_id = $3 AND channel = $4
+        `, [name, external_id, companyId, channel]);
+
+        // Also update the legacy whatsapp_contacts table
         const jid = external_id || `${phone}@s.whatsapp.net`;
         await pool.query(`
             INSERT INTO whatsapp_contacts (jid, name, instance, company_id) VALUES ($1, $2, $3, $4)

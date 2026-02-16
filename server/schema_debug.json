@@ -1,0 +1,510 @@
+[
+  {
+    "table_name": "companies",
+    "column_name": "category"
+  },
+  {
+    "table_name": "companies",
+    "column_name": "city"
+  },
+  {
+    "table_name": "companies",
+    "column_name": "cnpj"
+  },
+  {
+    "table_name": "companies",
+    "column_name": "created_at"
+  },
+  {
+    "table_name": "companies",
+    "column_name": "custom_domain"
+  },
+  {
+    "table_name": "companies",
+    "column_name": "due_date"
+  },
+  {
+    "table_name": "companies",
+    "column_name": "evolution_apikey"
+  },
+  {
+    "table_name": "companies",
+    "column_name": "evolution_instance"
+  },
+  {
+    "table_name": "companies",
+    "column_name": "evolution_url"
+  },
+  {
+    "table_name": "companies",
+    "column_name": "id"
+  },
+  {
+    "table_name": "companies",
+    "column_name": "instagram_access_token"
+  },
+  {
+    "table_name": "companies",
+    "column_name": "instagram_app_id"
+  },
+  {
+    "table_name": "companies",
+    "column_name": "instagram_app_secret"
+  },
+  {
+    "table_name": "companies",
+    "column_name": "instagram_business_id"
+  },
+  {
+    "table_name": "companies",
+    "column_name": "instagram_enabled"
+  },
+  {
+    "table_name": "companies",
+    "column_name": "instagram_instances_config"
+  },
+  {
+    "table_name": "companies",
+    "column_name": "instagram_limit"
+  },
+  {
+    "table_name": "companies",
+    "column_name": "instagram_page_id"
+  },
+  {
+    "table_name": "companies",
+    "column_name": "instagram_status"
+  },
+  {
+    "table_name": "companies",
+    "column_name": "instagram_token_expires_at"
+  },
+  {
+    "table_name": "companies",
+    "column_name": "instagram_webhook_token"
+  },
+  {
+    "table_name": "companies",
+    "column_name": "logo_url"
+  },
+  {
+    "table_name": "companies",
+    "column_name": "max_instances"
+  },
+  {
+    "table_name": "companies",
+    "column_name": "messenger_access_token"
+  },
+  {
+    "table_name": "companies",
+    "column_name": "messenger_app_id"
+  },
+  {
+    "table_name": "companies",
+    "column_name": "messenger_app_secret"
+  },
+  {
+    "table_name": "companies",
+    "column_name": "messenger_enabled"
+  },
+  {
+    "table_name": "companies",
+    "column_name": "messenger_limit"
+  },
+  {
+    "table_name": "companies",
+    "column_name": "messenger_page_id"
+  },
+  {
+    "table_name": "companies",
+    "column_name": "messenger_status"
+  },
+  {
+    "table_name": "companies",
+    "column_name": "messenger_webhook_token"
+  },
+  {
+    "table_name": "companies",
+    "column_name": "n8n_api_key"
+  },
+  {
+    "table_name": "companies",
+    "column_name": "n8n_base_url"
+  },
+  {
+    "table_name": "companies",
+    "column_name": "n8n_webhook_secret"
+  },
+  {
+    "table_name": "companies",
+    "column_name": "name"
+  },
+  {
+    "table_name": "companies",
+    "column_name": "onboarding_step"
+  },
+  {
+    "table_name": "companies",
+    "column_name": "operation_type"
+  },
+  {
+    "table_name": "companies",
+    "column_name": "operational_profile"
+  },
+  {
+    "table_name": "companies",
+    "column_name": "phone"
+  },
+  {
+    "table_name": "companies",
+    "column_name": "plan_id"
+  },
+  {
+    "table_name": "companies",
+    "column_name": "primary_color"
+  },
+  {
+    "table_name": "companies",
+    "column_name": "recurrence"
+  },
+  {
+    "table_name": "companies",
+    "column_name": "secondary_color"
+  },
+  {
+    "table_name": "companies",
+    "column_name": "state"
+  },
+  {
+    "table_name": "companies",
+    "column_name": "system_name"
+  },
+  {
+    "table_name": "companies",
+    "column_name": "ticket_reopen_timeout_hours"
+  },
+  {
+    "table_name": "companies",
+    "column_name": "updated_at"
+  },
+  {
+    "table_name": "companies",
+    "column_name": "whatsapp_api_plus_token"
+  },
+  {
+    "table_name": "companies",
+    "column_name": "whatsapp_enabled"
+  },
+  {
+    "table_name": "companies",
+    "column_name": "whatsapp_instance_id"
+  },
+  {
+    "table_name": "companies",
+    "column_name": "whatsapp_limit"
+  },
+  {
+    "table_name": "companies",
+    "column_name": "whatsapp_official_access_token"
+  },
+  {
+    "table_name": "companies",
+    "column_name": "whatsapp_official_api_version"
+  },
+  {
+    "table_name": "companies",
+    "column_name": "whatsapp_official_business_account_id"
+  },
+  {
+    "table_name": "companies",
+    "column_name": "whatsapp_official_phone"
+  },
+  {
+    "table_name": "companies",
+    "column_name": "whatsapp_official_phone_number_id"
+  },
+  {
+    "table_name": "companies",
+    "column_name": "whatsapp_official_webhook_token"
+  },
+  {
+    "table_name": "companies",
+    "column_name": "whatsapp_type"
+  },
+  {
+    "table_name": "companies",
+    "column_name": "whatsapp_web_js_enabled"
+  },
+  {
+    "table_name": "company_instances",
+    "column_name": "api_key"
+  },
+  {
+    "table_name": "company_instances",
+    "column_name": "color"
+  },
+  {
+    "table_name": "company_instances",
+    "column_name": "company_id"
+  },
+  {
+    "table_name": "company_instances",
+    "column_name": "created_at"
+  },
+  {
+    "table_name": "company_instances",
+    "column_name": "id"
+  },
+  {
+    "table_name": "company_instances",
+    "column_name": "instance_key"
+  },
+  {
+    "table_name": "company_instances",
+    "column_name": "name"
+  },
+  {
+    "table_name": "company_instances",
+    "column_name": "phone"
+  },
+  {
+    "table_name": "company_instances",
+    "column_name": "status"
+  },
+  {
+    "table_name": "company_instances",
+    "column_name": "updated_at"
+  },
+  {
+    "table_name": "whatsapp_conversations",
+    "column_name": "channel"
+  },
+  {
+    "table_name": "whatsapp_conversations",
+    "column_name": "closed_at"
+  },
+  {
+    "table_name": "whatsapp_conversations",
+    "column_name": "closed_by_user_id"
+  },
+  {
+    "table_name": "whatsapp_conversations",
+    "column_name": "closing_observation"
+  },
+  {
+    "table_name": "whatsapp_conversations",
+    "column_name": "closing_reason_id"
+  },
+  {
+    "table_name": "whatsapp_conversations",
+    "column_name": "company_id"
+  },
+  {
+    "table_name": "whatsapp_conversations",
+    "column_name": "contact_name"
+  },
+  {
+    "table_name": "whatsapp_conversations",
+    "column_name": "created_at"
+  },
+  {
+    "table_name": "whatsapp_conversations",
+    "column_name": "external_id"
+  },
+  {
+    "table_name": "whatsapp_conversations",
+    "column_name": "group_name"
+  },
+  {
+    "table_name": "whatsapp_conversations",
+    "column_name": "id"
+  },
+  {
+    "table_name": "whatsapp_conversations",
+    "column_name": "instagram_user_id"
+  },
+  {
+    "table_name": "whatsapp_conversations",
+    "column_name": "instagram_username"
+  },
+  {
+    "table_name": "whatsapp_conversations",
+    "column_name": "instance"
+  },
+  {
+    "table_name": "whatsapp_conversations",
+    "column_name": "instance_id"
+  },
+  {
+    "table_name": "whatsapp_conversations",
+    "column_name": "is_group"
+  },
+  {
+    "table_name": "whatsapp_conversations",
+    "column_name": "last_instance_key"
+  },
+  {
+    "table_name": "whatsapp_conversations",
+    "column_name": "last_message"
+  },
+  {
+    "table_name": "whatsapp_conversations",
+    "column_name": "last_message_at"
+  },
+  {
+    "table_name": "whatsapp_conversations",
+    "column_name": "last_message_source"
+  },
+  {
+    "table_name": "whatsapp_conversations",
+    "column_name": "messenger_user_id"
+  },
+  {
+    "table_name": "whatsapp_conversations",
+    "column_name": "opened_at"
+  },
+  {
+    "table_name": "whatsapp_conversations",
+    "column_name": "opened_by_user_id"
+  },
+  {
+    "table_name": "whatsapp_conversations",
+    "column_name": "phone"
+  },
+  {
+    "table_name": "whatsapp_conversations",
+    "column_name": "profile_pic_url"
+  },
+  {
+    "table_name": "whatsapp_conversations",
+    "column_name": "queue_id"
+  },
+  {
+    "table_name": "whatsapp_conversations",
+    "column_name": "started_at"
+  },
+  {
+    "table_name": "whatsapp_conversations",
+    "column_name": "status"
+  },
+  {
+    "table_name": "whatsapp_conversations",
+    "column_name": "unread_count"
+  },
+  {
+    "table_name": "whatsapp_conversations",
+    "column_name": "updated_at"
+  },
+  {
+    "table_name": "whatsapp_conversations",
+    "column_name": "user_id"
+  },
+  {
+    "table_name": "whatsapp_messages",
+    "column_name": "campaign_id"
+  },
+  {
+    "table_name": "whatsapp_messages",
+    "column_name": "channel"
+  },
+  {
+    "table_name": "whatsapp_messages",
+    "column_name": "company_id"
+  },
+  {
+    "table_name": "whatsapp_messages",
+    "column_name": "content"
+  },
+  {
+    "table_name": "whatsapp_messages",
+    "column_name": "conversation_id"
+  },
+  {
+    "table_name": "whatsapp_messages",
+    "column_name": "created_at"
+  },
+  {
+    "table_name": "whatsapp_messages",
+    "column_name": "direction"
+  },
+  {
+    "table_name": "whatsapp_messages",
+    "column_name": "external_id"
+  },
+  {
+    "table_name": "whatsapp_messages",
+    "column_name": "follow_up_id"
+  },
+  {
+    "table_name": "whatsapp_messages",
+    "column_name": "id"
+  },
+  {
+    "table_name": "whatsapp_messages",
+    "column_name": "instagram_message_id"
+  },
+  {
+    "table_name": "whatsapp_messages",
+    "column_name": "instance_id"
+  },
+  {
+    "table_name": "whatsapp_messages",
+    "column_name": "instance_key"
+  },
+  {
+    "table_name": "whatsapp_messages",
+    "column_name": "instance_name"
+  },
+  {
+    "table_name": "whatsapp_messages",
+    "column_name": "media_url"
+  },
+  {
+    "table_name": "whatsapp_messages",
+    "column_name": "message_origin"
+  },
+  {
+    "table_name": "whatsapp_messages",
+    "column_name": "message_source"
+  },
+  {
+    "table_name": "whatsapp_messages",
+    "column_name": "message_type"
+  },
+  {
+    "table_name": "whatsapp_messages",
+    "column_name": "reactions"
+  },
+  {
+    "table_name": "whatsapp_messages",
+    "column_name": "sender_jid"
+  },
+  {
+    "table_name": "whatsapp_messages",
+    "column_name": "sender_name"
+  },
+  {
+    "table_name": "whatsapp_messages",
+    "column_name": "sent_at"
+  },
+  {
+    "table_name": "whatsapp_messages",
+    "column_name": "sent_by_user_id"
+  },
+  {
+    "table_name": "whatsapp_messages",
+    "column_name": "sent_by_user_name"
+  },
+  {
+    "table_name": "whatsapp_messages",
+    "column_name": "status"
+  },
+  {
+    "table_name": "whatsapp_messages",
+    "column_name": "updated_at"
+  },
+  {
+    "table_name": "whatsapp_messages",
+    "column_name": "user_id"
+  }
+]

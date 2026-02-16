@@ -17,7 +17,8 @@ export async function runOmnichannelContactsMigration() {
                 channel VARCHAR(20) NOT NULL DEFAULT 'whatsapp', -- whatsapp, instagram, messenger
                 external_id TEXT NOT NULL, -- jid do whatsapp ou id do instagram
                 name TEXT,
-                username TEXT, -- @username do instagram
+                username TEXT, -- @username genérico
+                instagram_username TEXT, -- @username específico do Instagram
                 phone TEXT,
                 instagram_id TEXT,
                 profile_picture TEXT,

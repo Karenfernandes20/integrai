@@ -226,11 +226,11 @@ router.post('/evolution/debug/fix-viamove', async (req, res) => {
 router.get('/evolution/qrcode', authenticateToken, getEvolutionQrCode);
 router.get('/evolution/webhook/get', authenticateToken, getEvolutionWebhook);
 router.post('/evolution/webhook/set', authenticateToken, setEvolutionWebhook);
-router.post('/evolution/webhook/:type', handleWebhook);
-router.post('/evolution/webhook', handleWebhook);
+router.post('/evolution/webhook/:type', handleEvolutionWebhook);
+router.post('/evolution/webhook', handleEvolutionWebhook);
 // Alternative webhook routes for compatibility
-router.post('/webhooks/whatsapp', handleWebhook);
-router.post('/webhooks/whatsapp/:type', handleWebhook);
+router.post('/webhooks/whatsapp', handleEvolutionWebhook);
+router.post('/webhooks/whatsapp/:type', handleEvolutionWebhook);
 router.get('/evolution/webhook-debug', debugWebhookPayloads);
 router.get('/evolution/conversations', authenticateToken, getConversations);
 router.post('/evolution/groups/sync', authenticateToken, syncEvolutionGroups);

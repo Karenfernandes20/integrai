@@ -122,6 +122,8 @@ interface Conversation {
   queue_id?: number | null;
   assigned_user_name?: string | null;
   channel?: 'whatsapp' | 'instagram' | string;
+  instagram_username?: string;
+  instagram_id?: string;
 }
 
 interface QueueOption {
@@ -167,6 +169,7 @@ interface Contact {
   phone: string;
   profile_pic_url?: string;
   push_name?: string;
+  instagram_username?: string;
 }
 
 type QuickMessageType = 'text' | 'image' | 'audio' | 'document';
@@ -652,49 +655,49 @@ const AtendimentoPage = () => {
       if (!value) return false;
       const name = String(value).trim();
       if (!name) return false;
-      if (name.includes('@')) return false;
+      // Skip IDs and placeholder strings
+      if (name.includes('@s.whatsapp.net')) return false;
+      if (name.length > 20 && /^\d+$/.test(name)) return false;
       const digitsOnly = name.replace(/\D/g, "");
-      // Ignore raw phone-like names used as fallback
-      if (digitsOnly.length >= 8 && digitsOnly.length <= 15 && digitsOnly === name.replace(/\s/g, "")) return false;
+      if (digitsOnly.length >= 10 && digitsOnly.length <= 15 && digitsOnly === name.replace(/\s/g, "")) return false;
       return true;
     };
 
-    // Priority 1: Explicit group name for groups (Subject)
-    if (conv.is_group && isUsableName(conv.group_name)) {
-      return String(conv.group_name).trim();
+    // Instagram Logic - Priority: name (editable) > instagram_username > phone/id
+    if (conv.channel === 'instagram') {
+      const name = conv.contact_name?.trim();
+      const username = conv.instagram_username?.trim();
+
+      // Se tiver um nome editado que NÃO é apenas o username (e não é o ID técnico)
+      if (isUsableName(name) && name !== username && name !== conv.phone) {
+        return name!;
+      }
+
+      // Se tiver um username, retorna com @, independente de estar no campo name ou não
+      if (username) {
+        return `@${username.replace(/^@/, '')}`;
+      }
+
+      // Fallback for instagram if only have the ID
+      return conv.phone || "Usuário Instagram";
     }
 
-    // Priority 2: Backend computed display_name (Which now prioritizes saved contacts for individuals)
-    const backendName = (conv as any).display_name;
-    if (isUsableName(backendName)) {
-      return String(backendName).trim();
+    // WhatsApp Logic - Priority 1: Saved name from database
+    if (isUsableName(conv.contact_name) && conv.contact_name !== conv.phone) {
+      return conv.contact_name!;
     }
 
-    // Priority 2: Saved name from whatsapp_contacts join
-    if (isUsableName(conv.contact_saved_name)) {
-      return String(conv.contact_saved_name).trim();
-    }
-
-    // Priority 3: Check contacts database (saved in "Contatos" tab)
     const raw = conv.phone.replace(/\D/g, "");
-    // Try both absolute raw and potentially trimmed version
     const fromDB = contactMap.get(raw) || (raw.startsWith('55') ? contactMap.get(raw.slice(2)) : contactMap.get('55' + raw));
     if (isUsableName(fromDB)) {
-      return fromDB;
+      return fromDB!;
     }
 
-    // Priority 4: Name persisted in conversation
-    if (isUsableName(conv.contact_name)) {
-      return String(conv.contact_name).trim();
+    if (isUsableName(conv.contact_push_name)) {
+      return conv.contact_push_name!;
     }
 
-    // Priority 5: Push Name from WhatsApp (name the person set on their WhatsApp)
-    const normalizeDigits = (s: string) => s ? s.replace(/\D/g, "") : "";
-    if (isUsableName(conv.contact_push_name) && normalizeDigits(conv.contact_push_name || '') !== normalizeDigits(conv.phone)) {
-      return conv.contact_push_name;
-    }
-
-    // Priority 6: Phone number (formatted)
+    // Final fallback: formatted phone
     return conv.phone?.replace(/\D/g, "") || "";
   }, [contactMap]);
 

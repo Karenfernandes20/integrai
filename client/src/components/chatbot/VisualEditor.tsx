@@ -26,11 +26,16 @@ export const VisualEditor: React.FC<VisualEditorProps> = ({
     // State
     const [nodes, setNodes] = useState<Node[]>(initialNodes);
     const [edges, setEdges] = useState<Edge[]>(initialEdges);
-    const [viewport, setViewport] = useState<Viewport>({ x: 0, y: 0, zoom: 1 });
-    const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
+    const [viewport, setViewport] = useState<Viewport>({ x: 0, y: 0, zoom: 0.8 }); // Default start a bit zoomed out
+    const [selectedNodeIds, setSelectedNodeIds] = useState<string[]>([]);
+    const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null);
+    const [isSnapToGrid, setIsSnapToGrid] = useState(true);
+    const [showGrid, setShowGrid] = useState(true);
+
     const [queues, setQueues] = useState<any[]>([]);
     const [tags, setTags] = useState<any[]>([]);
     const [users, setUsers] = useState<any[]>([]);
+    const [chatbots, setChatbots] = useState<any[]>([]);
     const { token } = useAuth();
 
     // Sync from props (when initial data arrives from API)
@@ -41,7 +46,6 @@ export const VisualEditor: React.FC<VisualEditorProps> = ({
         fetchData();
     }, [initialNodes]);
 
-    const [chatbots, setChatbots] = useState<any[]>([]);
     const fetchData = async () => {
         try {
             const [qRes, tRes, uRes, bRes] = await Promise.all([
@@ -66,7 +70,8 @@ export const VisualEditor: React.FC<VisualEditorProps> = ({
     }, [initialEdges]);
 
     // Interaction State
-    const [isDraggingNode, setIsDraggingNode] = useState<string | null>(null);
+    const [isDraggingNode, setIsDraggingNode] = useState<boolean>(false);
+    const [isSelectionBox, setIsSelectionBox] = useState<{ start: Position, end: Position } | null>(null);
     const [isPanning, setIsPanning] = useState(false);
     const [dragStart, setDragStart] = useState({ x: 0, y: 0 }); // Mouse position
     const [connectionStart, setConnectionStart] = useState<{ nodeId: string, handle: string } | null>(null);
@@ -77,14 +82,14 @@ export const VisualEditor: React.FC<VisualEditorProps> = ({
         e.ctrlKey || e.metaKey || e.shiftKey;
 
     // Helpers to convert screen definition to world coordinates
-    const screenToWorld = (x: number, y: number) => {
+    const screenToWorld = useCallback((x: number, y: number) => {
         if (!containerRef.current) return { x: 0, y: 0 };
         const rect = containerRef.current.getBoundingClientRect();
         return {
             x: (x - rect.left - viewport.x) / viewport.zoom,
             y: (y - rect.top - viewport.y) / viewport.zoom
         };
-    };
+    }, [viewport]);
 
     // --- MOUSE HANDLERS ---
 
@@ -96,9 +101,11 @@ export const VisualEditor: React.FC<VisualEditorProps> = ({
             return;
         }
 
-        // Click on background deselects
         if (e.target === containerRef.current) {
-            setSelectedNodeId(null);
+            const worldPos = screenToWorld(e.clientX, e.clientY);
+            setIsSelectionBox({ start: worldPos, end: worldPos });
+            setSelectedNodeIds([]);
+            setSelectedEdgeId(null);
         }
     };
 
@@ -111,18 +118,44 @@ export const VisualEditor: React.FC<VisualEditorProps> = ({
             return;
         }
 
-        if (isDraggingNode) {
+        if (isDraggingNode && selectedNodeIds.length > 0) {
             const dx = (e.clientX - dragStart.x) / viewport.zoom;
             const dy = (e.clientY - dragStart.y) / viewport.zoom;
 
             setNodes(prev => prev.map(n => {
-                if (n.id === isDraggingNode) {
-                    return { ...n, position: { x: n.position.x + dx, y: n.position.y + dy } };
+                if (selectedNodeIds.includes(n.id)) {
+                    let newX = n.position.x + dx;
+                    let newY = n.position.y + dy;
+
+                    if (isSnapToGrid) {
+                        newX = Math.round(newX / 20) * 20;
+                        newY = Math.round(newY / 20) * 20;
+                    }
+
+                    return { ...n, position: { x: newX, y: newY } };
                 }
                 return n;
             }));
 
             setDragStart({ x: e.clientX, y: e.clientY });
+            return;
+        }
+
+        if (isSelectionBox) {
+            const worldPos = screenToWorld(e.clientX, e.clientY);
+            setIsSelectionBox(prev => prev ? { ...prev, end: worldPos } : null);
+
+            const x1 = Math.min(isSelectionBox.start.x, worldPos.x);
+            const y1 = Math.min(isSelectionBox.start.y, worldPos.y);
+            const x2 = Math.max(isSelectionBox.start.x, worldPos.x);
+            const y2 = Math.max(isSelectionBox.start.y, worldPos.y);
+
+            const inBox = nodes.filter(n =>
+                n.position.x >= x1 && n.position.x <= x2 &&
+                n.position.y >= y1 && n.position.y <= y2
+            ).map(n => n.id);
+
+            setSelectedNodeIds(inBox);
             return;
         }
 
@@ -134,7 +167,8 @@ export const VisualEditor: React.FC<VisualEditorProps> = ({
 
     const handleMouseUp = () => {
         setIsPanning(false);
-        setIsDraggingNode(null);
+        setIsDraggingNode(false);
+        setIsSelectionBox(null);
         setConnectionStart(null);
         setTempMousePos(null);
     };
@@ -142,9 +176,21 @@ export const VisualEditor: React.FC<VisualEditorProps> = ({
     const handleWheel = (e: React.WheelEvent) => {
         if (e.ctrlKey || e.metaKey) {
             e.preventDefault();
-            const zoomFactor = -e.deltaY * 0.001;
-            const newZoom = Math.min(Math.max(viewport.zoom + zoomFactor, 0.2), 3);
-            setViewport(prev => ({ ...prev, zoom: newZoom }));
+            const delta = -e.deltaY;
+            const factor = Math.pow(1.1, delta / 100);
+
+            const oldZoom = viewport.zoom;
+            const newZoom = Math.min(Math.max(oldZoom * factor, 0.3), 2.5);
+
+            if (!containerRef.current) return;
+            const rect = containerRef.current.getBoundingClientRect();
+            const mouseX = e.clientX - rect.left;
+            const mouseY = e.clientY - rect.top;
+
+            const newX = mouseX - (mouseX - viewport.x) * (newZoom / oldZoom);
+            const newY = mouseY - (mouseY - viewport.y) * (newZoom / oldZoom);
+
+            setViewport({ x: newX, y: newY, zoom: newZoom });
         } else {
             setViewport(prev => ({ ...prev, x: prev.x - e.deltaX, y: prev.y - e.deltaY }));
         }
@@ -159,30 +205,29 @@ export const VisualEditor: React.FC<VisualEditorProps> = ({
             : Math.random().toString(36).substring(2, 11);
         const rect = containerRef.current.getBoundingClientRect();
 
-        // Calculate center of the current view using absolute screen coordinates
         const worldPos = screenToWorld(
             rect.left + rect.width / 2,
             rect.top + rect.height / 2
         );
 
-        setNodes(prev => [...prev, {
+        const newNode: Node = {
             id,
             type,
-            position: { x: worldPos.x - 125, y: worldPos.y - 50 }, // -125 is half of NODE_WIDTH
+            position: { x: worldPos.x - 125, y: worldPos.y - 50 },
             data: {
                 label: type === 'message' ? 'Nova Mensagem' : type.toUpperCase(),
-                actions: type === 'actions' ? [] : undefined
+                actions: (type === 'actions' || type === 'action') ? [] : undefined
             }
-        }]);
+        };
 
-        setSelectedNodeId(id); // Auto-focus the new node
+        setNodes(prev => [...prev, newNode]);
+        setSelectedNodeIds([id]);
     };
 
     const activeConnectionEnd = (nodeId: string) => {
         if (!connectionStart) return;
-        if (connectionStart.nodeId === nodeId) return; // Self connection? maybe not
+        if (connectionStart.nodeId === nodeId) return;
 
-        // Create edge
         const newEdge: Edge = {
             id: crypto.randomUUID(),
             source: connectionStart.nodeId,
@@ -190,23 +235,114 @@ export const VisualEditor: React.FC<VisualEditorProps> = ({
             sourceHandle: connectionStart.handle
         };
 
-        setEdges(prev => [...prev, newEdge]);
+        setEdges(prev => [...prev.filter(e => !(e.source === newEdge.source && e.sourceHandle === newEdge.sourceHandle)), newEdge]);
         setConnectionStart(null);
         setTempMousePos(null);
+    };
+
+    // --- KEYBOARD SHORTCUTS ---
+    useEffect(() => {
+        const handleKeyDown = (e: KeyboardEvent) => {
+            if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+
+            if (e.key === 'Delete' || e.key === 'Backspace') {
+                if (selectedNodeIds.length > 0) {
+                    setNodes(prev => prev.filter(n => !selectedNodeIds.includes(n.id)));
+                    setEdges(prev => prev.filter(edge => !selectedNodeIds.includes(edge.source) && !selectedNodeIds.includes(edge.target)));
+                    setSelectedNodeIds([]);
+                } else if (selectedEdgeId) {
+                    setEdges(prev => prev.filter(edge => edge.id !== selectedEdgeId));
+                    setSelectedEdgeId(null);
+                }
+            }
+
+            if (e.key === 'd' && (e.ctrlKey || e.metaKey)) {
+                e.preventDefault();
+                if (selectedNodeIds.length === 0) return;
+
+                const nodeMap: { [oldId: string]: string } = {};
+                const newNodes: Node[] = [];
+
+                selectedNodeIds.forEach(oldId => {
+                    const original = nodes.find(n => n.id === oldId);
+                    if (!original) return;
+                    const newId = crypto.randomUUID();
+                    nodeMap[oldId] = newId;
+                    newNodes.push({
+                        ...original,
+                        id: newId,
+                        position: { x: original.position.x + 40, y: original.position.y + 40 }
+                    });
+                });
+
+                setNodes(prev => [...prev, ...newNodes]);
+                setSelectedNodeIds(newNodes.map(n => n.id));
+
+                const newEdges: Edge[] = [];
+                edges.forEach(edge => {
+                    if (selectedNodeIds.includes(edge.source) && selectedNodeIds.includes(edge.target)) {
+                        newEdges.push({
+                            ...edge,
+                            id: crypto.randomUUID(),
+                            source: nodeMap[edge.source],
+                            target: nodeMap[edge.target]
+                        });
+                    }
+                });
+                setEdges(prev => [...prev, ...newEdges]);
+            }
+
+            if (e.key === 'a' && (e.ctrlKey || e.metaKey)) {
+                e.preventDefault();
+                setSelectedNodeIds(nodes.map(n => n.id));
+            }
+
+            if (e.key === 'Escape') {
+                setSelectedNodeIds([]);
+                setSelectedEdgeId(null);
+                setConnectionStart(null);
+            }
+        };
+
+        window.addEventListener('keydown', handleKeyDown);
+        return () => window.removeEventListener('keydown', handleKeyDown);
+    }, [selectedNodeIds, selectedEdgeId, nodes, edges]);
+
+    const centerWorkflow = () => {
+        if (nodes.length === 0 || !containerRef.current) return;
+        const rect = containerRef.current.getBoundingClientRect();
+
+        const xCoords = nodes.map(n => n.position.x);
+        const yCoords = nodes.map(n => n.position.y);
+
+        const minX = Math.min(...xCoords);
+        const maxX = Math.max(...xCoords) + NODE_WIDTH;
+        const minY = Math.min(...yCoords);
+        const maxY = Math.max(...yCoords) + 100;
+
+        const centerX = (minX + maxX) / 2;
+        const centerY = (minY + maxY) / 2;
+
+        const zoom = 0.8;
+        setViewport({
+            x: (rect.width / 2) - centerX * zoom,
+            y: (rect.height / 2) - centerY * zoom,
+            zoom
+        });
     };
 
     // --- RENDERING HELPERS ---
 
     const getNodeColor = (type: NodeType) => {
         switch (type) {
-            case 'start': return 'border-emerald-500 bg-emerald-50';
-            case 'message': return 'border-blue-500 bg-blue-50';
-            case 'question': return 'border-purple-500 bg-purple-50';
-            case 'condition': return 'border-orange-500 bg-orange-50';
+            case 'start': return 'border-emerald-500 bg-emerald-50 text-emerald-700';
+            case 'message': return 'border-blue-500 bg-blue-50 text-blue-700';
+            case 'question': return 'border-purple-500 bg-purple-50 text-purple-700';
+            case 'condition': return 'border-orange-500 bg-orange-50 text-orange-700';
             case 'action':
-            case 'actions': return 'border-slate-500 bg-slate-50';
-            case 'handoff': return 'border-rose-500 bg-rose-50';
-            default: return 'border-gray-500';
+            case 'actions': return 'border-slate-500 bg-slate-50 text-slate-700';
+            case 'handoff': return 'border-rose-500 bg-rose-50 text-rose-700';
+            default: return 'border-gray-500 text-gray-700';
         }
     };
 
@@ -223,7 +359,6 @@ export const VisualEditor: React.FC<VisualEditorProps> = ({
         }
     };
 
-    // Calculate anchors dynamic based on handle
     const getHandlePosition = (node: Node, handleId: string | undefined, isSource: boolean) => {
         if (!isSource) {
             return { x: node.position.x - 10, y: node.position.y + 40 };
@@ -234,50 +369,97 @@ export const VisualEditor: React.FC<VisualEditorProps> = ({
             const rules = node.data.rules || [];
             const idx = rules.findIndex((r: any) => r.id === handleId);
             if (idx !== -1) {
-                yOffset = 48 + (idx * 32) + 8; // pt-12 (48px) + index * (gap-4 (16) + height-4 (16)) + half icon (8)
+                yOffset = 100 + (idx * 60) + 10;
             } else if (handleId === 'else') {
-                yOffset = 48 + (rules.length * 32) + 8;
+                yOffset = 100 + (rules.length * 60) + 10;
             }
         } else if (node.type === 'question') {
-            if (handleId === 'default') yOffset = 48 + 8;
-            else if (handleId === 'invalid') yOffset = 48 + 32 + 8;
-            else if (handleId === 'timeout') yOffset = 48 + 64 + 8;
+            if (handleId === 'default') yOffset = 120;
+            else if (handleId === 'invalid') yOffset = 150;
+            else if (handleId === 'timeout') yOffset = 180;
         }
 
         return { x: node.position.x + NODE_WIDTH + 10, y: node.position.y + yOffset };
     };
 
-    // Calculate path for edges (simple bezier)
     const getEdgePath = (sourcePos: Position, targetPos: Position) => {
         const deltaX = Math.abs(targetPos.x - sourcePos.x);
         const controlX = Math.max(deltaX * 0.5, 50);
         return `M ${sourcePos.x} ${sourcePos.y} C ${sourcePos.x + controlX} ${sourcePos.y}, ${targetPos.x - controlX} ${targetPos.y}, ${targetPos.x} ${targetPos.y}`;
     };
 
+    const getMinimapViewRect = () => {
+        if (!containerRef.current || nodes.length === 0) return null;
+        const rect = containerRef.current.getBoundingClientRect();
+
+        const xCoords = nodes.map(n => n.position.x);
+        const yCoords = nodes.map(n => n.position.y);
+        const minX = Math.min(...xCoords) - 100;
+        const maxX = Math.max(...xCoords) + NODE_WIDTH + 100;
+        const minY = Math.min(...yCoords) - 100;
+        const maxY = Math.max(...yCoords) + 200;
+
+        const totalWidth = maxX - minX;
+        const totalHeight = maxY - minY;
+
+        const viewX = -viewport.x / viewport.zoom;
+        const viewY = -viewport.y / viewport.zoom;
+        const viewW = rect.width / viewport.zoom;
+        const viewH = rect.height / viewport.zoom;
+
+        const scale = 150 / Math.max(totalWidth, totalHeight);
+
+        return {
+            x: (viewX - minX) * scale,
+            y: (viewY - minY) * scale,
+            w: viewW * scale,
+            h: viewH * scale,
+            scale,
+            minX, minY
+        };
+    };
 
     return (
-        <div className="flex flex-col h-full w-full relative overflow-hidden bg-slate-100 select-none">
+        <div className="flex flex-col h-full w-full relative overflow-hidden bg-[#f8fafc] select-none">
             {/* Toolbar */}
-            <div className="absolute top-4 left-1/2 -translate-x-1/2 z-50 flex gap-2 bg-white/90 backdrop-blur p-2 rounded-xl shadow-lg border">
-                <Button size="sm" variant="ghost" onClick={() => addNode('message')} title="Mensagem">
-                    <MessageSquare className="h-4 w-4 text-blue-600" />
-                </Button>
-                <Button size="sm" variant="ghost" onClick={() => addNode('question')} title="Pergunta">
-                    <HelpCircle className="h-4 w-4 text-purple-600" />
-                </Button>
-                <Button size="sm" variant="ghost" onClick={() => addNode('condition')} title="Condição">
-                    <GitFork className="h-4 w-4 text-orange-600" />
-                </Button>
-                <Button size="sm" variant="ghost" onClick={() => addNode('actions')} title="Ações">
-                    <Zap className="h-4 w-4 text-slate-600" />
-                </Button>
-                <Button size="sm" variant="ghost" onClick={() => addNode('handoff')} title="Humano">
-                    <UserCheck className="h-4 w-4 text-rose-600" />
-                </Button>
-                <div className="w-px bg-slate-200 mx-1" />
-                <Button size="sm" onClick={() => onSave && onSave(nodes, edges)} className="bg-emerald-600 hover:bg-emerald-700 text-white">
-                    <Save className="h-4 w-4 mr-1" /> Salvar
-                </Button>
+            <div className="absolute top-6 left-1/2 -translate-x-1/2 z-50 flex items-center gap-1 bg-white/90 backdrop-blur-xl p-2 rounded-2xl shadow-2xl border border-slate-200/60 ring-1 ring-black/5 animate-in slide-in-from-top duration-500">
+                <div className="flex gap-1 pr-3 border-r border-slate-200/60">
+                    <Button size="sm" variant="ghost" onClick={() => addNode('message')} className="hover:bg-blue-50/80 rounded-xl transition-colors">
+                        <MessageSquare className="h-4 w-4 text-blue-600" />
+                    </Button>
+                    <Button size="sm" variant="ghost" onClick={() => addNode('question')} className="hover:bg-purple-50/80 rounded-xl transition-colors">
+                        <HelpCircle className="h-4 w-4 text-purple-600" />
+                    </Button>
+                    <Button size="sm" variant="ghost" onClick={() => addNode('condition')} className="hover:bg-orange-50/80 rounded-xl transition-colors">
+                        <GitFork className="h-4 w-4 text-orange-600" />
+                    </Button>
+                    <Button size="sm" variant="ghost" onClick={() => addNode('actions')} className="hover:bg-slate-100 rounded-xl transition-colors">
+                        <Zap className="h-4 w-4 text-slate-600" />
+                    </Button>
+                    <Button size="sm" variant="ghost" onClick={() => addNode('handoff')} className="hover:bg-rose-50/80 rounded-xl transition-colors">
+                        <UserCheck className="h-4 w-4 text-rose-600" />
+                    </Button>
+                </div>
+
+                <div className="flex gap-1 px-3 border-r border-slate-200/60">
+                    <Button size="sm" variant="ghost" onClick={() => setShowGrid(!showGrid)} className={cn("rounded-xl transition-all", showGrid ? "bg-slate-100/80" : "hover:bg-slate-50")}>
+                        <MousePointer2 className="h-3.5 w-3.5 text-slate-500" />
+                    </Button>
+                    <Button size="sm" variant="ghost" onClick={centerWorkflow} className="rounded-xl hover:bg-slate-100/80">
+                        <div className="h-4 w-4 border-2 border-slate-400 rounded flex items-center justify-center scale-90">
+                            <div className="w-1 h-1 bg-slate-400 rounded-full" />
+                        </div>
+                    </Button>
+                    <div className="flex items-center text-[10px] font-bold text-slate-400 px-1 w-12 justify-center tabular-nums">
+                        {Math.round(viewport.zoom * 100)}%
+                    </div>
+                </div>
+
+                <div className="flex gap-2 pl-2">
+                    <Button size="sm" onClick={() => onSave && onSave(nodes, edges)} className="bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl shadow-lg shadow-blue-200/50 border-none transition-all hover:scale-105 active:scale-95 px-4 h-9">
+                        <Save className="h-4 w-4 mr-2" /> Salvar
+                    </Button>
+                </div>
             </div>
 
             {/* Canvas */}
@@ -289,533 +471,518 @@ export const VisualEditor: React.FC<VisualEditorProps> = ({
                 onMouseUp={handleMouseUp}
                 onMouseLeave={handleMouseUp}
                 onWheel={handleWheel}
-                style={{
-                    cursor: isPanning ? 'grabbing' : 'default',
-                    backgroundSize: `${20 * viewport.zoom}px ${20 * viewport.zoom}px`,
-                    backgroundImage: 'radial-gradient(circle, #ddd 1px, transparent 1px)',
-                    backgroundPosition: `${viewport.x}px ${viewport.y}px`
-                }}
+                onContextMenu={(e) => e.preventDefault()}
+                style={{ cursor: isPanning ? 'grabbing' : 'default' }}
             >
+                {showGrid && (
+                    <div
+                        className="absolute inset-0 pointer-events-none"
+                        style={{
+                            backgroundSize: `${20 * viewport.zoom}px ${20 * viewport.zoom}px`,
+                            backgroundImage: `radial-gradient(circle, #e2e8f0 1px, transparent 1px)`,
+                            backgroundPosition: `${viewport.x}px ${viewport.y}px`,
+                        }}
+                    />
+                )}
+
                 <div style={{
                     transform: `translate(${viewport.x}px, ${viewport.y}px) scale(${viewport.zoom})`,
                     transformOrigin: '0 0',
-                    width: '100%',
-                    height: '100%',
-                    position: 'absolute'
                 }}>
-                    {/* Edges Layer */}
-                    <svg className="absolute top-0 left-0 overflow-visible pointer-events-none" style={{ width: 1, height: 1 }}>
+                    {/* SVG Layer */}
+                    <svg className="absolute top-0 left-0 w-full h-full pointer-events-none overflow-visible" style={{ zIndex: 5 }}>
                         <defs>
                             <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
-                                <polygon points="0 0, 10 3.5, 0 7" fill="#64748b" />
+                                <polygon points="0 0, 10 3.5, 0 7" fill="#94a3b8" />
+                            </marker>
+                            <marker id="arrowhead-selected" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+                                <polygon points="0 0, 10 3.5, 0 7" fill="#3b82f6" />
                             </marker>
                         </defs>
-                        {edges.map(edge => {
-                            const source = nodes.find(n => n.id === edge.source);
-                            const target = nodes.find(n => n.id === edge.target);
-                            if (!source || !target) return null;
 
-                            const sPos = getHandlePosition(source, edge.sourceHandle, true);
-                            const tPos = getHandlePosition(target, undefined, false);
+                        {edges.map(edge => {
+                            const sourceNode = nodes.find(n => n.id === edge.source);
+                            const targetNode = nodes.find(n => n.id === edge.target);
+                            if (!sourceNode || !targetNode) return null;
+
+                            const sPos = getHandlePosition(sourceNode, edge.sourceHandle, true);
+                            const tPos = getHandlePosition(targetNode, undefined, false);
+                            const isSelected = selectedEdgeId === edge.id;
 
                             return (
-                                <g key={edge.id}>
+                                <g key={edge.id} className="pointer-events-auto cursor-pointer">
                                     <path
                                         d={getEdgePath(sPos, tPos)}
-                                        stroke="#64748b"
-                                        strokeWidth="2"
+                                        stroke="transparent"
+                                        strokeWidth="20"
                                         fill="none"
-                                        markerEnd="url(#arrowhead)"
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            setSelectedNodeIds([]);
+                                            setSelectedEdgeId(edge.id);
+                                        }}
+                                    />
+                                    <path
+                                        d={getEdgePath(sPos, tPos)}
+                                        stroke={isSelected ? "#3b82f6" : "#cbd5e1"}
+                                        strokeWidth={isSelected ? "3" : "2"}
+                                        fill="none"
+                                        markerEnd={isSelected ? "url(#arrowhead-selected)" : "url(#arrowhead)"}
+                                        className="transition-all duration-300"
                                     />
                                 </g>
                             );
                         })}
 
-                        {/* Temp Connection Line */}
-                        {connectionStart && tempMousePos && (() => {
-                            const source = nodes.find(n => n.id === connectionStart.nodeId);
-                            if (!source) return null;
-                            const sPos = getHandlePosition(source, connectionStart.handle, true);
-                            return (
-                                <path
-                                    d={getEdgePath(sPos, tempMousePos)}
-                                    stroke="#cbd5e1"
-                                    strokeWidth="2"
-                                    strokeDasharray="5,5"
-                                    fill="none"
-                                />
-                            );
-                        })()}
-
+                        {connectionStart && tempMousePos && (
+                            <path
+                                d={getEdgePath(getHandlePosition(nodes.find(n => n.id === connectionStart.nodeId)!, connectionStart.handle, true), tempMousePos)}
+                                stroke="#3b82f6"
+                                strokeWidth="2"
+                                strokeDasharray="5,5"
+                                fill="none"
+                            />
+                        )}
                     </svg>
 
                     {/* Nodes Layer */}
                     {nodes.map(node => {
+                        const isSelected = selectedNodeIds.includes(node.id);
                         const Icon = getNodeIcon(node.type);
-                        const isSelected = selectedNodeId === node.id;
+                        const colorClass = getNodeColor(node.type);
 
                         return (
                             <div
                                 key={node.id}
                                 className={cn(
-                                    "absolute rounded-lg bg-white shadow-sm border-2 transition-shadow flex flex-col group",
-                                    getNodeColor(node.type),
-                                    isSelected ? "ring-2 ring-offset-1 ring-blue-400 shadow-lg" : "hover:shadow-md"
+                                    "absolute w-[250px] bg-white rounded-2xl border-2 shadow-xl cursor-move transition-shadow duration-200",
+                                    colorClass.split(' ')[0],
+                                    isSelected ? "ring-4 ring-blue-500/20 border-blue-500 shadow-blue-100" : "hover:shadow-2xl"
                                 )}
                                 style={{
                                     left: node.position.x,
                                     top: node.position.y,
-                                    width: NODE_WIDTH,
-                                    zIndex: 10
+                                    zIndex: isSelected ? 30 : 10
                                 }}
-                                onClick={(e) => {
+                                onMouseDown={(e) => {
                                     e.stopPropagation();
-                                    setSelectedNodeId(node.id);
+                                    const isMulti = e.shiftKey || e.ctrlKey || e.metaKey;
+                                    if (!selectedNodeIds.includes(node.id)) {
+                                        if (isMulti) setSelectedNodeIds(prev => [...prev, node.id]);
+                                        else setSelectedNodeIds([node.id]);
+                                    } else if (isMulti) {
+                                        setSelectedNodeIds(prev => prev.filter(id => id !== node.id));
+                                    }
+                                    setIsDraggingNode(true);
+                                    setDragStart({ x: e.clientX, y: e.clientY });
+                                    setSelectedEdgeId(null);
                                 }}
-                                onMouseUp={() => activeConnectionEnd(node.id)}
+                                onMouseUp={() => setIsDraggingNode(false)}
                             >
-                                {/* INPUT HANDLE (Target) */}
-                                {node.type !== 'start' && (
-                                    <div className="absolute -left-3 top-8 w-4 h-4 bg-slate-200 border border-slate-400 rounded-full hover:bg-slate-300 cursor-crosshair z-20" />
-                                )}
-
-                                {/* HEADER (Drag Handle) */}
-                                <div
-                                    className="h-10 px-3 flex items-center gap-2 border-b border-inherit cursor-grab active:cursor-grabbing bg-inherit rounded-t-lg"
-                                    onMouseDown={(e) => {
-                                        if (isPanModifierPressed(e)) {
-                                            return;
-                                        }
-
-                                        e.stopPropagation();
-                                        setSelectedNodeId(node.id); // Selection on grab
-                                        setIsDraggingNode(node.id);
-                                        setDragStart({ x: e.clientX, y: e.clientY });
-                                    }}
-                                >
-                                    <Icon size={16} />
-                                    <span className="font-semibold text-sm select-none truncate">
-                                        {node.data.label || node.type.toUpperCase()}
-                                    </span>
-                                </div>
-
-                                {/* CONTENT BODY */}
-                                <div className="p-3 bg-white rounded-b-lg min-h-[60px] text-xs text-slate-600">
-                                    {node.type === 'actions' ? (
-                                        <div className="space-y-1">
-                                            {(node.data.actions || []).length > 0 ? (
-                                                (node.data.actions || []).map((a: any, i: number) => (
-                                                    <div key={i} className="flex items-center gap-1 text-[10px] bg-slate-100 px-1.5 py-0.5 rounded">
-                                                        <Zap size={10} /> {a.type}
-                                                    </div>
-                                                ))
-                                            ) : <p className="italic text-slate-400">Nenhuma ação configurada</p>}
+                                {/* Node Header */}
+                                <div className={cn("px-4 py-3 border-b rounded-t-2xl flex items-center justify-between", colorClass.split(' ')[1])}>
+                                    <div className="flex items-center gap-2">
+                                        <div className="p-1.5 bg-white/80 rounded-lg shadow-sm">
+                                            <Icon size={14} className={colorClass.split(' ')[2]} />
                                         </div>
-                                    ) : (
-                                        <p className="line-clamp-3">{node.type === 'message' ? node.data.content : JSON.stringify(node.data)}</p>
-                                    )}
+                                        <span className="font-bold text-xs uppercase tracking-wider truncate max-w-[140px]">
+                                            {node.data.label || node.type}
+                                        </span>
+                                    </div>
+                                    <div
+                                        className="h-5 w-5 rounded-full border-2 border-slate-300 bg-white hover:border-blue-500 transition-colors pointer-events-auto cursor-crosshair ml-auto"
+                                        onMouseDown={(e) => {
+                                            e.stopPropagation();
+                                            setConnectionStart({ nodeId: node.id, handle: 'default' });
+                                            setTempMousePos(screenToWorld(e.clientX, e.clientY));
+                                        }}
+                                        onMouseUp={() => activeConnectionEnd(node.id)}
+                                    />
                                 </div>
 
-                                {/* OUTPUT HANDLES (Sources) */}
-                                <div className="absolute top-0 right-0 bottom-0 flex flex-col justify-start gap-4 pt-12 translate-x-[12px] z-20 pointer-events-none">
-
-                                    {node.type === 'condition' ? (
-                                        <>
+                                {/* Node Content PREVIEW */}
+                                <div className="p-4 bg-white rounded-b-2xl">
+                                    {node.type === 'message' && (
+                                        <p className="text-[10px] text-slate-500 line-clamp-3 leading-relaxed">
+                                            {node.data.content || "Nenhuma mensagem definida..."}
+                                        </p>
+                                    )}
+                                    {node.type === 'question' && (
+                                        <div className="space-y-2">
+                                            <p className="text-[10px] font-bold text-slate-700 italic truncate italic">"{node.data.question || "Pergunta..."}"</p>
+                                            <div className="flex flex-col gap-1.5 mt-2">
+                                                {['default', 'invalid', 'timeout'].map(h => (
+                                                    <div key={h} className="flex items-center justify-between text-[9px] bg-slate-50 p-1.5 rounded-lg border border-slate-100 group">
+                                                        <span className="text-slate-400 font-bold uppercase">{h}</span>
+                                                        <div
+                                                            className="w-3.5 h-3.5 rounded-full border-2 border-slate-300 hover:border-purple-500 bg-white cursor-crosshair"
+                                                            onMouseDown={(e) => {
+                                                                e.stopPropagation();
+                                                                setConnectionStart({ nodeId: node.id, handle: h });
+                                                                setTempMousePos(screenToWorld(e.clientX, e.clientY));
+                                                            }}
+                                                        />
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    )}
+                                    {node.type === 'condition' && (
+                                        <div className="space-y-2">
                                             {(node.data.rules || []).map((rule: any) => (
-                                                <div
-                                                    key={rule.id}
-                                                    className="w-4 h-4 bg-white border-2 border-orange-400 rounded-full hover:bg-orange-400 cursor-crosshair pointer-events-auto relative group/handle"
-                                                    onMouseDown={(e) => {
-                                                        e.stopPropagation();
-                                                        setConnectionStart({ nodeId: node.id, handle: rule.id });
-                                                    }}
-                                                >
-                                                    <span className="absolute left-full ml-1 top-1/2 -translate-y-1/2 text-[8px] font-bold text-orange-600 opacity-0 group-hover/handle:opacity-100 whitespace-nowrap bg-white px-1 rounded shadow-sm">
-                                                        {rule.id.slice(-4)}
-                                                    </span>
+                                                <div key={rule.id} className="flex items-center justify-between text-[9px] bg-orange-50/50 p-2 rounded-lg border border-orange-100 group">
+                                                    <span className="text-orange-700 font-bold truncate max-w-[160px]">IF {rule.variable} {rule.operator}</span>
+                                                    <div
+                                                        className="w-3.5 h-3.5 rounded-full border-2 border-orange-300 hover:border-orange-600 bg-white cursor-crosshair"
+                                                        onMouseDown={(e) => {
+                                                            e.stopPropagation();
+                                                            setConnectionStart({ nodeId: node.id, handle: rule.id });
+                                                            setTempMousePos(screenToWorld(e.clientX, e.clientY));
+                                                        }}
+                                                    />
                                                 </div>
                                             ))}
-                                            <div
-                                                className="w-4 h-4 bg-slate-100 border-2 border-slate-400 rounded-full hover:bg-slate-400 cursor-crosshair pointer-events-auto relative group/handle"
-                                                onMouseDown={(e) => {
-                                                    e.stopPropagation();
-                                                    setConnectionStart({ nodeId: node.id, handle: 'else' });
-                                                }}
-                                            >
-                                                <span className="absolute left-full ml-1 top-1/2 -translate-y-1/2 text-[8px] font-bold text-slate-600 opacity-0 group-hover/handle:opacity-100 whitespace-nowrap bg-white px-1 rounded shadow-sm">
-                                                    Else
-                                                </span>
-                                            </div>
-                                        </>
-                                    ) : node.type === 'question' ? (
-                                        <>
-                                            <div
-                                                className="w-4 h-4 bg-white border-2 border-purple-400 rounded-full hover:bg-purple-400 cursor-crosshair pointer-events-auto relative group/handle"
-                                                onMouseDown={(e) => {
-                                                    e.stopPropagation();
-                                                    setConnectionStart({ nodeId: node.id, handle: 'default' });
-                                                    // renamed for code clarity
-                                                }}
-                                            >
-                                                <span className="absolute left-full ml-1 top-1/2 -translate-y-1/2 text-[8px] font-bold text-purple-600 opacity-0 group-hover/handle:opacity-100 whitespace-nowrap bg-white px-1 rounded shadow-sm">
-                                                    Sucesso
-                                                </span>
-                                            </div>
-                                            <div
-                                                className="w-4 h-4 bg-white border-2 border-rose-400 rounded-full hover:bg-rose-400 cursor-crosshair pointer-events-auto relative group/handle"
-                                                onMouseDown={(e) => {
-                                                    e.stopPropagation();
-                                                    setConnectionStart({ nodeId: node.id, handle: 'invalid' });
-                                                }}
-                                            >
-                                                <span className="absolute left-full ml-1 top-1/2 -translate-y-1/2 text-[8px] font-bold text-rose-600 opacity-0 group-hover/handle:opacity-100 whitespace-nowrap bg-white px-1 rounded shadow-sm">
-                                                    Inválido
-                                                </span>
-                                            </div>
-                                            {node.data.timeout_seconds && (
+                                            <div className="flex items-center justify-between text-[9px] bg-slate-50 p-2 rounded-lg border border-slate-100">
+                                                <span className="text-slate-400 font-bold">ELSE</span>
                                                 <div
-                                                    className="w-4 h-4 bg-white border-2 border-amber-400 rounded-full hover:bg-amber-400 cursor-crosshair pointer-events-auto relative group/handle"
+                                                    className="w-3.5 h-3.5 rounded-full border-2 border-slate-300 hover:border-blue-500 bg-white cursor-crosshair"
                                                     onMouseDown={(e) => {
                                                         e.stopPropagation();
-                                                        setConnectionStart({ nodeId: node.id, handle: 'timeout' });
+                                                        setConnectionStart({ nodeId: node.id, handle: 'else' });
+                                                        setTempMousePos(screenToWorld(e.clientX, e.clientY));
                                                     }}
-                                                >
-                                                    <span className="absolute left-full ml-1 top-1/2 -translate-y-1/2 text-[8px] font-bold text-amber-600 opacity-0 group-hover/handle:opacity-100 whitespace-nowrap bg-white px-1 rounded shadow-sm">
-                                                        Timeout
-                                                    </span>
+                                                />
+                                            </div>
+                                        </div>
+                                    )}
+                                    {(node.type === 'action' || node.type === 'actions') && (
+                                        <div className="space-y-1">
+                                            {(node.data.actions || []).slice(0, 3).map((a: any, i: number) => (
+                                                <div key={i} className="text-[9px] bg-slate-50 px-2 py-1 rounded border flex items-center gap-1.5">
+                                                    <Zap size={8} /> {a.type.replace('_', ' ')}
                                                 </div>
+                                            ))}
+                                            {(node.data.actions || []).length > 3 && (
+                                                <p className="text-[8px] text-slate-400 text-center font-bold">+{node.data.actions.length - 3} mais...</p>
                                             )}
-                                        </>
-                                    ) : (
-                                        <div
-                                            className="w-4 h-4 bg-slate-200 border-2 border-slate-400 rounded-full hover:bg-blue-400 cursor-crosshair pointer-events-auto"
-                                            onMouseDown={(e) => {
-                                                e.stopPropagation();
-                                                setConnectionStart({ nodeId: node.id, handle: 'default' });
-                                            }}
-                                        />
+                                        </div>
                                     )}
                                 </div>
 
+                                {/* Target Handle (Left) */}
+                                <div
+                                    className="absolute -left-2 top-10 w-4 h-4 rounded-full border-2 border-slate-300 bg-white hover:border-emerald-500 transition-colors pointer-events-auto flex items-center justify-center group"
+                                    onMouseUp={() => activeConnectionEnd(node.id)}
+                                >
+                                    <div className="w-1 h-1 bg-slate-300 group-hover:bg-emerald-500 rounded-full" />
+                                </div>
                             </div>
                         );
                     })}
                 </div>
-            </div>
 
-            {/* NODE PROPERTIES SIDEBAR */}
-            {selectedNodeId && (() => {
-                const node = nodes.find(n => n.id === selectedNodeId);
-                if (!node) return null;
-
-                const updateData = (key: string, value: any) => {
-                    setNodes(prev => prev.map(n => {
-                        if (n.id === selectedNodeId) {
-                            return { ...n, data: { ...n.data, [key]: value } };
-                        }
-                        return n;
-                    }));
-                };
-
-                const deleteNode = () => {
-                    if (confirm("Excluir este bloco?")) {
-                        setNodes(prev => prev.filter(n => n.id !== selectedNodeId));
-                        setEdges(prev => prev.filter(e => e.source !== selectedNodeId && e.target !== selectedNodeId));
-                        setSelectedNodeId(null);
-                    }
-                };
-
-                return (
-                    <div className="absolute top-0 right-0 h-full w-80 bg-white border-l shadow-2xl z-50 flex flex-col animate-in slide-in-from-right duration-200">
-                        <div className="p-4 border-b flex justify-between items-center bg-slate-50">
-                            <div className="flex items-center gap-2">
-                                <div className={cn("p-1.5 rounded-md", getNodeColor(node.type).split(' ')[1])}>
-                                    {React.createElement(getNodeIcon(node.type), { size: 16 })}
-                                </div>
-                                <span className="font-bold text-sm text-slate-800">Editar Bloco</span>
-                            </div>
-                            <Button variant="ghost" size="icon" onClick={() => setSelectedNodeId(null)}>
-                                <X className="h-4 w-4" />
-                            </Button>
-                        </div>
-
-                        <div className="flex-1 overflow-y-auto p-4 space-y-4">
-                            <div className="space-y-2">
-                                <label className="text-xs font-bold text-slate-500 uppercase">Rótulo do Bloco</label>
-                                <input
-                                    className="w-full text-sm p-2 border rounded-md focus:outline-none focus:border-blue-500"
-                                    value={node.data.label || ''}
-                                    onChange={e => updateData('label', e.target.value)}
-                                    placeholder="Nome identificador"
-                                />
-                                <p className="text-[10px] text-slate-400">ID: {node.id}</p>
-                            </div>
-
-                            {node.type === 'message' && (
-                                <div className="space-y-4">
-                                    <div className="space-y-2">
-                                        <label className="text-xs font-bold text-slate-500 uppercase">Conteúdo da Mensagem</label>
-                                        <textarea
-                                            className="w-full h-32 text-sm p-2 border rounded-md focus:outline-none focus:border-blue-500 resize-none"
-                                            value={node.data.content || ''}
-                                            onChange={e => updateData('content', e.target.value)}
-                                            placeholder="Digite a mensagem que o bot enviará..."
-                                        />
-                                        <p className="text-[10px] text-slate-400">Dica: Use {"{{nome}}"} para personalizar.</p>
-                                    </div>
-
-                                    <div className="flex items-center space-x-2 bg-blue-50 p-2 rounded-md border border-blue-100">
-                                        <input
-                                            type="checkbox"
-                                            id="capture_response"
-                                            className="rounded border-blue-300 text-blue-600 focus:ring-blue-500 h-4 w-4"
-                                            checked={!!node.data.capture_response}
-                                            onChange={e => updateData('capture_response', e.target.checked)}
-                                        />
-                                        <label htmlFor="capture_response" className="text-xs font-medium text-blue-700 cursor-pointer">
-                                            Capturar resposta do cliente
-                                        </label>
-                                    </div>
-
-                                    {node.data.capture_response && (
-                                        <div className="space-y-2 animate-in fade-in slide-in-from-top-1 duration-200">
-                                            <label className="text-[10px] font-bold text-slate-400 uppercase">Salvar resposta em:</label>
-                                            <input
-                                                className="w-full text-xs p-2 border rounded-md font-mono"
-                                                value={node.data.variable_name || ''}
-                                                onChange={e => updateData('variable_name', e.target.value)}
-                                                placeholder="ex: nome_cliente"
-                                            />
-                                            <p className="text-[9px] text-slate-400">Padrão: {"{{last_response}}"}</p>
-                                        </div>
-                                    )}
-                                </div>
-                            )}
-
-                            {node.type === 'question' && (
+                {/* Minimap */}
+                <div className="absolute bottom-6 right-6 w-[180px] h-[180px] bg-white/90 backdrop-blur-xl border border-slate-200/60 rounded-3xl shadow-2xl z-40 overflow-hidden group hover:scale-[1.02] transition-transform">
+                    <div className="p-2 border-b border-slate-100 flex items-center justify-between">
+                        <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest pl-1">Visão Geral</span>
+                    </div>
+                    <div className="relative w-full h-[calc(100%-28px)]">
+                        {(() => {
+                            const rect = getMinimapViewRect();
+                            if (!rect) return null;
+                            return (
                                 <>
-                                    <div className="space-y-2">
-                                        <label className="text-xs font-bold text-slate-500 uppercase">Pergunta</label>
-                                        <textarea
-                                            className="w-full h-24 text-sm p-2 border rounded-md focus:outline-none focus:border-blue-500 resize-none"
-                                            value={node.data.question || ''}
-                                            onChange={e => updateData('question', e.target.value)}
-                                            placeholder="O que o bot deve perguntar?"
-                                        />
-                                    </div>
-                                    <div className="space-y-2">
-                                        <label className="text-xs font-bold text-slate-500 uppercase">Salvar na variável</label>
-                                        <input
-                                            className="w-full text-sm p-2 border rounded-md font-mono text-slate-600"
-                                            value={node.data.variable || node.data.salvar_resposta_em || ''}
-                                            onChange={e => updateData('variable', e.target.value)}
-                                            placeholder="ex: menu_opcao"
-                                        />
-                                    </div>
-
-                                    <div className="space-y-2">
-                                        <label className="text-xs font-bold text-slate-500 uppercase">Validação</label>
-                                        <select
-                                            className="w-full text-sm p-2 border rounded-md"
-                                            value={node.data.validation_type || 'any'}
-                                            onChange={e => updateData('validation_type', e.target.value)}
-                                        >
-                                            <option value="any">Qualquer conteúdo</option>
-                                            <option value="number">Apenas números</option>
-                                            <option value="options">Lista de opções (1,2,3)</option>
-                                            <option value="regex">Expressão Regular (Regex)</option>
-                                        </select>
-                                    </div>
-
-                                    {node.data.validation_type === 'options' && (
-                                        <div className="space-y-1">
-                                            <label className="text-[10px] font-bold text-slate-400">Opções válidas (separadas por vírgula)</label>
-                                            <input
-                                                className="w-full text-sm p-2 border rounded-md"
-                                                value={node.data.validation_options || ''}
-                                                onChange={e => updateData('validation_options', e.target.value)}
-                                                placeholder="1, 2, 3"
-                                            />
-                                        </div>
-                                    )}
-
-                                    {node.data.validation_type === 'regex' && (
-                                        <div className="space-y-1">
-                                            <label className="text-[10px] font-bold text-slate-400">Regex de validação</label>
-                                            <input
-                                                className="w-full text-sm p-2 border rounded-md font-mono"
-                                                value={node.data.validation_regex || ''}
-                                                onChange={e => updateData('validation_regex', e.target.value)}
-                                                placeholder="^\d{2}$"
-                                            />
-                                        </div>
-                                    )}
-
-                                    <div className="space-y-2">
-                                        <label className="text-xs font-bold text-slate-500 uppercase">Mensagem de Erro</label>
-                                        <input
-                                            className="w-full text-sm p-2 border rounded-md"
-                                            value={node.data.error_message || ''}
-                                            onChange={e => updateData('error_message', e.target.value)}
-                                            placeholder="Escolha apenas 1 ou 2"
-                                        />
-                                    </div>
-
-                                    <div className="grid grid-cols-2 gap-2">
-                                        <div className="space-y-2">
-                                            <label className="text-xs font-bold text-slate-500 uppercase">Tentativas</label>
-                                            <input
-                                                type="number"
-                                                min={1}
-                                                className="w-full text-sm p-2 border rounded-md"
-                                                value={node.data.max_attempts || node.data.maxInvalidAttempts || 3}
-                                                onChange={e => updateData('max_attempts', Number(e.target.value))}
-                                            />
-                                        </div>
-                                        <div className="space-y-2">
-                                            <label className="text-xs font-bold text-slate-500 uppercase">Timeout (seg)</label>
-                                            <input
-                                                type="number"
-                                                className="w-full text-sm p-2 border rounded-md"
-                                                value={node.data.timeout_seconds || ''}
-                                                onChange={e => updateData('timeout_seconds', e.target.value)}
-                                                placeholder="120"
-                                            />
-                                        </div>
-                                    </div>
-
-                                    <p className="text-[10px] text-slate-400">
-                                        Conecte as saídas laterais (Inválido/Timeout) para lidar com erros.
-                                    </p>
-                                </>
-                            )}
-
-
-                            {node.type === 'condition' && (
-                                <div className="space-y-4">
-                                    <div className="flex justify-between items-center">
-                                        <label className="text-xs font-bold text-slate-500 uppercase">Regras de Condição</label>
-                                        <Button
-                                            size="sm"
-                                            variant="outline"
-                                            className="h-7 text-[10px]"
-                                            onClick={() => {
-                                                const newRules = [...(node.data.rules || []), { id: `rule-${Date.now()}`, variable: '', operator: 'equals', value: '' }];
-                                                updateData('rules', newRules);
+                                    {nodes.map(n => (
+                                        <div
+                                            key={n.id}
+                                            className={cn("absolute rounded-[2px]", getNodeColor(n.type).split(' ')[1])}
+                                            style={{
+                                                left: (n.position.x - rect.minX) * rect.scale,
+                                                top: (n.position.y - rect.minY) * rect.scale,
+                                                width: NODE_WIDTH * rect.scale,
+                                                height: 80 * rect.scale
                                             }}
-                                        >
-                                            <Plus className="h-3 w-3 mr-1" /> Regra
-                                        </Button>
-                                    </div>
+                                        />
+                                    ))}
+                                    <div
+                                        className="absolute border-2 border-blue-500/50 bg-blue-500/5 rounded-xl shadow-lg"
+                                        style={{
+                                            left: rect.x,
+                                            top: rect.y,
+                                            width: rect.w,
+                                            height: rect.h
+                                        }}
+                                    />
+                                </>
+                            );
+                        })()}
+                    </div>
+                </div>
 
-                                    {(node.data.rules || []).map((rule: any, idx: number) => (
-                                        <div key={rule.id} className="p-3 border rounded-lg bg-slate-50 space-y-2 relative group/rule">
-                                            <button
-                                                className="absolute -top-2 -right-2 bg-white border rounded-full p-1 opacity-0 group-hover/rule:opacity-100 transition-opacity text-rose-500 shadow-sm z-10"
+                {/* Selection Box */}
+                {isSelectionBox && (
+                    <div
+                        className="absolute border-2 border-blue-500 bg-blue-500/10 rounded-sm pointer-events-none z-[100]"
+                        style={{
+                            left: Math.min(isSelectionBox.start.x * viewport.zoom + viewport.x, isSelectionBox.end.x * viewport.zoom + viewport.x),
+                            top: Math.min(isSelectionBox.start.y * viewport.zoom + viewport.y, isSelectionBox.end.y * viewport.zoom + viewport.y),
+                            width: Math.abs(isSelectionBox.end.x - isSelectionBox.start.x) * viewport.zoom,
+                            height: Math.abs(isSelectionBox.end.y - isSelectionBox.start.y) * viewport.zoom
+                        }}
+                    />
+                )}
+
+                {/* NODE PROPERTIES SIDEBAR */}
+                {selectedNodeIds.length === 1 && (() => {
+                    const node = nodes.find(n => n.id === selectedNodeIds[0]);
+                    if (!node) return null;
+
+                    const updateData = (key: string, value: any) => {
+                        setNodes(prev => prev.map(n => {
+                            if (n.id === node.id) {
+                                return { ...n, data: { ...n.data, [key]: value } };
+                            }
+                            return n;
+                        }));
+                    };
+
+                    const deleteNode = () => {
+                        if (confirm("Excluir este bloco?")) {
+                            setNodes(prev => prev.filter(n => n.id !== node.id));
+                            setEdges(prev => prev.filter(e => e.source !== node.id && e.target !== node.id));
+                            setSelectedNodeIds([]);
+                        }
+                    };
+
+                    return (
+                        <div className="absolute top-0 right-0 h-full w-[360px] bg-white border-l border-slate-200/80 shadow-[-20px_0_50px_-20px_rgba(0,0,0,0.1)] z-50 flex flex-col animate-in slide-in-from-right duration-500">
+                            <div className="p-6 border-b flex justify-between items-center bg-slate-50/50">
+                                <div className="flex items-center gap-3">
+                                    <div className={cn("p-2 rounded-xl flex items-center justify-center", getNodeColor(node.type).split(' ')[1])}>
+                                        {React.createElement(getNodeIcon(node.type), { size: 18 })}
+                                    </div>
+                                    <div>
+                                        <span className="font-black text-xs text-slate-400 uppercase tracking-[0.2em] block">Configuração</span>
+                                        <span className="text-sm font-bold text-slate-800 tabular-nums">ID {node.id.slice(0, 8)}</span>
+                                    </div>
+                                </div>
+                                <Button variant="ghost" size="icon" onClick={() => setSelectedNodeIds([])} className="rounded-full hover:bg-slate-100">
+                                    <X className="h-5 w-5 text-slate-400" />
+                                </Button>
+                            </div>
+
+                            <div className="flex-1 overflow-y-auto p-6 space-y-8 scrollbar-thin scrollbar-thumb-slate-200">
+                                <div className="space-y-2">
+                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-1">Título do Bloco</label>
+                                    <input
+                                        className="w-full text-sm p-4 border rounded-2xl focus:outline-none focus:ring-4 focus:ring-blue-500/10 focus:border-blue-400 bg-slate-50/50 transition-all font-semibold shadow-inner"
+                                        value={node.data.label || ''}
+                                        onChange={e => updateData('label', e.target.value)}
+                                        placeholder="Ex: Saudação Inicial"
+                                    />
+                                </div>
+
+                                {node.type === 'message' && (
+                                    <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-400">
+                                        <div className="space-y-2">
+                                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-1">Conteúdo da Mensagem</label>
+                                            <textarea
+                                                className="w-full h-48 text-sm p-4 border rounded-2xl focus:outline-none focus:ring-4 focus:ring-blue-500/10 focus:border-blue-400 bg-slate-50/50 transition-all resize-none shadow-inner leading-relaxed"
+                                                value={node.data.content || ''}
+                                                onChange={e => updateData('content', e.target.value)}
+                                                placeholder="Olá! Como podemos ajudar hoje?"
+                                            />
+                                            <div className="bg-blue-50/80 p-3 rounded-xl border border-blue-100 flex items-start gap-2">
+                                                <div className="w-1 h-1 rounded-full bg-blue-400 mt-1.5" />
+                                                <p className="text-[10px] text-blue-700 font-medium leading-relaxed">
+                                                    Use <code className="bg-white/60 px-1 rounded">{"{{nome}}"}</code> para exibir o nome do cliente.
+                                                </p>
+                                            </div>
+                                        </div>
+
+                                        <div className="flex items-center space-x-3 bg-indigo-50/50 p-4 rounded-2xl border border-indigo-100/50 transition-colors hover:bg-indigo-50">
+                                            <input
+                                                type="checkbox"
+                                                id="capture_response"
+                                                className="rounded-lg border-indigo-300 text-indigo-600 focus:ring-indigo-500 h-5 w-5 transition-all"
+                                                checked={!!node.data.capture_response}
+                                                onChange={e => updateData('capture_response', e.target.checked)}
+                                            />
+                                            <label htmlFor="capture_response" className="text-sm font-bold text-indigo-900 cursor-pointer select-none">
+                                                Esperar resposta do cliente
+                                            </label>
+                                        </div>
+
+                                        {node.data.capture_response && (
+                                            <div className="space-y-2 animate-in slide-in-from-top-4 duration-300">
+                                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-1">Salvar resposta na variável:</label>
+                                                <input
+                                                    className="w-full text-xs p-4 border rounded-2xl font-mono bg-white shadow-sm focus:border-indigo-400 focus:ring-4 focus:ring-indigo-500/10 transition-all"
+                                                    value={node.data.variable_name || ''}
+                                                    onChange={e => updateData('variable_name', e.target.value)}
+                                                    placeholder="ex: escolha_menu"
+                                                />
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
+
+                                {node.type === 'question' && (
+                                    <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-400">
+                                        <div className="space-y-2">
+                                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-1">Pergunta</label>
+                                            <textarea
+                                                className="w-full h-32 text-sm p-4 border rounded-2xl focus:outline-none focus:ring-4 focus:ring-purple-500/10 focus:border-purple-400 bg-slate-50/50 transition-all resize-none shadow-inner leading-relaxed"
+                                                value={node.data.question || ''}
+                                                onChange={e => updateData('question', e.target.value)}
+                                                placeholder="Qual o seu email?"
+                                            />
+                                        </div>
+
+                                        <div className="grid grid-cols-1 gap-4 bg-slate-50/50 p-4 rounded-2xl border border-slate-100">
+                                            <div className="space-y-2">
+                                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Salvar em (variável)</label>
+                                                <input
+                                                    className="w-full text-xs p-3 border rounded-xl font-mono bg-white shadow-sm"
+                                                    value={node.data.variable || ''}
+                                                    onChange={e => updateData('variable', e.target.value)}
+                                                    placeholder="user_email"
+                                                />
+                                            </div>
+                                            <div className="space-y-2">
+                                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Tipo de Validação</label>
+                                                <select
+                                                    className="w-full text-xs p-3 border rounded-xl bg-white shadow-sm font-bold"
+                                                    value={node.data.validation_type || 'any'}
+                                                    onChange={e => updateData('validation_type', e.target.value)}
+                                                >
+                                                    <option value="any">Qualquer conteúdo</option>
+                                                    <option value="number">Apenas números</option>
+                                                    <option value="options">Lista de opções</option>
+                                                    <option value="email">Formato de Email</option>
+                                                    <option value="regex">Expressão Regular (Regex)</option>
+                                                </select>
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
+
+                                {node.type === 'condition' && (
+                                    <div className="space-y-6 animate-in fade-in duration-400">
+                                        <div className="flex justify-between items-center">
+                                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Regras de Decisão</label>
+                                            <Button
+                                                size="sm"
+                                                variant="outline"
+                                                className="h-8 text-[10px] rounded-xl hover:bg-orange-50 border-orange-200 text-orange-700 font-black shadow-sm"
                                                 onClick={() => {
-                                                    const newRules = node.data.rules.filter((r: any) => r.id !== rule.id);
+                                                    const newRules = [...(node.data.rules || []), { id: `rule-${Date.now()}`, variable: '', operator: 'equals', value: '' }];
                                                     updateData('rules', newRules);
                                                 }}
                                             >
-                                                <X size={12} />
-                                            </button>
-
-                                            <div className="space-y-1">
-                                                <label className="text-[10px] font-bold text-slate-400">Se variável...</label>
-                                                <input
-                                                    className="w-full text-xs p-1.5 border rounded-md font-mono"
-                                                    value={rule.variable}
-                                                    onChange={e => {
-                                                        const newRules = [...node.data.rules];
-                                                        newRules[idx].variable = e.target.value;
-                                                        updateData('rules', newRules);
-                                                    }}
-                                                    placeholder="opcao_escolhida"
-                                                />
-                                            </div>
-
-                                            <div className="grid grid-cols-2 gap-2">
-                                                <select
-                                                    className="text-[10px] p-1.5 border rounded-md bg-white"
-                                                    value={rule.operator}
-                                                    onChange={e => {
-                                                        const newRules = [...node.data.rules];
-                                                        newRules[idx].operator = e.target.value;
-                                                        updateData('rules', newRules);
-                                                    }}
-                                                >
-                                                    <option value="equals">Igual a</option>
-                                                    <option value="different">Diferente de</option>
-                                                    <option value="contains">Contém</option>
-                                                    <option value="not_contains">Não contém</option>
-                                                    <option value="starts_with">Começa com</option>
-                                                    <option value="ends_with">Termina com</option>
-                                                    <option value="greater_than">Maior que</option>
-                                                    <option value="less_than">Menor que</option>
-                                                    <option value="is_empty">Vazio</option>
-                                                    <option value="is_not_empty">Não Vazio</option>
-                                                    <option value="regex">Regex</option>
-                                                </select>
-                                                <input
-                                                    className="text-xs p-1.5 border rounded-md"
-                                                    value={rule.value}
-                                                    onChange={e => {
-                                                        const newRules = [...node.data.rules];
-                                                        newRules[idx].value = e.target.value;
-                                                        updateData('rules', newRules);
-                                                    }}
-                                                    placeholder="Valor"
-                                                />
-                                            </div>
-                                            <div className="flex justify-between items-center text-[9px] text-blue-500 font-bold">
-                                                <span>Saída ID: {rule.id.slice(-4)}</span>
-                                            </div>
+                                                <Plus className="h-4 w-4 mr-1" /> Nova Regra
+                                            </Button>
                                         </div>
-                                    ))}
 
-                                    <p className="text-[10px] text-slate-400 bg-blue-50 p-2 rounded border border-blue-100">
-                                        Cada regra acima cria um ponto de saída lateral.
-                                        Caminho "Else" é usado se nenhuma regra bater.
-                                    </p>
-                                </div>
-                            )}
+                                        <div className="space-y-4">
+                                            {(node.data.rules || []).map((rule: any, idx: number) => (
+                                                <div key={rule.id} className="p-4 border rounded-2xl bg-white shadow-sm space-y-4 relative group/rule hover:ring-2 hover:ring-orange-100 transition-all border-slate-100">
+                                                    <button
+                                                        className="absolute -top-2 -right-2 bg-white border border-rose-200 rounded-full p-1.5 text-rose-500 shadow-lg hover:bg-rose-50 opacity-0 group-hover/rule:opacity-100 transition-all scale-75 group-hover/rule:scale-100"
+                                                        onClick={() => {
+                                                            const newRules = node.data.rules.filter((r: any) => r.id !== rule.id);
+                                                            updateData('rules', newRules);
+                                                        }}
+                                                    >
+                                                        <Trash2 size={12} />
+                                                    </button>
 
+                                                    <div className="space-y-1">
+                                                        <label className="text-[9px] font-black text-slate-300 uppercase tracking-widest">Variável</label>
+                                                        <input
+                                                            className="w-full text-xs p-3 border rounded-xl font-mono bg-slate-50/50 shadow-inner"
+                                                            value={rule.variable}
+                                                            onChange={e => {
+                                                                const newRules = [...node.data.rules];
+                                                                newRules[idx].variable = e.target.value;
+                                                                updateData('rules', newRules);
+                                                            }}
+                                                            placeholder="Ex: opcao_menu"
+                                                        />
+                                                    </div>
 
-                            {(node.type === 'action' || node.type === 'actions') && (
-                                <div className="space-y-4">
-                                    <div className="flex justify-between items-center">
-                                        <label className="text-xs font-bold text-slate-500 uppercase">Lista de Ações</label>
-                                        <Button
-                                            size="sm"
-                                            variant="outline"
-                                            className="h-7 text-[10px]"
-                                            onClick={() => {
-                                                const newActions = [...(node.data.actions || []), { type: 'send_message', params: {} }];
-                                                updateData('actions', newActions);
-                                            }}
-                                        >
-                                            <Plus className="h-3 w-3 mr-1" /> Adicionar
-                                        </Button>
+                                                    <div className="grid grid-cols-2 gap-3">
+                                                        <select
+                                                            className="text-[10px] p-3 border rounded-xl bg-white font-bold"
+                                                            value={rule.operator}
+                                                            onChange={e => {
+                                                                const newRules = [...node.data.rules];
+                                                                newRules[idx].operator = e.target.value;
+                                                                updateData('rules', newRules);
+                                                            }}
+                                                        >
+                                                            <option value="equals">Igual</option>
+                                                            <option value="different">Diferente</option>
+                                                            <option value="contains">Contém</option>
+                                                            <option value="greater_than">Maior</option>
+                                                            <option value="less_than">Menor</option>
+                                                        </select>
+                                                        <input
+                                                            className="text-xs p-3 border rounded-xl bg-orange-50/20 border-orange-100"
+                                                            value={rule.value}
+                                                            onChange={e => {
+                                                                const newRules = [...node.data.rules];
+                                                                newRules[idx].value = e.target.value;
+                                                                updateData('rules', newRules);
+                                                            }}
+                                                            placeholder="Valor"
+                                                        />
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
                                     </div>
+                                )}
 
-                                    <div className="space-y-3">
-                                        {(node.data.actions || []).map((action: any, index: number) => (
-                                            <div key={index} className="p-3 border rounded-lg bg-slate-50 space-y-3 relative group/action">
-                                                <button
-                                                    className="absolute -top-2 -right-2 bg-white border rounded-full p-1 shadow-sm text-rose-500 hover:bg-rose-50 opacity-0 group-hover/action:opacity-100 transition-opacity"
-                                                    onClick={() => {
-                                                        const newActions = [...node.data.actions];
-                                                        newActions.splice(index, 1);
-                                                        updateData('actions', newActions);
-                                                    }}
-                                                >
-                                                    <X size={12} />
-                                                </button>
+                                {(node.type === 'action' || node.type === 'actions') && (
+                                    <div className="space-y-6">
+                                        <div className="flex justify-between items-center">
+                                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Sequência Automatizada</label>
+                                            <Button
+                                                size="sm"
+                                                variant="outline"
+                                                className="h-8 text-[10px] rounded-xl border-slate-300 font-black hover:bg-slate-50 shadow-sm"
+                                                onClick={() => {
+                                                    const newActions = [...(node.data.actions || []), { type: 'send_message', params: {} }];
+                                                    updateData('actions', newActions);
+                                                }}
+                                            >
+                                                <Plus className="h-4 w-4 mr-1" /> Add Ação
+                                            </Button>
+                                        </div>
 
-                                                <div className="space-y-1">
-                                                    <label className="text-[10px] font-bold text-slate-400 uppercase">Tipo de Ação</label>
+                                        <div className="space-y-4">
+                                            {(node.data.actions || []).map((action: any, index: number) => (
+                                                <div key={index} className="p-4 border rounded-2xl bg-white shadow-lg shadow-slate-200/50 space-y-4 relative group/action border-slate-100 hover:scale-[1.01] transition-transform">
+                                                    <div className="flex justify-between items-center border-b border-slate-50 pb-3">
+                                                        <div className="flex items-center gap-2">
+                                                            <span className="w-5 h-5 rounded-full bg-blue-600 text-[10px] text-white flex items-center justify-center font-black tabular-nums">{index + 1}</span>
+                                                            <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest truncate max-w-[120px]">{action.type.replace('_', ' ')}</span>
+                                                        </div>
+                                                        <button
+                                                            className="text-slate-300 hover:text-rose-500 transition-colors"
+                                                            onClick={() => {
+                                                                const newActions = [...node.data.actions];
+                                                                newActions.splice(index, 1);
+                                                                updateData('actions', newActions);
+                                                            }}
+                                                        >
+                                                            <X size={14} />
+                                                        </button>
+                                                    </div>
+
                                                     <select
-                                                        className="w-full text-xs p-1.5 border rounded-md bg-white"
+                                                        className="w-full text-[11px] p-3 border rounded-xl bg-slate-50/50 font-bold"
                                                         value={action.type}
                                                         onChange={e => {
                                                             const newActions = [...node.data.actions];
@@ -823,231 +990,110 @@ export const VisualEditor: React.FC<VisualEditorProps> = ({
                                                             updateData('actions', newActions);
                                                         }}
                                                     >
-                                                        <optgroup label="📤 Mensagens">
-                                                            <option value="send_message">Enviar Mensagem</option>
-                                                            <option value="delay">Adicionar Delay/Pausa</option>
+                                                        <optgroup label="📤 COMUNICAÇÃO">
+                                                            <option value="send_message">💬 Enviar Mensagem</option>
+                                                            <option value="delay">⏳ Pausa Inteligente (Delay)</option>
                                                         </optgroup>
-                                                        <optgroup label="🎯 Gestão de Conversa">
-                                                            <option value="move_queue">Enviar para Fila</option>
-                                                            <option value="set_responsible">Atribuir Responsável</option>
-                                                            <option value="finish_conversation">Concluir Conversa</option>
-                                                            <option value="start_flow">Iniciar outro Fluxo</option>
-                                                            <option value="stop_chatbot">Parar Chatbot neste Ponto</option>
+                                                        <optgroup label="👥 FLUXO">
+                                                            <option value="move_queue">➡️ Mover para Fila</option>
+                                                            <option value="set_responsible">👤 Definir Responsável</option>
+                                                            <option value="finish_conversation">✅ Concluir Atendimento</option>
+                                                            <option value="stop_chatbot">🛑 Parar Automação</option>
                                                         </optgroup>
-                                                        <optgroup label="🏷️ Tags">
-                                                            <option value="add_tag">Adicionar Tag</option>
-                                                            <option value="remove_tag">Remover Tag</option>
-                                                        </optgroup>
-                                                        <optgroup label="⚙️ Variáveis">
-                                                            <option value="set_variable">Definir/Atualizar Variável</option>
-                                                        </optgroup>
-                                                        <optgroup label="🔗 Integração">
-                                                            <option value="webhook">Enviar Webhook/API</option>
+                                                        <optgroup label="⚙️ DADOS">
+                                                            <option value="add_tag">🏷️ Adicionar Tag</option>
+                                                            <option value="webhook">🔗 Chamar API (Webhook)</option>
+                                                            <option value="set_variable">💾 Definir Variável</option>
                                                         </optgroup>
                                                     </select>
+
+                                                    <div className="bg-slate-50/30 rounded-xl">
+                                                        {action.type === 'send_message' && (
+                                                            <textarea
+                                                                className="w-full h-24 text-xs p-3 border rounded-xl resize-none shadow-inner bg-white/50"
+                                                                placeholder="Digite o texto..."
+                                                                value={action.params?.content || ''}
+                                                                onChange={e => {
+                                                                    const newActions = [...node.data.actions];
+                                                                    newActions[index].params = { ...action.params, content: e.target.value };
+                                                                    updateData('actions', newActions);
+                                                                }}
+                                                            />
+                                                        )}
+                                                        {action.type === 'move_queue' && (
+                                                            <select
+                                                                className="w-full text-xs p-3 border rounded-xl bg-white font-bold"
+                                                                value={action.params?.queueId || ''}
+                                                                onChange={e => {
+                                                                    const newActions = [...node.data.actions];
+                                                                    newActions[index].params = { ...action.params, queueId: e.target.value };
+                                                                    updateData('actions', newActions);
+                                                                }}
+                                                            >
+                                                                <option value="">Escolher Fila...</option>
+                                                                {queues.map((q: any) => (
+                                                                    <option key={q.id} value={q.id}>{q.name}</option>
+                                                                ))}
+                                                            </select>
+                                                        )}
+                                                    </div>
                                                 </div>
-
-                                                {/* Action Specific Params */}
-                                                <div className="pt-2 border-t border-slate-200">
-                                                    {action.type === 'send_message' && (
-                                                        <textarea
-                                                            className="w-full h-20 text-xs p-2 border rounded resize-none"
-                                                            placeholder="Texto da mensagem..."
-                                                            value={action.params?.content || ''}
-                                                            onChange={e => {
-                                                                const newActions = [...node.data.actions];
-                                                                newActions[index].params = { ...action.params, content: e.target.value };
-                                                                updateData('actions', newActions);
-                                                            }}
-                                                        />
-                                                    )}
-
-                                                    {action.type === 'move_queue' && (
-                                                        <select
-                                                            className="w-full text-xs p-1.5 border rounded bg-white"
-                                                            value={action.params?.queueId || ''}
-                                                            onChange={e => {
-                                                                const newActions = [...node.data.actions];
-                                                                newActions[index].params = { ...action.params, queueId: e.target.value };
-                                                                updateData('actions', newActions);
-                                                            }}
-                                                        >
-                                                            <option value="">Selecionar Fila...</option>
-                                                            {queues.map((q: any) => (
-                                                                <option key={q.id} value={q.id}>{q.name}</option>
-                                                            ))}
-                                                        </select>
-                                                    )}
-
-                                                    {action.type === 'set_responsible' && (
-                                                        <select
-                                                            className="w-full text-xs p-1.5 border rounded bg-white"
-                                                            value={action.params?.userId || ''}
-                                                            onChange={e => {
-                                                                const newActions = [...node.data.actions];
-                                                                newActions[index].params = { ...action.params, userId: Number(e.target.value) };
-                                                                updateData('actions', newActions);
-                                                            }}
-                                                        >
-                                                            <option value="">Selecionar Usuário...</option>
-                                                            {users.map((u: any) => (
-                                                                <option key={u.id} value={u.id}>{u.full_name || u.name}</option>
-                                                            ))}
-                                                        </select>
-                                                    )}
-
-                                                    {action.type === 'start_flow' && (
-                                                        <select
-                                                            className="w-full text-xs p-1.5 border rounded bg-white"
-                                                            value={action.params?.chatbotId || ''}
-                                                            onChange={e => {
-                                                                const newActions = [...node.data.actions];
-                                                                newActions[index].params = { ...action.params, chatbotId: Number(e.target.value) };
-                                                                updateData('actions', newActions);
-                                                            }}
-                                                        >
-                                                            <option value="">Selecionar Chatbot...</option>
-                                                            {chatbots.map((b: any) => (
-                                                                <option key={b.id} value={b.id}>{b.name}</option>
-                                                            ))}
-                                                        </select>
-                                                    )}
-
-                                                    {action.type === 'finish_conversation' && (
-                                                        <p className="text-[10px] text-slate-400 italic">Conclui atendimento atual</p>
-                                                    )}
-
-                                                    {action.type === 'delay' && (
-                                                        <div className="flex items-center gap-2">
-                                                            <input
-                                                                type="number"
-                                                                className="w-20 text-xs p-1.5 border rounded"
-                                                                value={action.params?.seconds || 3}
-                                                                onChange={e => {
-                                                                    const newActions = [...node.data.actions];
-                                                                    newActions[index].params = { ...action.params, seconds: Number(e.target.value) };
-                                                                    updateData('actions', newActions);
-                                                                }}
-                                                            />
-                                                            <span className="text-[10px] text-slate-500">segundos</span>
-                                                        </div>
-                                                    )}
-
-                                                    {action.type === 'set_variable' && (
-                                                        <div className="space-y-2">
-                                                            <input
-                                                                className="w-full text-xs p-1.5 border rounded font-mono"
-                                                                placeholder="NOME_VARIAVEL"
-                                                                value={action.params?.name || ''}
-                                                                onChange={e => {
-                                                                    const newActions = [...node.data.actions];
-                                                                    newActions[index].params = { ...action.params, name: e.target.value };
-                                                                    updateData('actions', newActions);
-                                                                }}
-                                                            />
-                                                            <input
-                                                                className="w-full text-xs p-1.5 border rounded"
-                                                                placeholder="Valor"
-                                                                value={action.params?.value || ''}
-                                                                onChange={e => {
-                                                                    const newActions = [...node.data.actions];
-                                                                    newActions[index].params = { ...action.params, value: e.target.value };
-                                                                    updateData('actions', newActions);
-                                                                }}
-                                                            />
-                                                        </div>
-                                                    )}
-
-                                                    {action.type === 'create_lead' && (
-                                                        <div className="space-y-2">
-                                                            <input
-                                                                className="w-full text-xs p-1.5 border rounded"
-                                                                placeholder="Nome do Lead (use {{nome}})"
-                                                                value={action.params?.name || ''}
-                                                                onChange={e => {
-                                                                    const newActions = [...node.data.actions];
-                                                                    newActions[index].params = { ...action.params, name: e.target.value };
-                                                                    updateData('actions', newActions);
-                                                                }}
-                                                            />
-                                                            <input
-                                                                className="w-full text-xs p-1.5 border rounded"
-                                                                placeholder="Email (opcional)"
-                                                                value={action.params?.email || ''}
-                                                                onChange={e => {
-                                                                    const newActions = [...node.data.actions];
-                                                                    newActions[index].params = { ...action.params, email: e.target.value };
-                                                                    updateData('actions', newActions);
-                                                                }}
-                                                            />
-                                                        </div>
-                                                    )}
-
-                                                    {action.type === 'webhook' && (
-                                                        <input
-                                                            className="w-full text-xs p-1.5 border rounded"
-                                                            placeholder="https://api.site.com/webhook"
-                                                            value={action.params?.url || ''}
-                                                            onChange={e => {
-                                                                const newActions = [...node.data.actions];
-                                                                newActions[index].params = { ...action.params, url: e.target.value };
-                                                                updateData('actions', newActions);
-                                                            }}
-                                                        />
-                                                    )}
-                                                </div>
-                                            </div>
-                                        ))}
-                                        {(node.data.actions || []).length === 0 && (
-                                            <div className="text-center py-6 border-2 border-dashed rounded-lg text-slate-400">
-                                                <Zap className="h-6 w-6 mx-auto mb-2 opacity-20" />
-                                                <p className="text-[10px]">Nenhuma ação definida</p>
-                                            </div>
-                                        )}
+                                            ))}
+                                        </div>
                                     </div>
-                                </div>
-                            )}
+                                )}
+                            </div>
 
-                            {!['message', 'question', 'condition', 'action'].includes(node.type) && (
-                                <div className="space-y-2">
-                                    <label className="text-xs font-bold text-slate-500 uppercase">Configuração (JSON)</label>
-                                    <textarea
-                                        className="w-full h-48 text-xs font-mono p-2 border rounded-md focus:outline-none focus:border-blue-500 bg-slate-50"
-                                        value={JSON.stringify(node.data, null, 2)}
-                                        readOnly
-                                        disabled
-                                    />
-                                </div>
-                            )}
+                            <div className="p-6 border-t bg-slate-50 flex flex-col gap-3">
+                                <Button
+                                    variant="destructive"
+                                    className="w-full flex items-center justify-center gap-2 rounded-2xl h-12 font-bold shadow-lg shadow-rose-200"
+                                    onClick={deleteNode}
+                                >
+                                    <Trash2 className="h-4 w-4" /> Excluir Bloco
+                                </Button>
+                            </div>
                         </div>
+                    );
+                })()}
 
-                        <div className="p-4 border-t bg-slate-50 flex flex-col gap-2">
-                            <Button
-                                variant="outline"
-                                className="w-full"
-                                onClick={() => {
-                                    const id = crypto.randomUUID();
-                                    setNodes(prev => [...prev, {
-                                        ...node,
-                                        id,
-                                        position: { x: node.position.x + 50, y: node.position.y + 50 }
-                                    }]);
-                                    setSelectedNodeId(id);
-                                }}
-                            >
-                                Duplicar Bloco
-                            </Button>
-                            <Button
-                                variant="destructive"
-                                className="w-full"
-                                onClick={deleteNode}
-                            >
-                                <Trash2 className="mr-2 h-4 w-4" /> Excluir Bloco
-                            </Button>
+                {/* Multi-Selection Controls */}
+                {selectedNodeIds.length > 1 && (
+                    <div className="absolute top-8 right-8 bg-white/90 backdrop-blur-2xl p-4 rounded-[2rem] border border-slate-200/60 shadow-2xl z-[100] animate-in slide-in-from-right-4 duration-500 ring-1 ring-black/5">
+                        <div className="flex items-center gap-4">
+                            <div>
+                                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Seleção Múltipla</p>
+                                <p className="text-xl font-black text-slate-800 tabular-nums">{selectedNodeIds.length} <span className="text-sm font-bold text-slate-400 pl-1">Blocos</span></p>
+                            </div>
+                            <div className="h-8 w-px bg-slate-100 mx-2" />
+                            <div className="flex gap-2">
+                                <Button
+                                    variant="destructive"
+                                    size="sm"
+                                    className="h-10 px-4 rounded-xl font-bold bg-rose-500 shadow-md shadow-rose-200 hover:bg-rose-600 border-none transition-all flex items-center gap-2"
+                                    onClick={() => {
+                                        if (confirm(`Deseja excluir os ${selectedNodeIds.length} blocos selecionados?`)) {
+                                            setNodes(prev => prev.filter(n => !selectedNodeIds.includes(n.id)));
+                                            setEdges(prev => prev.filter(e => !selectedNodeIds.includes(e.source) && !selectedNodeIds.includes(e.target)));
+                                            setSelectedNodeIds([]);
+                                        }
+                                    }}
+                                >
+                                    <Trash2 className="h-4 w-4" /> Excluir Todos
+                                </Button>
+                                <Button
+                                    variant="outline"
+                                    size="sm"
+                                    className="h-10 w-10 p-0 rounded-xl border-slate-200 hover:bg-slate-50 transition-all flex items-center justify-center"
+                                    onClick={() => setSelectedNodeIds([])}
+                                >
+                                    <X className="h-5 w-5 text-slate-400" />
+                                </Button>
+                            </div>
                         </div>
                     </div>
-                );
-            })()}
+                )}
+            </div>
         </div>
     );
 };
