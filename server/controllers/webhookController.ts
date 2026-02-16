@@ -551,7 +551,7 @@ export const handleWebhook = async (req: Request, res: Response) => {
             if (isGroup && senderJid) {
                 try {
                     const senderContact = await pool.query(
-                        'SELECT name, push_name FROM whatsapp_contacts WHERE jid = $1 AND company_id = $2 LIMIT 1',
+                        "SELECT name, push_name FROM contacts WHERE external_id = $1 AND company_id = $2 AND channel = 'whatsapp' LIMIT 1",
                         [senderJid, companyId]
                     );
                     if (senderContact.rows.length > 0) {
@@ -585,19 +585,19 @@ export const handleWebhook = async (req: Request, res: Response) => {
                 try {
                     // Update Contact without overwriting a manually set name
                     await pool.query(`
-                        INSERT INTO whatsapp_contacts (jid, phone, name, push_name, instance, updated_at, company_id)
-                        VALUES ($1, $2, $3, $4, $5, NOW(), $6)
-                        ON CONFLICT (jid, company_id) 
+                        INSERT INTO contacts (company_id, channel, external_id, phone, name, push_name, instance, updated_at)
+                        VALUES ($1, 'whatsapp', $2, $3, $4, $5, $6, NOW())
+                        ON CONFLICT (company_id, channel, external_id) 
                         DO UPDATE SET 
                             name = CASE 
-                                WHEN whatsapp_contacts.name IS NULL OR whatsapp_contacts.name = '' OR whatsapp_contacts.name = whatsapp_contacts.phone THEN EXCLUDED.name
-                                ELSE whatsapp_contacts.name 
+                                WHEN contacts.name IS NULL OR contacts.name = '' OR contacts.name = contacts.phone THEN EXCLUDED.name
+                                ELSE contacts.name 
                             END,
-                            push_name = COALESCE(EXCLUDED.push_name, whatsapp_contacts.push_name),
+                            push_name = COALESCE(EXCLUDED.push_name, contacts.push_name),
                             phone = EXCLUDED.phone,
                             instance = EXCLUDED.instance,
                             updated_at = NOW()
-                    `, [normalizedJid, normalizedPhone, name, msg.pushName || null, instance, companyId]);
+                    `, [companyId, normalizedJid, normalizedPhone, name, msg.pushName || null, instance]);
                 } catch (err) {
                     console.error('[Webhook] Error upserting contact:', err);
                 }
@@ -1423,7 +1423,6 @@ export const getConversations = async (req: Request, res: Response) => {
             ), '[]'::json) as tags
             FROM whatsapp_conversations c
             LEFT JOIN LATERAL (
-<<<<<<< HEAD
                 SELECT wm.content, wm.sender_name, wm.message_type, wm.direction, wm.sent_at
                 FROM whatsapp_messages wm
                 WHERE wm.conversation_id = c.id
@@ -1431,22 +1430,19 @@ export const getConversations = async (req: Request, res: Response) => {
                 LIMIT 1
             ) lm ON TRUE
             LEFT JOIN LATERAL (
-                SELECT co.profile_pic_url as profile_pic_url, co.instagram_username as push_name, co.name
-                FROM whatsapp_contacts co
-=======
                 SELECT 
                     co.profile_picture as profile_pic_url, 
                     co.instagram_username,
                     co.username as push_name, 
-                    COALESCE(co.name, co.instagram_username, co.username) as name
+                    COALESCE(co.name, co.instagram_username, co.username) as name,
+                    co.instagram_id
                 FROM contacts co
->>>>>>> b92d89d (att)
                 WHERE co.company_id = c.company_id
                   AND (
                     (c.channel = 'instagram' AND co.instagram_id = c.external_id)
                     OR
                     (c.channel = 'whatsapp' AND (
-                        co.jid = c.external_id
+                        co.external_id = c.external_id
                         OR co.phone = split_part(c.external_id, '@', 1)
                         OR (
                             REGEXP_REPLACE(COALESCE(co.phone, ''), '\\D', '', 'g') <> ''
@@ -1456,7 +1452,7 @@ export const getConversations = async (req: Request, res: Response) => {
                   )
                 ORDER BY
                   CASE
-                    WHEN co.jid = c.external_id OR co.instagram_id = c.external_id THEN 0
+                    WHEN co.external_id = c.external_id OR co.instagram_id = c.external_id THEN 0
                     WHEN co.phone = split_part(c.external_id, '@', 1) THEN 1
                     ELSE 9
                   END,
@@ -1502,7 +1498,7 @@ export const getConversations = async (req: Request, res: Response) => {
         // Only valid conversations that already have at least one message
         query += ` AND EXISTS (SELECT 1 FROM whatsapp_messages m WHERE m.conversation_id = c.id)`;
 
-        query += ` ORDER BY c.last_message_at DESC NULLS LAST`;
+        query += ` ORDER BY c.updated_at DESC`;
 
         const result = await pool.query(query, params);
         const isUsableGroupName = (value?: string | null) => {
@@ -1651,8 +1647,6 @@ export const getMessages = async (req: Request, res: Response) => {
             const result = await pool.query(
                 `SELECT m.*, 
                         u.full_name as user_name,
-<<<<<<< HEAD
-                        wc.name as saved_name,
                         COALESCE(co.name, co.instagram_username, co.username, m.sender_name, split_part(m.sender_jid, '@', 1)) as sender_name,
                         CASE 
                             WHEN m.campaign_id IS NOT NULL THEN 'campaign'

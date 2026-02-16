@@ -93,9 +93,10 @@ export async function getInstagramProfile(
 export function formatInstagramUsername(username: string): string {
     if (!username) return 'Instagram User';
 
-    // Se for apenas números, é o ID técnico, ocultamos
+    // Se for apenas números, é o ID técnico. 
+    // Em vez de retornar "Instagram User", retornamos o ID com @ para facilitar identificação
     if (/^\d+$/.test(username)) {
-        return 'Instagram User';
+        return `@${username}`;
     }
 
     return username.startsWith('@') ? username : `@${username}`;
