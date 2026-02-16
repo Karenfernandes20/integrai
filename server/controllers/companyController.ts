@@ -3,6 +3,7 @@ import { pool } from '../db';
 import { logAudit } from '../auditLogger';
 import { getEvolutionConfig } from './evolutionController';
 import { validateInstagramCredentials } from '../services/instagramService';
+import { validateMetaConnection, validateWhatsappMetaPayload } from '../services/whatsappMetaService';
 
 export const getCompanies = async (req: Request, res: Response) => {
     try {
@@ -283,6 +284,11 @@ export const updateCompany = async (req: Request, res: Response) => {
             // WhatsApp Extended
             whatsapp_enabled, whatsapp_type, whatsapp_official_phone, whatsapp_official_phone_number_id, whatsapp_official_business_account_id,
             whatsapp_official_access_token, whatsapp_official_api_version, whatsapp_official_webhook_token, whatsapp_api_plus_token,
+            // WhatsApp Meta API Plus
+            provider, channel_type, connection_mode, business_manager_id, waba_id, phone_number_id, meta_app_id, meta_app_secret,
+            access_token, verify_token, webhook_url, callback_url, api_version, instance_key, instance_name, whatsapp_number,
+            id_numero_meta, id_conta_comercial, sandbox_mode, server_region, receive_messages, receive_status, receive_contacts,
+            receive_chat_updates, subscription_fields,
             // Evolution
             evolution_url,
             // Messenger
@@ -402,6 +408,65 @@ export const updateCompany = async (req: Request, res: Response) => {
         let finalAccessToken = instagram_access_token;
         if (instagram_access_token && instagram_access_token.includes('***')) {
             finalAccessToken = currentRes.rows[0].instagram_access_token;
+        }
+
+
+        const isWhatsappMetaApiPlus =
+            String(channel_type || '').toLowerCase() === 'whatsapp' &&
+            String(connection_mode || '').toLowerCase() === 'qr_code' &&
+            String(provider || '').toLowerCase() === 'api_plus';
+
+        let whatsappMetaStatus = 'inactive';
+        const resolvedWebhookUrl = webhook_url || `${req.protocol}://${req.get('host')}/api/webhooks/whatsapp/meta/${id}`;
+        const resolvedCallbackUrl = callback_url || resolvedWebhookUrl;
+
+        if (isWhatsappMetaApiPlus) {
+            const validation = validateWhatsappMetaPayload({
+                whatsapp_meta_access_token: access_token,
+                whatsapp_meta_phone_number_id: phone_number_id,
+                whatsapp_meta_verify_token: verify_token,
+                whatsapp_meta_app_id: meta_app_id,
+                whatsapp_meta_app_secret: meta_app_secret,
+                whatsapp_meta_instance_key: instance_key,
+                whatsapp_meta_subscription_fields: subscription_fields
+            });
+
+            if (!validation.valid) {
+                return res.status(400).json({ error: 'Validação WhatsApp Meta falhou.', details: validation.errors });
+            }
+
+            const duplicatePhoneRes = await pool.query(
+                'SELECT id FROM companies WHERE phone_number_id = $1 AND id <> $2 LIMIT 1',
+                [String(phone_number_id).trim(), Number(id)]
+            );
+            if (duplicatePhoneRes.rowCount) {
+                return res.status(400).json({ error: 'Phone Number ID já está vinculado a outra empresa.' });
+            }
+
+            const duplicateInstanceRes = await pool.query(
+                'SELECT id FROM companies WHERE id <> $1 AND instance_key = $2 LIMIT 1',
+                [Number(id), String(instance_key || '').trim()]
+            );
+            if (duplicateInstanceRes.rowCount) {
+                return res.status(400).json({ error: 'instance_key já está em uso por outra empresa.' });
+            }
+
+            const metaValidation = await validateMetaConnection({
+                accessToken: String(access_token || ''),
+                apiVersion: String(api_version || 'v18.0'),
+                wabaId: String(waba_id || ''),
+                phoneNumberId: String(phone_number_id || '')
+            });
+            whatsappMetaStatus = metaValidation.status === 'CONECTADO' ? 'active' : 'inactive';
+
+            console.log(`[Update Company ${id}] [WhatsApp Meta] status=${metaValidation.status}`, metaValidation.details);
+            if (metaValidation.status !== 'CONECTADO') {
+                return res.status(400).json({
+                    error: 'Falha ao validar conexão com a Meta',
+                    status: metaValidation.status,
+                    details: metaValidation.details
+                });
+            }
         }
 
         let parsedInstagramInstancesConfig: any[] = [];
@@ -629,7 +694,71 @@ export const updateCompany = async (req: Request, res: Response) => {
         const result = await pool.query(query, values);
         if (result.rowCount === 0) return res.status(404).json({ error: 'Empresa não encontrada.' });
 
-        const updatedCompany = result.rows[0];
+        if (isWhatsappMetaApiPlus) {
+            await pool.query(
+                `UPDATE companies
+                    SET provider = $1,
+                        channel_type = $2,
+                        connection_mode = $3,
+                        business_manager_id = $4,
+                        waba_id = $5,
+                        phone_number_id = $6,
+                        meta_app_id = $7,
+                        meta_app_secret = $8,
+                        access_token = $9,
+                        verify_token = $10,
+                        webhook_url = $11,
+                        callback_url = $12,
+                        api_version = $13,
+                        instance_key = $14,
+                        instance_name = $15,
+                        whatsapp_number = $16,
+                        id_numero_meta = $17,
+                        id_conta_comercial = $18,
+                        sandbox_mode = $19,
+                        server_region = $20,
+                        receive_messages = $21,
+                        receive_status = $22,
+                        receive_contacts = $23,
+                        receive_chat_updates = $24,
+                        subscription_fields = $25,
+                        whatsapp_meta_status = $26,
+                        whatsapp_meta_last_sync = NOW()
+                WHERE id = $27`,
+                [
+                    'api_plus',
+                    'whatsapp',
+                    'qr_code',
+                    business_manager_id || null,
+                    waba_id || null,
+                    String(phone_number_id || '').trim() || null,
+                    meta_app_id || null,
+                    meta_app_secret || null,
+                    access_token || null,
+                    verify_token || null,
+                    resolvedWebhookUrl,
+                    resolvedCallbackUrl,
+                    api_version || 'v18.0',
+                    String(instance_key || '').trim() || null,
+                    instance_name || null,
+                    whatsapp_number || null,
+                    id_numero_meta || null,
+                    id_conta_comercial || null,
+                    sandbox_mode === true || sandbox_mode === 'true',
+                    server_region || 'sa-east-1',
+                    receive_messages !== false,
+                    receive_status !== false,
+                    receive_contacts !== false,
+                    receive_chat_updates !== false,
+                    JSON.stringify(Array.isArray(subscription_fields) && subscription_fields.length ? subscription_fields : ['messages', 'messaging_postbacks', 'message_status', 'message_reactions']),
+                    whatsappMetaStatus,
+                    Number(id)
+                ]
+            );
+        }
+
+        const updatedResult = await pool.query('SELECT * FROM companies WHERE id = $1', [Number(id)]);
+        const updatedCompany = updatedResult.rows[0];
         if (user) {
             await logAudit({
                 userId: user.id, companyId: user.company_id, action: 'update',
