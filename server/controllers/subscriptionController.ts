@@ -21,9 +21,20 @@ export const getSubscription = async (req: Request, res: Response) => {
         // If no active subscription is found in 'subscriptions' table, check 'companies' table for plan_id fallback
         // This is common for legacy or manually set plans that didn't go through the billing flow
         const result = await pool?.query(`
-            SELECT s.*, p.name as plan_name, p.price as plan_price, p.max_users
+            SELECT
+                s.*,
+                p.name as plan_name,
+                p.max_users,
+                COALESCE(last_invoice.amount, 0) as plan_price
             FROM subscriptions s
             LEFT JOIN plans p ON s.plan_id = p.id
+            LEFT JOIN LATERAL (
+                SELECT i.amount
+                FROM invoices i
+                WHERE i.subscription_id = s.id
+                ORDER BY i.created_at DESC
+                LIMIT 1
+            ) last_invoice ON true
             WHERE s.company_id = $1
         `, [companyId]);
 
@@ -158,10 +169,19 @@ export const checkSubscriptions = async (io: Server) => {
         // Find subscriptions expiring soon (today or past) that are ACTIVE
         // We look for anything where current_period_end < NOW
         const result = await pool.query(`
-            SELECT s.*, c.name as company_name, p.price 
+            SELECT
+                s.*,
+                c.name as company_name,
+                COALESCE(last_invoice.amount, 0) as renewal_amount
             FROM subscriptions s
             JOIN companies c ON s.company_id = c.id
-            LEFT JOIN plans p ON s.plan_id = p.id
+            LEFT JOIN LATERAL (
+                SELECT i.amount
+                FROM invoices i
+                WHERE i.subscription_id = s.id
+                ORDER BY i.created_at DESC
+                LIMIT 1
+            ) last_invoice ON true
             WHERE s.status = 'active' AND s.current_period_end < NOW()
         `);
 
@@ -190,7 +210,7 @@ export const checkSubscriptions = async (io: Server) => {
             await pool.query(`UPDATE companies SET due_date = $1 WHERE id = $2`, [newEnd, sub.company_id]);
 
             // Generate Invoice
-            const amount = sub.price || 0;
+            const amount = Number(sub.renewal_amount) || 0;
             await pool.query(`
                 INSERT INTO invoices (subscription_id, company_id, amount, status, due_date, paid_at, created_at)
                 VALUES ($1, $2, $3, 'paid', NOW(), NOW(), NOW())
