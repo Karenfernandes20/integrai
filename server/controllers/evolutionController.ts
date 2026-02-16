@@ -1993,7 +1993,8 @@ export const handleEvolutionWebhook = async (req: Request, res: Response) => {
                   last_message_at = NOW(), 
                   unread_count = CASE WHEN $3 = true THEN unread_count ELSE unread_count + 1 END,
                   contact_name = $4,
-                  instance = $5
+                  instance = $5,
+                  status = CASE WHEN $3 = false AND status = 'CLOSED' THEN 'PENDING' ELSE status END
                 WHERE id = $2`,
               [content, conversationId, fromMe, finalContactName, instance]
             );
@@ -2070,12 +2071,6 @@ export const handleEvolutionWebhook = async (req: Request, res: Response) => {
   }
 };
 
-return res.status(200).send("OK");
-  } catch (e) {
-  console.error("Error processing webhook:", e);
-  return res.status(500).send("Error");
-}
-};
 
 
 export const editEvolutionMessage = async (req: Request, res: Response) => {
