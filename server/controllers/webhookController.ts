@@ -919,12 +919,45 @@ export const handleWebhook = async (req: Request, res: Response) => {
             console.log(`[Webhook] Preparing to save message: direction=${direction}, externalId=${externalId}, convId=${conversationId}, content="${content.substring(0, 30)}..."`);
 
             // Insert Message into database with instance tracking and source attribution
-            const insertedMsg = await pool.query(
+            let insertedMsg = await pool.query(
                 `INSERT INTO whatsapp_messages (conversation_id, direction, content, sent_at, status, external_id, message_type, media_url, user_id, sender_jid, sender_name, company_id, instance_id, instance_key, instance_name, message_source, message_origin) 
                  VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17) 
                  ON CONFLICT (external_id) DO NOTHING RETURNING *`,
                 [conversationId, direction, content, sent_at.toISOString(), 'received', externalId, messageType, mediaUrl, null, senderJid, senderName, companyId, instanceId, instance, instanceDisplayName, messageSource, messageSource]
             );
+
+            // Handle cross-company/instance collision when external_id is globally unique.
+            // If the same external_id already exists for another conversation/company, this is NOT a real duplicate.
+            // In this case, persist with a scoped id so the message is not lost from the frontend/history.
+            if (insertedMsg.rows.length === 0) {
+                const conflictCheck = await pool.query(
+                    `SELECT id, conversation_id, company_id
+                     FROM whatsapp_messages
+                     WHERE external_id = $1
+                     ORDER BY id DESC
+                     LIMIT 1`,
+                    [externalId]
+                );
+
+                const conflictRow = conflictCheck.rows[0];
+                const isCrossConversationCollision = Boolean(
+                    conflictRow && (
+                        Number(conflictRow.conversation_id) !== Number(conversationId)
+                        || Number(conflictRow.company_id) !== Number(companyId)
+                    )
+                );
+
+                if (isCrossConversationCollision) {
+                    const scopedExternalId = `${externalId}::c${companyId}::v${conversationId}`;
+                    console.warn(`[Webhook] external_id collision detected (${externalId}). Saving as ${scopedExternalId}.`);
+                    insertedMsg = await pool.query(
+                        `INSERT INTO whatsapp_messages (conversation_id, direction, content, sent_at, status, external_id, message_type, media_url, user_id, sender_jid, sender_name, company_id, instance_id, instance_key, instance_name, message_source, message_origin) 
+                         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
+                         ON CONFLICT (external_id) DO NOTHING RETURNING *`,
+                        [conversationId, direction, content, sent_at.toISOString(), 'received', scopedExternalId, messageType, mediaUrl, null, senderJid, senderName, companyId, instanceId, instance, instanceDisplayName, messageSource, messageSource]
+                    );
+                }
+            }
 
             if (insertedMsg.rows.length > 0) {
                 console.log(`[Webhook] ✅ Message SAVED to DB: ID=${insertedMsg.rows[0].id}, direction=${direction}, external_id=${externalId}`);
@@ -962,7 +995,9 @@ export const handleWebhook = async (req: Request, res: Response) => {
                     FROM whatsapp_messages wm
                     LEFT JOIN app_users u ON wm.user_id = u.id
                     WHERE wm.external_id = $1
-                `, [externalId]);
+                      AND wm.conversation_id = $2
+                      AND wm.company_id = $3
+                `, [externalId, conversationId, companyId]);
 
                 if (existingResult.rows.length > 0) {
                     const existingMsg = existingResult.rows[0];
