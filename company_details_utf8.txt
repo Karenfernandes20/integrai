@@ -1,0 +1,265 @@
+Found 3 companies.
+
+--- Company ID: 30 (Karen Agenda) ---
+id: 30
+name: Karen Agenda
+cnpj: null
+city: null
+state: null
+phone: null
+logo_url: http://127.0.0.1:3000/uploads/1770676321362-325...
+evolution_instance: 40620381503A-478C-AE30-F9A83D239B9C
+evolution_apikey: 5A44C72AAB33-42BD-968A-27EB8E14BE6F
+operation_type: clinica
+created_at: Mon Feb 09 2026 22:32:01 GMT-0300 (Horário Padr...
+primary_color: #0e99b0
+secondary_color: #1e293b
+system_name: Viamovecar Hub
+custom_domain: null
+plan_id: 7
+due_date: Fri Feb 13 2026 00:00:00 GMT-0300 (Horário Padr...
+recurrence: MENSAL
+max_instances: 1
+instagram_enabled: false
+instagram_app_id: null
+instagram_app_secret: null
+instagram_page_id: null
+instagram_business_id: null
+instagram_access_token: null
+instagram_token_expires_at: null
+instagram_status: INATIVO
+n8n_base_url: null
+n8n_api_key: null
+n8n_webhook_secret: null
+whatsapp_instance_id: null
+category: clinica
+operational_profile: CLINICA
+whatsapp_enabled: true
+messenger_enabled: false
+whatsapp_type: evolution
+whatsapp_official_phone: null
+whatsapp_official_phone_number_id: null
+whatsapp_official_business_account_id: null
+whatsapp_official_access_token: null
+whatsapp_official_api_version: v21.0
+whatsapp_official_webhook_token: null
+whatsapp_api_plus_token: null
+instagram_webhook_token: null
+messenger_app_id: null
+messenger_app_secret: null
+messenger_page_id: null
+messenger_access_token: null
+messenger_webhook_token: null
+messenger_status: INATIVO
+whatsapp_limit: 1
+instagram_limit: 1
+messenger_limit: 1
+evolution_url: null
+instagram_instances_config: 
+updated_at: Fri Feb 13 2026 12:35:28 GMT-0300 (Horário Padr...
+onboarding_step: 1
+ticket_reopen_timeout_hours: 24
+whatsapp_web_js_enabled: false
+provider: null
+channel_type: null
+connection_mode: null
+business_manager_id: null
+waba_id: null
+phone_number_id: null
+meta_app_id: null
+meta_app_secret: null
+access_token: null
+verify_token: null
+webhook_url: null
+callback_url: null
+api_version: v18.0
+instance_key: null
+instance_name: null
+whatsapp_number: null
+id_numero_meta: null
+id_conta_comercial: null
+sandbox_mode: false
+server_region: sa-east-1
+receive_messages: true
+receive_status: true
+receive_contacts: true
+receive_chat_updates: true
+subscription_fields: messages,messaging_postbacks,message_status,mes...
+whatsapp_meta_status: inactive
+whatsapp_meta_last_sync: null
+
+--- Company ID: 21 (Karen) ---
+id: 21
+name: Karen
+cnpj: 02146251689
+city: Montes Claros
+state: MG
+phone: 38999540230
+logo_url: null
+evolution_instance: karen
+evolution_apikey: CF0C137B1FD7-4C02-9ED6-F420B6B5ED1E
+operation_type: pacientes
+created_at: Mon Jan 12 2026 12:36:24 GMT-0300 (Horário Padr...
+primary_color: #0e99b0
+secondary_color: #1e293b
+system_name: Viamovecar Hub
+custom_domain: null
+plan_id: 4
+due_date: Fri Jan 01 2027 00:00:00 GMT-0300 (Horário Padr...
+recurrence: MENSAL
+max_instances: 2
+instagram_enabled: true
+instagram_app_id: null
+instagram_app_secret: null
+instagram_page_id: 1401837955072236
+instagram_business_id: null
+instagram_access_token: da9cfd56c82063f52948915c8413a2e1
+instagram_token_expires_at: null
+instagram_status: ERRO
+n8n_base_url: null
+n8n_api_key: null
+n8n_webhook_secret: null
+whatsapp_instance_id: null
+category: generic
+operational_profile: CLINICA
+whatsapp_enabled: true
+messenger_enabled: false
+whatsapp_type: evolution
+whatsapp_official_phone: null
+whatsapp_official_phone_number_id: null
+whatsapp_official_business_account_id: null
+whatsapp_official_access_token: null
+whatsapp_official_api_version: v21.0
+whatsapp_official_webhook_token: null
+whatsapp_api_plus_token: null
+instagram_webhook_token: null
+messenger_app_id: null
+messenger_app_secret: null
+messenger_page_id: null
+messenger_access_token: null
+messenger_webhook_token: null
+messenger_status: INATIVO
+whatsapp_limit: 2
+instagram_limit: 1
+messenger_limit: 1
+evolution_url: null
+instagram_instances_config: 
+updated_at: Fri Feb 13 2026 12:35:28 GMT-0300 (Horário Padr...
+onboarding_step: 1
+ticket_reopen_timeout_hours: 24
+whatsapp_web_js_enabled: false
+provider: null
+channel_type: null
+connection_mode: null
+business_manager_id: null
+waba_id: null
+phone_number_id: null
+meta_app_id: null
+meta_app_secret: null
+access_token: null
+verify_token: null
+webhook_url: null
+callback_url: null
+api_version: v18.0
+instance_key: null
+instance_name: null
+whatsapp_number: null
+id_numero_meta: null
+id_conta_comercial: null
+sandbox_mode: false
+server_region: sa-east-1
+receive_messages: true
+receive_status: true
+receive_contacts: true
+receive_chat_updates: true
+subscription_fields: messages,messaging_postbacks,message_status,mes...
+whatsapp_meta_status: inactive
+whatsapp_meta_last_sync: null
+
+--- Company ID: 31 (Karen Loja) ---
+id: 31
+name: Karen Loja
+cnpj: null
+city: null
+state: null
+phone: null
+logo_url: null
+evolution_instance: null
+evolution_apikey: 5A44C72AAB33-42BD-968A-27EB8E14BE6F
+operation_type: loja
+created_at: Tue Feb 10 2026 15:35:17 GMT-0300 (Horário Padr...
+primary_color: #af0e84
+secondary_color: #1e293b
+system_name: Viamovecar Hub
+custom_domain: null
+plan_id: 7
+due_date: Thu Feb 19 2026 00:00:00 GMT-0300 (Horário Padr...
+recurrence: MENSAL
+max_instances: 1
+instagram_enabled: true
+instagram_app_id: null
+instagram_app_secret: null
+instagram_page_id: null
+instagram_business_id: null
+instagram_access_token: null
+instagram_token_expires_at: null
+instagram_status: INATIVO
+n8n_base_url: null
+n8n_api_key: null
+n8n_webhook_secret: null
+whatsapp_instance_id: null
+category: loja
+operational_profile: LOJA
+whatsapp_enabled: true
+messenger_enabled: false
+whatsapp_type: official
+whatsapp_official_phone: null
+whatsapp_official_phone_number_id: 922608607612452
+whatsapp_official_business_account_id: 925687296612096
+whatsapp_official_access_token: EAAUnAzhRhIYBQhbehSX9ZBZC2Q0kuZAMHtkTspjL9fuG7o...
+whatsapp_official_api_version: null
+whatsapp_official_webhook_token: wa_off_31_sxo3317t
+whatsapp_api_plus_token: null
+instagram_webhook_token: null
+messenger_app_id: null
+messenger_app_secret: null
+messenger_page_id: null
+messenger_access_token: null
+messenger_webhook_token: null
+messenger_status: INATIVO
+whatsapp_limit: 2
+instagram_limit: 1
+messenger_limit: 1
+evolution_url: null
+instagram_instances_config: [object Object]
+updated_at: Tue Feb 17 2026 14:34:57 GMT-0300 (Horário Padr...
+onboarding_step: 1
+ticket_reopen_timeout_hours: 24
+whatsapp_web_js_enabled: false
+provider: null
+channel_type: null
+connection_mode: null
+business_manager_id: null
+waba_id: null
+phone_number_id: null
+meta_app_id: null
+meta_app_secret: null
+access_token: null
+verify_token: null
+webhook_url: null
+callback_url: null
+api_version: v18.0
+instance_key: null
+instance_name: null
+whatsapp_number: null
+id_numero_meta: null
+id_conta_comercial: null
+sandbox_mode: false
+server_region: sa-east-1
+receive_messages: true
+receive_status: true
+receive_contacts: true
+receive_chat_updates: true
+subscription_fields: messages,messaging_postbacks,message_status,mes...
+whatsapp_meta_status: CONNECTED
+whatsapp_meta_last_sync: Mon Feb 16 2026 22:24:03 GMT-0300 (Horário Padr...

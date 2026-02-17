@@ -1,0 +1,14 @@
+{
+  "karenloja": {
+    "instance": {
+      "instanceName": "karenloja",
+      "state": "open"
+    }
+  },
+  "integrailoja": {
+    "instance": {
+      "instanceName": "integrailoja",
+      "state": "close"
+    }
+  }
+}

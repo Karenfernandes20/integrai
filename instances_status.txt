@@ -1,0 +1,94 @@
+--- COMPANY INSTANCES ---
+[
+  {
+    "id": 2,
+    "company_id": 21,
+    "name": "Karen",
+    "instance_key": "karen",
+    "api_key": "5A44C72AAB33-42BD-968A-27EB8E14BE6F",
+    "status": "disconnected",
+    "created_at": "2026-01-12T15:33:19.955Z",
+    "phone": null,
+    "color": "#3b82f6",
+    "updated_at": "2026-02-13T16:08:56.614Z"
+  },
+  {
+    "id": 20,
+    "company_id": 31,
+    "name": "Karen Pessoal",
+    "instance_key": "karenloja",
+    "api_key": "8A22CBC0C762-488C-A5D7-9C8E0CC9AEEC",
+    "status": "connected",
+    "created_at": "2026-02-10T15:35:18.438Z",
+    "phone": null,
+    "color": "#d83bf7",
+    "updated_at": "2026-02-17T17:34:57.105Z"
+  },
+  {
+    "id": 37,
+    "company_id": 31,
+    "name": "Integrai Karen",
+    "instance_key": "integrailoja",
+    "api_key": "5A44C72AAB33-42BD-968A-27EB8E14BE6F",
+    "status": "disconnected",
+    "created_at": "2026-02-11T01:57:05.812Z",
+    "phone": null,
+    "color": "#eaf73b",
+    "updated_at": "2026-02-17T22:40:49.954Z"
+  },
+  {
+    "id": 19,
+    "company_id": 30,
+    "name": "karen agenda",
+    "instance_key": "40620381503A-478C-AE30-F9A83D239B9C",
+    "api_key": "5A44C72AAB33-42BD-968A-27EB8E14BE6F",
+    "status": "disconnected",
+    "created_at": "2026-02-09T22:48:07.350Z",
+    "phone": null,
+    "color": "#3b82f6",
+    "updated_at": "2026-02-13T16:08:56.614Z"
+  },
+  {
+    "id": 1,
+    "company_id": 21,
+    "name": "integrai",
+    "instance_key": "integrai",
+    "api_key": "5A44C72AAB33-42BD-968A-27EB8E14BE6F",
+    "status": "disconnected",
+    "created_at": "2026-01-12T15:33:19.887Z",
+    "phone": null,
+    "color": "#3b82f6",
+    "updated_at": "2026-02-13T16:08:56.614Z"
+  }
+]
+
+--- COMPANIES ---
+[
+  {
+    "id": 30,
+    "name": "Karen Agenda",
+    "evolution_instance": "40620381503A-478C-AE30-F9A83D239B9C",
+    "evolution_apikey": "5A44C72AAB33-42BD-968A-27EB8E14BE6F",
+    "whatsapp_type": "evolution",
+    "whatsapp_official_phone_number_id": null,
+    "whatsapp_official_webhook_token": null
+  },
+  {
+    "id": 21,
+    "name": "Karen",
+    "evolution_instance": "karen",
+    "evolution_apikey": "CF0C137B1FD7-4C02-9ED6-F420B6B5ED1E",
+    "whatsapp_type": "evolution",
+    "whatsapp_official_phone_number_id": null,
+    "whatsapp_official_webhook_token": null
+  },
+  {
+    "id": 31,
+    "name": "Karen Loja",
+    "evolution_instance": null,
+    "evolution_apikey": "5A44C72AAB33-42BD-968A-27EB8E14BE6F",
+    "whatsapp_type": "official",
+    "whatsapp_official_phone_number_id": "922608607612452",
+    "whatsapp_official_webhook_token": "wa_off_31_sxo3317t"
+  }
+]
