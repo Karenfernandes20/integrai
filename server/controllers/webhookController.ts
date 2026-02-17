@@ -598,8 +598,55 @@ export const handleWebhook = async (req: Request, res: Response) => {
                             instance = EXCLUDED.instance,
                             updated_at = NOW()
                     `, [companyId, normalizedJid, normalizedPhone, name, msg.pushName || null, instance]);
+
+                    // --- AUTO-CREATE LEAD LOGIC (First Time Interaction) ---
+                    // Check if lead exists for this phone
+                    const leadCheck = await pool.query(
+                        "SELECT id FROM crm_leads WHERE company_id = $1 AND phone = $2",
+                        [companyId, normalizedPhone]
+                    );
+
+                    if (leadCheck.rows.length === 0) {
+                        // Find LEADS stage
+                        const stageRes = await pool.query(
+                            "SELECT id FROM crm_stages WHERE company_id = $1 AND UPPER(name) = 'LEADS' LIMIT 1",
+                            [companyId]
+                        );
+                        let targetStageId;
+                        if (stageRes.rows.length > 0) {
+                            targetStageId = stageRes.rows[0].id;
+                        } else {
+                            // Fallback
+                            const firstStage = await pool.query(
+                                "SELECT id FROM crm_stages WHERE company_id = $1 ORDER BY position ASC LIMIT 1",
+                                [companyId]
+                            );
+                            if (firstStage.rows.length > 0) targetStageId = firstStage.rows[0].id;
+                        }
+
+                        if (targetStageId) {
+                            // Decide name: prioritize pushName from msg over phone
+                            const leadName = msg.pushName || msg.pushname || msg.notifyName || normalizedPhone;
+
+                            const newLead = await pool.query(
+                                `INSERT INTO crm_leads 
+                                 (name, phone, stage_id, company_id, origin, description, created_at, updated_at, instance)
+                                 VALUES ($1, $2, $3, $4, 'WhatsApp', 'Criado automaticamente via WhatsApp Evolution', NOW(), NOW(), $5)
+                                 RETURNING *`,
+                                [leadName, normalizedPhone, targetStageId, companyId, instance]
+                            );
+
+                            // Emit socket for CRM update
+                            const io = req.app.get('io');
+                            if (io) {
+                                io.to(`company_${companyId}`).emit('crm:lead_created', newLead.rows[0]);
+                            }
+                            console.log(`[Webhook] Auto-created CRM Lead for ${normalizedPhone}`);
+                        }
+                    }
+
                 } catch (err) {
-                    console.error('[Webhook] Error upserting contact:', err);
+                    console.error('[Webhook] Error upserting contact/lead:', err);
                 }
             }
 
@@ -1876,6 +1923,52 @@ export const handleWhatsappOfficialWebhook = async (req: Request, res: Response)
                             );
                             if (contactRes.rows.length > 0) {
                                 senderName = contactRes.rows[0].push_name || contactRes.rows[0].name || senderName;
+                            }
+
+                            // --- AUTO-CREATE LEAD LOGIC (First Time Interaction) ---
+                            try {
+                                const leadCheck = await pool!.query(
+                                    "SELECT id FROM crm_leads WHERE company_id = $1 AND phone = $2",
+                                    [compId, phone]
+                                );
+
+                                if (leadCheck.rows.length === 0) {
+                                    // Find LEADS stage
+                                    const stageRes = await pool!.query(
+                                        "SELECT id FROM crm_stages WHERE company_id = $1 AND UPPER(name) = 'LEADS' LIMIT 1",
+                                        [compId]
+                                    );
+                                    let targetStageId;
+                                    if (stageRes.rows.length > 0) {
+                                        targetStageId = stageRes.rows[0].id;
+                                    } else {
+                                        // Fallback
+                                        const firstStage = await pool!.query(
+                                            "SELECT id FROM crm_stages WHERE company_id = $1 ORDER BY position ASC LIMIT 1",
+                                            [compId]
+                                        );
+                                        if (firstStage.rows.length > 0) targetStageId = firstStage.rows[0].id;
+                                    }
+
+                                    if (targetStageId) {
+                                        const newLead = await pool!.query(
+                                            `INSERT INTO crm_leads 
+                                             (name, phone, stage_id, company_id, origin, description, created_at, updated_at, instance)
+                                             VALUES ($1, $2, $3, $4, 'WhatsApp', 'Criado automaticamente via WhatsApp Official', NOW(), NOW(), 'official')
+                                             RETURNING *`,
+                                            [senderName, phone, targetStageId, compId]
+                                        );
+
+                                        // Emit socket for CRM update
+                                        const io = req.app.get('io');
+                                        if (io) {
+                                            io.to(`company_${compId}`).emit('crm:lead_created', newLead.rows[0]);
+                                        }
+                                        console.log(`[WhatsApp Official] Auto-created CRM Lead for ${phone}`);
+                                    }
+                                }
+                            } catch (e) {
+                                console.error('[WhatsApp Official] Error creating auto-lead:', e);
                             }
 
                             // --- CONVERSATION HANDLING ---
