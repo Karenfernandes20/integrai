@@ -1720,6 +1720,61 @@ export const verifyInstagramWebhook = async (req: Request, res: Response) => {
     }
 };
 
+export const verifyWhatsappOfficialWebhook = async (req: Request, res: Response) => {
+    try {
+        const { companyId } = req.params;
+        const mode = req.query['hub.mode'];
+        const token = req.query['hub.verify_token'];
+        const challenge = req.query['hub.challenge'];
+
+        console.log(`[WhatsApp Official Webhook] Tentativa de verificação para empresa ${companyId}: mode=${mode}, token=${token}`);
+
+        if (mode === 'subscribe' && token) {
+            const result = await pool!.query('SELECT whatsapp_official_webhook_token FROM companies WHERE id = $1', [companyId]);
+            const savedToken = result.rows[0]?.whatsapp_official_webhook_token;
+
+            if (savedToken && token === savedToken) {
+                console.log('[WhatsApp Official Webhook] Verificado com sucesso.');
+                return res.status(200).send(challenge);
+            }
+        }
+
+        console.warn(`[WhatsApp Official Webhook] Falha na verificação para empresa ${companyId}.`);
+        return res.sendStatus(403);
+    } catch (e) {
+        console.error('[WhatsApp Official Verify Error]', e);
+        return res.sendStatus(403);
+    }
+};
+
+export const handleWhatsappOfficialWebhook = async (req: Request, res: Response) => {
+    try {
+        const { companyId } = req.params;
+        const body = req.body;
+
+        console.log(`[WhatsApp Official Webhook] Evento recebido para empresa ${companyId}:`, JSON.stringify(body, null, 2));
+
+        // Log event for debugging
+        await logEvent({
+            eventType: 'webhook_received',
+            origin: 'webhook',
+            status: 'success',
+            message: `Webhook do WhatsApp Official recebido (Empresa ${companyId})`,
+            details: body
+        });
+
+        // IMPORTANT: We respond 200 immediately to Meta
+        res.sendStatus(200);
+
+        // --- TODO: Implement message processing logic ---
+        // This will be similar to handleWebhook but parsing Meta Cloud API JSON structure
+
+    } catch (e) {
+        console.error('[WhatsApp Official Webhook Error]', e);
+        if (!res.headersSent) res.sendStatus(500);
+    }
+};
+
 export const handleInstagramWebhook = async (req: Request, res: Response) => {
     try {
         const body = req.body;
@@ -1729,13 +1784,12 @@ export const handleInstagramWebhook = async (req: Request, res: Response) => {
         await logEvent({
             eventType: 'webhook_received',
             origin: 'webhook',
-            status: 'info',
-            message: 'Instagram Webhook Received',
+            status: 'success',
+            message: 'Webhook do Instagram recebido',
             details: body
-        }).catch(e => console.error('Failed to log IG webhook', e));
+        });
 
-        // 1. Acknowledge immediately
-        res.status(200).send('EVENT_RECEIVED');
+        res.sendStatus(200);
 
         // 2. Process
         if (body.object === 'instagram' || body.object === 'page') {

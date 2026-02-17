@@ -21,7 +21,9 @@ import {
   getMessages,
   debugWebhookPayloads,
   verifyInstagramWebhook,
-  handleInstagramWebhook
+  handleInstagramWebhook,
+  verifyWhatsappOfficialWebhook,
+  handleWhatsappOfficialWebhook
 } from './controllers/webhookController';
 import { getCities, createCity } from './controllers/cityController';
 import { login, register } from './controllers/authController';
@@ -41,6 +43,9 @@ import { getFollowUps, createFollowUp, updateFollowUp, deleteFollowUp, getFollow
 const router = express.Router();
 router.get('/webhooks/instagram', verifyInstagramWebhook);
 router.post('/webhooks/instagram', handleInstagramWebhook);
+
+router.get('/webhooks/whatsapp/official/:companyId', verifyWhatsappOfficialWebhook);
+router.post('/webhooks/whatsapp/official/:companyId', handleWhatsappOfficialWebhook);
 
 
 

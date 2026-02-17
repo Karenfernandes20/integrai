@@ -31,6 +31,12 @@ const buildInstagramCallbackUrl = () => {
   return `${origin}/api/webhooks/instagram`;
 };
 
+const generateWhatsappOfficialToken = (companyId: string | number | null | undefined) => {
+  const safeCompany = String(companyId || 'empresa');
+  const rand = Math.random().toString(36).slice(2, 10);
+  return `wa_off_${safeCompany}_${rand}`;
+};
+
 const normalizeInstagramConfigs = (
   rawConfigs: any,
   limit: number,
@@ -943,6 +949,24 @@ const QrCodePage = () => {
                     <div className="space-y-2">
                       <Label className="text-[10px] font-bold uppercase">Permanent Access Token</Label>
                       <Input type="password" value={company?.whatsapp_official_access_token || ""} onChange={(e) => handleCompanyChange('whatsapp_official_access_token', e.target.value)} className="h-9 rounded-lg" />
+                    </div>
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between">
+                        <Label className="text-[10px] font-bold uppercase">Verify Token (Webhook)</Label>
+                        <Button
+                          variant="link"
+                          className="h-4 p-0 text-[10px] text-primary"
+                          onClick={() => handleCompanyChange('whatsapp_official_webhook_token', generateWhatsappOfficialToken(company?.id))}
+                        >
+                          Gerar Novo
+                        </Button>
+                      </div>
+                      <Input
+                        value={company?.whatsapp_official_webhook_token || ""}
+                        onChange={(e) => handleCompanyChange('whatsapp_official_webhook_token', e.target.value)}
+                        className="h-9 rounded-lg font-mono text-xs"
+                        placeholder="wa_off_..."
+                      />
                     </div>
                     <div className="bg-indigo-50 dark:bg-indigo-950/20 p-3 rounded-xl border border-indigo-100 dark:border-indigo-900/50 mt-2">
                       <Label className="text-[10px] font-bold text-indigo-600 block mb-1 uppercase italic">Callback URL (Webhook)</Label>
