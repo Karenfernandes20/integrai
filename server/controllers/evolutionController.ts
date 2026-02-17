@@ -543,10 +543,10 @@ export const deleteEvolutionInstance = async (req: Request, res: Response) => {
       }
     }
 
+
     if (!response.ok) {
       if (response.status === 404) {
         console.log(`[Disconnect] Instance ${config.instance} already disconnected (404)`);
-        // Update DB status to disconnected
         await pool.query('UPDATE company_instances SET status = $1 WHERE id = $2', ['disconnected', instance.id]);
         return res.status(200).json({ message: "Instance was already disconnected", status: "success" });
       }
@@ -556,6 +556,20 @@ export const deleteEvolutionInstance = async (req: Request, res: Response) => {
 
       let errorMessage = "Failed to disconnect instance from Evolution API";
 
+      // Handle 400 "The instance is not connected" scenarios - Treat as success (disconnected)
+      if (response.status === 400) {
+        const isAlreadyDisconnected =
+          text.includes("instance is not connected") ||
+          text.includes("instance already disconnected") ||
+          text.includes("not logged in");
+
+        if (isAlreadyDisconnected) {
+          console.log(`[Disconnect] Instance ${config.instance} already disconnected (400) - Updating DB...`);
+          await pool.query('UPDATE company_instances SET status = $1 WHERE id = $2', ['disconnected', instance.id]);
+          return res.status(200).json({ message: "Instance was already disconnected", status: "success" });
+        }
+      }
+
       // Add specific message for 401
       if (response.status === 401) {
         errorMessage = "API Key não tem permissão para desconectar esta instância. Verifique se a API Key está correta.";
@@ -563,12 +577,10 @@ export const deleteEvolutionInstance = async (req: Request, res: Response) => {
         // Try to parse error details
         try {
           const errorData = JSON.parse(text);
-          errorMessage = errorData.message || errorData.error || errorMessage;
+          // Evolution sometimes wraps errors in 'response' object
+          errorMessage = errorData.response?.message?.join(', ') || errorData.message || errorData.error || errorMessage;
         } catch (e) {
-          // If not JSON, use text directly if it's meaningful
-          if (text && text.length > 0 && text.length < 200) {
-            errorMessage = text;
-          }
+          if (text && text.length > 0 && text.length < 200) errorMessage = text;
         }
       }
 
@@ -581,6 +593,11 @@ export const deleteEvolutionInstance = async (req: Request, res: Response) => {
     }
 
     const data = await response.json().catch(() => ({ success: true }));
+    // If successful, update DB status to disconnected? Evolution webhook usually handles this, 
+    // but we can proactively set it to 'disconnecting' or rely on webhook.
+    // Ideally, set to disconnected immediately to reflect UI state.
+    await pool.query('UPDATE company_instances SET status = $1 WHERE id = $2', ['disconnected', instance.id]);
+
     console.log(`[Disconnect] Success! Response:`, data);
     return res.status(200).json({ message: "Instance disconnected successfully", data });
   } catch (error: any) {
