@@ -1485,7 +1485,7 @@ export const getConversations = async (req: Request, res: Response) => {
                     co.profile_picture as profile_pic_url, 
                     co.instagram_username,
                     co.username,
-                    co.external_id as instagram_id,
+                    co.external_id,
                     -- For WhatsApp we often use push_name, for Instagram we want username
                     COALESCE(co.username, co.push_name) as push_name, 
                     COALESCE(co.name, co.instagram_username, co.username) as name
