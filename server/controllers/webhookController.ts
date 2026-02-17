@@ -9,6 +9,7 @@ import { downloadMediaFromEvolution } from '../services/mediaService.js';
 import { returnToPending } from './conversationController.js';
 import { handleWhaticketGreeting } from '../services/whaticketService.js';
 import { getEvolutionConfig } from './evolutionController.js';
+import { getInstagramProfile, formatInstagramUsername } from '../services/instagramProfileService.js';
 
 // Tipo simplificado da mensagem
 interface WebhookMessage {
@@ -1438,21 +1439,24 @@ export const getConversations = async (req: Request, res: Response) => {
             co.instagram_username,
             co.instagram_id,
             -- Prioritize Name/Username from contacts
+            -- Instagram-specific display logic
+            -- Priority: Contact Name > @Username > @ExternalID
             COALESCE(
                 CASE WHEN (c.is_group = true OR c.external_id LIKE '%@g.us') THEN ${groupSubjectExpr} ELSE NULL END,
                 CASE WHEN (c.is_group = true OR c.external_id LIKE '%@g.us') THEN NULLIF(TRIM(c.group_name), '') ELSE NULL END,
                 NULLIF(TRIM(co.name), ''),
-                CASE WHEN c.channel = 'instagram' AND co.push_name IS NOT NULL THEN '@' || co.push_name ELSE co.push_name END,
+                CASE 
+                    WHEN c.channel = 'instagram' AND co.username IS NOT NULL AND co.username != '' THEN 
+                        CASE WHEN co.username LIKE '@%' THEN co.username ELSE '@' || co.username END
+                    ELSE NULL 
+                END,
                 NULLIF(TRIM(c.contact_name), ''),
-                c.phone
+                CASE WHEN c.channel = 'instagram' THEN '@' || c.external_id ELSE c.phone END
             ) as display_name,
+            -- Contact Saved Name logic
             CASE
               WHEN co.name IS NULL OR btrim(co.name) = '' THEN NULL
-              WHEN co.name ~* 'https?://'
-                OR length(co.name) > 60
-                OR co.name ~ E'[\\r\\n]'
-                OR co.name ~ '^\\[[^\\]]+\\]$'
-              THEN NULL
+              WHEN co.name ~* 'https?://' OR length(co.name) > 60 THEN NULL
               ELSE co.name
             END as contact_saved_name,
             co.push_name as contact_push_name,
@@ -1480,14 +1484,17 @@ export const getConversations = async (req: Request, res: Response) => {
                 SELECT 
                     co.profile_picture as profile_pic_url, 
                     co.instagram_username,
-                    co.username as push_name, 
-                    COALESCE(co.name, co.instagram_username, co.username) as name,
-                    co.instagram_id
+                    co.username,
+                    -- For WhatsApp we often use push_name, for Instagram we want username
+                    COALESCE(co.username, co.push_name) as push_name, 
+                    COALESCE(co.name, co.instagram_username, co.username) as name
                 FROM contacts co
                 WHERE co.company_id = c.company_id
                   AND (
-                    (c.channel = 'instagram' AND co.instagram_id = c.external_id)
+                    -- STRICT JOIN FOR INSTAGRAM
+                    (c.channel = 'instagram' AND co.external_id = c.external_id)
                     OR
+                    -- FUZZY JOIN FOR WHATSAPP
                     (c.channel = 'whatsapp' AND (
                         co.external_id = c.external_id
                         OR co.phone = split_part(c.external_id, '@', 1)
@@ -1498,8 +1505,9 @@ export const getConversations = async (req: Request, res: Response) => {
                     ))
                   )
                 ORDER BY
+                  -- Priority: Exact Match > Phone Match > Recent
                   CASE
-                    WHEN co.external_id = c.external_id OR co.instagram_id = c.external_id THEN 0
+                    WHEN co.external_id = c.external_id THEN 0
                     WHEN co.phone = split_part(c.external_id, '@', 1) THEN 1
                     ELSE 9
                   END,
@@ -2171,18 +2179,38 @@ export const handleInstagramWebhook = async (req: Request, res: Response) => {
                             console.log(`[Instagram Webhook] Msg from ${senderId}: ${text}`);
 
                             // Get User Profile via Service (Meta Graph API)
-                            const { getInstagramProfile, formatInstagramUsername } = await import('../services/instagramProfileService.js');
+                            // Using static import now
                             const profile = await getInstagramProfile(senderId, company.instagram_access_token, company.id);
 
                             const username = profile.username || senderId; // Username real ou ID numérico
-                            const realName = profile.name || null;         // Nome completo (ex: "John Doe")
+                            const realName = profile.name || null;         // Nome completo
                             const profilePic = profile.profilePic || null;
-                            const displayUsername = formatInstagramUsername(username); // @username ou "Instagram User"
 
-                            // Prioridade de exibição: Nome Real > @username
-                            const finalDisplayName = realName || displayUsername;
+                            // Determine final display name
+                            const finalDisplayName = realName || (username.startsWith('@') ? username : `@${username}`);
 
                             console.log(`[Instagram Webhook] Resolved Profile: @${username} | Name: ${realName} | Display: ${finalDisplayName}`);
+
+                            // UPSERT Contact Logic
+                            try {
+                                await pool!.query(`
+                                    INSERT INTO contacts (
+                                        company_id, channel, external_id, 
+                                        name, username, instagram_username, instagram_id, 
+                                        profile_picture, updated_at
+                                    )
+                                    VALUES ($1, 'instagram', $2, $3, $4, $4, $2, $5, NOW())
+                                    ON CONFLICT (company_id, channel, external_id)
+                                    DO UPDATE SET
+                                        name = COALESCE(EXCLUDED.name, contacts.name),
+                                        username = COALESCE(EXCLUDED.username, contacts.username),
+                                        instagram_username = COALESCE(EXCLUDED.instagram_username, contacts.instagram_username),
+                                        profile_picture = COALESCE(EXCLUDED.profile_picture, contacts.profile_picture),
+                                        updated_at = NOW()
+                                `, [company.id, senderId, realName, username, profilePic]);
+                            } catch (e) {
+                                console.error('[Instagram Webhook] Error upserting contact:', e);
+                            }
 
                             // Create/Update Conversation
                             // Check existing conversation
