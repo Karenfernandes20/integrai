@@ -417,7 +417,7 @@ export const updateCompany = async (req: Request, res: Response) => {
             String(provider || '').toLowerCase() === 'api_plus';
 
         let whatsappMetaStatus = 'inactive';
-        const resolvedWebhookUrl = webhook_url || `${req.protocol}://${req.get('host')}/api/webhooks/whatsapp/meta/${id}`;
+        const resolvedWebhookUrl = webhook_url || `${req.protocol}://${req.get('host')}/api/webhooks/whatsapp/official/${id}`;
         const resolvedCallbackUrl = callback_url || resolvedWebhookUrl;
 
         if (isWhatsappMetaApiPlus) {
