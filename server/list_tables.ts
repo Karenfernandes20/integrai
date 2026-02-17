@@ -16,9 +16,8 @@ const pool = new Pool({
 
 async function run() {
     try {
-        const res = await pool.query("SELECT * FROM event_logs WHERE origin LIKE 'whatsapp_official_31%' OR details::text LIKE '%537966966079979%' ORDER BY created_at DESC LIMIT 10");
-        console.log("Recent Webhook Logs for Integrai Karen:");
-        console.log(JSON.stringify(res.rows, null, 2));
+        const res = await pool.query("SELECT table_name FROM information_schema.tables WHERE table_schema = 'public'");
+        console.log(res.rows.map(r => r.table_name).join(', '));
     } catch (e) {
         console.error("Query failed:", e);
     } finally {

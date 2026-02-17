@@ -16,8 +16,7 @@ const pool = new Pool({
 
 async function run() {
     try {
-        const res = await pool.query("SELECT * FROM event_logs WHERE origin LIKE 'whatsapp_official_31%' OR details::text LIKE '%537966966079979%' ORDER BY created_at DESC LIMIT 10");
-        console.log("Recent Webhook Logs for Integrai Karen:");
+        const res = await pool.query("SELECT id, name, whatsapp_type, whatsapp_official_phone_number_id, whatsapp_official_webhook_token, instagram_enabled FROM companies WHERE name ILIKE '%Integrai%' OR name ILIKE '%Karen%' LIMIT 5");
         console.log(JSON.stringify(res.rows, null, 2));
     } catch (e) {
         console.error("Query failed:", e);

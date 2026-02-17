@@ -1751,23 +1751,259 @@ export const handleWhatsappOfficialWebhook = async (req: Request, res: Response)
     try {
         const { companyId } = req.params;
         const body = req.body;
+        const compId = parseInt(companyId);
 
-        console.log(`[WhatsApp Official Webhook] Evento recebido para empresa ${companyId}:`, JSON.stringify(body, null, 2));
+        if (isNaN(compId) || !pool) {
+            res.sendStatus(400);
+            return;
+        }
 
-        // Log event for debugging
-        await logEvent({
-            eventType: 'webhook_received',
-            origin: 'webhook',
-            status: 'success',
-            message: `Webhook do WhatsApp Official recebido (Empresa ${companyId})`,
-            details: body
-        });
+        console.log(`[WhatsApp Official Webhook] Evento recebido para empresa ${companyId}`);
 
-        // IMPORTANT: We respond 200 immediately to Meta
+        // IMPORTANT: We respond 200 immediately to Meta to acknowledge receipt
         res.sendStatus(200);
 
-        // --- TODO: Implement message processing logic ---
-        // This will be similar to handleWebhook but parsing Meta Cloud API JSON structure
+        // Process in background
+        (async () => {
+            try {
+                // Log event for debugging
+                await logEvent({
+                    eventType: 'webhook_received',
+                    origin: 'webhook',
+                    status: 'success',
+                    message: `Webhook do WhatsApp Official recebido (Empresa ${companyId})`,
+                    details: body
+                });
+
+                // Update Status to Connected
+                await pool!.query("UPDATE companies SET whatsapp_meta_status = 'CONNECTED', whatsapp_meta_last_sync = NOW() WHERE id = $1", [compId]);
+
+                if (!body.entry || !Array.isArray(body.entry)) return;
+
+                for (const entry of body.entry) {
+                    if (!entry.changes || !Array.isArray(entry.changes)) continue;
+
+                    for (const change of entry.changes) {
+                        const value = change.value;
+                        if (!value || value.messaging_product !== 'whatsapp') continue;
+
+                        const metadata = value.metadata;
+                        const contactsRaw = value.contacts || [];
+                        const messages = value.messages || [];
+                        const statuses = value.statuses || [];
+
+                        // 1. Handle Contacts (Profile Info)
+                        // Meta sends contact info (like profile name) in the 'contacts' array
+                        for (const contact of contactsRaw) {
+                            const wa_id = contact.wa_id;
+                            const profileName = contact.profile?.name;
+                            if (wa_id && profileName) {
+                                const externalId = wa_id + '@s.whatsapp.net';
+                                try {
+                                    // Upsert contact info
+                                    await pool!.query(`
+                                        INSERT INTO contacts (company_id, channel, external_id, phone, name, push_name, instance, updated_at)
+                                        VALUES ($1, 'whatsapp', $2, $3, $4, $5, 'official', NOW())
+                                        ON CONFLICT (company_id, channel, external_id) 
+                                        DO UPDATE SET 
+                                            push_name = COALESCE(EXCLUDED.push_name, contacts.push_name),
+                                            updated_at = NOW()
+                                    `, [compId, externalId, wa_id, wa_id, profileName]);
+                                } catch (e) {
+                                    console.error('[WhatsApp Official] Error upserting contact:', e);
+                                }
+                            }
+                        }
+
+                        // 2. Handle Messages
+                        for (const msg of messages) {
+                            // Skip system messages or unsupported types for now if needed
+                            if (msg.type === 'system') continue;
+
+                            const from = msg.from; // Phone number
+                            const wamid = msg.id;
+                            const timestamp = msg.timestamp; // Unix timestamp in seconds
+                            const type = msg.type;
+
+                            const remoteJid = from + '@s.whatsapp.net';
+                            const phone = from;
+
+                            // Content Extraction
+                            let content = '';
+                            let messageType = 'text';
+                            let mediaUrl = null;
+
+                            if (type === 'text') {
+                                content = msg.text?.body || '';
+                            } else if (type === 'image') {
+                                messageType = 'image';
+                                content = msg.image?.caption || 'Imagem';
+                                // Used to download media later using media ID
+                                mediaUrl = msg.image?.id;
+                            } else if (type === 'video') {
+                                messageType = 'video';
+                                content = msg.video?.caption || 'Vídeo';
+                                mediaUrl = msg.video?.id;
+                            } else if (type === 'audio' || type === 'voice') {
+                                messageType = 'audio';
+                                content = 'Áudio';
+                                mediaUrl = (msg.audio || msg.voice)?.id;
+                            } else if (type === 'document') {
+                                messageType = 'document';
+                                content = msg.document?.caption || msg.document?.filename || 'Documento';
+                                mediaUrl = msg.document?.id;
+                            } else if (type === 'location') {
+                                messageType = 'location';
+                                content = `Localização: ${msg.location?.name || ''} (${msg.location?.latitude}, ${msg.location?.longitude})`;
+                            } else if (type === 'button') {
+                                content = msg.button?.text || '';
+                            } else if (type === 'interactive') {
+                                const interactive = msg.interactive;
+                                if (interactive.type === 'button_reply') {
+                                    content = interactive.button_reply?.title || interactive.button_reply?.id;
+                                } else if (interactive.type === 'list_reply') {
+                                    content = interactive.list_reply?.title || interactive.list_reply?.id;
+                                }
+                            } else {
+                                content = `[Mensagem tipo ${type}]`;
+                            }
+
+                            // Sender Name Resolution
+                            let senderName = phone;
+                            const contactRes = await pool!.query(
+                                "SELECT name, push_name FROM contacts WHERE company_id = $1 AND external_id = $2 LIMIT 1",
+                                [compId, remoteJid]
+                            );
+                            if (contactRes.rows.length > 0) {
+                                senderName = contactRes.rows[0].push_name || contactRes.rows[0].name || senderName;
+                            }
+
+                            // --- CONVERSATION HANDLING ---
+                            let conversationId: number;
+
+                            // Check existing conversation
+                            // We use instance = 'official'
+                            const checkConv = await pool!.query(
+                                `SELECT id, status FROM whatsapp_conversations 
+                                 WHERE company_id = $1 AND external_id = $2`,
+                                // We matched by external_id mostly. Usually companies only have 1 active channel per number, 
+                                // but strictly we should filter by channel or instance. 
+                                // For now, let's assume external_id + company_id is unique enough or we explicitly check 'official'
+                                // But to be consistent with "Integrai Karen" user request, we match what we have.
+                                [compId, remoteJid]
+                            );
+
+                            let currentStatus = 'PENDING';
+                            let isNew = false;
+                            const instanceName = 'official';
+
+                            if (checkConv.rows.length > 0) {
+                                conversationId = checkConv.rows[0].id;
+                                const row = checkConv.rows[0];
+
+                                // FORCE UPDATE TO PENDING (User Request)
+                                if (row.status !== 'PENDING') {
+                                    await pool!.query(
+                                        "UPDATE whatsapp_conversations SET status = 'PENDING', last_message_at = NOW(), contact_name = COALESCE(contact_name, $2) WHERE id = $1",
+                                        [conversationId, senderName]
+                                    );
+                                    currentStatus = 'PENDING';
+                                } else {
+                                    // Just update timestamp
+                                    await pool!.query(
+                                        "UPDATE whatsapp_conversations SET last_message_at = NOW() WHERE id = $1",
+                                        [conversationId]
+                                    );
+                                }
+                            } else {
+                                // Create new conversation
+                                isNew = true;
+                                await ensureQueueSchema();
+                                const defaultQueueId = await getOrCreateQueueId(compId, 'Recepcao');
+
+                                const newConv = await pool!.query(
+                                    `INSERT INTO whatsapp_conversations (
+                                        external_id, phone, contact_name, instance, status, company_id, 
+                                        is_group, queue_id, channel, last_message_at
+                                    ) VALUES ($1, $2, $3, $4, $5, $6, false, $7, 'whatsapp', NOW()) RETURNING id`,
+                                    [remoteJid, phone, senderName, instanceName, 'PENDING', compId, defaultQueueId]
+                                );
+                                conversationId = newConv.rows[0].id;
+                            }
+
+                            // Insert Message
+                            const insertedMsg = await pool!.query(`
+                                INSERT INTO whatsapp_messages
+                                (company_id, conversation_id, direction, content, message_type, media_url, status, external_id, channel, sender_name, sent_at)
+                                VALUES($1, $2, 'inbound', $3, $4, $5, 'received', $6, 'whatsapp', $7, to_timestamp($8))
+                                RETURNING *
+                            `, [compId, conversationId, content, messageType, mediaUrl, wamid, senderName, timestamp]);
+
+                            const msgPayload = insertedMsg.rows[0];
+
+                            // Emit Socket
+                            const io = req.app.get('io');
+                            if (io) {
+                                const payload = {
+                                    ...msgPayload,
+                                    contact_name: senderName,
+                                    profile_pic_url: null, // TODO: Fetch profile pic if possible
+                                    message_origin: 'whatsapp_official'
+                                };
+                                io.to(`company_${compId}`).emit('message:received', payload);
+
+                                // Also emit conversation update to move card in UI
+                                io.to(`company_${compId}`).emit('conversation:updated', {
+                                    id: conversationId,
+                                    status: 'PENDING',
+                                    last_message: content,
+                                    last_message_at: new Date(timestamp * 1000).toISOString(),
+                                    unread_count: 1 // Increment logic might be needed
+                                });
+                            }
+
+                            // Trigger Workflow
+                            triggerWorkflow('message_received', {
+                                message_id: msgPayload.id,
+                                content,
+                                direction: 'inbound',
+                                company_id: compId,
+                                conversation_id: conversationId,
+                                phone: phone,
+                                channel: 'whatsapp'
+                            }).catch(() => { });
+                        }
+
+                        // 3. Handle Status Updates (Sent, Delivered, Read)
+                        for (const status of statuses) {
+                            const wamid = status.id;
+                            const newStatus = status.status; // sent, delivered, read, failed
+                            const recipientId = status.recipient_id; // verification
+
+                            try {
+                                const res = await pool!.query(
+                                    "UPDATE whatsapp_messages SET status = $1 WHERE external_id = $2 AND company_id = $3 RETURNING id, conversation_id",
+                                    [newStatus, wamid, compId]
+                                );
+
+                                if (res.rows.length > 0 && req.app.get('io')) {
+                                    req.app.get('io').to(`company_${compId}`).emit('message:status', {
+                                        externalId: wamid,
+                                        status: newStatus,
+                                        conversationId: res.rows[0].conversation_id
+                                    });
+                                }
+                            } catch (e) {
+                                console.error('[WhatsApp Official] Failed to update message status:', e);
+                            }
+                        }
+                    }
+                }
+
+            } catch (e) {
+                console.error('[WhatsApp Official Webhook Processing Error]', e);
+            }
+        })();
 
     } catch (e) {
         console.error('[WhatsApp Official Webhook Error]', e);
