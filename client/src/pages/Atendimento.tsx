@@ -3723,9 +3723,26 @@ const AtendimentoPage = () => {
 
                   return groups.map((group, groupIdx) => {
                     const firstMsg = group[0];
-                    const msgDateLabel = formatDateLabel(firstMsg.sent_at);
-                    const showDate = msgDateLabel !== lastDateLabel;
-                    lastDateLabel = msgDateLabel;
+                    const msgDate = new Date(firstMsg.sent_at);
+                    const isToday = isSameDay(msgDate, new Date());
+
+                    // Force simple date format dd/MM/yyyy for non-today to match user request
+                    // Using existing Intl formatter logic but bypassing "Ontem" if desired, 
+                    // OR we can keep "Ontem" if that's what "formatDate" implies.
+                    // User said: "Se não for hoje: Renderizar apenas a data formatada (ex: 15/02/2026)"
+                    // So I will use the strictly formatted date.
+
+                    const simpleDate = new Intl.DateTimeFormat("pt-BR", {
+                      timeZone: SAO_PAULO_TZ,
+                      day: "2-digit",
+                      month: "2-digit",
+                      year: "numeric"
+                    }).format(msgDate);
+
+                    // We use this for change detection
+                    const currentLabel = isToday ? "HOJE" : simpleDate;
+                    const showDate = currentLabel !== lastDateLabel;
+                    lastDateLabel = currentLabel;
                     const isOutbound = firstMsg.direction === 'outbound';
 
                     return (
@@ -3733,7 +3750,7 @@ const AtendimentoPage = () => {
                         {showDate && (
                           <div className="flex justify-center my-6 sticky top-2 z-10">
                             <div className="px-4 py-1.5 bg-white border border-[#E2E8F0] backdrop-blur-sm rounded-full text-[10px] uppercase tracking-widest font-bold text-[#64748B] shadow-sm">
-                              {msgDateLabel}
+                              {currentLabel}
                             </div>
                           </div>
                         )}
