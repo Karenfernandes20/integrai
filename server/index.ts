@@ -158,7 +158,7 @@ io.on("connection", (socket) => {
 // Tornar io acessível nas rotas via req.app.get('io')
 app.set("io", io);
 
-const startServer = async () => {
+const initializeDatabase = async () => {
   try {
     // SKIP MIGRATIONS FOR MOCK TESTING (To avoid crash on DB Connect Error)
     // await runMigrations();
@@ -466,16 +466,16 @@ const startServer = async () => {
         `;
 
         await pool.query(
-            `
+          `
                 INSERT INTO legal_pages (type, content)
                 VALUES ($1, $2), ($3, $4)
                 ON CONFLICT (type) DO NOTHING;
             `,
-            ['terms', defaultTermsContent, 'privacy', defaultPrivacyContent]
+          ['terms', defaultTermsContent, 'privacy', defaultPrivacyContent]
         );
 
         await pool.query(
-            `
+          `
                 UPDATE legal_pages
                 SET content = CASE
                     WHEN type = 'terms' THEN $1
@@ -485,7 +485,7 @@ const startServer = async () => {
                 last_updated_at = NOW()
                 WHERE content ILIKE '%Conteúdo pendente%';
             `,
-            [defaultTermsContent, defaultPrivacyContent]
+          [defaultTermsContent, defaultPrivacyContent]
         );
 
         // Handle duplicates and update constraints
@@ -574,11 +574,20 @@ const startServer = async () => {
       }
     }
   } catch (err) {
-    console.error("Migration/DB check failed, starting server anyway for diagnostics:", err);
+    console.error("Migration/DB check failed:", err);
   }
+};
 
+const startServer = () => {
   httpServer.listen(Number(port), "0.0.0.0", () => {
     console.log(`Server rodando na porta ${port}`);
+
+    // Call database initialization asynchronously
+    initializeDatabase().then(() => {
+      console.log("Database initialized successfully.");
+    }).catch(err => {
+      console.error("Database initialization failed:", err);
+    });
 
     // Start Campaign Scheduler (every minute)
     console.log("Starting Campaign Scheduler...");
@@ -607,10 +616,12 @@ const startServer = async () => {
     // Run immediately on start - SAFETY WRAPPER FOR OFFLINE MODE
     try {
       console.log("Starting background tasks...");
-      checkAndStartScheduledCampaigns(io);
-      checkSubscriptions(io);
-      // runEngagementChecks(); // DISABLED TEMPORARILY TO PREVENT STARTUP CRASH
-      console.log("Background tasks started.");
+      setTimeout(() => {
+        checkAndStartScheduledCampaigns(io);
+        checkSubscriptions(io);
+        // runEngagementChecks(); // DISABLED TEMPORARILY TO PREVENT STARTUP CRASH
+        console.log("Background tasks started.");
+      }, 5000);
     } catch (bgError) {
       console.error("Failed to start background tasks:", bgError);
     }
