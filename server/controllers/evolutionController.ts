@@ -556,18 +556,20 @@ export const deleteEvolutionInstance = async (req: Request, res: Response) => {
 
       let errorMessage = "Failed to disconnect instance from Evolution API";
 
-      // Handle 400 "The instance is not connected" scenarios - Treat as success (disconnected)
-      if (response.status === 400) {
-        const isAlreadyDisconnected =
-          text.includes("instance is not connected") ||
-          text.includes("instance already disconnected") ||
-          text.includes("not logged in");
+      // Handle "Instance not found" or "Already disconnected" scenarios - Treat as success (disconnected)
+      // Check for common error messages that imply the instance is gone or disconnected
+      const isAlreadyDisconnected =
+        response.status === 404 ||
+        text.includes("instance is not connected") ||
+        text.includes("instance already disconnected") ||
+        text.includes("not logged in") ||
+        text.includes("instance does not exist") ||
+        text.includes("not found");
 
-        if (isAlreadyDisconnected) {
-          console.log(`[Disconnect] Instance ${config.instance} already disconnected (400) - Updating DB...`);
-          await pool.query('UPDATE company_instances SET status = $1 WHERE id = $2', ['disconnected', instance.id]);
-          return res.status(200).json({ message: "Instance was already disconnected", status: "success" });
-        }
+      if (isAlreadyDisconnected) {
+        console.log(`[Disconnect] Instance ${config.instance} already disconnected (${response.status}) - Updating DB...`);
+        await pool.query('UPDATE company_instances SET status = $1 WHERE id = $2', ['disconnected', instance.id]);
+        return res.status(200).json({ message: "Instance was already disconnected", status: "success" });
       }
 
       // Add specific message for 401
