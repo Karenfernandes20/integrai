@@ -77,6 +77,11 @@ const QrCodePage = () => {
   const [selectedInstagramIndex, setSelectedInstagramIndex] = useState(0);
   const [instagramInstanceConfigs, setInstagramInstanceConfigs] = useState<InstagramInstanceConfig[]>([]);
 
+  const whatsappType = company?.whatsapp_type || "evolution";
+  const isEvolutionChannel = whatsappType === "evolution";
+  const isOfficialChannel = whatsappType === "official";
+  const isApiPlusChannel = whatsappType === "api_plus";
+
   const getApiUrl = (endpoint: string, overrideInstanceKey?: string) => {
     const params = new URLSearchParams();
     const targetCompId = selectedCompanyId || user?.company_id;
@@ -858,6 +863,8 @@ const QrCodePage = () => {
                 </Select>
               </div>
 
+              {isEvolutionChannel && (
+                <>
               {/* UNIVERSAL INSTANCE NAMING */}
               <div className="space-y-4 p-4 bg-zinc-50 dark:bg-zinc-900/50 rounded-2xl border border-zinc-100 dark:border-zinc-800 animate-in slide-in-from-top-4 duration-500">
                 {selectedInstance && (
@@ -871,7 +878,7 @@ const QrCodePage = () => {
                         placeholder="Ex: Comercial, Suporte, etc."
                       />
                     </div>
-                    {(company?.whatsapp_type || 'evolution') === 'evolution' && (
+                    {isEvolutionChannel && (
                       <div className="space-y-2">
                         <Label className="text-[10px] font-bold uppercase text-zinc-500">Chave da Instância <span className="text-red-500">*</span></Label>
                         <Input
@@ -931,10 +938,12 @@ const QrCodePage = () => {
                   />
                 </div>
               </div>
+                </>
+              )}
 
               <div className="bg-zinc-50 dark:bg-zinc-900/50 p-4 rounded-2xl border border-zinc-100 dark:border-zinc-800">
                 {/* OFFICIAL API VIEW */}
-                {company?.whatsapp_type === 'official' && (
+                {isOfficialChannel && (
                   <div className="space-y-4 animate-in fade-in duration-300">
                     <div className="grid grid-cols-2 gap-4">
                       <div className="space-y-2">
@@ -978,7 +987,7 @@ const QrCodePage = () => {
                 )}
 
                 {/* EVOLUTION VIEW - QR CODE SECTION */}
-                {(company?.whatsapp_type || 'evolution') === 'evolution' && (
+                {isEvolutionChannel && (
                   <div className="animate-in fade-in duration-500">
                     {/* VALIDATION: Only show QR section if instance is properly configured */}
                     {selectedInstance?.instance_key && selectedInstance?.api_key && (
@@ -1062,7 +1071,7 @@ const QrCodePage = () => {
                 )}
 
                 {/* API PLUS VIEW */}
-                {company?.whatsapp_type === 'api_plus' && (
+                {isApiPlusChannel && (
                   <div className="space-y-4 animate-in fade-in duration-300">
                     <div className="space-y-2">
                       <Label className="text-[10px] font-bold uppercase">Token API Plus</Label>
@@ -1089,12 +1098,12 @@ const QrCodePage = () => {
               <Button
                 className={cn(
                   "rounded-xl px-8 font-bold shadow-lg h-11",
-                  company?.whatsapp_type === 'evolution' && !isConnected ? "bg-green-600 hover:bg-green-700 text-white shadow-green-200" : "bg-primary shadow-primary/20"
+                  isEvolutionChannel && !isConnected ? "bg-green-600 hover:bg-green-700 text-white shadow-green-200" : "bg-primary shadow-primary/20"
                 )}
-                onClick={() => handleSaveCompany(company?.whatsapp_type === 'evolution' && !isConnected)}
+                onClick={() => handleSaveCompany(isEvolutionChannel && !isConnected)}
                 disabled={isLoading}
               >
-                {isLoading ? "Processando..." : (company?.whatsapp_type === 'evolution' && !isConnected ? "Salvar e Conectar" : "Salvar Alterações")}
+                {isLoading ? "Processando..." : (isEvolutionChannel && !isConnected ? "Salvar e Conectar" : "Salvar Alterações")}
               </Button>
             </DialogFooter>
           </DialogContent>

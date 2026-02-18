@@ -1786,8 +1786,11 @@ export const verifyWhatsappOfficialWebhook = async (req: Request, res: Response)
         console.log(`[WhatsApp Official Webhook] Tentativa de verificação para empresa ${companyId}: mode=${mode}, token=${token}`);
 
         if (mode === 'subscribe' && token) {
-            const result = await pool!.query('SELECT whatsapp_official_webhook_token FROM companies WHERE id = $1', [companyId]);
-            const savedToken = result.rows[0]?.whatsapp_official_webhook_token;
+            const result = await pool!.query(
+                'SELECT whatsapp_official_webhook_token, verify_token FROM companies WHERE id = $1',
+                [companyId]
+            );
+            const savedToken = result.rows[0]?.whatsapp_official_webhook_token || result.rows[0]?.verify_token;
 
             if (savedToken && token === savedToken) {
                 console.log('[WhatsApp Official Webhook] Verificado com sucesso.');
