@@ -143,6 +143,12 @@ router.get('/evolution/debug/mapping', async (req, res) => {
     res.status(500).json({ error: e.message });
   }
 });
+// Whapi Routes
+import { getWhapiQrCodeController, handleWhapiWebhook, connectWhapiInstance } from './controllers/whapiController';
+router.post('/whapi/qrcode', authenticateToken, getWhapiQrCodeController);
+router.post('/whapi/connect', authenticateToken, connectWhapiInstance);
+router.post('/whapi/webhook/:instanceKey', handleWhapiWebhook);
+
 // Instagram routes
 import { testInstagramConnection } from './services/instagramService';
 import { testWhatsappMetaConnection } from './services/whatsappMetaService';
