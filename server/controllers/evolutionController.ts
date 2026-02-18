@@ -3,6 +3,7 @@ import { pool } from "../db/index.js";
 import { logEvent } from "../logger.js";
 import { normalizePhone, extractPhoneFromJid } from "../utils/phoneUtils.js";
 import { sendInstagramMessage } from "../services/instagramService.js";
+import { ensureWebhook } from "../services/evolutionService.js";
 
 /**
  * Evolution API controller
@@ -311,7 +312,7 @@ export const getEvolutionQrCode = async (req: Request, res: Response) => {
             qrCode = `data:image/png;base64,${qrCode}`;
           }
 
-          // AUTO-REGISTER WEBHOOK immediately after creation
+          // AUTO-REGISTER WEBHOOK immediately after creation (Definitive Solution)
           try {
             let protocol = req.headers['x-forwarded-proto'] || req.protocol;
             let host = req.get('host');
@@ -320,19 +321,10 @@ export const getEvolutionQrCode = async (req: Request, res: Response) => {
             }
             const rawBackendUrl = process.env.BACKEND_URL || `${protocol}://${host}`;
             const backendUrl = rawBackendUrl.replace(/\/$/, "");
-            const webhookUrl = `${backendUrl}/api/evolution/webhook`;
 
-            const wUrl = `${EVOLUTION_API_URL.replace(/\/$/, "")}/webhook/set/${sanitizedInstance}`;
-            fetch(wUrl, {
-              method: "POST",
-              headers: { "Content-Type": "application/json", apikey: EVOLUTION_API_KEY },
-              body: JSON.stringify({
-                webhook: webhookUrl,
-                enabled: true,
-                webhook_by_events: false,
-                events: WEBHOOK_EVENTS
-              })
-            }).catch(e => console.warn(`[Evolution Webhook Set Silent Fail]: ${e.message}`));
+            ensureWebhook(sanitizedInstance, EVOLUTION_API_URL, EVOLUTION_API_KEY, backendUrl)
+              .catch(e => console.error("[Evolution] ensureWebhook failed after creation:", e));
+
           } catch (e) { }
 
           return res.status(200).json({
@@ -376,7 +368,7 @@ export const getEvolutionQrCode = async (req: Request, res: Response) => {
       details: { instance: EVOLUTION_INSTANCE }
     } as any);
 
-    // AUTO-REGISTER WEBHOOK whenever we request a QR Code (to be sure)
+    // AUTO-REGISTER WEBHOOK (Definitive Solution)
     try {
       let protocol = req.headers['x-forwarded-proto'] || req.protocol;
       let host = req.get('host');
@@ -385,26 +377,10 @@ export const getEvolutionQrCode = async (req: Request, res: Response) => {
       }
       const rawBackendUrl = process.env.BACKEND_URL || `${protocol}://${host}`;
       const backendUrl = rawBackendUrl.replace(/\/$/, "");
-      const webhookUrl = `${backendUrl}/api/evolution/webhook`;
-      console.log(`[Evolution] Auto-registering Webhook for ${sanitizedInstance}: ${webhookUrl}`);
 
-      const endpoints = [
-        `${EVOLUTION_API_URL.replace(/\/$/, "")}/webhook/set/${sanitizedInstance}`,
-        `${EVOLUTION_API_URL.replace(/\/$/, "")}/webhook/instance/${sanitizedInstance}`
-      ];
+      ensureWebhook(sanitizedInstance, EVOLUTION_API_URL, EVOLUTION_API_KEY, backendUrl)
+        .catch(e => console.error("[Evolution] ensureWebhook failed on QR request:", e));
 
-      for (const wUrl of endpoints) {
-        fetch(wUrl, {
-          method: "POST",
-          headers: { "Content-Type": "application/json", apikey: EVOLUTION_API_KEY },
-          body: JSON.stringify({
-            webhook: webhookUrl,
-            enabled: true,
-            webhook_by_events: false,
-            events: WEBHOOK_EVENTS
-          })
-        }).catch(e => console.warn(`[Evolution Webhook Set Silent Fail]: ${e.message}`));
-      }
     } catch (e) {
       console.warn("[Evolution] Webhook auto-registration failed silently", e);
     }
@@ -1947,6 +1923,28 @@ export const handleEvolutionWebhook = async (req: Request, res: Response) => {
           [state === 'open' ? 'connected' : (state || 'disconnected'), cleanNumber, instance, resolvedCompanyId]
         );
         console.log(`[Webhook] Status da instância ${instance} atualizado para ${state}`);
+
+        // Definite Solution: Ensure Webhook on CONNECTION_OPEN
+        if (state === 'open' || state === 'connected') {
+          try {
+            const config = await getEvolutionConfig({ company_id: resolvedCompanyId }, 'webhook_open', resolvedCompanyId, instance);
+            if (config.url && config.apikey) {
+              let protocol = req.headers['x-forwarded-proto'] || req.protocol;
+              let host = req.get('host');
+              if (host && !host.includes('localhost') && !host.includes('127.0.0.1')) {
+                protocol = 'https';
+              }
+              const rawBackendUrl = process.env.BACKEND_URL || `${protocol}://${host}`;
+              const backendUrl = rawBackendUrl.replace(/\/$/, "");
+
+              // Non-blocking call
+              ensureWebhook(instance, config.url, config.apikey, backendUrl)
+                .catch(e => console.error(`[Webhook] Failed to ensure webhook on OPEN:`, e));
+            }
+          } catch (confErr) {
+            console.warn(`[Webhook] Error resolving config for ensureWebhook:`, confErr);
+          }
+        }
       }
       return res.status(200).send("OK");
     }
