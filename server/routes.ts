@@ -81,7 +81,7 @@ router.post('/users/:id/reset-password', authenticateToken, authorizeRole(['SUPE
 
 
 // Evolution routes
-import { getEvolutionQrCode, setEvolutionWebhook, getEvolutionWebhook, deleteEvolutionInstance, sendEvolutionMessage, getEvolutionConnectionState, getEvolutionContacts, createEvolutionContact, updateEvolutionContact, deleteEvolutionContact, editEvolutionMessage, syncEvolutionContacts, syncEvolutionGroups, handleEvolutionWebhook, getEvolutionContactsLive, deleteEvolutionMessage, getEvolutionConfig, getEvolutionMedia, getEvolutionProfilePic, syncAllProfilePics, sendEvolutionMedia, refreshConversationMetadata, deleteMessage, searchEverything, sendEvolutionReaction, getSystemWhatsappStatus } from './controllers/evolutionController';
+import { getEvolutionQrCode, setEvolutionWebhook, getEvolutionWebhook, deleteEvolutionInstance, sendEvolutionMessage, getEvolutionConnectionState, getEvolutionContacts, createEvolutionContact, updateEvolutionContact, deleteEvolutionContact, editEvolutionMessage, syncEvolutionContacts, syncEvolutionGroups, handleEvolutionWebhook, getEvolutionContactsLive, deleteEvolutionMessage, getEvolutionConfig, getEvolutionMedia, getEvolutionProfilePic, syncAllProfilePics, sendEvolutionMedia, refreshConversationMetadata, deleteMessage, searchEverything, sendEvolutionReaction, getSystemWhatsappStatus, updateConversationStatus } from './controllers/evolutionController';
 
 // Contacts routes
 import { getContacts, getContact, createContact, updateContact, deleteContact, searchContacts } from './controllers/contactController';
@@ -246,6 +246,8 @@ router.get('/evolution/webhook-debug', debugWebhookPayloads);
 router.get('/evolution/conversations', authenticateToken, getConversations);
 router.post('/evolution/groups/sync', authenticateToken, syncEvolutionGroups);
 router.post('/evolution/conversations/:conversationId/refresh', authenticateToken, refreshConversationMetadata);
+router.post('/evolution/conversations/:conversationId/refresh', authenticateToken, refreshConversationMetadata);
+router.put('/evolution/conversations/:id/status', authenticateToken, updateConversationStatus);
 router.get('/evolution/messages/:conversationId', authenticateToken, getMessages);
 router.get('/evolution/media/:messageId', authenticateToken, getEvolutionMedia);
 router.get('/evolution/profile-pic/:phone', authenticateToken, getEvolutionProfilePic);

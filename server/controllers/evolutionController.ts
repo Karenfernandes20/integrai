@@ -1696,6 +1696,44 @@ export const syncEvolutionGroups = async (req: Request, res: Response) => {
   }
 };
 
+export const updateConversationStatus = async (req: Request, res: Response) => {
+  try {
+    if (!pool) return res.status(500).json({ error: "DB not configured" });
+
+    const { id } = req.params;
+    const { status } = req.body;
+    const user = (req as any).user;
+    const companyId = user.company_id;
+
+    if (!['OPEN', 'CLOSED', 'PENDING'].includes(status)) {
+      return res.status(400).json({ error: "Invalid status" });
+    }
+
+    const check = await pool.query('SELECT company_id FROM whatsapp_conversations WHERE id = $1', [id]);
+    if (check.rows.length === 0) return res.status(404).json({ error: "Conversation not found" });
+
+    if (check.rows[0].company_id && check.rows[0].company_id !== companyId && user.role !== 'SUPERADMIN') {
+      return res.status(403).json({ error: "Unauthorized" });
+    }
+
+    await pool.query('UPDATE whatsapp_conversations SET status = $1, company_id = COALESCE(company_id, $2) WHERE id = $3', [status, companyId, id]);
+
+    if (companyId) {
+      req.app.get('io')?.to(`company_${companyId}`).emit('conversation:update', { id, status });
+    }
+
+    return res.json({ success: true });
+  } catch (e: any) {
+    console.error("Error updating status:", e);
+    return res.status(500).json({ error: e.message });
+  }
+};
+
+
+
+
+
+
 
 
 
