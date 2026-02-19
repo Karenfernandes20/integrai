@@ -1,54 +1,67 @@
+
 import { Request, Response } from 'express';
-import { pool } from '../db/index.js';
+import { pool } from '../database.js';
 
 const DEFAULT_QUEUE_NAME = 'Recepção';
 
 export const ensureQueueSchema = async () => {
     if (!pool) return;
+    const client = await pool.connect();
+    try {
+        await client.query('BEGIN');
 
-    await pool.query(`
-        CREATE TABLE IF NOT EXISTS queues (
-            id SERIAL PRIMARY KEY,
-            company_id INTEGER NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
-            name TEXT NOT NULL,
-            is_active BOOLEAN NOT NULL DEFAULT true,
-            color TEXT DEFAULT '#3b82f6',
-            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-            UNIQUE(company_id, name)
-        );
-    `);
+        await client.query(`
+            CREATE TABLE IF NOT EXISTS queues (
+                id SERIAL PRIMARY KEY,
+                company_id INTEGER NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
+                name TEXT NOT NULL,
+                is_active BOOLEAN NOT NULL DEFAULT true,
+                color TEXT DEFAULT '#3b82f6',
+                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                UNIQUE(company_id, name)
+            );
+        `);
 
-    await pool.query(`ALTER TABLE queues ADD COLUMN IF NOT EXISTS color TEXT DEFAULT '#3b82f6';`);
-    await pool.query(`ALTER TABLE queues ADD COLUMN IF NOT EXISTS greeting_message TEXT;`);
-    await pool.query(`ALTER TABLE queues ADD COLUMN IF NOT EXISTS out_of_hours_message TEXT;`);
+        await client.query(`ALTER TABLE queues ADD COLUMN IF NOT EXISTS color TEXT DEFAULT '#3b82f6';`);
+        await client.query(`ALTER TABLE queues ADD COLUMN IF NOT EXISTS greeting_message TEXT;`);
+        await client.query(`ALTER TABLE queues ADD COLUMN IF NOT EXISTS out_of_hours_message TEXT;`);
 
-    await pool.query(`CREATE INDEX IF NOT EXISTS idx_queues_company_active ON queues(company_id, is_active);`);
+        await client.query(`CREATE INDEX IF NOT EXISTS idx_queues_company_active ON queues(company_id, is_active);`);
 
-    await pool.query(`ALTER TABLE whatsapp_conversations ADD COLUMN IF NOT EXISTS queue_id INTEGER REFERENCES queues(id) ON DELETE SET NULL;`);
-    await pool.query(`ALTER TABLE whatsapp_conversations ADD COLUMN IF NOT EXISTS opened_at TIMESTAMPTZ;`);
-    await pool.query(`ALTER TABLE whatsapp_conversations ADD COLUMN IF NOT EXISTS opened_by_user_id INTEGER REFERENCES app_users(id) ON DELETE SET NULL;`);
-    await pool.query(`CREATE INDEX IF NOT EXISTS idx_conversations_queue_id ON whatsapp_conversations(queue_id);`);
+        await client.query(`ALTER TABLE whatsapp_conversations ADD COLUMN IF NOT EXISTS queue_id INTEGER REFERENCES queues(id) ON DELETE SET NULL;`);
+        await client.query(`ALTER TABLE whatsapp_conversations ADD COLUMN IF NOT EXISTS opened_at TIMESTAMPTZ;`);
+        await client.query(`ALTER TABLE whatsapp_conversations ADD COLUMN IF NOT EXISTS opened_by_user_id INTEGER REFERENCES app_users(id) ON DELETE SET NULL;`);
+        await client.query(`CREATE INDEX IF NOT EXISTS idx_conversations_queue_id ON whatsapp_conversations(queue_id);`);
 
-    await pool.query(`
-        INSERT INTO queues (company_id, name, is_active)
-        SELECT id, $1, true
-        FROM companies
-        ON CONFLICT (company_id, name) DO NOTHING;
-    `, [DEFAULT_QUEUE_NAME]);
+        await client.query(`
+            INSERT INTO queues (company_id, name, is_active)
+            SELECT id, $1, true
+            FROM companies
+            ON CONFLICT (company_id, name) DO NOTHING;
+        `, [DEFAULT_QUEUE_NAME]);
 
-    await pool.query(`
-        UPDATE whatsapp_conversations c
-        SET queue_id = q.id
-        FROM queues q
-        WHERE c.queue_id IS NULL
-          AND c.company_id = q.company_id
-          AND q.name = $1;
-    `, [DEFAULT_QUEUE_NAME]);
+        await client.query(`
+            UPDATE whatsapp_conversations c
+            SET queue_id = q.id
+            FROM queues q
+            WHERE c.queue_id IS NULL
+            AND c.company_id = q.company_id
+            AND q.name = $1;
+        `, [DEFAULT_QUEUE_NAME]);
+
+        await client.query('COMMIT');
+        console.log('[QueueSchema] Initialization completed.');
+    } catch (e) {
+        await client.query('ROLLBACK');
+        console.error('[QueueSchema] Initialization failed:', e);
+    } finally {
+        client.release();
+    }
 };
 
 export const getOrCreateQueueId = async (companyId: number, name: string = DEFAULT_QUEUE_NAME): Promise<number | null> => {
     if (!pool || !companyId) return null;
-    await ensureQueueSchema();
+    // ensureQueueSchema() removed - ensure run at startup
 
     const normalizedName = String(name || DEFAULT_QUEUE_NAME).trim() || DEFAULT_QUEUE_NAME;
     const result = await pool.query(
@@ -69,7 +82,7 @@ export const assignQueueToConversationByPhone = async (
     queueName: string
 ) => {
     if (!pool || !companyId || !contactPhone) return;
-    await ensureQueueSchema();
+    // ensureQueueSchema() removed
 
     const queueId = await getOrCreateQueueId(companyId, queueName);
     if (!queueId) return;
@@ -88,7 +101,7 @@ export const assignQueueToConversationByPhone = async (
                AND (
                    external_id = $4
                    OR phone = $5
-                   OR regexp_replace(COALESCE(phone, ''), '\D', '', 'g') = $5
+                   OR regexp_replace(COALESCE(phone, ''), '\\D', '', 'g') = $5
                )
              ORDER BY last_message_at DESC NULLS LAST, created_at DESC
              LIMIT 1
@@ -109,7 +122,7 @@ const resolveCompanyId = (req: Request): number | null => {
 export const listQueues = async (req: Request, res: Response) => {
     try {
         if (!pool) return res.status(500).json({ error: 'Database not configured' });
-        await ensureQueueSchema();
+        // ensureQueueSchema() removed
 
         const companyId = resolveCompanyId(req);
         if (!companyId) return res.status(400).json({ error: 'Company ID not found' });
@@ -133,7 +146,7 @@ export const listQueues = async (req: Request, res: Response) => {
 export const createQueue = async (req: Request, res: Response) => {
     try {
         if (!pool) return res.status(500).json({ error: 'Database not configured' });
-        await ensureQueueSchema();
+        // ensureQueueSchema() removed - ensure run at startup
 
         const companyId = resolveCompanyId(req);
         if (!companyId) return res.status(400).json({ error: 'Company ID not found' });

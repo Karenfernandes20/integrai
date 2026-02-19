@@ -1,21 +1,22 @@
 import "./env";
-import { logEvent } from "./logger";
+import { logEvent } from "./logger.js";
 import path from "path";
 import fs from "fs";
 import express from "express";
 import cors from "cors";
-import { pool } from "./db";
-import routes from "./routes";
-import { checkAndStartScheduledCampaigns } from "./controllers/campaignController";
-import { checkSubscriptions } from "./controllers/subscriptionController";
-import { runEngagementChecks } from "./controllers/engagementController";
-import { processFollowUps } from "./services/followUpScheduler";
-import { setSystemModeInMem, systemMode } from "./systemState";
+import { pool } from "./db/index.js";
+import routes from "./routes.js";
+import { checkAndStartScheduledCampaigns } from "./controllers/campaignController.js";
+import { checkSubscriptions } from "./controllers/subscriptionController.js";
+import { runEngagementChecks } from "./controllers/engagementController.js";
+import { processFollowUps } from "./services/followUpScheduler.js";
+import { setSystemModeInMem, systemMode } from "./systemState.js";
 import { checkChatbotTimeouts } from "./services/chatbotService.js";
+import { ensureQueueSchema } from "./controllers/queueController.js";
 
 
 
-import { systemModeMiddleware } from "./middleware/systemModeMiddleware";
+import { systemModeMiddleware } from "./middleware/systemModeMiddleware.js";
 
 const app = express();
 const port = process.env.PORT || 3000;
@@ -116,13 +117,13 @@ app.use((req, res, next) => {
 
 import { createServer } from "http";
 import { Server } from "socket.io";
-import { runMigrations } from "./db/migrations";
-import { runFaqMigrations } from "./db/faqMigrations";
-import { runLavajatoMigrations } from "./db/lavajato_migrations";
-import { runRestaurantMigrations } from "./db/restaurant_migrations";
-import { runShopMigrations } from "./db/shop_migrations";
-import { runOperationalProfileMigration } from "./db/migrations/add_operational_profile";
-import { runInventoryUpdateMigration } from "./db/migrations/update_inventory_columns";
+import { runMigrations } from "./db/migrations.js";
+import { runFaqMigrations } from "./db/faqMigrations.js";
+import { runLavajatoMigrations } from "./db/lavajato_migrations.js";
+import { runRestaurantMigrations } from "./db/restaurant_migrations.js";
+import { runShopMigrations } from "./db/shop_migrations.js";
+import { runOperationalProfileMigration } from "./db/migrations/add_operational_profile.js";
+import { runInventoryUpdateMigration } from "./db/migrations/update_inventory_columns.js";
 
 // Create HTTP server
 const httpServer = createServer(app);
@@ -172,6 +173,9 @@ const initializeDatabase = async () => {
     // INITIALIZE SYSTEM MODE (Safe Check)
     if (pool) {
       try {
+        console.log("Ensuring Queue Schema...");
+        await ensureQueueSchema();
+
         console.log("Running on-the-fly migration for Multi-Instance...");
         await pool.query(`ALTER TABLE companies ADD COLUMN IF NOT EXISTS max_instances INTEGER DEFAULT 1;`);
         await pool.query(`

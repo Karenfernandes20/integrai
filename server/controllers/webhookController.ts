@@ -1,9 +1,9 @@
 ﻿import { Request, Response } from 'express';
-import { pool } from '../db/index.js';
+import { pool } from '../database.js';
 import { logEvent } from '../logger.js';
 import { triggerWorkflow } from './workflowController.js';
 import { processChatbotMessage } from '../services/chatbotService.js';
-import { ensureQueueSchema, getOrCreateQueueId } from './queueController.js';
+import { getOrCreateQueueId } from './queueController.js';
 import { normalizePhone, extractPhoneFromJid, isGroupJid } from '../utils/phoneUtils.js';
 import { downloadMediaFromEvolution } from '../services/mediaService.js';
 import { returnToPending } from './conversationController.js';
@@ -484,7 +484,7 @@ export const handleWebhook = async (req: Request, res: Response) => {
 export const getConversations = async (req: Request, res: Response) => {
     try {
         if (!pool) return res.status(500).json({ error: 'Database not configured' });
-        await ensureQueueSchema();
+
         const supportsGroupSubject = await hasGroupSubjectColumn();
 
         const user = (req as any).user;
@@ -849,7 +849,7 @@ export const getMessages = async (req: Request, res: Response) => {
 
             // Reset unread count in background
             pool.query('UPDATE whatsapp_conversations SET unread_count = 0 WHERE id = $1', [conversationId])
-                .catch(e => console.error('[getMessages] Failed to reset unread count:', e));
+                .catch((e: any) => console.error('[getMessages] Failed to reset unread count:', e));
 
             res.json(result.rows);
 
@@ -1136,7 +1136,6 @@ export const handleWhatsappOfficialWebhook = async (req: Request, res: Response)
                             } else {
                                 // Create new conversation
                                 isNew = true;
-                                await ensureQueueSchema();
                                 const defaultQueueId = await getOrCreateQueueId(compId, 'Recepcao');
 
                                 const newConv = await pool!.query(
