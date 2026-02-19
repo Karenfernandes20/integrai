@@ -55,6 +55,7 @@ import {
   Calendar,
   Stethoscope,
   GitBranch,
+  Archive,
 } from "lucide-react";
 import RelationshipManager from "../components/RelationshipManager";
 import { Badge } from "../components/ui/badge";
@@ -520,6 +521,74 @@ const AtendimentoPage = () => {
   const [isLoadingAgenda, setIsLoadingAgenda] = useState(false);
   const [messageToDelete, setMessageToDelete] = useState<Message | null>(null);
   const [showNewMessageBanner, setShowNewMessageBanner] = useState(false);
+
+  // BULK ACTIONS STATE
+  const [isSelectionMode, setIsSelectionMode] = useState(false);
+  const [selectedForBulk, setSelectedForBulk] = useState<Set<number | string>>(new Set());
+  const [isBulkClosing, setIsBulkClosing] = useState(false);
+
+  const toggleBulkSelection = (id: number | string) => {
+    const newSet = new Set(selectedForBulk);
+    if (newSet.has(id)) newSet.delete(id);
+    else newSet.add(id);
+    setSelectedForBulk(newSet);
+  };
+
+  const currentListIds = useMemo(() => {
+    let list: Conversation[] = [];
+    if (viewMode === 'PENDING') list = pendingConversations;
+    else if (viewMode === 'OPEN') list = openConversations;
+    else if (viewMode === 'CLOSED') list = closedConversations;
+    return list.map(c => c.id);
+  }, [viewMode, pendingConversations, openConversations, closedConversations]);
+
+  const handleSelectAll = () => {
+    if (selectedForBulk.size === currentListIds.length) {
+      setSelectedForBulk(new Set());
+    } else {
+      setSelectedForBulk(new Set(currentListIds));
+    }
+  };
+
+  const handleBulkActionClose = async () => {
+    if (selectedForBulk.size === 0) return;
+    if (!confirm(`Deseja encerrar ${selectedForBulk.size} atendimentos selecionados?`)) return;
+
+    setIsBulkClosing(true);
+    const toastId = toast.loading("Encerrando atendimentos...");
+
+    try {
+      const ids = Array.from(selectedForBulk);
+      // Execute in parallel chunks of 5 to avoid overloading
+      const chunk = (arr: any[], size: number) => Array.from({ length: Math.ceil(arr.length / size) }, (v, i) => arr.slice(i * size, i * size + size));
+      const batches = chunk(ids, 5);
+
+      let successCount = 0;
+
+      for (const batch of batches) {
+        await Promise.all(batch.map(async (id) => {
+          try {
+            const res = await fetch(`/api/evolution/conversations/${id}/status`, {
+              method: 'PUT',
+              headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+              body: JSON.stringify({ status: 'CLOSED' })
+            });
+            if (res.ok) successCount++;
+          } catch (e) { console.error(e); }
+        }));
+      }
+
+      toast.success(`${successCount} atendimentos encerrados!`, { id: toastId });
+      fetchConversations();
+      setIsSelectionMode(false);
+      setSelectedForBulk(new Set());
+    } catch (e) {
+      toast.error("Erro ao realizar ação em massa", { id: toastId });
+    } finally {
+      setIsBulkClosing(false);
+    }
+  };
+
 
   const ITEMS_PER_PAGE = 50;
 
@@ -2940,6 +3009,10 @@ const AtendimentoPage = () => {
       <div
         key={conv.id}
         onClick={() => {
+          if (isSelectionMode) {
+            toggleBulkSelection(conv.id);
+            return;
+          }
           setSelectedConversation(conv);
           setConversations(prev => prev.map(c => c.id === conv.id ? { ...c, unread_count: 0 } : c));
         }}
@@ -2962,6 +3035,18 @@ const AtendimentoPage = () => {
                 {(getDisplayName(conv)?.[0] || "?").toUpperCase()}
               </AvatarFallback>
             </Avatar>
+
+            {/* SELECTION OVERLAY */}
+            {isSelectionMode && (
+              <div className="absolute inset-0 bg-black/40 rounded-xl flex items-center justify-center z-20 backdrop-blur-[1px]">
+                {selectedForBulk.has(conv.id) ? (
+                  <CheckCircle2 className="w-6 h-6 text-white fill-[#2563EB]" />
+                ) : (
+                  <div className="w-5 h-5 rounded-full border-2 border-white/70" />
+                )}
+              </div>
+            )}
+
             {/* Online/Status Badge */}
             {conv.status === 'OPEN' && (
               <span className="absolute -bottom-1 -right-1 w-3.5 h-3.5 bg-[#16A34A] border-2 border-white rounded-full" title="Em Atendimento"></span>
@@ -3262,15 +3347,45 @@ const AtendimentoPage = () => {
           {activeTab === 'conversas' && (
             <>
               <div className="px-2 md:px-3 pt-2 md:pt-3 pb-0 space-y-2 md:space-y-3 bg-white z-10">
-                <div className="relative group">
-                  <Search className="absolute left-3 top-2.5 h-3.5 w-3.5 text-[#94A3B8] group-focus-within:text-[#2563EB] transition-colors" />
-                  <Input
-                    ref={sidebarSearchInputRef}
-                    placeholder="Pesquisar..."
-                    className="pl-9 h-9 md:h-10 bg-[#F1F5F9] border-[#E2E8F0] focus:border-[#2563EB] text-[#0F172A] placeholder:text-[#64748B] rounded-lg transition-all font-medium text-xs md:text-sm"
-                    value={conversationSearchTerm}
-                    onChange={(e) => setConversationSearchTerm(e.target.value)}
-                  />
+                {/* REMOVED GLOBAL SEARCH CONTAINER AS REQUESTED */}
+                {/* BULK ACTION TOOLBAR */}
+                <div className="flex flex-col gap-2">
+                  {!isSelectionMode ? (
+                    <Button
+                      onClick={() => setIsSelectionMode(true)}
+                      variant="ghost"
+                      size="sm"
+                      className="w-full justify-between bg-[#F1F5F9] text-[#64748B] hover:text-[#2563EB] hover:bg-[#EFF6FF] border border-[#E2E8F0]"
+                    >
+                      <span className="text-xs font-semibold">Selecionar Múltiplos</span>
+                      <CheckSquare className="w-4 h-4" />
+                    </Button>
+                  ) : (
+                    <div className="flex flex-col gap-2 animate-in slide-in-from-top-2">
+                      <div className="flex items-center justify-between bg-[#EFF6FF] p-2 rounded-lg border border-[#BFDBFE]">
+                        <span className="text-xs font-bold text-[#1E40AF]">{selectedForBulk.size} selecionados</span>
+                        <div className="flex gap-1">
+                          <Button size="icon" variant="ghost" className="h-6 w-6 text-[#1E40AF] hover:bg-white/50" onClick={handleSelectAll} title="Selecionar Todos">
+                            <CheckCheck className="w-4 h-4" />
+                          </Button>
+                          <Button size="icon" variant="ghost" className="h-6 w-6 text-[#DC2626] hover:bg-white/50" onClick={() => { setIsSelectionMode(false); setSelectedForBulk(new Set()); }} title="Cancelar">
+                            <X className="w-4 h-4" />
+                          </Button>
+                        </div>
+                      </div>
+
+                      <div className="flex gap-1">
+                        <Button
+                          disabled={selectedForBulk.size === 0 || isBulkClosing}
+                          onClick={handleBulkActionClose}
+                          className="flex-1 h-8 text-xs bg-[#DC2626] hover:bg-[#B91C1C] text-white"
+                        >
+                          {isBulkClosing ? <Loader2 className="w-3 h-3 animate-spin" /> : <Archive className="w-3 h-3 mr-1.5" />}
+                          Encerrar ({selectedForBulk.size})
+                        </Button>
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 {/* Status Filters */}
