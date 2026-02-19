@@ -29,9 +29,14 @@ export async function resolveInstanceByCompany(companyId: number) {
   }
   if (!pool) throw new Error("Database not configured");
 
-  // 1. Check company_instances table for an active/open instance
+  // 1. Check company_instances table for an active/connected instance
   const instRes = await pool.query(
-    'SELECT instance_key, api_key FROM company_instances WHERE company_id = $1 AND status = \'open\' LIMIT 1',
+    `SELECT instance_key, api_key 
+     FROM company_instances 
+     WHERE company_id = $1 
+       AND (status = 'connected' OR status = 'open' OR status = 'CONNECTING')
+     ORDER BY CASE WHEN status = 'connected' THEN 1 ELSE 2 END 
+     LIMIT 1`,
     [companyId]
   );
 
@@ -42,20 +47,20 @@ export async function resolveInstanceByCompany(companyId: number) {
     };
   }
 
-  // 2. Fallback to main company record
-  const compRes = await pool.query(
-    'SELECT evolution_instance, evolution_apikey FROM companies WHERE id = $1',
+  // 2. Fallback to any instance if no connected one found
+  const anyInst = await pool.query(
+    'SELECT instance_key, api_key FROM company_instances WHERE company_id = $1 ORDER BY created_at DESC LIMIT 1',
     [companyId]
   );
 
-  if (compRes.rows.length > 0 && compRes.rows[0].evolution_instance) {
+  if (anyInst.rows.length > 0) {
     return {
-      instance_key: compRes.rows[0].evolution_instance,
-      api_key: compRes.rows[0].evolution_apikey
+      instance_key: anyInst.rows[0].instance_key,
+      api_key: anyInst.rows[0].api_key
     };
   }
 
-  throw new Error(`No active instance found for company ${companyId}`);
+  throw new Error(`No instance found for company ${companyId}`);
 }
 
 /**
@@ -67,8 +72,12 @@ export async function resolveCompanyByInstanceKey(instanceKey: string) {
   console.log(`[Webhook Resolver] Buscando empresa para instância: ${instanceKey}`);
 
   // 1. Check company_instances (Multi-instance structure)
+  // Search by instance_key or name (case insensitive for robustness)
   const instRes = await pool.query(
-    'SELECT company_id, id as instance_id, name FROM company_instances WHERE instance_key = $1 OR name = $1 LIMIT 1',
+    `SELECT company_id, id as instance_id, name 
+     FROM company_instances 
+     WHERE instance_key = $1 OR name = $1 
+     LIMIT 1`,
     [instanceKey]
   );
 
@@ -79,23 +88,6 @@ export async function resolveCompanyByInstanceKey(instanceKey: string) {
       id: row.company_id,
       instance_id: row.instance_id,
       instance_name: row.name
-    };
-  }
-
-  // 2. Fallback to Companies table (Legacy/Single instance per company)
-  // Use evolution_instance column as it is the current database schema
-  const compRes = await pool.query(
-    'SELECT id, name FROM companies WHERE evolution_instance = $1 LIMIT 1',
-    [instanceKey]
-  );
-
-  if (compRes.rows.length > 0) {
-    const row = compRes.rows[0];
-    console.log(`[Webhook Resolver] ✅ Encontrado em companies. CompanyID: ${row.id}`);
-    return {
-      id: row.id,
-      instance_id: null,
-      instance_name: instanceKey
     };
   }
 

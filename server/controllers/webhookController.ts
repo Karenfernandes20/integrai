@@ -190,20 +190,17 @@ export const handleWebhook = async (req: Request, res: Response) => {
                 let meta = instanceMetaCache.get(instance);
                 if (!meta) {
                     const instanceLookup = await pool.query(
-                        'SELECT id, company_id, name FROM company_instances WHERE LOWER(instance_key) = LOWER($1) OR LOWER(name) = LOWER($1)',
+                        `SELECT id, company_id, name 
+                         FROM company_instances 
+                         WHERE LOWER(instance_key) = LOWER($1) OR LOWER(name) = LOWER($1) 
+                         LIMIT 1`,
                         [instance]
                     );
                     if (instanceLookup.rows.length > 0) {
                         const row = instanceLookup.rows[0];
                         meta = { companyId: row.company_id, instanceId: row.id, instanceName: row.name || instance };
-                    } else {
-                        // Fallback to legacy
-                        const compLookup = await pool.query('SELECT id, name FROM companies WHERE LOWER(evolution_instance) = LOWER($1)', [instance]);
-                        if (compLookup.rows.length > 0) {
-                            meta = { companyId: compLookup.rows[0].id, instanceId: 0, instanceName: instance };
-                        }
+                        instanceMetaCache.set(instance, meta);
                     }
-                    if (meta) instanceMetaCache.set(instance, meta);
                 }
 
                 if (!meta) {
