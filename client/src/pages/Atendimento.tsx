@@ -3347,7 +3347,18 @@ const AtendimentoPage = () => {
           {activeTab === 'conversas' && (
             <>
               <div className="px-2 md:px-3 pt-2 md:pt-3 pb-0 space-y-2 md:space-y-3 bg-white z-10">
-                {/* REMOVED GLOBAL SEARCH CONTAINER AS REQUESTED */}
+                {/* SEARCH BAR (Restored) */}
+                <div className="relative group">
+                  <Search className="absolute left-3 top-2.5 h-3.5 w-3.5 text-[#94A3B8] group-focus-within:text-[#2563EB] transition-colors" />
+                  <Input
+                    ref={sidebarSearchInputRef}
+                    placeholder="Pesquisar..."
+                    className="pl-9 h-9 md:h-10 bg-[#F1F5F9] border-[#E2E8F0] focus:border-[#2563EB] text-[#0F172A] placeholder:text-[#64748B] rounded-lg transition-all font-medium text-xs md:text-sm"
+                    value={conversationSearchTerm}
+                    onChange={(e) => setConversationSearchTerm(e.target.value)}
+                  />
+                </div>
+
                 {/* BULK ACTION TOOLBAR */}
                 <div className="flex flex-col gap-2">
                   {!isSelectionMode ? (
