@@ -412,6 +412,7 @@ export const handleWebhook = async (req: Request, res: Response) => {
                                 });
 
                                 // 4. Socket Emit
+                                // 4. Socket Emit
                                 const io = req.app.get('io');
                                 if (io) {
                                     const room = `company_${companyId}`;
@@ -429,15 +430,27 @@ export const handleWebhook = async (req: Request, res: Response) => {
                                         sender_name: pushName,
                                         sent_at: sentAt.toISOString(),
                                         is_group: isGroup,
-                                        contact_name: pushName // or derived
+                                        contact_name: pushName,
+                                        instance: instance
                                     };
+
+                                    // Emit standard event
                                     io.to(room).emit('message:received', payloadEmit);
+
+                                    // Emit user-requested diagnostic events
+                                    io.to(room).emit('message.upsert', payloadEmit);
+                                    if (isGroup) {
+                                        io.to(room).emit('group.message.upsert', payloadEmit);
+                                    }
+
+                                    console.log(`[Webhook] Emitted Socket Events to ${room}: message:received, message.upsert${isGroup ? ', group.message.upsert' : ''}`);
+
                                     io.to(room).emit('conversation:updated', {
                                         id: conversationId,
                                         last_message: content,
                                         last_message_at: sentAt.toISOString(),
-                                        unread_count: 1, // simplified (frontend should incr)
-                                        status: conversationClosed ? 'PENDING' : undefined // Notify status change if reopened
+                                        unread_count: 1,
+                                        status: conversationClosed ? 'PENDING' : undefined
                                     });
                                 }
 
