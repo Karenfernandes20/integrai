@@ -387,6 +387,7 @@ const AtendimentoPage = () => {
     if (token) {
       fetchClosingReasons();
       fetchQueues();
+      fetchInstances();
     }
   }, [token]);
 
@@ -402,6 +403,21 @@ const AtendimentoPage = () => {
       }
     } catch (e) {
       console.error("Error fetching queues:", e);
+    }
+  };
+
+  const fetchInstances = async () => {
+    if (!token || !user?.company_id) return;
+    try {
+      const res = await fetch(`/api/companies/${user.company_id}/instances`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setInstances(Array.isArray(data) ? data : []);
+      }
+    } catch (e) {
+      console.error("Error fetching instances:", e);
     }
   };
 
@@ -483,6 +499,13 @@ const AtendimentoPage = () => {
   const [isTransferModalOpen, setIsTransferModalOpen] = useState(false);
   const [queues, setQueues] = useState<QueueOption[]>([]);
   const [transferringQueue, setTransferringQueue] = useState(false);
+
+  // Start Conversation Modal State
+  const [isStartConversationModalOpen, setIsStartConversationModalOpen] = useState(false);
+  const [startConversationContact, setStartConversationContact] = useState<Contact | null>(null);
+  const [selectedStartQueueId, setSelectedStartQueueId] = useState<string | number>("");
+  const [selectedStartInstanceKey, setSelectedStartInstanceKey] = useState<string>("");
+  const [instances, setInstances] = useState<any[]>([]);
 
 
   const volumeRef = useRef(notificationVolume);
@@ -1845,53 +1868,117 @@ const AtendimentoPage = () => {
   const handleStartConversationFromContact = (contact: Contact) => {
     const targetClean = normalizePhoneForMatch(contact.phone);
 
-    // Clear search params to avoid fighting the selection in the useEffect
+    // Clear search params
     if (searchParams.get('phone')) {
       setSearchParams({}, { replace: true });
     }
 
-    // 1. Search in existing conversations first to avoid duplicates
-    // Robust search looking for both normalized and raw phone
+    // 1. Search existing
     const existing = conversations.find(c =>
       normalizePhoneForMatch(c.phone) === targetClean || c.phone === contact.phone
     );
 
-    if (existing) {
-      // If found, auto-open it if it's not already open
-      if (existing.status !== 'OPEN') {
-        handleStartAtendimento(existing);
-      }
+    // If existing and OPEN, just switch to it.
+    if (existing && existing.status === 'OPEN') {
       setSelectedConversation(existing);
       setViewMode('OPEN');
       setActiveTab('conversas');
       return;
     }
 
-    // 2. If not found, create a temp conversation
-    const newConversation: Conversation = {
-      id: 'temp-' + Date.now(), // Fixed: use temp id to avoid confusion with DB ids
-      phone: contact.phone,
-      contact_name: contact.name,
-      last_message: "",
-      last_message_at: new Date().toISOString(),
-      status: 'OPEN',
-      user_id: user?.id ? Number(user.id) : undefined
-    };
+    // If NOT open (Pending, Closed, or New), pop semantic modal
+    setStartConversationContact(contact);
 
-    // Add to list with deduplication
-    setConversations(prev => {
-      const conversationMap = new Map<string | number, Conversation>();
-      prev.forEach(c => conversationMap.set(String(c.id), c));
-      conversationMap.set(String(newConversation.id), newConversation);
-      return Array.from(conversationMap.values()).sort(
-        (a, b) => new Date(b.last_message_at || 0).getTime() - new Date(a.last_message_at || 0).getTime()
+    // Pre-fill if existing has data
+    if (existing) {
+      if (existing.queue_id) setSelectedStartQueueId(existing.queue_id);
+      else setSelectedStartQueueId("");
+
+      if (existing.instance) setSelectedStartInstanceKey(existing.instance);
+      else setSelectedStartInstanceKey("");
+    } else {
+      setSelectedStartQueueId("");
+      setSelectedStartInstanceKey("");
+    }
+
+    setIsStartConversationModalOpen(true);
+  };
+
+  const handleConfirmStartConversation = async () => {
+    if (!startConversationContact) return;
+
+    const contact = startConversationContact;
+    const targetClean = normalizePhoneForMatch(contact.phone);
+    setIsStartConversationModalOpen(false); // Close Modal
+
+    // Optimistic UI or Loading? Toast loading is good.
+    const toastId = toast.loading("Iniciando conversa...");
+
+    try {
+      // 1. Ensure Conversation Exists (Find or Create)
+      let conversationToUse = conversations.find(c =>
+        normalizePhoneForMatch(c.phone) === targetClean || c.phone === contact.phone
       );
-    });
 
-    setSelectedConversation(newConversation);
-    setMessages([]);
-    setViewMode('OPEN');
-    setActiveTab('conversas');
+      if (!conversationToUse) {
+        const ensureRes = await fetch('/api/crm/conversations/ensure', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+          body: JSON.stringify({ phone: contact.phone, name: contact.name })
+        });
+        if (!ensureRes.ok) throw new Error("Falha ao criar conversa");
+        conversationToUse = await ensureRes.json();
+
+        // Add to local state temporarily (it will be updated by start call return ideally)
+        if (conversationToUse) {
+          const newConv = conversationToUse;
+          setConversations(prev => {
+            const map = new Map();
+            prev.forEach(c => map.set(String(c.id), c));
+            map.set(String(newConv.id), newConv);
+            return Array.from(map.values()).sort((a: any, b: any) => new Date(b.last_message_at || 0).getTime() - new Date(a.last_message_at || 0).getTime());
+          });
+        }
+      }
+
+      if (!conversationToUse) throw new Error("Conversa não encontrada ou criada");
+
+      // 2. Start Conversation (Set params + status OPEN)
+      const startRes = await fetch(`/api/crm/conversations/${conversationToUse.id}/start`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({
+          queueId: selectedStartQueueId ? Number(selectedStartQueueId) : undefined,
+          instance: selectedStartInstanceKey || undefined
+        })
+      });
+
+      if (!startRes.ok) {
+        const err = await startRes.json();
+        throw new Error(err.error || "Falha ao iniciar");
+      }
+
+      // Success Update
+      const userId = user?.id ? Number(user.id) : undefined;
+      toast.success("Conversa iniciada!", { id: toastId });
+
+      const updatedConv = {
+        ...conversationToUse,
+        status: 'OPEN' as const,
+        user_id: userId,
+        queue_id: selectedStartQueueId ? Number(selectedStartQueueId) : conversationToUse.queue_id,
+        instance: selectedStartInstanceKey || conversationToUse.instance
+      };
+
+      setConversations(prev => prev.map(c => c.id === conversationToUse!.id ? updatedConv : c));
+      setSelectedConversation(updatedConv);
+      setViewMode('OPEN');
+      setActiveTab('conversas');
+
+    } catch (e: any) {
+      console.error(e);
+      toast.error(e.message || "Erro ao iniciar conversa", { id: toastId });
+    }
   };
 
 
@@ -3796,11 +3883,11 @@ const AtendimentoPage = () => {
                 onScroll={handleScroll}
                 className={cn(
                   "flex-1 overflow-y-auto px-4 py-8 flex flex-col gap-6 relative z-10 custom-scrollbar",
-                  "bg-[#F8FAFC]",
+                  "bg-[#0B1121]", // Darker background for chat area as requested
                   messages.length === 0 && "items-center justify-center"
                 )}
                 style={{
-                  backgroundImage: `radial-gradient(circle at 50% 50%, rgba(37, 99, 235, 0.02) 0%, transparent 100%)`,
+                  backgroundImage: `radial-gradient(circle at 50% 50%, rgba(37, 99, 235, 0.05) 0%, transparent 100%)`, // Subtle glow
                 }}
               >
                 {/* DATE LABELS & MESSAGES LOGIC INJECTED HERE */}
@@ -4082,7 +4169,8 @@ const AtendimentoPage = () => {
 
 
               {/* INPUT AREA - LIGHT MODE CLEAN */}
-              <div className="relative bg-[#F8FAFC] p-2 md:p-6 z-20 shrink-0 border-t border-[#E2E8F0]">
+              {/* INPUT AREA - DARKER */}
+              <div className="relative bg-[#0F172A] p-2 md:p-6 z-20 shrink-0 border-t border-[#1E293B]">
                 {isPendingConversation && (
                   <div className="max-w-6xl mx-auto rounded-xl border border-[#BBF7D0] bg-[#F0FDF4] p-4 md:p-5">
                     <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
@@ -4106,11 +4194,11 @@ const AtendimentoPage = () => {
 
                 {canRespondToConversation && (
                   <>
-                    <div className="max-w-6xl mx-auto bg-white border border-[#E2E8F0] rounded-xl md:rounded-2xl p-1 md:p-2 pr-2 md:pr-4 shadow-sm">
+                    <div className="max-w-6xl mx-auto bg-[#1E293B] border border-[#334155] rounded-xl md:rounded-2xl p-1 md:p-2 pr-2 md:pr-4 shadow-lg">
                       <div className="flex items-end gap-0.5 md:gap-2">
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
-                            <Button variant="ghost" size="icon" className="h-8 md:h-10 w-8 md:w-10 shrink-0 text-[#94A3B8] hover:text-[#2563EB] rounded-full">
+                            <Button variant="ghost" size="icon" className="h-8 md:h-10 w-8 md:w-10 shrink-0 text-[#94A3B8] hover:text-[#38BDF8] hover:bg-[#334155] rounded-full">
                               <Plus className="h-4 md:h-5 w-4 md:w-5" />
                             </Button>
                           </DropdownMenuTrigger>
@@ -4122,7 +4210,7 @@ const AtendimentoPage = () => {
                           </DropdownMenuContent>
                         </DropdownMenu>
 
-                        <Button variant="ghost" size="icon" className="h-8 md:h-10 w-8 md:w-10 shrink-0 text-[#94A3B8] hover:text-[#2563EB] rounded-full" onClick={() => setShowEmojiPicker(!showEmojiPicker)}>
+                        <Button variant="ghost" size="icon" className="h-8 md:h-10 w-8 md:w-10 shrink-0 text-[#94A3B8] hover:text-[#38BDF8] hover:bg-[#334155] rounded-full" onClick={() => setShowEmojiPicker(!showEmojiPicker)}>
                           <Smile className="h-4 md:h-5 w-4 md:w-5" />
                         </Button>
 
@@ -4147,7 +4235,7 @@ const AtendimentoPage = () => {
                             ref={messageInputRef}
                             rows={1}
                             placeholder="Digite uma mensagem..."
-                            className="w-full bg-transparent border-none text-[#0F172A] placeholder:text-[#94A3B8] focus:ring-0 text-xs md:text-sm py-1.5 md:py-2.5 resize-none max-h-48 custom-scrollbar scroll-py-2"
+                            className="w-full bg-transparent border-none text-[#F8FAFC] placeholder:text-[#64748B] focus:ring-0 text-xs md:text-sm py-1.5 md:py-2.5 resize-none max-h-48 custom-scrollbar scroll-py-2"
                             value={messageInput}
                             onChange={(e) => {
                               const value = e.target.value;
@@ -4279,7 +4367,7 @@ const AtendimentoPage = () => {
                             <Button
                               variant="ghost"
                               size="icon"
-                              className="h-8 md:h-10 w-8 md:w-10 text-[#94A3B8] hover:text-[#2563EB] rounded-full shrink-0"
+                              className="h-8 md:h-10 w-8 md:w-10 text-[#94A3B8] hover:text-[#38BDF8] hover:bg-[#334155] rounded-full shrink-0"
                               onClick={startRecording}
                             >
                               <Mic className="h-4 md:h-5 w-4 md:w-5" />
@@ -4313,14 +4401,14 @@ const AtendimentoPage = () => {
         <Dialog open={true} onOpenChange={() => { }}>
           <DialogContent className="sm:max-w-[400px] text-center">
             <DialogHeader>
-              <DialogTitle>Chamada Recebida</DialogTitle>
+              <DialogTitle className="text-[#F8FAFC]">Chamada Recebida</DialogTitle>
             </DialogHeader>
             <div className="py-6 flex flex-col items-center gap-4">
-              <div className="h-24 w-24 rounded-full bg-[#EFF6FF] flex items-center justify-center animate-pulse">
-                <Phone className="h-10 w-10 text-[#2563EB]" />
+              <div className="h-24 w-24 rounded-full bg-[#1E293B] flex items-center justify-center animate-pulse">
+                <Phone className="h-10 w-10 text-[#38BDF8]" />
               </div>
               <div>
-                <h3 className="text-xl font-bold text-[#0F172A]">{incomingCall.contact_name}</h3>
+                <h3 className="text-xl font-bold text-[#F8FAFC]">{incomingCall.contact_name}</h3>
                 <p className="text-sm text-[#64748B]">{incomingCall.remote_jid.split('@')[0]}</p>
                 <p className="text-sm font-medium text-[#16A34A] animate-pulse mt-2">Chamando...</p>
               </div>
@@ -4734,6 +4822,80 @@ const AtendimentoPage = () => {
               )}
             </div>
           </div>
+        </DialogContent>
+      </Dialog>
+      <Dialog open={isStartConversationModalOpen} onOpenChange={setIsStartConversationModalOpen}>
+        <DialogContent className="sm:max-w-md bg-white border-[#E2E8F0] text-[#0F172A]">
+          <DialogHeader>
+            <DialogTitle>Iniciar Atendimento</DialogTitle>
+            <DialogDescription className="text-[#64748B]">
+              Selecione a fila e o canal para iniciar esta conversa.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4 py-4">
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Departamento / Fila</label>
+              <div className="grid grid-cols-1 gap-2 max-h-48 overflow-y-auto pr-1 custom-scrollbar">
+                {queues.length === 0 ? (
+                  <p className="text-sm text-gray-500 italic">Nenhuma fila disponível.</p>
+                ) : (
+                  queues.map(q => (
+                    <div
+                      key={q.id}
+                      onClick={() => setSelectedStartQueueId(String(q.id))}
+                      className={cn(
+                        "flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-all",
+                        String(selectedStartQueueId) === String(q.id)
+                          ? "border-[#2563EB] bg-[#EFF6FF] text-[#1E40AF]"
+                          : "border-[#E2E8F0] hover:bg-[#F8FAFC]"
+                      )}
+                    >
+                      <div className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: (q as any).color || '#3b82f6' }} />
+                      <span className="text-sm font-medium">{q.name}</span>
+                      {String(selectedStartQueueId) === String(q.id) && <CheckSquare className="w-4 h-4 ml-auto text-[#2563EB]" />}
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Canal de Envio (WhatsApp)</label>
+              <div className="grid grid-cols-1 gap-2 max-h-48 overflow-y-auto pr-1 custom-scrollbar">
+                {instances.length === 0 ? (
+                  <p className="text-sm text-gray-500 italic">Nenhum canal disponível.</p>
+                ) : (
+                  instances.filter((i: any) => i.status === 'connected' || i.status === 'open').map((inst: any) => (
+                    <div
+                      key={inst.id}
+                      onClick={() => setSelectedStartInstanceKey(inst.instance_key)}
+                      className={cn(
+                        "flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-all",
+                        selectedStartInstanceKey === inst.instance_key
+                          ? "border-[#2563EB] bg-[#EFF6FF] text-[#1E40AF]"
+                          : "border-[#E2E8F0] hover:bg-[#F8FAFC]"
+                      )}
+                    >
+                      <div className="w-8 h-8 rounded bg-gray-100 flex items-center justify-center text-xs font-bold uppercase">
+                        {inst.name.substring(0, 2)}
+                      </div>
+                      <div className="flex flex-col">
+                        <span className="text-sm font-medium">{inst.name}</span>
+                        <span className="text-[10px] text-gray-500">{inst.instance_key}</span>
+                      </div>
+                      {selectedStartInstanceKey === inst.instance_key && <CheckSquare className="w-4 h-4 ml-auto text-[#2563EB]" />}
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setIsStartConversationModalOpen(false)}>Cancelar</Button>
+            <Button onClick={handleConfirmStartConversation} disabled={!selectedStartQueueId || !selectedStartInstanceKey} className="bg-[#2563EB] hover:bg-[#1D4ED8] text-white">
+              Iniciar Conversa
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div >

@@ -31,6 +31,7 @@ export const startConversation = async (req: AuthenticatedRequest, res: Response
         const { id } = req.params;
         const userId = req.user.id;
         const companyId = req.user.company_id;
+        const { queueId, instance } = req.body;
 
         // Check current status and company
         const check = await pool.query('SELECT status, user_id, phone, instance, company_id FROM whatsapp_conversations WHERE id = $1', [id]);
@@ -48,17 +49,29 @@ export const startConversation = async (req: AuthenticatedRequest, res: Response
             return res.status(409).json({ error: "Conversa já está em atendimento por outro usuário." });
         }
 
+        // Prepare update fields
+        const updates = ['status = $1', 'user_id = $2', 'started_at = NOW()', 'opened_at = NOW()', 'opened_by_user_id = $2', 'company_id = COALESCE(company_id, $4)'];
+        const values = ['OPEN', userId, id, companyId];
+        let paramIndex = 5;
+
+        if (queueId) {
+            updates.push(`queue_id = $${paramIndex}`);
+            values.push(queueId);
+            paramIndex++;
+        }
+
+        if (instance) {
+            updates.push(`instance = $${paramIndex}`);
+            values.push(instance);
+            paramIndex++;
+        }
+
         // Lock it
         await pool.query(
             `UPDATE whatsapp_conversations
-             SET status = 'OPEN',
-                 user_id = $1,
-                 started_at = NOW(),
-                 opened_at = NOW(),
-                 opened_by_user_id = $1,
-                 company_id = COALESCE(company_id, $2)
+             SET ${updates.join(', ')}
              WHERE id = $3`,
-            [userId, companyId, id]
+            values
         );
 
         // Audit
