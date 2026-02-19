@@ -1248,7 +1248,9 @@ const AtendimentoPage = () => {
             last_message: newMessage.content,
             last_message_at: newMessage.sent_at,
             unread_count: (existing.unread_count || 0) + (newMessage.direction === 'inbound' && !isChatOpen ? 1 : 0),
-            status: newMessage.status || existing.status
+            // BUG FIX: Use conversation_status if available, otherwise keep existing status. 
+            // Do NOT use newMessage.status as it is message status (sent/received), not conversation status.
+            status: newMessage.conversation_status || existing.status
           };
         } else {
           console.log(`[Socket] Creating new conversation card (Phone: ${newMessage.phone}, ID: ${newMessage.conversation_id})`);
@@ -1259,7 +1261,8 @@ const AtendimentoPage = () => {
             last_message: newMessage.content,
             last_message_at: newMessage.sent_at,
             unread_count: newMessage.direction === 'inbound' ? 1 : 0,
-            status: newMessage.status || 'PENDING',
+            // BUG FIX: New conversations default to PENDING (or whatever backend says)
+            status: newMessage.conversation_status || 'PENDING',
             is_group: newMessage.is_group,
             group_name: newMessage.group_name,
             profile_pic_url: newMessage.profile_pic_url,

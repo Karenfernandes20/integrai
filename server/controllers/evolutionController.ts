@@ -1997,11 +1997,12 @@ export const handleEvolutionWebhook = async (req: Request, res: Response) => {
               conversation_id: result.conversationId,
               phone: result.phone,
               contact_name: result.contactName,
-              instance: instance
+              instance: instance,
+              conversation_status: result.conversationStatus
             };
 
             const room = `company_${resolvedCompanyId}`;
-            console.log(`[Webhook] Emitindo para sala: ${room}`);
+            console.log(`[Webhook] Emitindo para sala: ${room} (Status: ${result.conversationStatus})`);
             io.to(room).emit("message:received", payload);
             io.to(`instance_${instance}`).emit("message:received", payload);
           }

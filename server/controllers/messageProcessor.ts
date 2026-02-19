@@ -97,57 +97,64 @@ export const processIncomingMessage = async (companyId: number, instanceName: st
 
             // Only update contact_name if it's NOT a group (private chats update name based on user)
             // For groups, we KEEP the existing group name
+            // Only update contact_name if it's NOT a group (private chats update name based on user)
+            // For groups, we KEEP the existing group name
             let nameUpdateQuery = "";
-            let params = [content, 'OPEN', instanceName, conversationId]; // base params
+            // We do NOT force 'OPEN' anymore. 
+            // Logic: 
+            // - If CLOSED -> Reopen as PENDING (Queue) and clear user_id
+            // - If PENDING -> Stay PENDING
+            // - If OPEN -> Stay OPEN
+
+            let params = [content, instanceName, conversationId]; // base params ($1, $2, $3) - Note: status is dynamic now
 
             if (!isGroup) {
-                // For private chats, update name if we have a better one
-                // But actually, we usually want to keep the name user set? 
-                // Let's only update if the current one is just a number? 
-                // Or just update pushName. 
-                // The original code updated it. Let's keep updating for private, but NOT for group.
-                nameUpdateQuery = ", contact_name = $5";
+                nameUpdateQuery = ", contact_name = $4";
                 params.push(senderContactName);
             } else {
-                // For groups, verify if we have the Last Sender Name column? 
-                // If not, we just update the content.
-                // Ideally we should store "last_sender_name" to show "John: Hello" in UI.
-                // Assuming column exists or we append to content? No, UI should handle it.
-                // We will update 'contact_name' ONLY if it is still null/empty (self-healing for new groups)
                 if (!convRes.rows[0].contact_name) {
-                    nameUpdateQuery = ", contact_name = $5";
+                    nameUpdateQuery = ", contact_name = $4";
                     params.push("Grupo " + groupPhone);
                 }
             }
 
             // Update Conversation
-            await pool.query(`
+            // We use SQL CASE to handle status transition atomically
+            const updateResult = await pool.query(`
                 UPDATE whatsapp_conversations SET 
                     last_message = $1,
                     last_message_at = NOW(),
                     unread_count = unread_count + 1,
-                    status = $2, 
-                    instance = $3
+                    status = CASE WHEN status = 'CLOSED' THEN 'PENDING' ELSE status END,
+                    user_id = CASE WHEN status = 'CLOSED' THEN NULL ELSE user_id END, 
+                    instance = $2
                     ${nameUpdateQuery}
-                WHERE id = $4
+                WHERE id = $3
+                RETURNING status
             `, params);
 
-            console.log(`[Message Processor] Updated Conversation ${conversationId}`);
+            const newStatus = updateResult.rows[0]?.status || 'OPEN'; // Fallback if update fails (shouldn't happens)
+            console.log(`[Message Processor] Updated Conversation ${conversationId} (Status: ${newStatus})`);
+
+            // Store for return
+            var finalConversationStatus = newStatus;
 
         } else {
             // Create new conversation
             // For groups, we don't know the name yet. Use "Grupo + Number" 
             const newConvName = isGroup ? `Grupo ${groupPhone}` : senderContactName;
 
+            // Start as PENDING (Waiting in Queue), not OPEN
             const newConv = await pool.query(`
                 INSERT INTO whatsapp_conversations 
                     (external_id, phone, contact_name, instance, last_message, last_message_at, unread_count, company_id, status, user_id, is_group)
-                VALUES ($1, $2, $3, $4, $5, NOW(), 1, $6, 'OPEN', NULL, $7)
-                RETURNING id
+                VALUES ($1, $2, $3, $4, $5, NOW(), 1, $6, 'PENDING', NULL, $7)
+                RETURNING id, status
             `, [remoteJid, isGroup ? groupPhone : senderPhone, newConvName, instanceName, content, companyId, isGroup]);
 
             conversationId = newConv.rows[0].id;
-            console.log(`[Message Processor] Created New Conversation ${conversationId}`);
+            var finalConversationStatus = newConv.rows[0].status;
+            console.log(`[Message Processor] Created New Conversation ${conversationId} (PENDING)`);
         }
 
         // STEP C: Salvar mensagem no banco
@@ -165,6 +172,7 @@ export const processIncomingMessage = async (companyId: number, instanceName: st
             return {
                 message: insertedMsg.rows[0],
                 conversationId,
+                conversationStatus: finalConversationStatus,
                 contactName: isGroup ? (convRes.rows[0]?.contact_name || `Grupo ${groupPhone}`) : senderContactName,
                 phone: isGroup ? groupPhone : senderPhone,
                 isGroup,
