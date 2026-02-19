@@ -1,4 +1,4 @@
-import { Request, Response } from 'express';
+﻿import { Request, Response } from 'express';
 import { pool } from '../db';
 import { logAudit } from '../auditLogger';
 import { getEvolutionConfig } from './evolutionController';
@@ -789,10 +789,13 @@ export const updateCompany = async (req: Request, res: Response) => {
 };
 
 export const deleteCompany = async (req: Request, res: Response) => {
-    // ... no changes here, kept same ...
     try {
         if (!pool) return res.status(500).json({ error: 'Database not configured' });
         const { id } = req.params;
+
+        // Verify existence before trying to delete
+        const check = await pool.query('SELECT name FROM companies WHERE id = $1', [id]);
+        if (check.rowCount === 0) return res.status(404).json({ error: 'Empresa não encontrada.' });
 
         const client = await pool.connect();
         try {
@@ -804,6 +807,17 @@ export const deleteCompany = async (req: Request, res: Response) => {
             const userRes = await client.query('SELECT id FROM app_users WHERE company_id = $1', [id]);
             const userIds = userRes.rows.map(r => r.id);
 
+            // --- USER & GLOBAL REFS CLEANUP ---
+            if (userIds.length > 0) {
+                // Break links to global/shared tables
+                await client.query('DELETE FROM internal_messages WHERE sender_id = ANY($1::int[]) OR receiver_id = ANY($1::int[])', [userIds]);
+                await client.query('UPDATE legal_pages SET last_updated_by = NULL WHERE last_updated_by = ANY($1::int[])', [userIds]);
+
+                // If specific queues are managed, remove user linkage first
+                await client.query('DELETE FROM whatsapp_queues_users WHERE user_id = ANY($1::int[])', [userIds]);
+            }
+            // ----------------------------------
+
             // 1. WhatsApp & Webhooks (Children first)
             await client.query('DELETE FROM whatsapp_audit_logs WHERE user_id = ANY($1::int[]) OR conversation_id IN (SELECT id FROM whatsapp_conversations WHERE company_id = $2)', [userIds, id]);
             await client.query('DELETE FROM whatsapp_campaign_contacts WHERE campaign_id IN (SELECT id FROM whatsapp_campaigns WHERE company_id = $1)', [id]);
@@ -812,15 +826,29 @@ export const deleteCompany = async (req: Request, res: Response) => {
             await client.query('DELETE FROM whatsapp_campaigns WHERE company_id = $1', [id]);
             await client.query('DELETE FROM whatsapp_contacts WHERE company_id = $1', [id]);
 
+            // NEW WHATSAPP CLEANUP (Missing Tables)
+            await client.query('DELETE FROM whatsapp_calls WHERE company_id = $1', [id]);
+            await client.query('DELETE FROM whatsapp_quick_answers WHERE company_id = $1', [id]);
+            await client.query('DELETE FROM quick_messages WHERE company_id = $1', [id]);
+            await client.query('DELETE FROM conversation_variables WHERE company_id = $1', [id]);
+            await client.query('DELETE FROM chatbots WHERE company_id = $1', [id]);
+
+            // Queues (Delete remaining links to queues then queues themselves)
+            // Note: whatsapp_queues_users was cleaned by user_id above, but clean by queue_id too to be safe
+            await client.query('DELETE FROM whatsapp_queues_users WHERE queue_id IN (SELECT id FROM queues WHERE company_id = $1)', [id]);
+            await client.query('DELETE FROM queues WHERE company_id = $1', [id]);
+
             // 2. CRM & Professional
             await client.query('DELETE FROM crm_follow_ups WHERE company_id = $1', [id]);
             await client.query('DELETE FROM crm_appointments WHERE company_id = $1', [id]);
+            // Delete tags from leads
             await client.query('DELETE FROM crm_lead_tags WHERE lead_id IN (SELECT id FROM crm_leads WHERE company_id = $1)', [id]);
             await client.query('DELETE FROM crm_tags WHERE company_id = $1', [id]);
 
             await client.query('DELETE FROM crm_professional_insurance_config WHERE professional_id IN (SELECT id FROM crm_professionals WHERE company_id = $1)', [id]);
             await client.query('DELETE FROM crm_professionals WHERE company_id = $1', [id]);
             await client.query('DELETE FROM crm_insurance_plans WHERE company_id = $1', [id]);
+            await client.query('DELETE FROM closing_reasons WHERE company_id = $1', [id]);
 
             // 3. Finance & Shop (Delete Financial dependencies before leads/users)
             await client.query('DELETE FROM sale_items WHERE sale_id IN (SELECT id FROM sales WHERE company_id = $1)', [id]);
@@ -851,9 +879,13 @@ export const deleteCompany = async (req: Request, res: Response) => {
             await client.query('DELETE FROM lavajato_services WHERE company_id = $1', [id]);
             await client.query('DELETE FROM lavajato_plans WHERE company_id = $1', [id]);
 
-            // 6. Leads (AFTER all things referencing leads like appointments, OS, sales, etc)
+            // 6. Leads & Contacts
+            // Delete leads first as they may reference contacts (depending on schema, but often leads are subset of contacts or separate)
             await client.query('DELETE FROM crm_leads WHERE company_id = $1', [id]);
             await client.query('DELETE FROM crm_stages WHERE company_id = $1', [id]);
+
+            // Main Contacts Table
+            await client.query('DELETE FROM contacts WHERE company_id = $1', [id]);
 
             // 7. Bots & AI
             await client.query('DELETE FROM bot_sessions WHERE bot_id IN (SELECT id FROM bots WHERE company_id = $1)', [id]);
@@ -866,6 +898,8 @@ export const deleteCompany = async (req: Request, res: Response) => {
             // 8. Tasks & Roadmaps
             await client.query('DELETE FROM admin_task_history WHERE task_id IN (SELECT id FROM admin_tasks WHERE company_id = $1)', [id]);
             await client.query('DELETE FROM admin_tasks WHERE company_id = $1', [id]);
+            // If tasks references user, verify users are deleted last. OK.
+
             await client.query('DELETE FROM roadmap_comments WHERE roadmap_item_id IN (SELECT id FROM roadmap_items WHERE company_id = $1)', [id]);
             await client.query('DELETE FROM roadmap_items WHERE company_id = $1', [id]);
             await client.query('DELETE FROM entity_links WHERE company_id = $1', [id]);
@@ -880,7 +914,7 @@ export const deleteCompany = async (req: Request, res: Response) => {
             await client.query('DELETE FROM admin_alerts WHERE log_id IN (SELECT id FROM system_logs WHERE company_id = $1)', [id]);
             await client.query('DELETE FROM system_logs WHERE company_id = $1', [id]);
             await client.query('DELETE FROM audit_logs WHERE company_id = $1', [id]);
-            await client.query('DELETE FROM system_settings WHERE company_id = $1', [id]).catch(() => { }); // Optional column
+            await client.query('DELETE FROM system_settings WHERE company_id = $1', [id]).catch(() => { });
 
             // 11. Subscription & Usage
             await client.query('DELETE FROM invoices WHERE company_id = $1', [id]);
