@@ -20,7 +20,7 @@ export const getOnboardingStatus = async (req: Request, res: Response) => {
                 (SELECT COUNT(*) FROM whatsapp_conversations WHERE company_id = $1) as chats_count,
                 (SELECT COUNT(*) FROM crm_leads WHERE company_id = $1) as leads_count,
                 (SELECT COUNT(*) FROM whatsapp_contacts WHERE company_id = $1) as contacts_count,
-                (SELECT status FROM whatsapp_instances WHERE company_id = $1 LIMIT 1) as wa_status
+                (SELECT status FROM company_instances WHERE company_id = $1 ORDER BY CASE WHEN status = 'connected' THEN 0 ELSE 1 END LIMIT 1) as wa_status
         `, [user.company_id]);
 
         const data = checks.rows[0] || {};
