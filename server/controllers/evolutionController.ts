@@ -66,6 +66,63 @@ const ensureCompanyInstanceRegistration = async (
   );
 };
 
+const insertOutboundMessage = async ({
+  conversationId,
+  content,
+  status,
+  externalMessageId,
+  userId,
+  companyId,
+  messageType,
+  mediaUrl,
+  sentByUserId,
+  sentByUserName,
+}: {
+  conversationId: number;
+  content: string;
+  status: string;
+  externalMessageId?: string | null;
+  userId?: number | null;
+  companyId?: number | null;
+  messageType?: string | null;
+  mediaUrl?: string | null;
+  sentByUserId?: number | null;
+  sentByUserName?: string | null;
+}) => {
+  if (!pool) throw new Error("Database not configured");
+
+  try {
+    const res = await pool.query(
+      `INSERT INTO whatsapp_messages (conversation_id, direction, content, sent_at, status, external_id, user_id, company_id, message_type, media_url, sent_by_user_id, sent_by_user_name)
+       VALUES ($1, 'outbound', $2, NOW(), $3, $4, $5, $6, COALESCE($7, 'text'), $8, $9, $10)
+       ON CONFLICT (external_id) DO UPDATE
+       SET user_id = COALESCE(EXCLUDED.user_id, whatsapp_messages.user_id),
+           company_id = COALESCE(EXCLUDED.company_id, whatsapp_messages.company_id),
+           sent_by_user_id = COALESCE(EXCLUDED.sent_by_user_id, whatsapp_messages.sent_by_user_id),
+           sent_by_user_name = COALESCE(EXCLUDED.sent_by_user_name, whatsapp_messages.sent_by_user_name)
+       RETURNING *`,
+      [conversationId, content, status, externalMessageId || null, userId || null, companyId || null, messageType || 'text', mediaUrl || null, sentByUserId || null, sentByUserName || null]
+    );
+    return res.rows[0];
+  } catch (error: any) {
+    if (error?.code !== '42703') {
+      throw error;
+    }
+
+    // Fallback for environments where sent_by_user_* columns are not present yet
+    const fallbackRes = await pool.query(
+      `INSERT INTO whatsapp_messages (conversation_id, direction, content, sent_at, status, external_id, user_id, company_id, message_type, media_url)
+       VALUES ($1, 'outbound', $2, NOW(), $3, $4, $5, $6, COALESCE($7, 'text'), $8)
+       ON CONFLICT (external_id) DO UPDATE
+       SET user_id = COALESCE(EXCLUDED.user_id, whatsapp_messages.user_id),
+           company_id = COALESCE(EXCLUDED.company_id, whatsapp_messages.company_id)
+       RETURNING *`,
+      [conversationId, content, status, externalMessageId || null, userId || null, companyId || null, messageType || 'text', mediaUrl || null]
+    );
+    return fallbackRes.rows[0];
+  }
+};
+
 /**
  * STRICT Instance Resolver for SaaS Multi-tenant
  */
@@ -760,12 +817,19 @@ export const sendEvolutionMessage = async (req: Request, res: Response) => {
         );
         const conversationId = convRes.rows[0].id;
 
-        const insertedMsg = await pool.query(
-          `INSERT INTO whatsapp_messages (conversation_id, direction, content, sent_at, status, external_id, user_id, company_id, sent_by_user_id, sent_by_user_name, channel) 
-           VALUES ($1, $2, $3, NOW(), $4, $5, $6, $7, $8, $9, $10) 
-           RETURNING *`,
-          [conversationId, 'outbound', messageContent, 'sent', igData.message_id || `ig-${Date.now()}`, user.id, resolvedCompanyId, user.id, user.full_name, 'instagram']
-        );
+        const insertedRow = await insertOutboundMessage({
+          conversationId,
+          content: messageContent,
+          status: 'sent',
+          externalMessageId: igData.message_id || `ig-${Date.now()}`,
+          userId: user.id,
+          companyId: resolvedCompanyId,
+          messageType: 'text',
+          sentByUserId: user.id,
+          sentByUserName: user.full_name
+        });
+
+        const insertedMsg = { rows: [insertedRow] };
 
         const resultPayload = {
           ...insertedMsg.rows[0],
@@ -901,17 +965,17 @@ export const sendEvolutionMessage = async (req: Request, res: Response) => {
 
         // Insert message WITH USER_ID and company_id, handling race condition with webhook
         // If webhook inserted first (user_id=null), this will update it.
-        const insertedMsg = await pool.query(
-          `INSERT INTO whatsapp_messages (conversation_id, direction, content, sent_at, status, external_id, user_id, company_id, sent_by_user_id, sent_by_user_name) 
-           VALUES ($1, $2, $3, NOW(), $4, $5, $6, $7, $8, $9) 
-           ON CONFLICT (external_id) DO UPDATE 
-           SET user_id = EXCLUDED.user_id, company_id = EXCLUDED.company_id, 
-               sent_by_user_id = EXCLUDED.sent_by_user_id, sent_by_user_name = EXCLUDED.sent_by_user_name 
-           RETURNING *`,
-          [conversationId, 'outbound', messageContent, 'sent', externalMessageId, user.id, resolvedCompanyId, user.id, user.full_name]
-        );
-
-        const row = insertedMsg.rows[0];
+        const row = await insertOutboundMessage({
+          conversationId,
+          content: messageContent,
+          status: 'sent',
+          externalMessageId,
+          userId: user.id,
+          companyId: resolvedCompanyId,
+          messageType: 'text',
+          sentByUserId: user.id,
+          sentByUserName: user.full_name
+        });
         console.log(`[Evolution] Saved/Updated message in DB with ID: ${row.id}.`);
 
         // Include the DB ID and external ID in the response so frontend can use them
@@ -1083,10 +1147,20 @@ export const sendEvolutionMedia = async (req: Request, res: Response) => {
 
         const externalMessageId = data?.key?.id;
 
-        const insertedMsg = await pool.query(
-          'INSERT INTO whatsapp_messages (conversation_id, direction, content, sent_at, status, external_id, user_id, message_type, media_url, company_id, sent_by_user_id, sent_by_user_name) VALUES ($1, $2, $3, NOW(), $4, $5, $6, $7, $8, $9, $10, $11) ON CONFLICT DO NOTHING RETURNING *',
-          [conversationId, 'outbound', content, 'sent', externalMessageId, user.id, mediaType, (media.startsWith('http') ? media : null), resolvedCompanyId, user.id, user.full_name]
-        );
+        const insertedRow = await insertOutboundMessage({
+          conversationId,
+          content,
+          status: 'sent',
+          externalMessageId,
+          userId: user.id,
+          companyId: resolvedCompanyId,
+          messageType: mediaType,
+          mediaUrl: media.startsWith('http') ? media : null,
+          sentByUserId: user.id,
+          sentByUserName: user.full_name
+        });
+
+        const insertedMsg = { rows: [insertedRow] };
 
         // Increment Usage
         if (resolvedCompanyId) {
