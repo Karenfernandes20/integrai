@@ -485,13 +485,30 @@ const AtendimentoPage = () => {
   // SuperAdmin Filters
   const [availableCompanies, setAvailableCompanies] = useState<any[]>([]);
 
-  // Notification sound settings
+  const ATENDIMENTO_NOTIFICATION_VOLUME_KEY = 'atendimento_notification_volume';
+  const ATENDIMENTO_NOTIFICATION_MUTED_KEY = 'atendimento_notification_muted';
+
+  // Notification sound settings (isolated from other tabs/pages)
   const [notificationVolume, setNotificationVolume] = useState<number>(() => {
-    const saved = localStorage.getItem('notification_volume');
-    return saved ? parseFloat(saved) : 0.5; // Default 50%
+    const saved = localStorage.getItem(ATENDIMENTO_NOTIFICATION_VOLUME_KEY);
+
+    // Backward compatibility with old shared key
+    if (!saved) {
+      const legacySaved = localStorage.getItem('notification_volume');
+      return legacySaved ? parseFloat(legacySaved) : 0.5;
+    }
+
+    return parseFloat(saved);
   });
   const [isNotificationMuted, setIsNotificationMuted] = useState<boolean>(() => {
-    const saved = localStorage.getItem('notification_muted');
+    const saved = localStorage.getItem(ATENDIMENTO_NOTIFICATION_MUTED_KEY);
+
+    // Backward compatibility with old shared key
+    if (!saved) {
+      const legacySaved = localStorage.getItem('notification_muted');
+      return legacySaved === 'true';
+    }
+
     return saved === 'true';
   });
   const [isRelationshipModalOpen, setIsRelationshipModalOpen] = useState(false);
@@ -517,7 +534,7 @@ const AtendimentoPage = () => {
   }, [notificationVolume]);
 
   useEffect(() => {
-    localStorage.setItem('notification_volume', String(notificationVolume));
+    localStorage.setItem(ATENDIMENTO_NOTIFICATION_VOLUME_KEY, String(notificationVolume));
   }, [notificationVolume]);
 
   useEffect(() => {
@@ -525,7 +542,7 @@ const AtendimentoPage = () => {
   }, [isNotificationMuted]);
 
   useEffect(() => {
-    localStorage.setItem('notification_muted', String(isNotificationMuted));
+    localStorage.setItem(ATENDIMENTO_NOTIFICATION_MUTED_KEY, String(isNotificationMuted));
   }, [isNotificationMuted]);
 
   useEffect(() => {
