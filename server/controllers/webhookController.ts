@@ -1253,20 +1253,28 @@ export const handleInstagramWebhook = async (req: Request, res: Response) => {
         // 2. Process
         if (body.object === 'instagram' || body.object === 'page') {
             for (const entry of body.entry) {
-                // Determine Company by Page ID/Instagram Business ID (recipient.id)
-                // We need to match entry.id (Page ID) or messaging.recipient.id with company
-                const pageId = entry.id;
+                const instagramBusinessId = String(entry?.id || '');
+                const fallbackPageId = String(entry?.messaging?.[0]?.recipient?.id || '');
 
-                // Find company by page_id or business_id
-                const companyRes = await pool!.query(`
+                let companyRes = await pool!.query(`
                     SELECT id, instagram_enabled, instagram_access_token 
                     FROM companies 
-                    WHERE instagram_page_id = $1 OR instagram_business_id = $1
+                    WHERE instagram_business_id = $1
                     LIMIT 1
-                `, [pageId]);
+                `, [instagramBusinessId]);
+
+                // Compatibilidade com configurações antigas baseadas no page_id
+                if (companyRes.rows.length === 0 && fallbackPageId) {
+                    companyRes = await pool!.query(`
+                        SELECT id, instagram_enabled, instagram_access_token 
+                        FROM companies 
+                        WHERE instagram_page_id = $1
+                        LIMIT 1
+                    `, [fallbackPageId]);
+                }
 
                 if (companyRes.rows.length === 0) {
-                    console.warn(`[Instagram Webhook] Unknown Page ID: ${pageId}. No company found.`);
+                    console.warn(`[Instagram Webhook] Unknown Instagram Business ID: ${instagramBusinessId}. Fallback Page ID: ${fallbackPageId || 'n/a'}. No company found.`);
                     continue;
                 }
                 const company = companyRes.rows[0];
