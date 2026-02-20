@@ -3139,7 +3139,7 @@ const AtendimentoPage = () => {
           setConversations(prev => prev.map(c => c.id === conv.id ? { ...c, unread_count: 0 } : c));
         }}
         className={cn(
-          "group relative flex flex-col p-3 cursor-pointer transition-all duration-200 border-l-[3px] rounded-lg",
+          "group relative flex flex-col p-2 cursor-pointer transition-all duration-200 border-l-[3px] rounded-lg",
           isSelected
             ? `bg-[#EFF6FF] shadow-sm`
             : "bg-transparent border-transparent hover:bg-[#F8FAFC] hover:border-[#E2E8F0]"
@@ -3148,10 +3148,10 @@ const AtendimentoPage = () => {
           borderLeftColor: conv.queue_color || conv.instance_color || (isSelected ? '#2563EB' : 'transparent')
         }}
       >
-        <div className="flex items-start gap-3 w-full">
+        <div className="flex items-start gap-2 w-full">
           {/* Avatar Area */}
           <div className="relative shrink-0">
-            <Avatar className="h-11 w-11 rounded-xl shadow-sm border border-[#E2E8F0]">
+            <Avatar className="h-9 w-9 rounded-xl shadow-sm border border-[#E2E8F0]">
               <AvatarImage src={conv.profile_pic_url || `https://api.dicebear.com/7.x/initials/svg?seed=${getDisplayName(conv)}`} />
               <AvatarFallback className="bg-[#F1F5F9] text-[#0F172A] font-bold rounded-xl">
                 {(getDisplayName(conv)?.[0] || "?").toUpperCase()}
@@ -3162,26 +3162,26 @@ const AtendimentoPage = () => {
             {isSelectionMode && (
               <div className="absolute inset-0 bg-black/40 rounded-xl flex items-center justify-center z-20 backdrop-blur-[1px]">
                 {selectedForBulk.has(conv.id) ? (
-                  <CheckCircle2 className="w-6 h-6 text-white fill-[#2563EB]" />
+                  <CheckCircle2 className="w-5 h-5 text-white fill-[#2563EB]" />
                 ) : (
-                  <div className="w-5 h-5 rounded-full border-2 border-white/70" />
+                  <div className="w-4 h-4 rounded-full border-2 border-white/70" />
                 )}
               </div>
             )}
 
             {/* Online/Status Badge */}
             {conv.status === 'OPEN' && (
-              <span className="absolute -bottom-1 -right-1 w-3.5 h-3.5 bg-[#16A34A] border-2 border-white rounded-full" title="Em Atendimento"></span>
+              <span className="absolute -bottom-1 -right-1 w-3 h-3 bg-[#16A34A] border-2 border-white rounded-full" title="Em Atendimento"></span>
             )}
             {conv.unread_count && conv.unread_count > 0 ? (
-              <span className="absolute -top-1.5 -right-1.5 min-w-[18px] h-[18px] bg-[#DC2626] text-white text-[10px] font-bold flex items-center justify-center rounded-full px-1 shadow-sm border border-white">
+              <span className="absolute -top-1.5 -right-1.5 min-w-[16px] h-[16px] bg-[#DC2626] text-white text-[9px] font-bold flex items-center justify-center rounded-full px-1 shadow-sm border border-white">
                 {conv.unread_count}
               </span>
             ) : null}
           </div>
 
           {/* Content Area */}
-          <div className="flex-1 min-w-0 flex flex-col gap-0.5">
+          <div className="flex-1 min-w-0 flex flex-col gap-0">
             <div className="flex justify-between items-center">
               <div className="flex items-center gap-1.5 min-w-0 flex-1">
                 {conv.channel === 'instagram' && (
@@ -3194,7 +3194,7 @@ const AtendimentoPage = () => {
                   </div>
                 )}
                 <h3 className={cn(
-                  "text-[14.5px] font-semibold truncate leading-tight tracking-tight",
+                  "text-[13px] font-semibold truncate leading-tight tracking-tight",
                   isSelected ? "text-[#0F172A]" : "text-[#475569] group-hover:text-[#0F172A]"
                 )}>
                   {getDisplayName(conv)}
@@ -3209,20 +3209,20 @@ const AtendimentoPage = () => {
             </div>
 
             {/* Tags Only in Middle Area */}
-            <div className="flex items-center gap-1.5 overflow-hidden my-0.5">
+            <div className="flex items-center gap-1 overflow-hidden my-0.5">
               {/* Simplified Tags for Card */}
               {conv.tags && conv.tags.length > 0 && (
                 <span className="flex gap-1">
                   {conv.tags.slice(0, 2).map(tag => (
-                    <span key={tag.id} className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: tag.color }} title={tag.name} />
+                    <span key={tag.id} className="w-1 h-1 rounded-full" style={{ backgroundColor: tag.color }} title={tag.name} />
                   ))}
                 </span>
               )}
             </div>
 
-            <div className="flex flex-wrap items-center gap-2 text-[10px]">
+            <div className="flex flex-wrap items-center gap-1.5 text-[9px]">
               <span
-                className="px-1.5 py-0.5 rounded-[4px] font-bold uppercase tracking-tight shadow-sm border"
+                className="px-1 py-0.5 rounded-[4px] font-bold uppercase tracking-tight shadow-sm border"
                 style={{
                   backgroundColor: `${conv.queue_color || '#16A34A'}1A`,
                   color: conv.queue_color || '#16A34A',
@@ -3232,12 +3232,12 @@ const AtendimentoPage = () => {
                 Fila: {conv.queue_name || "Recepção"}
               </span>
               {conv.channel === 'instagram' && (
-                <span className="px-1.5 py-0.5 rounded-[4px] bg-gradient-to-r from-[#F58529]/10 to-[#DD2A7B]/10 text-[#DD2A7B] border border-[#DD2A7B]/20 font-bold uppercase tracking-wider">
+                <span className="px-1 py-0.5 rounded-[4px] bg-gradient-to-r from-[#F58529]/10 to-[#DD2A7B]/10 text-[#DD2A7B] border border-[#DD2A7B]/20 font-bold uppercase tracking-wider">
                   Instagram
                 </span>
               )}
               {conv.status === 'OPEN' && (
-                <span className="px-1.5 py-0.5 rounded-[4px] bg-[#EFF6FF] text-[#1D4ED8] border border-[#BFDBFE] font-semibold">
+                <span className="px-1 py-0.5 rounded-[4px] bg-[#EFF6FF] text-[#1D4ED8] border border-[#BFDBFE] font-semibold">
                   Responsavel: {conv.assigned_user_name || conv.user_name || "-"}
                 </span>
               )}
@@ -3245,7 +3245,7 @@ const AtendimentoPage = () => {
 
             <div className="flex justify-between items-end mt-0.5">
               <p className={cn(
-                "text-[13px] leading-snug truncate max-w-[75%]",
+                "text-[11px] leading-snug truncate max-w-[75%]",
                 isSelected ? "text-[#64748B]" : "text-[#94A3B8] group-hover:text-[#64748B]"
               )}>
                 {/* Sender Prefix */}
@@ -3271,10 +3271,10 @@ const AtendimentoPage = () => {
                       <Button
                         variant="ghost"
                         size="icon"
-                        className="h-7 w-7 text-[#94A3B8] hover:text-[#0F172A] hover:bg-[#F1F5F9] rounded-lg"
+                        className="h-6 w-6 text-[#94A3B8] hover:text-[#0F172A] hover:bg-[#F1F5F9] rounded-lg"
                         onClick={(e) => e.stopPropagation()}
                       >
-                        <MoreHorizontal className="h-4 w-4" />
+                        <MoreHorizontal className="h-3.5 w-3.5" />
                       </Button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end" className="bg-white border-[#E2E8F0] text-[#0F172A] w-52 shadow-xl z-[100]">
