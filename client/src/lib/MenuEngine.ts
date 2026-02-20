@@ -103,6 +103,7 @@ const LOJA_MENU: MenuItem[] = [
     { label: "Clientes", icon: Users, to: "/app/contatos", requiredPermission: "reg.clients" }, // "Clientes" maps to Contatos
     { label: "Grupos", icon: Users, to: "/app/grupos", requiredPermission: "crm.view" },
     { label: "CRM", icon: KanbanSquare, to: "/app/crm", requiredPermission: "crm.view" },
+    { label: "Tags", icon: TagsIcon, to: "/app/tags", requiredPermission: "crm.view" },
     { label: "Estoque", icon: Package, to: "/app/loja/estoque", requiredPermission: "inventory.view" },
     { label: "Financeiro", icon: Wallet2, to: "/app/financeiro", requiredPermission: "finance.view" },
     { label: "Fornecedores", icon: Truck, to: "/app/loja/fornecedores", requiredPermission: "reg.clients" },
