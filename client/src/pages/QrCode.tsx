@@ -1114,14 +1114,14 @@ const QrCodePage = () => {
 
         {/* IG MODAL - Placeholder for modern UI */}
         <Dialog open={isIgModalOpen} onOpenChange={setIsIgModalOpen}>
-          <DialogContent className="sm:max-w-[600px] p-0 overflow-hidden border-none shadow-2xl rounded-3xl">
+          <DialogContent className="sm:max-w-[600px] max-h-[90vh] p-0 overflow-hidden border-none shadow-2xl rounded-3xl flex flex-col">
             <div className="bg-gradient-to-r from-purple-600 to-pink-600 p-8 text-white">
               <DialogTitle className="text-2xl font-bold flex items-center gap-3">
                 <Instagram className="h-7 w-7" /> Instagram Business
               </DialogTitle>
               <p className="text-purple-50/80 mt-1">Conecte sua conta profissional para automação de directs.</p>
             </div>
-            <div className="p-6 grid gap-4">
+            <div className="p-6 grid gap-4 overflow-y-auto">
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label className="text-[11px] font-bold uppercase text-zinc-400">Facebook App ID</Label>
@@ -1194,7 +1194,7 @@ const QrCodePage = () => {
               >
                 Testar Integração Instagram
               </Button>
-              <DialogFooter className="pt-4 border-t mt-2 flex justify-between gap-2 px-0">
+              <DialogFooter className="pt-4 border-t mt-2 flex justify-between gap-2 px-0 sticky bottom-0 bg-background">
                 <Button variant="outline" onClick={() => setIsIgModalOpen(false)} className="rounded-xl px-6 font-bold h-11">
                   Cancelar
                 </Button>
@@ -1212,14 +1212,14 @@ const QrCodePage = () => {
 
         {/* MESSENGER MODAL */}
         <Dialog open={isMeModalOpen} onOpenChange={setIsMeModalOpen}>
-          <DialogContent className="sm:max-w-[600px] p-0 overflow-hidden border-none shadow-2xl rounded-3xl">
+          <DialogContent className="sm:max-w-[600px] max-h-[90vh] p-0 overflow-hidden border-none shadow-2xl rounded-3xl flex flex-col">
             <div className="bg-blue-600 p-8 text-white">
               <DialogTitle className="text-2xl font-bold flex items-center gap-3">
                 <MessageCircle className="h-7 w-7" /> Facebook Messenger
               </DialogTitle>
               <p className="text-blue-50/80 mt-1">Integre sua Fan Page para centralizar as mensagens do Messenger.</p>
             </div>
-            <div className="p-6 grid gap-4">
+            <div className="p-6 grid gap-4 overflow-y-auto">
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label className="text-[11px] font-bold uppercase text-zinc-400">Facebook App ID</Label>
@@ -1245,7 +1245,7 @@ const QrCodePage = () => {
               >
                 Testar Messenger
               </Button>
-              <DialogFooter className="pt-4 border-t mt-2 flex justify-end gap-2 px-0">
+              <DialogFooter className="pt-4 border-t mt-2 flex justify-end gap-2 px-0 sticky bottom-0 bg-background">
                 <Button variant="ghost" onClick={() => setIsMeModalOpen(false)} className="rounded-xl px-4">Fechar</Button>
                 <Button className="rounded-xl bg-blue-600 hover:bg-blue-700 px-8 font-bold text-white shadow-lg" onClick={() => handleSaveCompany(false)} disabled={isLoading}>
                   {isLoading ? "Salvando..." : "Salvar"}
