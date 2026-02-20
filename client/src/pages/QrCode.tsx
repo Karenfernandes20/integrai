@@ -1194,10 +1194,16 @@ const QrCodePage = () => {
               >
                 Testar Integração Instagram
               </Button>
-              <DialogFooter className="pt-4 border-t mt-2 flex justify-end gap-2 px-0">
-                <Button variant="ghost" onClick={() => setIsIgModalOpen(false)} className="rounded-xl px-4">Voltar</Button>
-                <Button className="rounded-xl bg-purple-600 hover:bg-purple-700 px-8 font-bold text-white shadow-lg" onClick={() => handleSaveCompany(false)} disabled={isLoading}>
-                  {isLoading ? "Salvando..." : "Salvar"}
+              <DialogFooter className="pt-4 border-t mt-2 flex justify-between gap-2 px-0">
+                <Button variant="outline" onClick={() => setIsIgModalOpen(false)} className="rounded-xl px-6 font-bold h-11">
+                  Cancelar
+                </Button>
+                <Button
+                  className="rounded-xl bg-purple-600 hover:bg-purple-700 px-8 font-bold text-white shadow-lg h-11"
+                  onClick={() => handleSaveCompany(false)}
+                  disabled={isLoading}
+                >
+                  {isLoading ? "Salvando..." : "Salvar Alterações"}
                 </Button>
               </DialogFooter>
             </div>
