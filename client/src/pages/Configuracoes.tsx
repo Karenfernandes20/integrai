@@ -3,6 +3,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../co
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
+import { Label } from "../components/ui/label";
 import {
   Tabs,
   TabsContent,
@@ -12,6 +13,8 @@ import {
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/ui/table";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "../components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../components/ui/select";
+import { Checkbox } from "../components/ui/checkbox";
+import { Separator } from "../components/ui/separator";
 import {
   CreditCard,
   Users,
@@ -29,6 +32,7 @@ import { toast } from "sonner";
 import { EvolutionStatus } from "../components/EvolutionStatus";
 import { InstagramStatus } from "../components/InstagramStatus";
 import { WhatsAppMetaStatus } from "../components/WhatsAppMetaStatus";
+import { PERMISSION_GROUPS, ROLE_PRESETS } from "../lib/permissions";
 
 type AccessType = "admin" | "gerente" | "vendedor" | "atendimento";
 type BillingStatus = "active" | "past_due" | "cancelled" | "trialing" | string;
@@ -140,7 +144,7 @@ const TeamSection = () => {
 
   const [selected, setSelected] = useState<TeamUser | null>(null);
   const [newUser, setNewUser] = useState({ full_name: "", email: "", access_type: "atendimento" as AccessType, password: "" });
-  const [editUser, setEditUser] = useState({ full_name: "", email: "" });
+  const [editUser, setEditUser] = useState({ full_name: "", email: "", role: "USUARIO", permissions: ROLE_PRESETS.USUARIO || [] as string[] });
   const [editType, setEditType] = useState<AccessType>("atendimento");
 
   const canManage = user?.role === "ADMIN" || user?.role === "SUPERADMIN";
@@ -167,6 +171,27 @@ const TeamSection = () => {
   useEffect(() => {
     loadTeam();
   }, [token, user?.company_id]);
+
+  const handleEditRoleChange = (role: string) => {
+    setEditUser((prev) => ({
+      ...prev,
+      role,
+      permissions: role === "CUSTOM" ? prev.permissions : (ROLE_PRESETS[role] || []),
+    }));
+  };
+
+  const toggleEditPermission = (permissionId: string) => {
+    setEditUser((prev) => {
+      const hasPermission = prev.permissions.includes(permissionId);
+      return {
+        ...prev,
+        role: "CUSTOM",
+        permissions: hasPermission
+          ? prev.permissions.filter((perm) => perm !== permissionId)
+          : [...prev.permissions, permissionId],
+      };
+    });
+  };
 
   const handleCreateUser = async () => {
     if (!token || !canManage) return;
@@ -214,6 +239,8 @@ const TeamSection = () => {
         body: JSON.stringify({
           full_name: editUser.full_name.trim(),
           email: editUser.email.trim(),
+          role: editUser.role === "ADMIN" ? "ADMIN" : "USUARIO",
+          permissions: editUser.role === "ADMIN" ? ROLE_PRESETS.ADMIN : editUser.permissions,
         }),
       });
       const data = await res.json().catch(() => ({}));
@@ -313,7 +340,20 @@ const TeamSection = () => {
                             size="icon"
                             onClick={() => {
                               setSelected(u);
-                              setEditUser({ full_name: u.full_name || "", email: u.email || "" });
+                              const roleFromUser = (u.role || "USUARIO").toUpperCase();
+                              const userPermissions = Array.isArray(u.permissions)
+                                ? u.permissions
+                                : (ROLE_PRESETS[roleFromUser] || ROLE_PRESETS.USUARIO || []);
+                              const presetPermissions = ROLE_PRESETS[roleFromUser] || [];
+                              const isCustomRole = roleFromUser !== "ADMIN" &&
+                                (userPermissions.length !== presetPermissions.length || userPermissions.some((perm) => !presetPermissions.includes(perm)));
+
+                              setEditUser({
+                                full_name: u.full_name || "",
+                                email: u.email || "",
+                                role: isCustomRole ? "CUSTOM" : roleFromUser,
+                                permissions: userPermissions,
+                              });
                               setIsEditOpen(true);
                             }}
                             title="Editar"
@@ -380,10 +420,51 @@ const TeamSection = () => {
 
       <Dialog open={isEditOpen} onOpenChange={setIsEditOpen}>
         <DialogContent>
-          <DialogHeader><DialogTitle>Editar Usuário</DialogTitle></DialogHeader>
-          <div className="space-y-3">
+          <DialogHeader>
+            <DialogTitle>Editar Usuário</DialogTitle>
+            <DialogDescription>Altere dados, perfil e permissões de acesso.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
             <Input placeholder="Nome" value={editUser.full_name} onChange={(e) => setEditUser((p) => ({ ...p, full_name: e.target.value }))} />
             <Input placeholder="Email" type="email" value={editUser.email} onChange={(e) => setEditUser((p) => ({ ...p, email: e.target.value }))} />
+
+            <div className="space-y-2">
+              <Label>Nível de Acesso (Preset)</Label>
+              <Select value={editUser.role} onValueChange={handleEditRoleChange}>
+                <SelectTrigger><SelectValue placeholder="Selecione o nível" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="ADMIN">Administrador Full</SelectItem>
+                  <SelectItem value="MANAGER">Gestor / Supervisor</SelectItem>
+                  <SelectItem value="VENDEDOR">Vendedor / Comercial</SelectItem>
+                  <SelectItem value="ATENDENTE">Atendimento</SelectItem>
+                  <SelectItem value="FINANCEIRO">Financeiro / Contas</SelectItem>
+                  <SelectItem value="USUARIO">Usuário Comum</SelectItem>
+                  <SelectItem value="CUSTOM">Personalizado</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <Separator />
+            <div className="space-y-3 max-h-64 overflow-y-auto pr-1">
+              <Label>Permissões Granulares</Label>
+              {PERMISSION_GROUPS.map((group) => (
+                <div key={group.name} className="space-y-2">
+                  <p className="text-xs font-semibold text-muted-foreground">{group.name}</p>
+                  <div className="grid gap-2">
+                    {group.permissions.map((perm) => (
+                      <div key={perm.id} className="flex items-center gap-2">
+                        <Checkbox
+                          id={`edit-perm-${perm.id}`}
+                          checked={editUser.permissions.includes(perm.id)}
+                          onCheckedChange={() => toggleEditPermission(perm.id)}
+                        />
+                        <label htmlFor={`edit-perm-${perm.id}`} className="text-sm cursor-pointer">{perm.label}</label>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
           </div>
           <DialogFooter>
             <Button variant="ghost" onClick={() => setIsEditOpen(false)}>Cancelar</Button>
