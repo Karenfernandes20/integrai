@@ -174,7 +174,7 @@ export const processIncomingMessage = async (companyId: number, instanceName: st
 
         // Find conversation by remoteJid (Group JID or User JID)
         const convRes = await pool.query(
-            `SELECT id, status, contact_name FROM whatsapp_conversations WHERE external_id = $1 AND company_id = $2`,
+            `SELECT id, status, contact_name, group_name, group_subject FROM whatsapp_conversations WHERE external_id = $1 AND company_id = $2`,
             [remoteJid, companyId]
         );
 
@@ -199,14 +199,14 @@ export const processIncomingMessage = async (companyId: number, instanceName: st
                 nameUpdateQuery = ", contact_name = $4";
                 params.push(senderContactName);
             } else {
-                const currentGroupName = convRes.rows[0].contact_name;
-                if (groupTitleFromPayload && (!currentGroupName || !isUsableGroupTitle(currentGroupName))) {
-                    nameUpdateQuery = ", contact_name = $4, group_name = $4";
-                    params.push(groupTitleFromPayload);
-                } else if (!currentGroupName) {
-                    nameUpdateQuery = ", contact_name = $4";
-                    params.push("Grupo " + groupPhone);
-                }
+                const persistedGroupName = [
+                    convRes.rows[0].group_subject,
+                    convRes.rows[0].group_name,
+                ].find((candidate: string | null | undefined) => isUsableGroupTitle(candidate));
+
+                const resolvedGroupName = groupTitleFromPayload || persistedGroupName || `Grupo ${groupPhone}`;
+                nameUpdateQuery = ", contact_name = $4, group_name = $4";
+                params.push(resolvedGroupName);
             }
 
             // Update Conversation
