@@ -9,7 +9,9 @@ import {
     FileText,
     Mic,
     MoreVertical,
-    RefreshCw
+    RefreshCw,
+    Volume2,
+    VolumeX
 } from "lucide-react";
 import { Input } from "../components/ui/input";
 import { Button } from "../components/ui/button";
@@ -100,10 +102,62 @@ const GruposPage = () => {
     const [newMessage, setNewMessage] = useState("");
     const [showEmojiPicker, setShowEmojiPicker] = useState(false);
     const [isSyncingGroups, setIsSyncingGroups] = useState(false);
+    const [isGroupNotificationMuted, setIsGroupNotificationMuted] = useState<boolean>(() => {
+        const saved = localStorage.getItem("group_notification_muted");
+        return saved === "true";
+    });
 
     const scrollRef = useRef<HTMLDivElement>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
     const selectedGroupRef = useRef<GroupConversation | null>(null);
+    const groupMutedRef = useRef(isGroupNotificationMuted);
+
+    useEffect(() => {
+        localStorage.setItem("group_notification_muted", String(isGroupNotificationMuted));
+        groupMutedRef.current = isGroupNotificationMuted;
+    }, [isGroupNotificationMuted]);
+
+    const playGroupNotificationSound = async () => {
+        if (groupMutedRef.current) return;
+
+        try {
+            const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+            if (audioContext.state === "suspended") await audioContext.resume();
+
+            const playDigitalNote = (freq: number, start: number, duration: number, vol: number) => {
+                const osc = audioContext.createOscillator();
+                const osc2 = audioContext.createOscillator();
+                const gain = audioContext.createGain();
+
+                osc.type = "sine";
+                osc2.type = "triangle";
+
+                osc.frequency.setValueAtTime(freq, start);
+                osc2.frequency.setValueAtTime(freq, start);
+
+                gain.gain.setValueAtTime(0, start);
+                gain.gain.linearRampToValueAtTime(vol, start + 0.02);
+                gain.gain.exponentialRampToValueAtTime(0.001, start + duration);
+
+                osc.connect(gain);
+                osc2.connect(gain);
+                gain.connect(audioContext.destination);
+
+                osc.start(start);
+                osc2.start(start);
+                osc.stop(start + duration);
+                osc2.stop(start + duration);
+            };
+
+            const now = audioContext.currentTime;
+            playDigitalNote(1174.66, now, 0.35, 0.28);
+            playDigitalNote(880.0, now + 0.07, 0.45, 0.24);
+
+            setTimeout(() => audioContext.close(), 1800);
+        } catch (error) {
+            console.error("Error playing group notification sound:", error);
+        }
+    };
 
     useEffect(() => {
         selectedGroupRef.current = selectedGroup;
@@ -206,6 +260,11 @@ const GruposPage = () => {
         });
 
         socket.on("message:received", (msg: any) => {
+            const isInboundMessage = msg.direction === "inbound" || msg.fromMe === false;
+            if (isInboundMessage) {
+                playGroupNotificationSound();
+            }
+
             if (selectedGroupRef.current && (selectedGroupRef.current.phone === msg.phone || selectedGroupRef.current.id === msg.conversation_id)) {
                 setMessages(prev => {
                     if (prev.find(m => m.id === msg.id)) return prev;
@@ -388,16 +447,27 @@ const GruposPage = () => {
                             <Users className="h-5 w-5" />
                             Grupos
                         </h2>
-                        <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={handleSyncAllGroups}
-                            disabled={isSyncingGroups}
-                            className="h-8 gap-2 border-primary/20 hover:bg-primary/5 text-primary"
-                        >
-                            <RefreshCw className={cn("h-3.5 w-3.5", isSyncingGroups && "animate-spin")} />
-                            Sincronizar
-                        </Button>
+                        <div className="flex items-center gap-2">
+                            <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-8 w-8 text-zinc-500"
+                                title={isGroupNotificationMuted ? "Ativar som dos grupos" : "Mutar som dos grupos"}
+                                onClick={() => setIsGroupNotificationMuted(prev => !prev)}
+                            >
+                                {isGroupNotificationMuted ? <VolumeX className="h-4 w-4 text-[#DC2626]" /> : <Volume2 className="h-4 w-4 text-[#16A34A]" />}
+                            </Button>
+                            <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={handleSyncAllGroups}
+                                disabled={isSyncingGroups}
+                                className="h-8 gap-2 border-primary/20 hover:bg-primary/5 text-primary"
+                            >
+                                <RefreshCw className={cn("h-3.5 w-3.5", isSyncingGroups && "animate-spin")} />
+                                Sincronizar
+                            </Button>
+                        </div>
                     </div>
                     <div className="relative">
                         <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
