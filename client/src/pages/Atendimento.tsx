@@ -735,7 +735,8 @@ const AtendimentoPage = () => {
   const getDisplayName = useMemo(() => (conv: Conversation | null): string => {
     if (!conv) return "";
 
-    // For groups, prioritize group_name
+    // For groups, only trust explicit group metadata.
+    // contact_name may contain participant/sender names for group messages.
     if (conv.is_group) {
       const isUsableGroupName = (value?: string | null) => {
         if (!value) return false;
@@ -747,8 +748,7 @@ const AtendimentoPage = () => {
       };
 
       if (isUsableGroupName(conv.group_name)) return String(conv.group_name).trim();
-      if (isUsableGroupName(conv.contact_name)) return String(conv.contact_name).trim();
-      return 'Grupo';
+      return 'Grupo WhatsApp';
     }
 
     const isUsableName = (value?: string | null) => {
@@ -4916,4 +4916,3 @@ const AtendimentoPage = () => {
 export default AtendimentoPage;
 
 const SAO_PAULO_TZ = "America/Sao_Paulo";
-
