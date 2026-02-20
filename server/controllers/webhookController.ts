@@ -875,28 +875,18 @@ export const getMessages = async (req: Request, res: Response) => {
 };
 // --- INSTAGRAM INTEGRATION ---
 
-export const verifyInstagramWebhook = async (req: Request, res: Response) => {
-    try {
-        const mode = req.query['hub.mode'];
-        const token = req.query['hub.verify_token'];
-        const challenge = req.query['hub.challenge'];
+export const verifyInstagramWebhook = (req: Request, res: Response) => {
+    const VERIFY_TOKEN = process.env.INSTAGRAM_VERIFY_TOKEN;
 
-        const VERIFY_TOKEN = process.env.INSTAGRAM_VERIFY_TOKEN;
+    const mode = req.query['hub.mode'];
+    const token = req.query['hub.verify_token'];
+    const challenge = req.query['hub.challenge'];
 
-        console.log(`[Instagram Webhook] Tentativa de verificaÃ§Ã£o: mode=${mode}, token=${token}`);
-
-        if (mode === 'subscribe' && token === VERIFY_TOKEN) {
-            console.log('[Instagram Webhook] Verificado com sucesso.');
-            // Meta exige que o desafio seja retornado como texto puro na resposta
-            return res.status(200).send(challenge);
-        }
-
-        console.warn(`[Instagram Webhook] Falha na verificaÃ§Ã£o. Token esperado: ${VERIFY_TOKEN ? 'Configurado' : 'AUSENTE'}`);
-        return res.sendStatus(403);
-    } catch (e) {
-        console.error('[Instagram Verify Error]', e);
-        return res.sendStatus(403);
+    if (mode === 'subscribe' && token === VERIFY_TOKEN) {
+        return res.status(200).send(challenge);
     }
+
+    return res.sendStatus(403);
 };
 
 export const verifyWhatsappOfficialWebhook = async (req: Request, res: Response) => {
