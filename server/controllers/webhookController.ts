@@ -312,7 +312,7 @@ export const handleWebhook = async (req: Request, res: Response) => {
                             if (convRes.rows.length === 0) {
                                 // CREATE
                                 const phone = extractPhoneFromJid(remoteJid);
-                                const defaultQueueId = await getOrCreateQueueId(companyId, 'Recepcao');
+                                const defaultQueueId = await getOrCreateQueueId(companyId, 'Recepção');
 
                                 // Group Name or Contact Name
                                 const contactName = isGroup
@@ -1146,7 +1146,7 @@ export const handleWhatsappOfficialWebhook = async (req: Request, res: Response)
                             } else {
                                 // Create new conversation
                                 isNew = true;
-                                const defaultQueueId = await getOrCreateQueueId(compId, 'Recepcao');
+                                const defaultQueueId = await getOrCreateQueueId(compId, 'Recepção');
 
                                 const newConv = await pool!.query(
                                     `INSERT INTO whatsapp_conversations (
@@ -1359,7 +1359,7 @@ export const handleInstagramWebhook = async (req: Request, res: Response) => {
                                     WHERE id = $4
                                 `, [finalDisplayName, username, profilePic, conversationId]);
                             } else {
-                                const defaultQueueId = await getOrCreateQueueId(company.id, 'Recepcao');
+                                const defaultQueueId = await getOrCreateQueueId(company.id, 'Recepção');
                                 // Create New Conversation
                                 const newConv = await pool!.query(`
                                     INSERT INTO whatsapp_conversations 

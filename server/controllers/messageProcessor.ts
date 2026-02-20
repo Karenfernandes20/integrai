@@ -233,7 +233,7 @@ export const processIncomingMessage = async (companyId: number, instanceName: st
         } else {
             // Create new conversation
             // For groups, we don't know the name yet. Use "Grupo + Number" 
-            const defaultQueueId = await getOrCreateQueueId(companyId, 'Recepcao');
+            const defaultQueueId = await getOrCreateQueueId(companyId, 'Recepção');
             const newConvName = isGroup ? (groupTitleFromPayload || `Grupo ${groupPhone}`) : senderContactName;
 
             // Start as PENDING (Waiting in Queue), not OPEN
