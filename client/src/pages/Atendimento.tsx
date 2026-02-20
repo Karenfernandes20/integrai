@@ -517,7 +517,15 @@ const AtendimentoPage = () => {
   }, [notificationVolume]);
 
   useEffect(() => {
+    localStorage.setItem('notification_volume', String(notificationVolume));
+  }, [notificationVolume]);
+
+  useEffect(() => {
     mutedRef.current = isNotificationMuted;
+  }, [isNotificationMuted]);
+
+  useEffect(() => {
+    localStorage.setItem('notification_muted', String(isNotificationMuted));
   }, [isNotificationMuted]);
 
   useEffect(() => {
@@ -4908,5 +4916,4 @@ const AtendimentoPage = () => {
 export default AtendimentoPage;
 
 const SAO_PAULO_TZ = "America/Sao_Paulo";
-
 
