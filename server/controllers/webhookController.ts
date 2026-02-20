@@ -585,7 +585,13 @@ export const getConversations = async (req: Request, res: Response) => {
             co.push_name as contact_push_name,
             comp.name as company_name,
             COALESCE(ci.name, c.last_instance_key, c.instance) as instance_friendly_name,
-            ci.color as instance_color,
+            COALESCE(
+                ci.color,
+                CASE
+                    WHEN c.channel = 'instagram' THEN NULLIF(comp.instagram_instances_config -> 0 ->> 'color', '')
+                    ELSE NULL
+                END
+            ) as instance_color,
             q.name as queue_name,
             q.color as queue_color,
             CASE WHEN c.status = 'OPEN' THEN au.full_name ELSE NULL END as assigned_user_name,

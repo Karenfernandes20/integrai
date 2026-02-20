@@ -18,7 +18,10 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../com
 type InstagramInstanceConfig = {
   callback_url: string;
   webhook_token: string;
+  color: string;
 };
+
+const DEFAULT_INSTAGRAM_COLOR = '#DD2A7B';
 
 const generateWebhookToken = (companyId: string | number | null | undefined, index: number) => {
   const safeCompany = String(companyId || 'empresa');
@@ -48,7 +51,8 @@ const normalizeInstagramConfigs = (
     const token = (current.webhook_token || '').trim() || generateWebhookToken(companyId, index);
     return {
       callback_url: (current.callback_url || '').trim() || buildInstagramCallbackUrl(),
-      webhook_token: token
+      webhook_token: token,
+      color: (current.color || '').trim() || DEFAULT_INSTAGRAM_COLOR
     };
   });
 };
@@ -442,7 +446,8 @@ const QrCodePage = () => {
         const token = generateWebhookToken(company?.id, index);
         next[index] = {
           callback_url: buildInstagramCallbackUrl(),
-          webhook_token: token
+          webhook_token: token,
+          color: DEFAULT_INSTAGRAM_COLOR
         };
       }
       next[index] = { ...next[index], [field]: value };
@@ -647,7 +652,7 @@ const QrCodePage = () => {
     return (
       <Card className="overflow-hidden border-zinc-200 dark:border-zinc-800 shadow-sm hover:shadow-md transition-all duration-300 bg-white/50 dark:bg-zinc-900/50 backdrop-blur-sm group relative">
         {/* Color Stripe */}
-        {type === 'whatsapp' && (
+        {(type === 'whatsapp' || type === 'instagram') && (
           <div
             className="absolute left-0 top-0 bottom-0 w-1.5 transition-all duration-300 group-hover:w-2"
             style={{ backgroundColor: color }}
@@ -793,6 +798,7 @@ const QrCodePage = () => {
               icon={Instagram}
               enabled={true}
               connected={i === 0 && company?.instagram_status === 'ATIVO'}
+              color={instagramInstanceConfigs[i]?.color || DEFAULT_INSTAGRAM_COLOR}
               onConfigure={() => { setSelectedInstagramIndex(i); setIsIgModalOpen(true); }}
               onDisconnect={() => {/* Disconnect Logic */ }}
               statusText={i === 0 && company?.instagram_status === 'ATIVO' ? "Página Vinculada" : "Aguardando Configuração"}
@@ -1184,6 +1190,23 @@ const QrCodePage = () => {
                     className="rounded-xl h-10"
                     placeholder="token_exclusivo_da_instancia"
                   />
+                </div>
+                <div className="space-y-2 md:col-span-2">
+                  <Label className="text-[11px] font-bold uppercase text-zinc-400">Cor da Faixa (Instância {selectedInstagramIndex + 1})</Label>
+                  <div className="flex items-center gap-3">
+                    <Input
+                      type="color"
+                      value={selectedInstagramConfig?.color || DEFAULT_INSTAGRAM_COLOR}
+                      onChange={(e) => handleInstagramInstanceConfigChange(selectedInstagramIndex, 'color', e.target.value)}
+                      className="h-10 w-14 rounded-xl cursor-pointer p-1"
+                    />
+                    <Input
+                      value={selectedInstagramConfig?.color || DEFAULT_INSTAGRAM_COLOR}
+                      onChange={(e) => handleInstagramInstanceConfigChange(selectedInstagramIndex, 'color', e.target.value)}
+                      className="rounded-xl h-10"
+                      placeholder="#DD2A7B"
+                    />
+                  </div>
                 </div>
               </div>
 
