@@ -39,6 +39,56 @@ const extractGroupTitle = (msg: any) => {
     return null;
 };
 
+const ensureLeadForFirstPendingMessage = async (
+    companyId: number,
+    phone: string,
+    leadName: string,
+    instanceName: string
+) => {
+    const existingLead = await pool!.query(
+        'SELECT id FROM crm_leads WHERE company_id = $1 AND phone = $2 LIMIT 1',
+        [companyId, phone]
+    );
+
+    if (existingLead.rows.length > 0) {
+        return null;
+    }
+
+    const leadsStageRes = await pool!.query(
+        `SELECT id
+         FROM crm_stages
+         WHERE company_id = $1
+           AND UPPER(TRIM(name)) = 'LEADS'
+         ORDER BY position ASC
+         LIMIT 1`,
+        [companyId]
+    );
+
+    const fallbackStageRes = leadsStageRes.rows.length > 0
+        ? { rows: [] }
+        : await pool!.query(
+            'SELECT id FROM crm_stages WHERE company_id = $1 ORDER BY position ASC LIMIT 1',
+            [companyId]
+        );
+
+    const targetStageId = leadsStageRes.rows[0]?.id || fallbackStageRes.rows[0]?.id;
+
+    if (!targetStageId) {
+        return null;
+    }
+
+    const insertedLead = await pool!.query(
+        `INSERT INTO crm_leads
+            (name, phone, stage_id, company_id, origin, description, created_at, updated_at, instance)
+         VALUES ($1, $2, $3, $4, 'WhatsApp', 'Criado automaticamente ao entrar em pendentes', NOW(), NOW(), $5)
+         ON CONFLICT (phone, company_id) DO NOTHING
+         RETURNING *`,
+        [leadName || phone, phone, targetStageId, companyId, instanceName]
+    );
+
+    return insertedLead.rows[0] || null;
+};
+
 export const processIncomingMessage = async (companyId: number, instanceName: string, msg: any) => {
     try {
         if (!pool) throw new Error("Database not configured");
@@ -197,6 +247,17 @@ export const processIncomingMessage = async (companyId: number, instanceName: st
             conversationId = newConv.rows[0].id;
             var finalConversationStatus = newConv.rows[0].status;
             console.log(`[Message Processor] Created New Conversation ${conversationId} (PENDING)`);
+
+            if (!isGroup) {
+                try {
+                    const newLead = await ensureLeadForFirstPendingMessage(companyId, senderPhone, senderContactName, instanceName);
+                    if (newLead) {
+                        console.log(`[Message Processor] ✅ Auto-created CRM lead for ${senderPhone} (company ${companyId})`);
+                    }
+                } catch (leadError: any) {
+                    console.error(`[Message Processor] ❌ Failed to auto-create CRM lead:`, leadError?.message || leadError);
+                }
+            }
         }
 
         // STEP C: Salvar mensagem no banco
