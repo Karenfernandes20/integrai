@@ -2,6 +2,42 @@
 import { Request, Response } from 'express';
 import { pool } from '../db/index.js';
 import { resolveCompanyByInstanceKey } from '../utils/evolutionUtils.js';
+import { getOrCreateQueueId } from './queueController.js';
+
+const isUsableGroupTitle = (value?: string | null) => {
+    if (!value) return false;
+    const normalized = String(value).trim();
+    if (!normalized) return false;
+    if (/@g\.us$/i.test(normalized) || /@s\.whatsapp\.net$/i.test(normalized)) return false;
+    if (/^grupo\s+\d+$/i.test(normalized)) return false;
+    if (/^\d{8,16}$/.test(normalized)) return false;
+    return true;
+};
+
+const extractGroupTitle = (msg: any) => {
+    const m = msg?.message || {};
+    const contextInfo =
+        m?.extendedTextMessage?.contextInfo
+        || m?.imageMessage?.contextInfo
+        || m?.videoMessage?.contextInfo
+        || m?.documentMessage?.contextInfo
+        || {};
+
+    const candidates = [
+        msg?.groupName,
+        msg?.groupSubject,
+        msg?.subject,
+        contextInfo?.groupSubject,
+    ];
+
+    for (const candidate of candidates) {
+        if (isUsableGroupTitle(candidate)) {
+            return String(candidate).trim();
+        }
+    }
+
+    return null;
+};
 
 export const processIncomingMessage = async (companyId: number, instanceName: string, msg: any) => {
     try {
@@ -32,7 +68,8 @@ export const processIncomingMessage = async (companyId: number, instanceName: st
         const messageType = msg.messageType || (msg.message ? Object.keys(msg.message)[0] : 'unknown');
 
         // For groups, the sender is the participant
-        const participant = isGroup ? (key.participant || msg.participant) : remoteJid;
+        const participant = isGroup ? (key.participantAlt || msg.participantAlt || key.participant || msg.participant || remoteJid) : remoteJid;
+        const groupTitleFromPayload = isGroup ? extractGroupTitle(msg) : null;
 
         // 2. Extract Content & Type
         let content = "";
@@ -112,7 +149,11 @@ export const processIncomingMessage = async (companyId: number, instanceName: st
                 nameUpdateQuery = ", contact_name = $4";
                 params.push(senderContactName);
             } else {
-                if (!convRes.rows[0].contact_name) {
+                const currentGroupName = convRes.rows[0].contact_name;
+                if (groupTitleFromPayload && (!currentGroupName || !isUsableGroupTitle(currentGroupName))) {
+                    nameUpdateQuery = ", contact_name = $4, group_name = $4";
+                    params.push(groupTitleFromPayload);
+                } else if (!currentGroupName) {
                     nameUpdateQuery = ", contact_name = $4";
                     params.push("Grupo " + groupPhone);
                 }
@@ -142,15 +183,16 @@ export const processIncomingMessage = async (companyId: number, instanceName: st
         } else {
             // Create new conversation
             // For groups, we don't know the name yet. Use "Grupo + Number" 
-            const newConvName = isGroup ? `Grupo ${groupPhone}` : senderContactName;
+            const defaultQueueId = await getOrCreateQueueId(companyId, 'Recepcao');
+            const newConvName = isGroup ? (groupTitleFromPayload || `Grupo ${groupPhone}`) : senderContactName;
 
             // Start as PENDING (Waiting in Queue), not OPEN
             const newConv = await pool.query(`
                 INSERT INTO whatsapp_conversations 
-                    (external_id, phone, contact_name, instance, last_message, last_message_at, unread_count, company_id, status, user_id, is_group)
-                VALUES ($1, $2, $3, $4, $5, NOW(), 1, $6, 'PENDING', NULL, $7)
+                    (external_id, phone, contact_name, instance, last_message, last_message_at, unread_count, company_id, status, user_id, is_group, group_name, queue_id, channel)
+                VALUES ($1, $2, $3, $4, $5, NOW(), 1, $6, 'PENDING', NULL, $7, $8, $9, 'whatsapp')
                 RETURNING id, status
-            `, [remoteJid, isGroup ? groupPhone : senderPhone, newConvName, instanceName, content, companyId, isGroup]);
+            `, [remoteJid, isGroup ? groupPhone : senderPhone, newConvName, instanceName, content, companyId, isGroup, isGroup ? newConvName : null, defaultQueueId]);
 
             conversationId = newConv.rows[0].id;
             var finalConversationStatus = newConv.rows[0].status;
