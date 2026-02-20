@@ -18,7 +18,10 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../com
 type InstagramInstanceConfig = {
   callback_url: string;
   webhook_token: string;
+  color: string;
 };
+
+const DEFAULT_INSTAGRAM_COLOR = '#DD2A7B';
 
 const generateWebhookToken = (companyId: string | number | null | undefined, index: number) => {
   const safeCompany = String(companyId || 'empresa');
@@ -48,7 +51,8 @@ const normalizeInstagramConfigs = (
     const token = (current.webhook_token || '').trim() || generateWebhookToken(companyId, index);
     return {
       callback_url: (current.callback_url || '').trim() || buildInstagramCallbackUrl(),
-      webhook_token: token
+      webhook_token: token,
+      color: (current.color || '').trim() || DEFAULT_INSTAGRAM_COLOR
     };
   });
 };
@@ -442,7 +446,8 @@ const QrCodePage = () => {
         const token = generateWebhookToken(company?.id, index);
         next[index] = {
           callback_url: buildInstagramCallbackUrl(),
-          webhook_token: token
+          webhook_token: token,
+          color: DEFAULT_INSTAGRAM_COLOR
         };
       }
       next[index] = { ...next[index], [field]: value };
@@ -647,7 +652,7 @@ const QrCodePage = () => {
     return (
       <Card className="overflow-hidden border-zinc-200 dark:border-zinc-800 shadow-sm hover:shadow-md transition-all duration-300 bg-white/50 dark:bg-zinc-900/50 backdrop-blur-sm group relative">
         {/* Color Stripe */}
-        {type === 'whatsapp' && (
+        {(type === 'whatsapp' || type === 'instagram') && (
           <div
             className="absolute left-0 top-0 bottom-0 w-1.5 transition-all duration-300 group-hover:w-2"
             style={{ backgroundColor: color }}
@@ -793,6 +798,7 @@ const QrCodePage = () => {
               icon={Instagram}
               enabled={true}
               connected={i === 0 && company?.instagram_status === 'ATIVO'}
+              color={instagramInstanceConfigs[i]?.color || DEFAULT_INSTAGRAM_COLOR}
               onConfigure={() => { setSelectedInstagramIndex(i); setIsIgModalOpen(true); }}
               onDisconnect={() => {/* Disconnect Logic */ }}
               statusText={i === 0 && company?.instagram_status === 'ATIVO' ? "Página Vinculada" : "Aguardando Configuração"}
@@ -1114,14 +1120,14 @@ const QrCodePage = () => {
 
         {/* IG MODAL - Placeholder for modern UI */}
         <Dialog open={isIgModalOpen} onOpenChange={setIsIgModalOpen}>
-          <DialogContent className="sm:max-w-[600px] p-0 overflow-hidden border-none shadow-2xl rounded-3xl">
+          <DialogContent className="sm:max-w-[600px] max-h-[90vh] p-0 overflow-hidden border-none shadow-2xl rounded-3xl flex flex-col">
             <div className="bg-gradient-to-r from-purple-600 to-pink-600 p-8 text-white">
               <DialogTitle className="text-2xl font-bold flex items-center gap-3">
                 <Instagram className="h-7 w-7" /> Instagram Business
               </DialogTitle>
               <p className="text-purple-50/80 mt-1">Conecte sua conta profissional para automação de directs.</p>
             </div>
-            <div className="p-6 grid gap-4">
+            <div className="p-6 grid gap-4 overflow-y-auto">
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label className="text-[11px] font-bold uppercase text-zinc-400">Facebook App ID</Label>
@@ -1185,6 +1191,23 @@ const QrCodePage = () => {
                     placeholder="token_exclusivo_da_instancia"
                   />
                 </div>
+                <div className="space-y-2 md:col-span-2">
+                  <Label className="text-[11px] font-bold uppercase text-zinc-400">Cor da Faixa (Instância {selectedInstagramIndex + 1})</Label>
+                  <div className="flex items-center gap-3">
+                    <Input
+                      type="color"
+                      value={selectedInstagramConfig?.color || DEFAULT_INSTAGRAM_COLOR}
+                      onChange={(e) => handleInstagramInstanceConfigChange(selectedInstagramIndex, 'color', e.target.value)}
+                      className="h-10 w-14 rounded-xl cursor-pointer p-1"
+                    />
+                    <Input
+                      value={selectedInstagramConfig?.color || DEFAULT_INSTAGRAM_COLOR}
+                      onChange={(e) => handleInstagramInstanceConfigChange(selectedInstagramIndex, 'color', e.target.value)}
+                      className="rounded-xl h-10"
+                      placeholder="#DD2A7B"
+                    />
+                  </div>
+                </div>
               </div>
 
               <Button
@@ -1194,7 +1217,7 @@ const QrCodePage = () => {
               >
                 Testar Integração Instagram
               </Button>
-              <DialogFooter className="pt-4 border-t mt-2 flex justify-between gap-2 px-0">
+              <DialogFooter className="pt-4 border-t mt-2 flex justify-between gap-2 px-0 sticky bottom-0 bg-background">
                 <Button variant="outline" onClick={() => setIsIgModalOpen(false)} className="rounded-xl px-6 font-bold h-11">
                   Cancelar
                 </Button>
@@ -1212,14 +1235,14 @@ const QrCodePage = () => {
 
         {/* MESSENGER MODAL */}
         <Dialog open={isMeModalOpen} onOpenChange={setIsMeModalOpen}>
-          <DialogContent className="sm:max-w-[600px] p-0 overflow-hidden border-none shadow-2xl rounded-3xl">
+          <DialogContent className="sm:max-w-[600px] max-h-[90vh] p-0 overflow-hidden border-none shadow-2xl rounded-3xl flex flex-col">
             <div className="bg-blue-600 p-8 text-white">
               <DialogTitle className="text-2xl font-bold flex items-center gap-3">
                 <MessageCircle className="h-7 w-7" /> Facebook Messenger
               </DialogTitle>
               <p className="text-blue-50/80 mt-1">Integre sua Fan Page para centralizar as mensagens do Messenger.</p>
             </div>
-            <div className="p-6 grid gap-4">
+            <div className="p-6 grid gap-4 overflow-y-auto">
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label className="text-[11px] font-bold uppercase text-zinc-400">Facebook App ID</Label>
@@ -1245,7 +1268,7 @@ const QrCodePage = () => {
               >
                 Testar Messenger
               </Button>
-              <DialogFooter className="pt-4 border-t mt-2 flex justify-end gap-2 px-0">
+              <DialogFooter className="pt-4 border-t mt-2 flex justify-end gap-2 px-0 sticky bottom-0 bg-background">
                 <Button variant="ghost" onClick={() => setIsMeModalOpen(false)} className="rounded-xl px-4">Fechar</Button>
                 <Button className="rounded-xl bg-blue-600 hover:bg-blue-700 px-8 font-bold text-white shadow-lg" onClick={() => handleSaveCompany(false)} disabled={isLoading}>
                   {isLoading ? "Salvando..." : "Salvar"}
