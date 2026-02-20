@@ -2035,37 +2035,44 @@ export const handleEvolutionWebhook = async (req: Request, res: Response) => {
       || normalizedEventType === "message_received"
       || normalizedEventType === "message.received"
     ) {
-      await ensureCompanyInstanceRegistration(resolvedCompanyId, instance);
-
       const messages = data?.messages
         || body.messages
         || (Array.isArray(data) ? data : null)
         || (data?.key ? [data] : [])
         || (body?.key ? [body] : []);
 
-      for (const msg of messages) {
-        const result = await processIncomingMessage(resolvedCompanyId, instance, msg);
+      const io = req.app.get('io');
 
-        if (result) {
-          // 3. Emit Socket Event
-          const io = req.app.get('io');
-          if (io) {
-            const payload = {
-              ...result.message,
-              conversation_id: result.conversationId,
-              phone: result.phone,
-              contact_name: result.contactName,
-              instance: instance,
-              conversation_status: result.conversationStatus
-            };
+      void (async () => {
+        try {
+          await ensureCompanyInstanceRegistration(resolvedCompanyId, instance);
 
-            const room = `company_${resolvedCompanyId}`;
-            console.log(`[Webhook] Emitindo para sala: ${room} (Status: ${result.conversationStatus})`);
-            io.to(room).emit("message:received", payload);
-            io.to(`instance_${instance}`).emit("message:received", payload);
+          for (const msg of messages) {
+            const result = await processIncomingMessage(resolvedCompanyId, instance, msg);
+
+            if (result && io) {
+              const payload = {
+                ...result.message,
+                conversation_id: result.conversationId,
+                phone: result.phone,
+                contact_name: result.contactName,
+                instance: instance,
+                conversation_status: result.conversationStatus
+              };
+
+              const room = `company_${resolvedCompanyId}`;
+              console.log(`[Webhook][Async] Emitindo para sala: ${room} (Status: ${result.conversationStatus})`);
+              io.to(room).emit("message:received", payload);
+              io.to(`instance_${instance}`).emit("message:received", payload);
+            }
           }
+        } catch (asyncErr) {
+          console.error('[Webhook][Async] Falha ao processar mensagens:', asyncErr);
         }
-      }
+      })();
+
+      // ACK imediato para evitar timeout/retries da Evolution e processar em background.
+      // Isso reduz bastante a latência percebida no sistema quando chegam vários eventos.
       return res.status(200).send("OK");
     }
 
