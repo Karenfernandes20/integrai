@@ -12,6 +12,31 @@ import { sendWhatsAppMessage } from '../services/whatsappService';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+
+const insertCampaignContacts = async (campaignId: number, contacts: any[]) => {
+    if (!contacts?.length) return;
+
+    const values: any[] = [];
+    const placeholders: string[] = [];
+
+    contacts.forEach((contact, index) => {
+        const offset = index * 4;
+        placeholders.push(`($${offset + 1}, $${offset + 2}, $${offset + 3}, $${offset + 4})`);
+        values.push(
+            campaignId,
+            String(contact.phone || '').trim(),
+            String(contact.name || '').trim(),
+            JSON.stringify(contact.variables || {})
+        );
+    });
+
+    await pool!.query(
+        `INSERT INTO whatsapp_campaign_contacts (campaign_id, phone, name, variables)
+         VALUES ${placeholders.join(',')}`,
+        values
+    );
+};
+
 // Helper to validate Media URL
 async function validateMediaUrl(url: string, type: string): Promise<{ valid: boolean; error?: string }> {
     if (!url) return { valid: true }; // No media is valid
@@ -155,14 +180,7 @@ export const createCampaign = async (req: Request, res: Response) => {
 
         // Insert contacts
         if (contacts && contacts.length > 0) {
-            const contactValues = contacts.map((c: any) =>
-                `(${campaign.id}, '${c.phone}', '${c.name || ''}', '${JSON.stringify(c.variables || {})}')`
-            ).join(',');
-
-            await pool.query(`
-                INSERT INTO whatsapp_campaign_contacts (campaign_id, phone, name, variables)
-                VALUES ${contactValues}
-            `);
+            await insertCampaignContacts(campaign.id, contacts);
         }
 
         res.json(campaign);
@@ -410,14 +428,7 @@ export const updateCampaign = async (req: Request, res: Response) => {
 
             // Insert new contacts
             if (contacts.length > 0) {
-                const contactValues = contacts.map((c: any) =>
-                    `(${id}, '${c.phone}', '${c.name || ''}', '${JSON.stringify(c.variables || {})}')`
-                ).join(',');
-
-                await pool.query(`
-                    INSERT INTO whatsapp_campaign_contacts (campaign_id, phone, name, variables)
-                    VALUES ${contactValues}
-                `);
+                await insertCampaignContacts(parseInt(id), contacts);
 
                 // Update total_contacts count
                 await pool.query(
@@ -500,7 +511,7 @@ async function processCampaign(campaignId: number, io?: any) {
 
         // Check if campaign is still valid and connected
         const campaignResult = await lockClient.query(`
-            SELECT wc.*, ci.status as instance_status, ci.name as instance_name 
+            SELECT wc.*, ci.status as instance_status, ci.name as instance_name, ci.instance_key as instance_key
             FROM whatsapp_campaigns wc
             LEFT JOIN company_instances ci ON wc.instance_id = ci.id
             WHERE wc.id = $1
@@ -616,7 +627,8 @@ async function processCampaign(campaignId: number, io?: any) {
                         io,
                         mediaUrl: campaign.media_url,
                         mediaType: campaign.media_type,
-                        campaignId: campaign.id
+                        campaignId: campaign.id,
+                        instanceKey: campaign.instance_key || campaign.instance_name || undefined
                     });
 
                     // 20s hard timeout for the send operation

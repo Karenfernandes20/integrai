@@ -20,7 +20,8 @@ export async function sendWhatsAppMessage({
     mediaType,
     campaignId,
     followUpId,
-    userName
+    userName,
+    instanceKey
 }: {
     companyId: number | null,
     phone: string,
@@ -32,13 +33,19 @@ export async function sendWhatsAppMessage({
     mediaType?: string | null,
     campaignId?: number,
     followUpId?: number,
-    userName?: string
+    userName?: string,
+    instanceKey?: string
 }): Promise<{ success: boolean; error?: string }> {
     try {
         if (!pool) return { success: false, error: 'Database not configured' };
 
         // 1. Resolve Evolution Config
-        const config = await getEvolutionConfig({ id: userId, company_id: companyId }, 'whatsapp_service', companyId as number);
+        const config = await getEvolutionConfig(
+            { id: userId, company_id: companyId },
+            'whatsapp_service',
+            companyId as number,
+            instanceKey
+        );
 
         let evolution_instance = config.instance;
         let evolution_apikey = config.apikey;
