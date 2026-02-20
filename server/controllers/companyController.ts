@@ -5,6 +5,106 @@ import { getEvolutionConfig } from './evolutionController';
 import { validateInstagramCredentials } from '../services/instagramService';
 import { validateMetaConnection, validateWhatsappMetaPayload } from '../services/whatsappMetaService';
 
+const normalizeDateAtNoon = (value?: string | Date | null) => {
+    if (!value) return null;
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return null;
+    date.setHours(12, 0, 0, 0);
+    return date;
+};
+
+const getSafeDueDay = (year: number, monthIndex: number, dueDay: number) => {
+    const lastDay = new Date(year, monthIndex + 1, 0).getDate();
+    return Math.min(Math.max(dueDay, 1), lastDay);
+};
+
+const resolvePlanMonthlyAmount = (planRow: any) => {
+    if (!planRow) return 0;
+
+    const candidates = ['price', 'monthly_price', 'monthly_amount', 'amount', 'valor'];
+    for (const key of candidates) {
+        if (planRow[key] !== undefined && planRow[key] !== null) {
+            const parsed = Number(planRow[key]);
+            if (!Number.isNaN(parsed) && parsed > 0) return parsed;
+        }
+    }
+
+    const name = String(planRow.name || '').trim().toLowerCase();
+    if (name === 'básico' || name === 'basico') return 497;
+    if (name === 'avançado' || name === 'avancado') return 597;
+    return 0;
+};
+
+const seedCompanyPlanExpenses = async (company: any) => {
+    if (!pool || !company?.id || !company?.plan_id || !company?.due_date) return;
+
+    const finalDueDate = normalizeDateAtNoon(company.due_date);
+    if (!finalDueDate) return;
+
+    const planRes = await pool.query('SELECT * FROM plans WHERE id = $1 LIMIT 1', [company.plan_id]);
+    if (!planRes.rows.length) return;
+
+    const plan = planRes.rows[0];
+    const monthlyAmount = resolvePlanMonthlyAmount(plan);
+    if (monthlyAmount <= 0) {
+        console.log(`[Company ${company.id}] Plano sem valor mensal configurado. Pulando geração de cobranças.`);
+        return;
+    }
+
+    const now = normalizeDateAtNoon(new Date())!;
+    const dueDay = finalDueDate.getDate();
+    const firstDueMonth = new Date(now.getFullYear(), now.getMonth() + 1, 1, 12, 0, 0, 0);
+    const firstDueDate = new Date(
+        firstDueMonth.getFullYear(),
+        firstDueMonth.getMonth(),
+        getSafeDueDay(firstDueMonth.getFullYear(), firstDueMonth.getMonth(), dueDay),
+        12,
+        0,
+        0,
+        0
+    );
+
+    if (firstDueDate > finalDueDate) {
+        console.log(`[Company ${company.id}] Data final (${finalDueDate.toISOString()}) anterior ao 1º vencimento (${firstDueDate.toISOString()}).`);
+        return;
+    }
+
+    const rows: any[] = [];
+    let cursor = new Date(firstDueDate);
+    let guard = 0;
+
+    while (cursor <= finalDueDate && guard < 240) {
+        rows.push({
+            description: `Mensalidade do sistema - Plano ${plan.name}`,
+            type: 'payable',
+            amount: monthlyAmount,
+            status: 'pending',
+            due_date: cursor.toISOString(),
+            issue_date: now.toISOString(),
+            category: 'Assinatura',
+            notes: 'Gerado automaticamente no cadastro da empresa.',
+            company_id: company.id
+        });
+
+        const nextMonth = cursor.getMonth() + 1;
+        const nextYear = cursor.getFullYear() + Math.floor(nextMonth / 12);
+        const normalizedMonth = nextMonth % 12;
+        const safeDay = getSafeDueDay(nextYear, normalizedMonth, dueDay);
+        cursor = new Date(nextYear, normalizedMonth, safeDay, 12, 0, 0, 0);
+        guard += 1;
+    }
+
+    for (const row of rows) {
+        await pool.query(
+            `INSERT INTO financial_transactions (description, type, amount, status, due_date, issue_date, category, notes, company_id)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+            [row.description, row.type, row.amount, row.status, row.due_date, row.issue_date, row.category, row.notes, row.company_id]
+        );
+    }
+
+    console.log(`[Company ${company.id}] Geradas ${rows.length} despesas mensais do plano.`);
+};
+
 export const getCompanies = async (req: Request, res: Response) => {
     try {
         if (!pool) return res.status(500).json({ error: 'Database not configured' });
@@ -173,6 +273,12 @@ export const createCompany = async (req: Request, res: Response) => {
 
         const newCompany = result.rows[0];
         const user = (req as any).user;
+
+        try {
+            await seedCompanyPlanExpenses(newCompany);
+        } catch (financialSeedErr) {
+            console.error(`[Company ${newCompany.id}] Failed to seed financial plan expenses:`, financialSeedErr);
+        }
 
         // Audit Log
         if (user) {
