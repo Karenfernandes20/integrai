@@ -863,32 +863,34 @@ const QrCodePage = () => {
                 </Select>
               </div>
 
+              {selectedInstance && (
+                <div className="space-y-4 p-4 bg-zinc-50 dark:bg-zinc-900/50 rounded-2xl border border-zinc-100 dark:border-zinc-800 animate-in slide-in-from-top-4 duration-500">
+                  <div className="space-y-2">
+                    <Label className="text-[10px] font-bold uppercase text-zinc-500">Nome de Apresentação do Canal</Label>
+                    <Input
+                      value={selectedInstance.name || ""}
+                      onChange={(e) => setSelectedInstance(prev => prev ? { ...prev, name: e.target.value } : null)}
+                      className="h-10 rounded-xl bg-white dark:bg-zinc-900 border-zinc-200 dark:border-zinc-800 focus:ring-primary/20"
+                      placeholder="Ex: Comercial, Suporte, etc."
+                    />
+                  </div>
+                </div>
+              )}
+
               {isEvolutionChannel && (
                 <>
-              {/* UNIVERSAL INSTANCE NAMING */}
               <div className="space-y-4 p-4 bg-zinc-50 dark:bg-zinc-900/50 rounded-2xl border border-zinc-100 dark:border-zinc-800 animate-in slide-in-from-top-4 duration-500">
                 {selectedInstance && (
                   <div className="grid grid-cols-2 gap-4 animate-in fade-in duration-300">
                     <div className="space-y-2">
-                      <Label className="text-[10px] font-bold uppercase text-zinc-500">Nome Amigável (Ex: Comercial)</Label>
+                      <Label className="text-[10px] font-bold uppercase text-zinc-500">Chave da Instância <span className="text-red-500">*</span></Label>
                       <Input
-                        value={selectedInstance.name || ""}
-                        onChange={(e) => setSelectedInstance(prev => prev ? { ...prev, name: e.target.value } : null)}
-                        className="h-10 rounded-xl bg-white dark:bg-zinc-900 border-zinc-200 dark:border-zinc-800 focus:ring-primary/20"
-                        placeholder="Ex: Comercial, Suporte, etc."
+                        value={selectedInstance.instance_key || ""}
+                        onChange={(e) => setSelectedInstance(prev => prev ? { ...prev, instance_key: e.target.value } : null)}
+                        className="h-10 rounded-xl bg-white dark:bg-zinc-900 border-zinc-200 dark:border-zinc-800"
+                        placeholder="Ex: comercial01"
                       />
                     </div>
-                    {isEvolutionChannel && (
-                      <div className="space-y-2">
-                        <Label className="text-[10px] font-bold uppercase text-zinc-500">Chave da Instância <span className="text-red-500">*</span></Label>
-                        <Input
-                          value={selectedInstance.instance_key || ""}
-                          onChange={(e) => setSelectedInstance(prev => prev ? { ...prev, instance_key: e.target.value } : null)}
-                          className="h-10 rounded-xl bg-white dark:bg-zinc-900 border-zinc-200 dark:border-zinc-800"
-                          placeholder="Ex: comercial01"
-                        />
-                      </div>
-                    )}
                   </div>
                 )}
                 {selectedInstance && (
