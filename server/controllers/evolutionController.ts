@@ -20,6 +20,52 @@ import { processIncomingMessage } from "./messageProcessor.js";
 const DEFAULT_URL = "https://freelasdekaren-evolution-api.nhvvzr.easypanel.host";
 const GLOBAL_API_KEY = "5A44C72AAB33-42BD-968A-27EB8E14BE6F";
 
+const resolveBackendUrl = (req: Request) => {
+  let protocol = req.headers['x-forwarded-proto'] || req.protocol;
+  const host = req.get('host');
+  if (host && !host.includes('localhost') && !host.includes('127.0.0.1')) {
+    protocol = 'https';
+  }
+  const rawBackendUrl = process.env.BACKEND_URL || `${protocol}://${host}`;
+  return rawBackendUrl.replace(/\/$/, '');
+};
+
+const ensureCompanyInstanceRegistration = async (
+  companyId: number,
+  instanceKey: string,
+  apiKey?: string,
+  status: string = 'disconnected'
+) => {
+  if (!pool || !companyId || !instanceKey) return;
+
+  const normalizedInstance = String(instanceKey).trim();
+  if (!normalizedInstance) return;
+
+  await pool.query(
+    `INSERT INTO company_instances (company_id, name, instance_key, api_key, status, created_at, updated_at)
+     VALUES ($1, $2, $2, $3, $4, NOW(), NOW())
+     ON CONFLICT (instance_key) DO UPDATE
+     SET company_id = EXCLUDED.company_id,
+         name = COALESCE(NULLIF(company_instances.name, ''), EXCLUDED.name),
+         api_key = COALESCE(EXCLUDED.api_key, company_instances.api_key),
+         status = CASE
+           WHEN EXCLUDED.status IN ('connected', 'open') THEN EXCLUDED.status
+           ELSE company_instances.status
+         END,
+         updated_at = NOW()`,
+    [companyId, normalizedInstance, apiKey || null, status]
+  );
+
+  await pool.query(
+    `UPDATE companies
+     SET evolution_instance = $1,
+         evolution_apikey = COALESCE($2, evolution_apikey),
+         updated_at = NOW()
+     WHERE id = $3`,
+    [normalizedInstance, apiKey || null, companyId]
+  );
+};
+
 /**
  * STRICT Instance Resolver for SaaS Multi-tenant
  */
@@ -260,6 +306,12 @@ export const getEvolutionQrCode = async (req: Request, res: Response) => {
     // Prepare connection URL
     // SANITIZE INSTANCE NAME: Evolution API doesn't like spaces
     const sanitizedInstance = EVOLUTION_INSTANCE.replace(/\s+/g, '_').replace(/[^a-zA-Z0-9_-]/g, '');
+
+    // Standardize SaaS flow: whenever QR is requested, ensure this instance is mapped to the company
+    if (config.company_id) {
+      await ensureCompanyInstanceRegistration(config.company_id, sanitizedInstance, EVOLUTION_API_KEY, 'disconnected');
+    }
+
     const connectUrl = `${EVOLUTION_API_URL.replace(/\/$/, "")}/instance/connect/${sanitizedInstance}`;
     console.log(`[Evolution] Fetching QR Code from: ${connectUrl}`);
 
@@ -307,17 +359,14 @@ export const getEvolutionQrCode = async (req: Request, res: Response) => {
 
           // AUTO-REGISTER WEBHOOK immediately after creation (Definitive Solution)
           try {
-            let protocol = req.headers['x-forwarded-proto'] || req.protocol;
-            let host = req.get('host');
-            if (host && !host.includes('localhost') && !host.includes('127.0.0.1')) {
-              protocol = 'https';
-            }
-            const rawBackendUrl = process.env.BACKEND_URL || `${protocol}://${host}`;
-            const backendUrl = rawBackendUrl.replace(/\/$/, "");
+            const backendUrl = resolveBackendUrl(req);
 
             ensureWebhook(sanitizedInstance, EVOLUTION_API_URL, EVOLUTION_API_KEY, backendUrl)
               .catch(e => console.error("[Evolution] ensureWebhook failed after creation:", e));
 
+            if (config.company_id) {
+              await ensureCompanyInstanceRegistration(config.company_id, sanitizedInstance, EVOLUTION_API_KEY, 'disconnected');
+            }
           } catch (e) { }
 
           return res.status(200).json({
@@ -363,17 +412,14 @@ export const getEvolutionQrCode = async (req: Request, res: Response) => {
 
     // AUTO-REGISTER WEBHOOK (Definitive Solution)
     try {
-      let protocol = req.headers['x-forwarded-proto'] || req.protocol;
-      let host = req.get('host');
-      if (host && !host.includes('localhost') && !host.includes('127.0.0.1')) {
-        protocol = 'https';
-      }
-      const rawBackendUrl = process.env.BACKEND_URL || `${protocol}://${host}`;
-      const backendUrl = rawBackendUrl.replace(/\/$/, "");
+      const backendUrl = resolveBackendUrl(req);
 
       ensureWebhook(sanitizedInstance, EVOLUTION_API_URL, EVOLUTION_API_KEY, backendUrl)
         .catch(e => console.error("[Evolution] ensureWebhook failed on QR request:", e));
 
+      if (config.company_id) {
+        await ensureCompanyInstanceRegistration(config.company_id, sanitizedInstance, EVOLUTION_API_KEY, 'disconnected');
+      }
     } catch (e) {
       console.warn("[Evolution] Webhook auto-registration failed silently", e);
     }
@@ -1922,8 +1968,10 @@ export const createEvolutionContact = async (req: Request, res: Response) => {
 export const handleEvolutionWebhook = async (req: Request, res: Response) => {
   try {
     const body = req.body;
-    const { type, data, instance } = body;
-    const eventType = type || body.event;
+    const { type, data } = body;
+    const eventType = type || body.event || body.type;
+    const normalizedEventType = String(eventType || '').toLowerCase();
+    const instance = body.instance || body.instanceName || data?.instance || data?.instanceName;
 
     console.log(`[Webhook] Recebido: ${eventType} | Instância: ${instance}`);
 
@@ -1943,15 +1991,18 @@ export const handleEvolutionWebhook = async (req: Request, res: Response) => {
     console.log(`[Webhook] Processando para Empresa ID: ${resolvedCompanyId}`);
 
     // CONNECTION UPDATE HANDLING
-    if (eventType === "CONNECTION_UPDATE") {
+    if (normalizedEventType === "connection_update" || normalizedEventType === "connection.update") {
       const state = data?.state || body.state;
       const rawNumber = data?.number || body.number;
       const cleanNumber = rawNumber ? rawNumber.split(':')[0] : null;
 
       if (pool) {
+        const normalizedState = state === 'open' ? 'connected' : (state || 'disconnected');
+
+        await ensureCompanyInstanceRegistration(resolvedCompanyId, instance, undefined, normalizedState);
         await pool.query(
-          'UPDATE company_instances SET status = $1, phone = COALESCE($2, phone) WHERE (instance_key = $3 OR name = $3) AND company_id = $4',
-          [state === 'open' ? 'connected' : (state || 'disconnected'), cleanNumber, instance, resolvedCompanyId]
+          'UPDATE company_instances SET status = $1, phone = COALESCE($2, phone), updated_at = NOW() WHERE (instance_key = $3 OR name = $3) AND company_id = $4',
+          [normalizedState, cleanNumber, instance, resolvedCompanyId]
         );
         console.log(`[Webhook] Status da instância ${instance} atualizado para ${state}`);
 
@@ -1960,17 +2011,13 @@ export const handleEvolutionWebhook = async (req: Request, res: Response) => {
           try {
             const config = await getEvolutionConfig({ company_id: resolvedCompanyId }, 'webhook_open', resolvedCompanyId, instance);
             if (config.url && config.apikey) {
-              let protocol = req.headers['x-forwarded-proto'] || req.protocol;
-              let host = req.get('host');
-              if (host && !host.includes('localhost') && !host.includes('127.0.0.1')) {
-                protocol = 'https';
-              }
-              const rawBackendUrl = process.env.BACKEND_URL || `${protocol}://${host}`;
-              const backendUrl = rawBackendUrl.replace(/\/$/, "");
+              const backendUrl = resolveBackendUrl(req);
 
               // Non-blocking call
               ensureWebhook(instance, config.url, config.apikey, backendUrl)
                 .catch(e => console.error(`[Webhook] Failed to ensure webhook on OPEN:`, e));
+
+              await ensureCompanyInstanceRegistration(resolvedCompanyId, instance, config.apikey, 'connected');
             }
           } catch (confErr) {
             console.warn(`[Webhook] Error resolving config for ensureWebhook:`, confErr);
@@ -1982,8 +2029,19 @@ export const handleEvolutionWebhook = async (req: Request, res: Response) => {
 
     // MESSAGES HANDLING
     // MESSAGES HANDLING (Definitive Solution)
-    if (eventType === "MESSAGES_UPSERT" || eventType === "MESSAGE_RECEIVED") {
-      const messages = data?.messages || body.messages || (data?.key ? [data] : []);
+    if (
+      normalizedEventType === "messages_upsert"
+      || normalizedEventType === "messages.upsert"
+      || normalizedEventType === "message_received"
+      || normalizedEventType === "message.received"
+    ) {
+      await ensureCompanyInstanceRegistration(resolvedCompanyId, instance);
+
+      const messages = data?.messages
+        || body.messages
+        || (Array.isArray(data) ? data : null)
+        || (data?.key ? [data] : [])
+        || (body?.key ? [body] : []);
 
       for (const msg of messages) {
         const result = await processIncomingMessage(resolvedCompanyId, instance, msg);

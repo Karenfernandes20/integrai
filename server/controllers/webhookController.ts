@@ -535,7 +535,7 @@ export const getConversations = async (req: Request, res: Response) => {
 
             return res.json(groupResult.rows.map((row: any) => ({
                 ...row,
-                group_subject: row.group_subject || (row.channel === 'instagram' ? 'Grupo Instagram' : 'Grupo WhatsApp')
+                group_subject: row.group_subject || row.group_name || row.contact_name || (row.channel === 'instagram' ? 'Grupo Instagram' : 'Grupo WhatsApp')
             })));
         }
 
