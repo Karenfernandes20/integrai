@@ -2766,8 +2766,11 @@ const AtendimentoPage = () => {
     }
 
     try {
-      // Se for uma conversa temporária, primeiro precisamos garantir que ela exista no banco
-      if (String(conv.id).startsWith('temp')) {
+      const convIdAsNumber = Number(conv.id);
+      const hasPersistedConversationId = Number.isFinite(convIdAsNumber) && convIdAsNumber > 0;
+
+      // Se a conversa não tiver um ID persistido no banco (temp, placeholder, etc.), cria/garante primeiro
+      if (!hasPersistedConversationId) {
         console.log('[handleStartAtendimento] Temporary conversation detected. Ensuring it exists in DB...');
         const ensureRes = await fetch('/api/crm/conversations/ensure', {
           method: "POST",
@@ -2790,8 +2793,15 @@ const AtendimentoPage = () => {
           conv = { ...ensuredConv, status: 'PENDING' };
           setSelectedConversation(conv);
         } else {
-          const err = await ensureRes.json();
-          throw new Error(err.error || "Erro ao criar conversa no banco");
+          let errorMessage = "Erro ao criar conversa no banco";
+          try {
+            const err = await ensureRes.json();
+            errorMessage = err.error || errorMessage;
+          } catch {
+            const errText = await ensureRes.text();
+            if (errText) errorMessage = errText;
+          }
+          throw new Error(errorMessage);
         }
       }
 
