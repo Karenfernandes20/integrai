@@ -1245,18 +1245,32 @@ export const syncEvolutionContacts = async (req: Request, res: Response) => {
 
     // 1. Determine which instances to process
     if (specificInstanceKey) {
-      instancesToProcess = [specificInstanceKey];
+      instancesToProcess = [specificInstanceKey.trim()];
     } else {
       if (pool && resolvedCompanyId) {
         const resInst = await pool.query('SELECT instance_key FROM company_instances WHERE company_id = $1', [resolvedCompanyId]);
         if (resInst.rows.length > 0) {
           instancesToProcess = resInst.rows.map(r => r.instance_key);
         }
+
+        // Fallback to main company instance (only when explicitly configured)
+        if (instancesToProcess.length === 0) {
+          const mainInstRes = await pool.query('SELECT evolution_instance FROM companies WHERE id = $1', [resolvedCompanyId]);
+          const mainInstance = mainInstRes.rows?.[0]?.evolution_instance;
+          if (mainInstance && typeof mainInstance === 'string') {
+            instancesToProcess = [mainInstance.trim()];
+          }
+        }
       }
-      // Fallback: If no multi-instances found, try one pass with explicit undefined to trigger getEvolutionConfig default logic
-      if (instancesToProcess.length === 0) {
-        instancesToProcess = [undefined as any];
-      }
+    }
+
+    instancesToProcess = [...new Set(instancesToProcess.filter((value) => !!value && value !== 'undefined'))];
+
+    if (instancesToProcess.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'Nenhuma instância configurada para sincronização nesta empresa.'
+      });
     }
 
     console.log(`[Sync] Processing sync for company ${resolvedCompanyId}. Instances: ${instancesToProcess.join(', ') || 'Default'}`);
@@ -1557,8 +1571,19 @@ export const syncEvolutionContacts = async (req: Request, res: Response) => {
 
     // Filter by Company
     if (resolvedCompanyId) {
-      localQuery += ` WHERE (company_id = $1 OR company_id IS NULL)`;
+      localQuery += ` WHERE company_id = $1`;
       localParams.push(resolvedCompanyId);
+
+      const normalizedInstanceKeys = [...new Set(
+        instancesToProcess
+          .map((instance) => (instance || '').trim().toLowerCase())
+          .filter(Boolean)
+      )];
+
+      if (normalizedInstanceKeys.length > 0) {
+        localQuery += ` AND LOWER(TRIM(COALESCE(instance, ''))) = ANY($2::text[])`;
+        localParams.push(normalizedInstanceKeys);
+      }
     } else {
       // Superadmin without company?
       localQuery += ` WHERE 1=1 `;
