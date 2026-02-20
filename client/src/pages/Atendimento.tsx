@@ -2625,6 +2625,7 @@ const AtendimentoPage = () => {
     const source = String(msg.message_source || "").toLowerCase();
     const systemUserName = (msg.agent_name || msg.sent_by_user_name || msg.user_name || "").trim();
     const hasSystemUserId = msg.user_id !== null && msg.user_id !== undefined && String(msg.user_id).trim() !== "";
+    const isOutbound = msg.direction === "outbound";
 
     const result = {
       label: "",
@@ -2633,7 +2634,13 @@ const AtendimentoPage = () => {
       instanceColor: msg.instance_color
     };
 
-    if (hasSystemUserId || origin === "system_user") {
+    const isSystemMessage =
+      hasSystemUserId ||
+      origin === "system_user" ||
+      origin === "system" ||
+      source === "system";
+
+    if (isSystemMessage && systemUserName) {
       result.label = systemUserName;
       result.className = "text-[#64748B]";
       return result;
@@ -2655,7 +2662,7 @@ const AtendimentoPage = () => {
       source === "api" ||
       source === "system";
 
-    if (isWhatsAppWebOrApp || (msg.direction === "inbound" && !isKnownApiOrigin)) {
+    if (isWhatsAppWebOrApp || (msg.direction === "inbound" && !isKnownApiOrigin) || isOutbound) {
       result.label = "WEB";
       result.className = "text-[#64748B]";
       return result;
