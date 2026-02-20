@@ -292,6 +292,7 @@ const initializeDatabase = async () => {
             ADD COLUMN IF NOT EXISTS channel VARCHAR(50) DEFAULT 'whatsapp',
             ADD COLUMN IF NOT EXISTS instagram_user_id VARCHAR(255),
             ADD COLUMN IF NOT EXISTS instagram_username VARCHAR(255),
+            ADD COLUMN IF NOT EXISTS group_subject VARCHAR(255),
             ADD COLUMN IF NOT EXISTS messenger_user_id VARCHAR(255);
         `);
 
