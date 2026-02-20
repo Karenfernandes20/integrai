@@ -1922,8 +1922,10 @@ export const createEvolutionContact = async (req: Request, res: Response) => {
 export const handleEvolutionWebhook = async (req: Request, res: Response) => {
   try {
     const body = req.body;
-    const { type, data, instance } = body;
-    const eventType = type || body.event;
+    const { type, data } = body;
+    const eventType = type || body.event || body.type;
+    const normalizedEventType = String(eventType || '').toLowerCase();
+    const instance = body.instance || body.instanceName || data?.instance || data?.instanceName;
 
     console.log(`[Webhook] Recebido: ${eventType} | Instância: ${instance}`);
 
@@ -1943,7 +1945,7 @@ export const handleEvolutionWebhook = async (req: Request, res: Response) => {
     console.log(`[Webhook] Processando para Empresa ID: ${resolvedCompanyId}`);
 
     // CONNECTION UPDATE HANDLING
-    if (eventType === "CONNECTION_UPDATE") {
+    if (normalizedEventType === "connection_update" || normalizedEventType === "connection.update") {
       const state = data?.state || body.state;
       const rawNumber = data?.number || body.number;
       const cleanNumber = rawNumber ? rawNumber.split(':')[0] : null;
@@ -1982,8 +1984,17 @@ export const handleEvolutionWebhook = async (req: Request, res: Response) => {
 
     // MESSAGES HANDLING
     // MESSAGES HANDLING (Definitive Solution)
-    if (eventType === "MESSAGES_UPSERT" || eventType === "MESSAGE_RECEIVED") {
-      const messages = data?.messages || body.messages || (data?.key ? [data] : []);
+    if (
+      normalizedEventType === "messages_upsert"
+      || normalizedEventType === "messages.upsert"
+      || normalizedEventType === "message_received"
+      || normalizedEventType === "message.received"
+    ) {
+      const messages = data?.messages
+        || body.messages
+        || (Array.isArray(data) ? data : null)
+        || (data?.key ? [data] : [])
+        || (body?.key ? [body] : []);
 
       for (const msg of messages) {
         const result = await processIncomingMessage(resolvedCompanyId, instance, msg);
