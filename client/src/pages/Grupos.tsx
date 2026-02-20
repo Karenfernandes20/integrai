@@ -540,7 +540,7 @@ const GruposPage = () => {
                 </ScrollArea>
             </div>
 
-            <div className="flex-1 flex flex-col bg-[#efeae2] dark:bg-zinc-950 relative">
+            <div className="flex-1 flex flex-col bg-[#e8e3dc] dark:bg-zinc-950/90 relative p-3 md:p-4">
                 <div className="absolute inset-0 opacity-[0.05] dark:opacity-[0.03] pointer-events-none bg-[url('https://w0.peakpx.com/wallpaper/818/148/wallpaper-whatsapp-background.jpg')] bg-repeat"></div>
 
                 {!selectedGroup ? (
@@ -551,62 +551,63 @@ const GruposPage = () => {
                         <p className="font-medium">Selecione um grupo para visualizar</p>
                     </div>
                 ) : (
-                    <>
-                        <div className="h-16 flex-none bg-zinc-100 dark:bg-zinc-800 flex items-center justify-between px-4 border-b border-zinc-200 dark:border-zinc-700 relative z-10 shadow-sm">
-                            <div className="flex items-center gap-3">
-                                <Avatar className="h-10 w-10">
-                                    <AvatarImage src={selectedGroup.profile_pic_url || `https://api.dicebear.com/7.x/initials/svg?seed=${getGroupDisplayName(selectedGroup)}`} />
-                                    <AvatarFallback>{(getGroupDisplayName(selectedGroup) || "G")[0]}</AvatarFallback>
-                                </Avatar>
-                                <div className="flex flex-col">
-                                    <span className="font-semibold text-sm">{getGroupDisplayName(selectedGroup)}</span>
-                                    <span className="text-[10px] text-muted-foreground">ID: {selectedGroup.phone}</span>
+                    <div className="relative z-10 flex-1 min-h-0">
+                        <div className="h-full rounded-2xl border border-zinc-200/80 dark:border-zinc-800 bg-white/95 dark:bg-zinc-900/95 shadow-sm flex flex-col overflow-hidden">
+                            <div className="h-16 flex-none bg-zinc-100 dark:bg-zinc-800 flex items-center justify-between px-4 border-b border-zinc-200 dark:border-zinc-700 shadow-sm">
+                                <div className="flex items-center gap-3">
+                                    <Avatar className="h-10 w-10">
+                                        <AvatarImage src={selectedGroup.profile_pic_url || `https://api.dicebear.com/7.x/initials/svg?seed=${getGroupDisplayName(selectedGroup)}`} />
+                                        <AvatarFallback>{(getGroupDisplayName(selectedGroup) || "G")[0]}</AvatarFallback>
+                                    </Avatar>
+                                    <div className="flex flex-col">
+                                        <span className="font-semibold text-sm">{getGroupDisplayName(selectedGroup)}</span>
+                                        <span className="text-[10px] text-muted-foreground">ID: {selectedGroup.phone}</span>
+                                    </div>
+                                </div>
+                                <div className="flex items-center gap-1">
+                                    <Button variant="ghost" size="icon" className="text-zinc-500" onClick={handleRefreshMetadata} title="Atualizar dados do grupo">
+                                        <RefreshCw className="h-5 w-5" />
+                                    </Button>
+                                    <Button variant="ghost" size="icon" className="text-zinc-500">
+                                        <MoreVertical className="h-5 w-5" />
+                                    </Button>
                                 </div>
                             </div>
-                            <div className="flex items-center gap-1">
-                                <Button variant="ghost" size="icon" className="text-zinc-500" onClick={handleRefreshMetadata} title="Atualizar dados do grupo">
-                                    <RefreshCw className="h-5 w-5" />
-                                </Button>
-                                <Button variant="ghost" size="icon" className="text-zinc-500">
-                                    <MoreVertical className="h-5 w-5" />
-                                </Button>
-                            </div>
-                        </div>
 
-                        <div
-                            ref={scrollRef}
-                            className="flex-1 overflow-y-auto p-4 flex flex-col gap-2 relative z-10"
-                        >
-                            {isLoadingMessages ? (
-                                <div className="flex-1 flex items-center justify-center text-muted-foreground italic text-sm">
-                                    Carregando mensagens...
-                                </div>
-                            ) : messages.length === 0 ? (
-                                <div className="flex-1 flex items-center justify-center text-muted-foreground italic text-sm">
-                                    Início da conversa do grupo
-                                </div>
-                            ) : (
-                                messages.map((msg) => (
-                                    <div
-                                        key={msg.id}
-                                        className={cn(
-                                            "flex flex-col w-full mb-1",
-                                            msg.direction === "outbound" ? "items-end" : "items-start"
-                                        )}
-                                    >
+                            <div
+                                ref={scrollRef}
+                                className="flex-1 overflow-y-auto p-4 flex flex-col gap-2 bg-[#efeae2]/80 dark:bg-zinc-950/70"
+                            >
+                                {isLoadingMessages ? (
+                                    <div className="flex-1 flex items-center justify-center text-muted-foreground italic text-sm">
+                                        Carregando mensagens...
+                                    </div>
+                                ) : messages.length === 0 ? (
+                                    <div className="flex-1 flex items-center justify-center text-muted-foreground italic text-sm">
+                                        Início da conversa do grupo
+                                    </div>
+                                ) : (
+                                    messages.map((msg) => (
                                         <div
+                                            key={msg.id}
                                             className={cn(
-                                                "relative max-w-[85%] px-3 py-1.5 shadow-sm text-[14px] break-words",
-                                                msg.direction === "outbound"
-                                                    ? "bg-[#d9fdd3] dark:bg-[#005c4b] text-zinc-900 dark:text-zinc-100 self-end ml-auto rounded-lg rounded-tr-none"
-                                                    : "bg-white dark:bg-[#202c33] text-zinc-900 dark:text-zinc-100 self-start mr-auto rounded-lg rounded-tl-none"
+                                                "flex flex-col w-full mb-1",
+                                                msg.direction === "outbound" ? "items-end" : "items-start"
                                             )}
                                         >
-                                            {msg.direction === 'inbound' && (
-                                                <span className="text-[10px] font-bold text-orange-600 dark:text-orange-400 mb-0.5 block">
-                                                    {msg.sender_name || (msg.participant ? msg.participant.split('@')[0] : 'Desconhecido')}
-                                                </span>
-                                            )}
+                                            <div
+                                                className={cn(
+                                                    "relative max-w-[85%] px-3 py-1.5 shadow-sm text-[14px] break-words",
+                                                    msg.direction === "outbound"
+                                                        ? "bg-[#d9fdd3] dark:bg-[#005c4b] text-zinc-900 dark:text-zinc-100 self-end ml-auto rounded-lg rounded-tr-none"
+                                                        : "bg-white dark:bg-[#202c33] text-zinc-900 dark:text-zinc-100 self-start mr-auto rounded-lg rounded-tl-none"
+                                                )}
+                                            >
+                                                {msg.direction === 'inbound' && (
+                                                    <span className="text-[10px] font-bold text-orange-600 dark:text-orange-400 mb-0.5 block">
+                                                        {msg.sender_name || (msg.participant ? msg.participant.split('@')[0] : 'Desconhecido')}
+                                                    </span>
+                                                )}
 
                                             {(() => {
                                                 const type = msg.message_type || 'text';
@@ -643,16 +644,16 @@ const GruposPage = () => {
                                             </span>
                                         </div>
                                     </div>
-                                ))
-                            )}
-                        </div>
+                                    ))
+                                )}
+                            </div>
 
-                        <div className="h-16 flex-none bg-zinc-100 dark:bg-zinc-800 px-4 py-2 flex items-center gap-2 border-t border-zinc-200 dark:border-zinc-700 relative z-20 shadow-inner">
-                            {showEmojiPicker && (
-                                <div className="absolute bottom-20 left-4 z-50 shadow-2xl">
-                                    <EmojiPicker onEmojiClick={onEmojiClick} width={300} height={400} />
-                                </div>
-                            )}
+                            <div className="h-16 flex-none bg-zinc-100 dark:bg-zinc-800 px-4 py-2 flex items-center gap-2 border-t border-zinc-200 dark:border-zinc-700 relative z-20 shadow-inner">
+                                {showEmojiPicker && (
+                                    <div className="absolute bottom-20 left-4 z-50 shadow-2xl">
+                                        <EmojiPicker onEmojiClick={onEmojiClick} width={300} height={400} />
+                                    </div>
+                                )}
 
                             <Button
                                 variant="ghost"
@@ -678,7 +679,7 @@ const GruposPage = () => {
                                 <Paperclip className="h-5 w-5" />
                             </Button>
 
-                            <form className="flex-1 flex gap-2" onSubmit={handleSendMessage}>
+                                <form className="flex-1 flex gap-2" onSubmit={handleSendMessage}>
                                 <Input
                                     className="flex-1 bg-white dark:bg-zinc-700 border-none focus-visible:ring-0 placeholder:text-zinc-400"
                                     placeholder="Digite uma mensagem"
@@ -695,9 +696,10 @@ const GruposPage = () => {
                                         <Mic className="h-5 w-5" />
                                     </Button>
                                 )}
-                            </form>
+                                </form>
+                            </div>
                         </div>
-                    </>
+                    </div>
                 )}
             </div>
         </div>
