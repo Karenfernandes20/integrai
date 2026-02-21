@@ -25,7 +25,7 @@ interface WebhookMessage {
 }
 
 // Caching for performance
-const instanceMetaCache = new Map<string, { companyId: number, instanceId: number, instanceName: string }>();
+const instanceMetaCache = new Map<string, { companyId: number, instanceId: number | null, instanceName: string }>();
 const stagesCache: { map: any, lastFetch: number } = { map: null, lastFetch: 0 };
 const STAGE_CACHE_TTL = 300000; // 5 minutes
 
@@ -200,6 +200,26 @@ export const handleWebhook = async (req: Request, res: Response) => {
                         const row = instanceLookup.rows[0];
                         meta = { companyId: row.company_id, instanceId: row.id, instanceName: row.name || instance };
                         instanceMetaCache.set(instance, meta);
+                    } else {
+                        // Fallback compatível com ambientes legados sem company_instances populada
+                        const legacyCompanyLookup = await pool.query(
+                            `SELECT id, evolution_instance
+                             FROM companies
+                             WHERE LOWER(evolution_instance) = LOWER($1)
+                             LIMIT 1`,
+                            [instance]
+                        );
+
+                        if (legacyCompanyLookup.rows.length > 0) {
+                            const row = legacyCompanyLookup.rows[0];
+                            meta = {
+                                companyId: row.id,
+                                instanceId: null,
+                                instanceName: row.evolution_instance || instance
+                            };
+                            instanceMetaCache.set(instance, meta);
+                            console.log(`[Webhook] Using legacy instance mapping via companies.evolution_instance for instance ${instance}`);
+                        }
                     }
                 }
 
