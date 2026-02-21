@@ -4053,6 +4053,13 @@ const AtendimentoPage = () => {
                                             className="max-h-80 w-full object-contain cursor-pointer hover:opacity-90 transition-opacity"
                                             onClick={() => window.open(getMediaUrl(msg), '_blank')}
                                           />
+                                          <button
+                                            type="button"
+                                            className="w-full px-3 py-2 text-xs font-semibold text-[#2563EB] bg-white/80 border-t border-[#E2E8F0] hover:bg-white transition-colors"
+                                            onClick={() => window.open(getMediaUrl(msg), '_blank')}
+                                          >
+                                            Abrir imagem
+                                          </button>
                                         </div>
                                       )}
 
@@ -4081,9 +4088,10 @@ const AtendimentoPage = () => {
 
                                       {(msg.type === 'audio' || msg.message_type === 'audio') && getMediaUrl(msg) && (
                                         <div className={cn(
-                                          "mb-2 p-2 rounded-xl flex items-center gap-3 min-w-[240px]",
+                                          "mb-2 p-2 rounded-xl flex flex-col gap-2 min-w-[240px]",
                                           isOutbound ? "bg-[#DBEAFE]/30" : "bg-[#F1F5F9]"
                                         )}>
+                                          <div className="flex items-center gap-3">
                                           <div className={cn(
                                             "w-8 h-8 rounded-full flex items-center justify-center shrink-0",
                                             isOutbound ? "bg-[#2563EB]/10 text-[#2563EB]" : "bg-white text-[#2563EB] shadow-sm"
@@ -4101,6 +4109,14 @@ const AtendimentoPage = () => {
                                             className="h-8 flex-1"
                                             controlsList="nodownload noplaybackrate"
                                           />
+                                          </div>
+                                          <button
+                                            type="button"
+                                            className="self-end text-[11px] font-semibold text-[#2563EB] hover:underline"
+                                            onClick={() => window.open(getMediaUrl(msg), '_blank')}
+                                          >
+                                            Abrir áudio
+                                          </button>
                                         </div>
                                       )}
 
