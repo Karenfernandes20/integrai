@@ -919,8 +919,27 @@ export const sendEvolutionMessage = async (req: Request, res: Response) => {
 
         // CHECK INSTANCE AND COMPANY isolation
         const checkConv = await pool.query(
-          'SELECT id, status, user_id, is_group, group_name FROM whatsapp_conversations WHERE external_id = $1 AND instance = $2 AND company_id = $3',
-          [remoteJid, EVOLUTION_INSTANCE, resolvedCompanyId]
+          `SELECT id, status, user_id, is_group, group_name
+           FROM whatsapp_conversations
+           WHERE external_id = $1
+             AND company_id = $2
+             AND (
+               instance = $3
+               OR last_instance_key = $3
+               OR instance IS NULL
+               OR instance = ''
+             )
+           ORDER BY
+             CASE
+               WHEN instance = $3 THEN 0
+               WHEN last_instance_key = $3 THEN 1
+               WHEN instance IS NULL OR instance = '' THEN 2
+               ELSE 9
+             END,
+             updated_at DESC NULLS LAST,
+             id DESC
+           LIMIT 1`,
+          [remoteJid, resolvedCompanyId, EVOLUTION_INSTANCE]
         );
 
         if (checkConv.rows.length > 0) {
@@ -930,6 +949,7 @@ export const sendEvolutionMessage = async (req: Request, res: Response) => {
             `UPDATE whatsapp_conversations 
              SET last_message = $1, last_message_at = NOW(), status = 'OPEN', user_id = COALESCE(user_id, $2), company_id = COALESCE(company_id, $3),
                  is_group = CASE WHEN $5 THEN true ELSE is_group END,
+                 instance = COALESCE(NULLIF(instance, ''), $7),
                  group_name = CASE
                    WHEN $5 THEN COALESCE(NULLIF(group_name, external_id), $6, group_name, 'Grupo')
                    ELSE group_name
@@ -939,7 +959,7 @@ export const sendEvolutionMessage = async (req: Request, res: Response) => {
                    ELSE contact_name
                  END
              WHERE id = $4`,
-            [messageContent, user.id, resolvedCompanyId, conversationId, messageIsGroup, resolvedGroupTitle]
+            [messageContent, user.id, resolvedCompanyId, conversationId, messageIsGroup, resolvedGroupTitle, EVOLUTION_INSTANCE]
           );
         } else {
           // Create new conversation as OPEN and assigned to the sender
@@ -1106,8 +1126,27 @@ export const sendEvolutionMedia = async (req: Request, res: Response) => {
         // Find or create conversation
         let conversationId: number;
         const checkConv = await pool.query(
-          'SELECT id FROM whatsapp_conversations WHERE external_id = $1 AND instance = $2 AND company_id = $3',
-          [remoteJid, EVOLUTION_INSTANCE, resolvedCompanyId]
+          `SELECT id
+           FROM whatsapp_conversations
+           WHERE external_id = $1
+             AND company_id = $2
+             AND (
+               instance = $3
+               OR last_instance_key = $3
+               OR instance IS NULL
+               OR instance = ''
+             )
+           ORDER BY
+             CASE
+               WHEN instance = $3 THEN 0
+               WHEN last_instance_key = $3 THEN 1
+               WHEN instance IS NULL OR instance = '' THEN 2
+               ELSE 9
+             END,
+             updated_at DESC NULLS LAST,
+             id DESC
+           LIMIT 1`,
+          [remoteJid, resolvedCompanyId, EVOLUTION_INSTANCE]
         );
 
         if (checkConv.rows.length > 0) {
@@ -1116,6 +1155,7 @@ export const sendEvolutionMedia = async (req: Request, res: Response) => {
             `UPDATE whatsapp_conversations 
              SET last_message = $1, last_message_at = NOW(), status = 'OPEN', user_id = COALESCE(user_id, $2), company_id = COALESCE(company_id, $3),
                  is_group = CASE WHEN $5 THEN true ELSE is_group END,
+                 instance = COALESCE(NULLIF(instance, ''), $7),
                  group_name = CASE
                    WHEN $5 THEN COALESCE(NULLIF(group_name, external_id), $6, group_name, 'Grupo')
                    ELSE group_name
@@ -1125,7 +1165,7 @@ export const sendEvolutionMedia = async (req: Request, res: Response) => {
                    ELSE contact_name
                  END
              WHERE id = $4`,
-            [content, user.id, resolvedCompanyId, conversationId, messageIsGroup, resolvedGroupTitle]
+            [content, user.id, resolvedCompanyId, conversationId, messageIsGroup, resolvedGroupTitle, EVOLUTION_INSTANCE]
           );
         } else {
           const newConv = await pool.query(
