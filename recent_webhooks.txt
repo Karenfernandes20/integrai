@@ -1,0 +1,10 @@
+[
+  {
+    "id": 107622,
+    "message": "QR Code solicitado para instância karenloja",
+    "details": {
+      "instance": "karenloja"
+    },
+    "created_at": "2026-02-20T15:45:37.159Z"
+  }
+]

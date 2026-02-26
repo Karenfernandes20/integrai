@@ -1,0 +1,2258 @@
+[
+  {
+    "id": 107622,
+    "company_id": null,
+    "event_type": "webhook_received",
+    "message": "QR Code solicitado para instância karenloja",
+    "details": {
+      "instance": "karenloja"
+    },
+    "origin": "system",
+    "created_at": "2026-02-20T15:45:37.159Z"
+  },
+  {
+    "id": 107620,
+    "company_id": null,
+    "event_type": "webhook_received",
+    "message": "Webhook do WhatsApp Official recebido (Empresa 31)",
+    "details": {
+      "entry": [
+        {
+          "id": "925687296612096",
+          "changes": [
+            {
+              "field": "messages",
+              "value": {
+                "contacts": [
+                  {
+                    "wa_id": "553798359460",
+                    "profile": {
+                      "name": "🍀🌿"
+                    }
+                  }
+                ],
+                "messages": [
+                  {
+                    "id": "wamid.HBgMNTUzNzk4MzU5NDYwFQIAEhggQUM2M0NENkJDNDlGMjc2RDkxM0MxN0E0MTE3QkRGRTkA",
+                    "from": "553798359460",
+                    "text": {
+                      "body": "Fui fazer uma compra e infelizmente não consegui devido a nome no spc"
+                    },
+                    "type": "text",
+                    "timestamp": "1771551818"
+                  }
+                ],
+                "metadata": {
+                  "phone_number_id": "922608607612452",
+                  "display_phone_number": "553898352965"
+                },
+                "messaging_product": "whatsapp"
+              }
+            }
+          ]
+        }
+      ],
+      "object": "whatsapp_business_account"
+    },
+    "origin": "webhook",
+    "created_at": "2026-02-20T01:43:39.405Z"
+  },
+  {
+    "id": 107618,
+    "company_id": null,
+    "event_type": "webhook_received",
+    "message": "Webhook do WhatsApp Official recebido (Empresa 31)",
+    "details": {
+      "entry": [
+        {
+          "id": "925687296612096",
+          "changes": [
+            {
+              "field": "messages",
+              "value": {
+                "contacts": [
+                  {
+                    "wa_id": "553798359460",
+                    "profile": {
+                      "name": "🍀🌿"
+                    }
+                  }
+                ],
+                "messages": [
+                  {
+                    "id": "wamid.HBgMNTUzNzk4MzU5NDYwFQIAEhggQUM4RDIzRjQ4RDIzOTU0MUU2Qzc1OTY3RDdENkQwMjIA",
+                    "from": "553798359460",
+                    "text": {
+                      "body": "Como vcs coloca meu nome no SPC"
+                    },
+                    "type": "text",
+                    "timestamp": "1771551805"
+                  }
+                ],
+                "metadata": {
+                  "phone_number_id": "922608607612452",
+                  "display_phone_number": "553898352965"
+                },
+                "messaging_product": "whatsapp"
+              }
+            }
+          ]
+        }
+      ],
+      "object": "whatsapp_business_account"
+    },
+    "origin": "webhook",
+    "created_at": "2026-02-20T01:43:25.881Z"
+  },
+  {
+    "id": 107616,
+    "company_id": null,
+    "event_type": "webhook_received",
+    "message": "Webhook do WhatsApp Official recebido (Empresa 31)",
+    "details": {
+      "entry": [
+        {
+          "id": "925687296612096",
+          "changes": [
+            {
+              "field": "messages",
+              "value": {
+                "contacts": [
+                  {
+                    "wa_id": "553798359460",
+                    "profile": {
+                      "name": "🍀🌿"
+                    }
+                  }
+                ],
+                "messages": [
+                  {
+                    "id": "wamid.HBgMNTUzNzk4MzU5NDYwFQIAEhggQUM5Rjk2QjAyOEM2NEJEMjJGMDEyQzlEM0JFODJFNjIA",
+                    "from": "553798359460",
+                    "text": {
+                      "body": "Notei que meu bom está no SPC devido uma divida com vc,inclusive estou sem entender pois quando eu quis tranca o curso me garantirão que estaria trancado"
+                    },
+                    "type": "text",
+                    "timestamp": "1771551799"
+                  }
+                ],
+                "metadata": {
+                  "phone_number_id": "922608607612452",
+                  "display_phone_number": "553898352965"
+                },
+                "messaging_product": "whatsapp"
+              }
+            }
+          ]
+        }
+      ],
+      "object": "whatsapp_business_account"
+    },
+    "origin": "webhook",
+    "created_at": "2026-02-20T01:43:20.099Z"
+  },
+  {
+    "id": 107614,
+    "company_id": null,
+    "event_type": "webhook_received",
+    "message": "Webhook do WhatsApp Official recebido (Empresa 31)",
+    "details": {
+      "entry": [
+        {
+          "id": "925687296612096",
+          "changes": [
+            {
+              "field": "messages",
+              "value": {
+                "contacts": [
+                  {
+                    "wa_id": "553798359460",
+                    "profile": {
+                      "name": "🍀🌿"
+                    }
+                  }
+                ],
+                "messages": [
+                  {
+                    "id": "wamid.HBgMNTUzNzk4MzU5NDYwFQIAEhggQUMzNkZEMjJBMjNFQkEwQjA1RDc4QUNENTU1N0I4OUUA",
+                    "from": "553798359460",
+                    "text": {
+                      "body": "Boa noite"
+                    },
+                    "type": "text",
+                    "timestamp": "1771551744"
+                  }
+                ],
+                "metadata": {
+                  "phone_number_id": "922608607612452",
+                  "display_phone_number": "553898352965"
+                },
+                "messaging_product": "whatsapp"
+              }
+            }
+          ]
+        }
+      ],
+      "object": "whatsapp_business_account"
+    },
+    "origin": "webhook",
+    "created_at": "2026-02-20T01:42:26.855Z"
+  },
+  {
+    "id": 107613,
+    "company_id": null,
+    "event_type": "webhook_received",
+    "message": "QR Code solicitado para instância karenpessoalloja",
+    "details": {
+      "instance": "karenpessoalloja"
+    },
+    "origin": "system",
+    "created_at": "2026-02-19T18:47:28.217Z"
+  },
+  {
+    "id": 107612,
+    "company_id": null,
+    "event_type": "webhook_received",
+    "message": "QR Code solicitado para instância karenloja",
+    "details": {
+      "instance": "karenloja"
+    },
+    "origin": "system",
+    "created_at": "2026-02-19T18:43:15.248Z"
+  },
+  {
+    "id": 107611,
+    "company_id": null,
+    "event_type": "webhook_received",
+    "message": "QR Code solicitado para instância karenloja",
+    "details": {
+      "instance": "karenloja"
+    },
+    "origin": "system",
+    "created_at": "2026-02-19T17:08:19.166Z"
+  },
+  {
+    "id": 107610,
+    "company_id": null,
+    "event_type": "webhook_received",
+    "message": "QR Code solicitado para instância wagdaloja",
+    "details": {
+      "instance": "wagdaloja"
+    },
+    "origin": "system",
+    "created_at": "2026-02-18T20:18:26.835Z"
+  },
+  {
+    "id": 107609,
+    "company_id": null,
+    "event_type": "webhook_received",
+    "message": "QR Code solicitado para instância wagdaloja",
+    "details": {
+      "instance": "wagdaloja"
+    },
+    "origin": "system",
+    "created_at": "2026-02-18T20:00:29.524Z"
+  },
+  {
+    "id": 107608,
+    "company_id": null,
+    "event_type": "webhook_received",
+    "message": "QR Code solicitado para instância wagdaloja",
+    "details": {
+      "instance": "wagdaloja"
+    },
+    "origin": "system",
+    "created_at": "2026-02-18T20:00:22.435Z"
+  },
+  {
+    "id": 107607,
+    "company_id": null,
+    "event_type": "webhook_received",
+    "message": "Webhook do Instagram recebido",
+    "details": {
+      "entry": [
+        {
+          "id": "17841479272283728",
+          "time": 1771291849798,
+          "messaging": [
+            {
+              "sender": {
+                "id": "17841479272283728"
+              },
+              "message": {
+                "mid": "aWdfZAG1faXRlbToxOklHTWVzc2FnZAUlEOjE3ODQxNDc5MjcyMjgzNzI4OjM0MDI4MjM2Njg0MTcxMDMwMTI0NDI2MDA2MDk1OTIyOTg4OTMwMTozMjY3NDU2NzQxMzY4NDc5MDczNzg4NTE4OTE2MDA0MjQ5NgZDZD",
+                "text": "Blz",
+                "is_echo": true
+              },
+              "recipient": {
+                "id": "811127842028737"
+              },
+              "timestamp": 1771291848747
+            }
+          ]
+        }
+      ],
+      "object": "instagram"
+    },
+    "origin": "webhook",
+    "created_at": "2026-02-17T01:30:49.890Z"
+  },
+  {
+    "id": 107605,
+    "company_id": null,
+    "event_type": "webhook_received",
+    "message": "Webhook do Instagram recebido",
+    "details": {
+      "entry": [
+        {
+          "id": "17841479272283728",
+          "time": 1771291847227,
+          "messaging": [
+            {
+              "sender": {
+                "id": "811127842028737"
+              },
+              "message": {
+                "mid": "aWdfZAG1faXRlbToxOklHTWVzc2FnZAUlEOjE3ODQxNDc5MjcyMjgzNzI4OjM0MDI4MjM2Njg0MTcxMDMwMTI0NDI2MDA2MDk1OTIyOTg4OTMwMTozMjY3NDU2NzM3MzMxOTkyMDUwMzY5OTEyNzY2NjczNzE1MgZDZD",
+                "text": "plus",
+                "reply_to": {
+                  "mid": "aWdfZAG1faXRlbToxOklHTWVzc2FnZAUlEOjE3ODQxNDc5MjcyMjgzNzI4OjM0MDI4MjM2Njg0MTcxMDMwMTI0NDI2MDA2MDk1OTIyOTg4OTMwMTozMjY3NDU2NDI4NTk5NTYxNDI1Njk3NjAyMTAyOTkxMjU3NgZDZD",
+                  "is_self_reply": false
+                }
+              },
+              "recipient": {
+                "id": "17841479272283728"
+              },
+              "timestamp": 1771291846558
+            }
+          ]
+        }
+      ],
+      "object": "instagram"
+    },
+    "origin": "webhook",
+    "created_at": "2026-02-17T01:30:47.550Z"
+  },
+  {
+    "id": 107603,
+    "company_id": null,
+    "event_type": "webhook_received",
+    "message": "Webhook do Instagram recebido",
+    "details": {
+      "entry": [
+        {
+          "id": "17841479272283728",
+          "time": 1771291838770,
+          "messaging": [
+            {
+              "sender": {
+                "id": "811127842028737"
+              },
+              "message": {
+                "mid": "aWdfZAG1faXRlbToxOklHTWVzc2FnZAUlEOjE3ODQxNDc5MjcyMjgzNzI4OjM0MDI4MjM2Njg0MTcxMDMwMTI0NDI2MDA2MDk1OTIyOTg4OTMwMTozMjY3NDU2NzIxODY3ODgzNTc5MTk0Mzg0ODQxOTEzMTM5MgZDZD",
+                "text": "só mandei pra vc ver o nome"
+              },
+              "recipient": {
+                "id": "17841479272283728"
+              },
+              "timestamp": 1771291838175
+            }
+          ]
+        }
+      ],
+      "object": "instagram"
+    },
+    "origin": "webhook",
+    "created_at": "2026-02-17T01:30:38.869Z"
+  },
+  {
+    "id": 107601,
+    "company_id": null,
+    "event_type": "webhook_received",
+    "message": "Webhook do Instagram recebido",
+    "details": {
+      "entry": [
+        {
+          "id": "17841479272283728",
+          "time": 1771291832196,
+          "messaging": [
+            {
+              "sender": {
+                "id": "811127842028737"
+              },
+              "message": {
+                "mid": "aWdfZAG1faXRlbToxOklHTWVzc2FnZAUlEOjE3ODQxNDc5MjcyMjgzNzI4OjM0MDI4MjM2Njg0MTcxMDMwMTI0NDI2MDA2MDk1OTIyOTg4OTMwMTozMjY3NDU2NzEwMTEzMzY1NTM1MDMyODQ4NzMxMzQwODAwMAZDZD",
+                "text": "essa ai é a url pra requisitar os dados"
+              },
+              "recipient": {
+                "id": "17841479272283728"
+              },
+              "timestamp": 1771291831803
+            }
+          ]
+        }
+      ],
+      "object": "instagram"
+    },
+    "origin": "webhook",
+    "created_at": "2026-02-17T01:30:32.388Z"
+  },
+  {
+    "id": 107599,
+    "company_id": null,
+    "event_type": "webhook_received",
+    "message": "Webhook do Instagram recebido",
+    "details": {
+      "entry": [
+        {
+          "id": "17841479272283728",
+          "time": 1771291819968,
+          "messaging": [
+            {
+              "sender": {
+                "id": "811127842028737"
+              },
+              "message": {
+                "mid": "aWdfZAG1faXRlbToxOklHTWVzc2FnZAUlEOjE3ODQxNDc5MjcyMjgzNzI4OjM0MDI4MjM2Njg0MTcxMDMwMTI0NDI2MDA2MDk1OTIyOTg4OTMwMTozMjY3NDU2Njg3NTcwMDI5NDExNjg5MzIzMTMzOTc5ODUyOAZDZD",
+                "text": "por essa empresa"
+              },
+              "recipient": {
+                "id": "17841479272283728"
+              },
+              "timestamp": 1771291819582
+            }
+          ]
+        }
+      ],
+      "object": "instagram"
+    },
+    "origin": "webhook",
+    "created_at": "2026-02-17T01:30:20.100Z"
+  },
+  {
+    "id": 107597,
+    "company_id": null,
+    "event_type": "webhook_received",
+    "message": "Webhook do Instagram recebido",
+    "details": {
+      "entry": [
+        {
+          "id": "17841479272283728",
+          "time": 1771291817461,
+          "messaging": [
+            {
+              "sender": {
+                "id": "811127842028737"
+              },
+              "message": {
+                "mid": "aWdfZAG1faXRlbToxOklHTWVzc2FnZAUlEOjE3ODQxNDc5MjcyMjgzNzI4OjM0MDI4MjM2Njg0MTcxMDMwMTI0NDI2MDA2MDk1OTIyOTg4OTMwMTozMjY3NDU2NjgyNzc2NTgzOTM0NTU0ODYwMjc1OTk3MDgxNgZDZD",
+                "text": "procura no google"
+              },
+              "recipient": {
+                "id": "17841479272283728"
+              },
+              "timestamp": 1771291816984
+            }
+          ]
+        }
+      ],
+      "object": "instagram"
+    },
+    "origin": "webhook",
+    "created_at": "2026-02-17T01:30:17.981Z"
+  },
+  {
+    "id": 107596,
+    "company_id": null,
+    "event_type": "webhook_received",
+    "message": "Webhook do Instagram recebido",
+    "details": {
+      "entry": [
+        {
+          "id": "17841479272283728",
+          "time": 1771291782247,
+          "messaging": [
+            {
+              "sender": {
+                "id": "17841479272283728"
+              },
+              "message": {
+                "mid": "aWdfZAG1faXRlbToxOklHTWVzc2FnZAUlEOjE3ODQxNDc5MjcyMjgzNzI4OjM0MDI4MjM2Njg0MTcxMDMwMTI0NDI2MDA2MDk1OTIyOTg4OTMwMTozMjY3NDU2NjE4MDIxNDY5MjY4OTQ2OTkxNzk3MDMwMDkyOAZDZD",
+                "is_echo": true,
+                "attachments": [
+                  {
+                    "type": "ephemeral"
+                  }
+                ]
+              },
+              "recipient": {
+                "id": "811127842028737"
+              },
+              "timestamp": 1771291781880
+            }
+          ]
+        }
+      ],
+      "object": "instagram"
+    },
+    "origin": "webhook",
+    "created_at": "2026-02-17T01:29:42.338Z"
+  },
+  {
+    "id": 107595,
+    "company_id": null,
+    "event_type": "webhook_received",
+    "message": "Webhook do Instagram recebido",
+    "details": {
+      "entry": [
+        {
+          "id": "17841479272283728",
+          "time": 1771291750149,
+          "messaging": [
+            {
+              "sender": {
+                "id": "17841479272283728"
+              },
+              "message": {
+                "mid": "aWdfZAG1faXRlbToxOklHTWVzc2FnZAUlEOjE3ODQxNDc5MjcyMjgzNzI4OjM0MDI4MjM2Njg0MTcxMDMwMTI0NDI2MDA2MDk1OTIyOTg4OTMwMTozMjY3NDU2NTU4NTM1MTA5OTU2MzIzMjMwNzA4NzE0NzAwOAZDZD",
+                "text": "Não abriu pelo cel deu erro",
+                "is_echo": true
+              },
+              "recipient": {
+                "id": "811127842028737"
+              },
+              "timestamp": 1771291749632
+            }
+          ]
+        }
+      ],
+      "object": "instagram"
+    },
+    "origin": "webhook",
+    "created_at": "2026-02-17T01:29:10.259Z"
+  },
+  {
+    "id": 107594,
+    "company_id": null,
+    "event_type": "webhook_received",
+    "message": "Webhook do Instagram recebido",
+    "details": {
+      "entry": [
+        {
+          "id": "17841479272283728",
+          "time": 1771291679509,
+          "messaging": [
+            {
+              "sender": {
+                "id": "17841479272283728"
+              },
+              "message": {
+                "mid": "aWdfZAG1faXRlbToxOklHTWVzc2FnZAUlEOjE3ODQxNDc5MjcyMjgzNzI4OjM0MDI4MjM2Njg0MTcxMDMwMTI0NDI2MDA2MDk1OTIyOTg4OTMwMTozMjY3NDU2NDI4NTk5NTYxNDI1Njk3NjAyMTAyOTkxMjU3NgZDZD",
+                "text": "Isso é oficial?",
+                "is_echo": true,
+                "reply_to": {
+                  "mid": "aWdfZAG1faXRlbToxOklHTWVzc2FnZAUlEOjE3ODQxNDc5MjcyMjgzNzI4OjM0MDI4MjM2Njg0MTcxMDMwMTI0NDI2MDA2MDk1OTIyOTg4OTMwMTozMjY3NDU2MzU2MDE4NjM2OTQ3NzQ3MzQwODY1NTU1NjYwOAZDZD",
+                  "is_self_reply": false
+                }
+              },
+              "recipient": {
+                "id": "811127842028737"
+              },
+              "timestamp": 1771291679194
+            }
+          ]
+        }
+      ],
+      "object": "instagram"
+    },
+    "origin": "webhook",
+    "created_at": "2026-02-17T01:27:59.598Z"
+  },
+  {
+    "id": 107592,
+    "company_id": null,
+    "event_type": "webhook_received",
+    "message": "Webhook do Instagram recebido",
+    "details": {
+      "entry": [
+        {
+          "id": "17841479272283728",
+          "time": 1771291661322,
+          "messaging": [
+            {
+              "sender": {
+                "id": "811127842028737"
+              },
+              "message": {
+                "mid": "aWdfZAG1faXRlbToxOklHTWVzc2FnZAUlEOjE3ODQxNDc5MjcyMjgzNzI4OjM0MDI4MjM2Njg0MTcxMDMwMTI0NDI2MDA2MDk1OTIyOTg4OTMwMTozMjY3NDU2Mzk0NDE0MDExMDM2MTEzMjg0MTQ1Mjk2MTc5MgZDZD",
+                "text": "se n for tao caro"
+              },
+              "recipient": {
+                "id": "17841479272283728"
+              },
+              "timestamp": 1771291660662
+            }
+          ]
+        }
+      ],
+      "object": "instagram"
+    },
+    "origin": "webhook",
+    "created_at": "2026-02-17T01:27:41.412Z"
+  },
+  {
+    "id": 107590,
+    "company_id": null,
+    "event_type": "webhook_received",
+    "message": "Webhook do Instagram recebido",
+    "details": {
+      "entry": [
+        {
+          "id": "17841479272283728",
+          "time": 1771291658289,
+          "messaging": [
+            {
+              "sender": {
+                "id": "811127842028737"
+              },
+              "message": {
+                "mid": "aWdfZAG1faXRlbToxOklHTWVzc2FnZAUlEOjE3ODQxNDc5MjcyMjgzNzI4OjM0MDI4MjM2Njg0MTcxMDMwMTI0NDI2MDA2MDk1OTIyOTg4OTMwMTozMjY3NDU2Mzg5MTk3MjQyMjk3Mjc3NzA1MDEzMDA4NzkzNgZDZD",
+                "text": "e usar eles"
+              },
+              "recipient": {
+                "id": "17841479272283728"
+              },
+              "timestamp": 1771291657834
+            }
+          ]
+        }
+      ],
+      "object": "instagram"
+    },
+    "origin": "webhook",
+    "created_at": "2026-02-17T01:27:38.415Z"
+  },
+  {
+    "id": 107588,
+    "company_id": null,
+    "event_type": "webhook_received",
+    "message": "Webhook do Instagram recebido",
+    "details": {
+      "entry": [
+        {
+          "id": "17841479272283728",
+          "time": 1771291656094,
+          "messaging": [
+            {
+              "sender": {
+                "id": "811127842028737"
+              },
+              "message": {
+                "mid": "aWdfZAG1faXRlbToxOklHTWVzc2FnZAUlEOjE3ODQxNDc5MjcyMjgzNzI4OjM0MDI4MjM2Njg0MTcxMDMwMTI0NDI2MDA2MDk1OTIyOTg4OTMwMTozMjY3NDU2Mzg1MTAzMzcxMTQyMzk0NjAzMTkwNTExMjA2NAZDZD",
+                "text": "pra gente ve se da pra comprar"
+              },
+              "recipient": {
+                "id": "17841479272283728"
+              },
+              "timestamp": 1771291655615
+            }
+          ]
+        }
+      ],
+      "object": "instagram"
+    },
+    "origin": "webhook",
+    "created_at": "2026-02-17T01:27:36.286Z"
+  },
+  {
+    "id": 107586,
+    "company_id": null,
+    "event_type": "webhook_received",
+    "message": "Webhook do Instagram recebido",
+    "details": {
+      "entry": [
+        {
+          "id": "17841479272283728",
+          "time": 1771291647215,
+          "messaging": [
+            {
+              "sender": {
+                "id": "811127842028737"
+              },
+              "message": {
+                "mid": "aWdfZAG1faXRlbToxOklHTWVzc2FnZAUlEOjE3ODQxNDc5MjcyMjgzNzI4OjM0MDI4MjM2Njg0MTcxMDMwMTI0NDI2MDA2MDk1OTIyOTg4OTMwMTozMjY3NDU2MzY4Nzg0MTU2NDcwOTg0NjM5NTE2NzcwMzA0MAZDZD",
+                "text": "da uma olhada depois como funciona esses tokens"
+              },
+              "recipient": {
+                "id": "17841479272283728"
+              },
+              "timestamp": 1771291646768
+            }
+          ]
+        }
+      ],
+      "object": "instagram"
+    },
+    "origin": "webhook",
+    "created_at": "2026-02-17T01:27:27.327Z"
+  },
+  {
+    "id": 107584,
+    "company_id": null,
+    "event_type": "webhook_received",
+    "message": "Webhook do Instagram recebido",
+    "details": {
+      "entry": [
+        {
+          "id": "17841479272283728",
+          "time": 1771291640977,
+          "messaging": [
+            {
+              "sender": {
+                "id": "811127842028737"
+              },
+              "message": {
+                "mid": "aWdfZAG1faXRlbToxOklHTWVzc2FnZAUlEOjE3ODQxNDc5MjcyMjgzNzI4OjM0MDI4MjM2Njg0MTcxMDMwMTI0NDI2MDA2MDk1OTIyOTg4OTMwMTozMjY3NDU2MzU2MDE4NjM2OTQ3NzQ3MzQwODY1NTU1NjYwOAZDZD",
+                "text": "https://tokenzap.uazapi.com"
+              },
+              "recipient": {
+                "id": "17841479272283728"
+              },
+              "timestamp": 1771291639848
+            }
+          ]
+        }
+      ],
+      "object": "instagram"
+    },
+    "origin": "webhook",
+    "created_at": "2026-02-17T01:27:21.084Z"
+  },
+  {
+    "id": 107582,
+    "company_id": null,
+    "event_type": "webhook_received",
+    "message": "Webhook do WhatsApp Official recebido (Empresa 31)",
+    "details": {
+      "entry": [
+        {
+          "id": "0",
+          "changes": [
+            {
+              "field": "messages",
+              "value": {
+                "contacts": [
+                  {
+                    "wa_id": "16315551181",
+                    "profile": {
+                      "name": "test user name"
+                    }
+                  }
+                ],
+                "messages": [
+                  {
+                    "id": "ABGGFlA5Fpa",
+                    "from": "16315551181",
+                    "text": {
+                      "body": "this is a text message"
+                    },
+                    "type": "text",
+                    "timestamp": "1504902988"
+                  }
+                ],
+                "metadata": {
+                  "phone_number_id": "123456123",
+                  "display_phone_number": "16505551111"
+                },
+                "messaging_product": "whatsapp"
+              }
+            }
+          ]
+        }
+      ],
+      "object": "whatsapp_business_account"
+    },
+    "origin": "webhook",
+    "created_at": "2026-02-17T01:24:03.448Z"
+  },
+  {
+    "id": 107580,
+    "company_id": null,
+    "event_type": "webhook_received",
+    "message": "Webhook do Instagram recebido",
+    "details": {
+      "entry": [
+        {
+          "id": "17841479272283728",
+          "time": 1771291416511,
+          "messaging": [
+            {
+              "sender": {
+                "id": "811127842028737"
+              },
+              "message": {
+                "mid": "aWdfZAG1faXRlbToxOklHTWVzc2FnZAUlEOjE3ODQxNDc5MjcyMjgzNzI4OjM0MDI4MjM2Njg0MTcxMDMwMTI0NDI2MDA2MDk1OTIyOTg4OTMwMTozMjY3NDU1OTQzMDIzNTExNzE4MDEzODYzMTg5NDkyNTMxMgZDZD",
+                "text": "manda isso escrito pra mim"
+              },
+              "recipient": {
+                "id": "17841479272283728"
+              },
+              "timestamp": 1771291415963
+            }
+          ]
+        }
+      ],
+      "object": "instagram"
+    },
+    "origin": "webhook",
+    "created_at": "2026-02-17T01:23:36.616Z"
+  },
+  {
+    "id": 107579,
+    "company_id": null,
+    "event_type": "webhook_received",
+    "message": "Webhook do Instagram recebido",
+    "details": {
+      "entry": [
+        {
+          "id": "17841479272283728",
+          "time": 1771291192583,
+          "messaging": [
+            {
+              "sender": {
+                "id": "17841479272283728"
+              },
+              "message": {
+                "mid": "aWdfZAG1faXRlbToxOklHTWVzc2FnZAUlEOjE3ODQxNDc5MjcyMjgzNzI4OjM0MDI4MjM2Njg0MTcxMDMwMTI0NDI2MDA2MDk1OTIyOTg4OTMwMTozMjY3NDU1NTMwNDE4MDEzMDgyNTgyMDU2NTQ5Nzk3MDY4OAZDZD",
+                "is_echo": true,
+                "attachments": [
+                  {
+                    "type": "image",
+                    "payload": {
+                      "url": "https://lookaside.fbsbx.com/ig_messaging_cdn/?asset_id=885495067442296&signature=Ab38aYpJE_-KkDK6QhiDeXmZ4odPMlptTaSQW4dF8DCqbynryWTRD6RHKXk3_DDKaBUaVANN4J-e_A2QsZerGZnd0dY1sBSZOvyC8QnWo0FfN2o3VoMxqKFxpWhIW4VcHuthpOyMjPftuomrh7H-ZeOckzd7yezm8UT9dmjTvzGWNtrrEh1U3lQ3oe_Ak4mNxYUZFzMrTS_jZH5Mdt1ppU3AyJ-7kg"
+                    }
+                  }
+                ]
+              },
+              "recipient": {
+                "id": "811127842028737"
+              },
+              "timestamp": 1771291192289
+            }
+          ]
+        }
+      ],
+      "object": "instagram"
+    },
+    "origin": "webhook",
+    "created_at": "2026-02-17T01:19:52.696Z"
+  },
+  {
+    "id": 107577,
+    "company_id": null,
+    "event_type": "webhook_received",
+    "message": "Webhook do Instagram recebido",
+    "details": {
+      "entry": [
+        {
+          "id": "17841479272283728",
+          "time": 1771291084971,
+          "messaging": [
+            {
+              "sender": {
+                "id": "811127842028737"
+              },
+              "message": {
+                "mid": "aWdfZAG1faXRlbToxOklHTWVzc2FnZAUlEOjE3ODQxNDc5MjcyMjgzNzI4OjM0MDI4MjM2Njg0MTcxMDMwMTI0NDI2MDA2MDk1OTIyOTg4OTMwMTozMjY3NDU1MzMxNTk0ODE5ODg5OTEwMTg0NTM1Mjg3Mzk4NAZDZD",
+                "text": "de puxar pelo id, sei lá"
+              },
+              "recipient": {
+                "id": "17841479272283728"
+              },
+              "timestamp": 1771291084507
+            }
+          ]
+        }
+      ],
+      "object": "instagram"
+    },
+    "origin": "webhook",
+    "created_at": "2026-02-17T01:18:05.143Z"
+  },
+  {
+    "id": 107575,
+    "company_id": null,
+    "event_type": "webhook_received",
+    "message": "Webhook do Instagram recebido",
+    "details": {
+      "entry": [
+        {
+          "id": "17841479272283728",
+          "time": 1771291080218,
+          "messaging": [
+            {
+              "sender": {
+                "id": "811127842028737"
+              },
+              "message": {
+                "mid": "aWdfZAG1faXRlbToxOklHTWVzc2FnZAUlEOjE3ODQxNDc5MjcyMjgzNzI4OjM0MDI4MjM2Njg0MTcxMDMwMTI0NDI2MDA2MDk1OTIyOTg4OTMwMTozMjY3NDU1MzIyODMxMjkxOTc4NjczNjU1MTcxODgxMzY5NgZDZD",
+                "text": "vou pesquisar se tem algum outro jeito"
+              },
+              "recipient": {
+                "id": "17841479272283728"
+              },
+              "timestamp": 1771291079756
+            }
+          ]
+        }
+      ],
+      "object": "instagram"
+    },
+    "origin": "webhook",
+    "created_at": "2026-02-17T01:18:00.406Z"
+  },
+  {
+    "id": 107573,
+    "company_id": null,
+    "event_type": "webhook_received",
+    "message": "Webhook do Instagram recebido",
+    "details": {
+      "entry": [
+        {
+          "id": "17841479272283728",
+          "time": 1771291073292,
+          "messaging": [
+            {
+              "sender": {
+                "id": "811127842028737"
+              },
+              "message": {
+                "mid": "aWdfZAG1faXRlbToxOklHTWVzc2FnZAUlEOjE3ODQxNDc5MjcyMjgzNzI4OjM0MDI4MjM2Njg0MTcxMDMwMTI0NDI2MDA2MDk1OTIyOTg4OTMwMTozMjY3NDU1MzA5NTAwNjc4NTg2ODMxMTUyODU4MzcyNTA1NgZDZD",
+                "text": "não retorna o nome do @ da pessoa no webhook"
+              },
+              "recipient": {
+                "id": "17841479272283728"
+              },
+              "timestamp": 1771291072529
+            }
+          ]
+        }
+      ],
+      "object": "instagram"
+    },
+    "origin": "webhook",
+    "created_at": "2026-02-17T01:17:53.448Z"
+  },
+  {
+    "id": 107571,
+    "company_id": null,
+    "event_type": "webhook_received",
+    "message": "Webhook do Instagram recebido",
+    "details": {
+      "entry": [
+        {
+          "id": "17841479272283728",
+          "time": 1771291057316,
+          "messaging": [
+            {
+              "sender": {
+                "id": "811127842028737"
+              },
+              "message": {
+                "mid": "aWdfZAG1faXRlbToxOklHTWVzc2FnZAUlEOjE3ODQxNDc5MjcyMjgzNzI4OjM0MDI4MjM2Njg0MTcxMDMwMTI0NDI2MDA2MDk1OTIyOTg4OTMwMTozMjY3NDU1Mjc5OTc0MDQxNTY5ODUxNzMzOTk4NzI0NzEwNAZDZD",
+                "text": "descobri"
+              },
+              "recipient": {
+                "id": "17841479272283728"
+              },
+              "timestamp": 1771291056523
+            }
+          ]
+        }
+      ],
+      "object": "instagram"
+    },
+    "origin": "webhook",
+    "created_at": "2026-02-17T01:17:37.414Z"
+  },
+  {
+    "id": 107569,
+    "company_id": null,
+    "event_type": "webhook_received",
+    "message": "Webhook do Instagram recebido",
+    "details": {
+      "entry": [
+        {
+          "id": "17841479272283728",
+          "time": 1771291051536,
+          "messaging": [
+            {
+              "sender": {
+                "id": "811127842028737"
+              },
+              "message": {
+                "mid": "aWdfZAG1faXRlbToxOklHTWVzc2FnZAUlEOjE3ODQxNDc5MjcyMjgzNzI4OjM0MDI4MjM2Njg0MTcxMDMwMTI0NDI2MDA2MDk1OTIyOTg4OTMwMTozMjY3NDU1MjY5ODgwMjY1NDQ3OTAyMTk1MTEwNTg5MjM1MgZDZD",
+                "text": "é não"
+              },
+              "recipient": {
+                "id": "17841479272283728"
+              },
+              "timestamp": 1771291051051
+            }
+          ]
+        }
+      ],
+      "object": "instagram"
+    },
+    "origin": "webhook",
+    "created_at": "2026-02-17T01:17:31.691Z"
+  },
+  {
+    "id": 107568,
+    "company_id": null,
+    "event_type": "webhook_received",
+    "message": "Webhook do Instagram recebido",
+    "details": {
+      "entry": [
+        {
+          "id": "17841479272283728",
+          "time": 1771290844723,
+          "messaging": [
+            {
+              "sender": {
+                "id": "17841479272283728"
+              },
+              "message": {
+                "mid": "aWdfZAG1faXRlbToxOklHTWVzc2FnZAUlEOjE3ODQxNDc5MjcyMjgzNzI4OjM0MDI4MjM2Njg0MTcxMDMwMTI0NDI2MDA2MDk1OTIyOTg4OTMwMTozMjY3NDU0ODg4ODQ3MzQ1MTI3Mzg1Nzg1Mjk2OTU4MjU5MgZDZD",
+                "text": "Ou nenhum desses",
+                "is_echo": true
+              },
+              "recipient": {
+                "id": "811127842028737"
+              },
+              "timestamp": 1771290844493
+            }
+          ]
+        }
+      ],
+      "object": "instagram"
+    },
+    "origin": "webhook",
+    "created_at": "2026-02-17T01:14:04.890Z"
+  },
+  {
+    "id": 107567,
+    "company_id": null,
+    "event_type": "webhook_received",
+    "message": "Webhook do Instagram recebido",
+    "details": {
+      "entry": [
+        {
+          "id": "17841479272283728",
+          "time": 1771290828309,
+          "messaging": [
+            {
+              "sender": {
+                "id": "17841479272283728"
+              },
+              "message": {
+                "mid": "aWdfZAG1faXRlbToxOklHTWVzc2FnZAUlEOjE3ODQxNDc5MjcyMjgzNzI4OjM0MDI4MjM2Njg0MTcxMDMwMTI0NDI2MDA2MDk1OTIyOTg4OTMwMTozMjY3NDU0ODU4NDQ0NTA2MjEzNjQ5MjM2NDQ1MTAyMDgwMAZDZD",
+                "text": "?",
+                "is_echo": true
+              },
+              "recipient": {
+                "id": "811127842028737"
+              },
+              "timestamp": 1771290828011
+            }
+          ]
+        }
+      ],
+      "object": "instagram"
+    },
+    "origin": "webhook",
+    "created_at": "2026-02-17T01:13:48.508Z"
+  },
+  {
+    "id": 107566,
+    "company_id": null,
+    "event_type": "webhook_received",
+    "message": "Webhook do Instagram recebido",
+    "details": {
+      "entry": [
+        {
+          "id": "17841479272283728",
+          "time": 1771290825270,
+          "messaging": [
+            {
+              "sender": {
+                "id": "17841479272283728"
+              },
+              "message": {
+                "mid": "aWdfZAG1faXRlbToxOklHTWVzc2FnZAUlEOjE3ODQxNDc5MjcyMjgzNzI4OjM0MDI4MjM2Njg0MTcxMDMwMTI0NDI2MDA2MDk1OTIyOTg4OTMwMTozMjY3NDU0ODUzMDE3NTIyMDY4Njk4NDc4MDA0NTA5MDgxNgZDZD",
+                "text": "•\t❌ Erro no webhook\n\t•\t❌ Token inválido\n\t•\t❌ Permissões insuficientes\n\t•\t❌ App não configurado corretamente na Meta\n\t•\t❌ Página não vinculada corretamente ao Instagram",
+                "is_echo": true
+              },
+              "recipient": {
+                "id": "811127842028737"
+              },
+              "timestamp": 1771290825069
+            }
+          ]
+        }
+      ],
+      "object": "instagram"
+    },
+    "origin": "webhook",
+    "created_at": "2026-02-17T01:13:45.437Z"
+  },
+  {
+    "id": 107564,
+    "company_id": null,
+    "event_type": "webhook_received",
+    "message": "Webhook do Instagram recebido",
+    "details": {
+      "entry": [
+        {
+          "id": "17841479272283728",
+          "time": 1771290529895,
+          "messaging": [
+            {
+              "sender": {
+                "id": "811127842028737"
+              },
+              "message": {
+                "mid": "aWdfZAG1faXRlbToxOklHTWVzc2FnZAUlEOjE3ODQxNDc5MjcyMjgzNzI4OjM0MDI4MjM2Njg0MTcxMDMwMTI0NDI2MDA2MDk1OTIyOTg4OTMwMTozMjY3NDU0MzA2ODIxNjUxMDE0MTA3NDg3MjMyNjk0NjgxNgZDZD",
+                "text": "olaa"
+              },
+              "recipient": {
+                "id": "17841479272283728"
+              },
+              "timestamp": 1771290528976
+            }
+          ]
+        }
+      ],
+      "object": "instagram"
+    },
+    "origin": "webhook",
+    "created_at": "2026-02-17T01:08:50.060Z"
+  },
+  {
+    "id": 107562,
+    "company_id": null,
+    "event_type": "webhook_received",
+    "message": "Webhook do Instagram recebido",
+    "details": {
+      "entry": [
+        {
+          "id": "17841479272283728",
+          "time": 1771290517595,
+          "messaging": [
+            {
+              "sender": {
+                "id": "811127842028737"
+              },
+              "message": {
+                "mid": "aWdfZAG1faXRlbToxOklHTWVzc2FnZAUlEOjE3ODQxNDc5MjcyMjgzNzI4OjM0MDI4MjM2Njg0MTcxMDMwMTI0NDI2MDA2MDk1OTIyOTg4OTMwMTozMjY3NDU0Mjg0NzY3ODY5MzQyMzg3MzI0NjgzNzYwNDM1MgZDZD",
+                "text": "oiii"
+              },
+              "recipient": {
+                "id": "17841479272283728"
+              },
+              "timestamp": 1771290517021
+            }
+          ]
+        }
+      ],
+      "object": "instagram"
+    },
+    "origin": "webhook",
+    "created_at": "2026-02-17T01:08:37.803Z"
+  },
+  {
+    "id": 107560,
+    "company_id": null,
+    "event_type": "webhook_received",
+    "message": "Webhook do Instagram recebido",
+    "details": {
+      "entry": [
+        {
+          "id": "17841479272283728",
+          "time": 1771290483808,
+          "messaging": [
+            {
+              "sender": {
+                "id": "811127842028737"
+              },
+              "message": {
+                "mid": "aWdfZAG1faXRlbToxOklHTWVzc2FnZAUlEOjE3ODQxNDc5MjcyMjgzNzI4OjM0MDI4MjM2Njg0MTcxMDMwMTI0NDI2MDA2MDk1OTIyOTg4OTMwMTozMjY3NDU0MjIyNTY0MzY5MTkxMzEwNDA0NjI1ODM4ODk5MgZDZD",
+                "text": "ta dando erro no back"
+              },
+              "recipient": {
+                "id": "17841479272283728"
+              },
+              "timestamp": 1771290483300
+            }
+          ]
+        }
+      ],
+      "object": "instagram"
+    },
+    "origin": "webhook",
+    "created_at": "2026-02-17T01:08:03.986Z"
+  },
+  {
+    "id": 107559,
+    "company_id": null,
+    "event_type": "webhook_received",
+    "message": "Webhook do Instagram recebido",
+    "details": {
+      "entry": [
+        {
+          "id": "17841479272283728",
+          "time": 1771290433375,
+          "messaging": [
+            {
+              "sender": {
+                "id": "17841479272283728"
+              },
+              "message": {
+                "mid": "aWdfZAG1faXRlbToxOklHTWVzc2FnZAUlEOjE3ODQxNDc5MjcyMjgzNzI4OjM0MDI4MjM2Njg0MTcxMDMwMTI0NDI2MDA2MDk1OTIyOTg4OTMwMTozMjY3NDU0MTMwMDE3ODYyMTQwOTAwMDEyNjQ2NzI3NjgwMAZDZD",
+                "text": "Ele não tá entendendo que tá chegando a msg?",
+                "is_echo": true
+              },
+              "recipient": {
+                "id": "811127842028737"
+              },
+              "timestamp": 1771290433131
+            }
+          ]
+        }
+      ],
+      "object": "instagram"
+    },
+    "origin": "webhook",
+    "created_at": "2026-02-17T01:07:13.533Z"
+  },
+  {
+    "id": 107557,
+    "company_id": null,
+    "event_type": "webhook_received",
+    "message": "Webhook do Instagram recebido",
+    "details": {
+      "entry": [
+        {
+          "id": "17841479272283728",
+          "time": 1771290403674,
+          "messaging": [
+            {
+              "sender": {
+                "id": "811127842028737"
+              },
+              "message": {
+                "mid": "aWdfZAG1faXRlbToxOklHTWVzc2FnZAUlEOjE3ODQxNDc5MjcyMjgzNzI4OjM0MDI4MjM2Njg0MTcxMDMwMTI0NDI2MDA2MDk1OTIyOTg4OTMwMTozMjY3NDU0MDc0OTYzNzE0OTM5NTg3Mjk3MTIxODc0NzM5MgZDZD",
+                "text": "Essa caraia não funciona"
+              },
+              "recipient": {
+                "id": "17841479272283728"
+              },
+              "timestamp": 1771290403286
+            }
+          ]
+        }
+      ],
+      "object": "instagram"
+    },
+    "origin": "webhook",
+    "created_at": "2026-02-17T01:06:43.798Z"
+  },
+  {
+    "id": 107556,
+    "company_id": null,
+    "event_type": "webhook_received",
+    "message": "Webhook do Instagram recebido",
+    "details": {
+      "entry": [
+        {
+          "id": "17841479272283728",
+          "time": 1771290388380,
+          "messaging": [
+            {
+              "read": {
+                "mid": "aWdfZAG1faXRlbToxOklHTWVzc2FnZAUlEOjE3ODQxNDc5MjcyMjgzNzI4OjM0MDI4MjM2Njg0MTcxMDMwMTI0NDI2MDA2MDk1OTIyOTg4OTMwMTozMjY3NDUzODM5NzA2NjU2MzY0MTg1NjgzODA1MzM5NjQ4MAZDZD"
+              },
+              "sender": {
+                "id": "811127842028737"
+              },
+              "recipient": {
+                "id": "17841479272283728"
+              },
+              "timestamp": 1771290387969
+            }
+          ]
+        }
+      ],
+      "object": "instagram"
+    },
+    "origin": "webhook",
+    "created_at": "2026-02-17T01:06:28.858Z"
+  },
+  {
+    "id": 107555,
+    "company_id": null,
+    "event_type": "webhook_received",
+    "message": "Webhook do Instagram recebido",
+    "details": {
+      "entry": [
+        {
+          "id": "17841479272283728",
+          "time": 1771290276041,
+          "messaging": [
+            {
+              "sender": {
+                "id": "17841479272283728"
+              },
+              "message": {
+                "mid": "aWdfZAG1faXRlbToxOklHTWVzc2FnZAUlEOjE3ODQxNDc5MjcyMjgzNzI4OjM0MDI4MjM2Njg0MTcxMDMwMTI0NDI2MDA2MDk1OTIyOTg4OTMwMTozMjY3NDUzODM5NzA2NjU2MzY0MTg1NjgzODA1MzM5NjQ4MAZDZD",
+                "text": "😁",
+                "is_echo": true
+              },
+              "recipient": {
+                "id": "811127842028737"
+              },
+              "timestamp": 1771290275753
+            }
+          ]
+        }
+      ],
+      "object": "instagram"
+    },
+    "origin": "webhook",
+    "created_at": "2026-02-17T01:04:36.208Z"
+  },
+  {
+    "id": 107554,
+    "company_id": null,
+    "event_type": "webhook_received",
+    "message": "Webhook do Instagram recebido",
+    "details": {
+      "entry": [
+        {
+          "id": "17841479272283728",
+          "time": 1771290267083,
+          "messaging": [
+            {
+              "sender": {
+                "id": "17841479272283728"
+              },
+              "message": {
+                "mid": "aWdfZAG1faXRlbToxOklHTWVzc2FnZAUlEOjE3ODQxNDc5MjcyMjgzNzI4OjM0MDI4MjM2Njg0MTcxMDMwMTI0NDI2MDA2MDk1OTIyOTg4OTMwMTozMjY3NDUzODIyOTcxMzM0Nzk3MzU2MjM5MDMzODg2MzEwNAZDZD",
+                "text": "Olá",
+                "is_echo": true
+              },
+              "recipient": {
+                "id": "811127842028737"
+              },
+              "timestamp": 1771290266680
+            }
+          ]
+        }
+      ],
+      "object": "instagram"
+    },
+    "origin": "webhook",
+    "created_at": "2026-02-17T01:04:27.326Z"
+  },
+  {
+    "id": 107552,
+    "company_id": null,
+    "event_type": "webhook_received",
+    "message": "Webhook do Instagram recebido",
+    "details": {
+      "entry": [
+        {
+          "id": "17841479272283728",
+          "time": 1771290228238,
+          "messaging": [
+            {
+              "sender": {
+                "id": "811127842028737"
+              },
+              "message": {
+                "mid": "aWdfZAG1faXRlbToxOklHTWVzc2FnZAUlEOjE3ODQxNDc5MjcyMjgzNzI4OjM0MDI4MjM2Njg0MTcxMDMwMTI0NDI2MDA2MDk1OTIyOTg4OTMwMTozMjY3NDUzNzUxMjMyMDMzNzk0Mzk2OTM5MjM0MTU0OTA1NgZDZD",
+                "text": "olaa"
+              },
+              "recipient": {
+                "id": "17841479272283728"
+              },
+              "timestamp": 1771290227790
+            }
+          ]
+        }
+      ],
+      "object": "instagram"
+    },
+    "origin": "webhook",
+    "created_at": "2026-02-17T01:03:48.427Z"
+  },
+  {
+    "id": 107550,
+    "company_id": null,
+    "event_type": "webhook_received",
+    "message": "Webhook do Instagram recebido",
+    "details": {
+      "entry": [
+        {
+          "id": "17841479272283728",
+          "time": 1771289834082,
+          "messaging": [
+            {
+              "sender": {
+                "id": "811127842028737"
+              },
+              "message": {
+                "mid": "aWdfZAG1faXRlbToxOklHTWVzc2FnZAUlEOjE3ODQxNDc5MjcyMjgzNzI4OjM0MDI4MjM2Njg0MTcxMDMwMTI0NDI2MDA2MDk1OTIyOTg4OTMwMTozMjY3NDUzMDI0MDE2MjU3OTgzNDEzMzA2MjI2MjcxODQ2NAZDZD",
+                "text": "oii"
+              },
+              "recipient": {
+                "id": "17841479272283728"
+              },
+              "timestamp": 1771289833566
+            }
+          ]
+        }
+      ],
+      "object": "instagram"
+    },
+    "origin": "webhook",
+    "created_at": "2026-02-17T00:57:14.175Z"
+  },
+  {
+    "id": 107548,
+    "company_id": null,
+    "event_type": "webhook_received",
+    "message": "Webhook do Instagram recebido",
+    "details": {
+      "entry": [
+        {
+          "id": "17841479272283728",
+          "time": 1771289811082,
+          "messaging": [
+            {
+              "sender": {
+                "id": "811127842028737"
+              },
+              "message": {
+                "mid": "aWdfZAG1faXRlbToxOklHTWVzc2FnZAUlEOjE3ODQxNDc5MjcyMjgzNzI4OjM0MDI4MjM2Njg0MTcxMDMwMTI0NDI2MDA2MDk1OTIyOTg4OTMwMTozMjY3NDUyOTgxMzc5Nzg1NTg2MzYzMTcwNDUwNjc2MTIxNgZDZD",
+                "text": "Oláa teste 100"
+              },
+              "recipient": {
+                "id": "17841479272283728"
+              },
+              "timestamp": 1771289810453
+            }
+          ]
+        }
+      ],
+      "object": "instagram"
+    },
+    "origin": "webhook",
+    "created_at": "2026-02-17T00:56:51.201Z"
+  },
+  {
+    "id": 107546,
+    "company_id": null,
+    "event_type": "webhook_received",
+    "message": "Webhook do Instagram recebido",
+    "details": {
+      "entry": [
+        {
+          "id": "17841479272283728",
+          "time": 1771287960373,
+          "messaging": [
+            {
+              "sender": {
+                "id": "811127842028737"
+              },
+              "message": {
+                "mid": "aWdfZAG1faXRlbToxOklHTWVzc2FnZAUlEOjE3ODQxNDc5MjcyMjgzNzI4OjM0MDI4MjM2Njg0MTcxMDMwMTI0NDI2MDA2MDk1OTIyOTg4OTMwMTozMjY3NDQ5NTY3NjQyOTU2ODU4OTg0NzkyNjEyMTk1NTMyOAZDZD",
+                "text": "olaa"
+              },
+              "recipient": {
+                "id": "17841479272283728"
+              },
+              "timestamp": 1771287959862
+            }
+          ]
+        }
+      ],
+      "object": "instagram"
+    },
+    "origin": "webhook",
+    "created_at": "2026-02-17T00:26:00.488Z"
+  },
+  {
+    "id": 107544,
+    "company_id": null,
+    "event_type": "webhook_received",
+    "message": "Webhook do Instagram recebido",
+    "details": {
+      "entry": [
+        {
+          "id": "17841479272283728",
+          "time": 1771287940616,
+          "messaging": [
+            {
+              "sender": {
+                "id": "811127842028737"
+              },
+              "message": {
+                "mid": "aWdfZAG1faXRlbToxOklHTWVzc2FnZAUlEOjE3ODQxNDc5MjcyMjgzNzI4OjM0MDI4MjM2Njg0MTcxMDMwMTI0NDI2MDA2MDk1OTIyOTg4OTMwMTozMjY3NDQ5NTMxMjI4MjQ2NTc1MzAxMTkxMzA4NTY4MTY2NAZDZD",
+                "text": "ola"
+              },
+              "recipient": {
+                "id": "17841479272283728"
+              },
+              "timestamp": 1771287940122
+            }
+          ]
+        }
+      ],
+      "object": "instagram"
+    },
+    "origin": "webhook",
+    "created_at": "2026-02-17T00:25:40.803Z"
+  },
+  {
+    "id": 107543,
+    "company_id": null,
+    "event_type": "webhook_received",
+    "message": "Instagram Webhook Received",
+    "details": {
+      "entry": [
+        {
+          "id": "17841479272283728",
+          "time": 1771284327541,
+          "messaging": [
+            {
+              "sender": {
+                "id": "811127842028737"
+              },
+              "message": {
+                "mid": "aWdfZAG1faXRlbToxOklHTWVzc2FnZAUlEOjE3ODQxNDc5MjcyMjgzNzI4OjM0MDI4MjM2Njg0MTcxMDMwMTI0NDI2MDA2MDk1OTIyOTg4OTMwMTozMjY3NDQyODY1OTE4MjgxODkxMDAwMTczMjIxNTg5ODExMgZDZD",
+                "text": "Olá!"
+              },
+              "recipient": {
+                "id": "17841479272283728"
+              },
+              "timestamp": 1771284326850
+            }
+          ]
+        }
+      ],
+      "object": "instagram"
+    },
+    "origin": "webhook",
+    "created_at": "2026-02-16T23:25:27.749Z"
+  },
+  {
+    "id": 107541,
+    "company_id": null,
+    "event_type": "message_out",
+    "message": "Mensagem enviada (sticker)",
+    "details": {
+      "content": "Figurinha",
+      "instance": "karenloja",
+      "externalId": "ACDB7E0D40421F654A30269F605AE1F8"
+    },
+    "origin": "webhook",
+    "created_at": "2026-02-16T23:17:13.303Z"
+  },
+  {
+    "id": 107539,
+    "company_id": null,
+    "event_type": "message_in",
+    "message": "Mensagem recebida (text)",
+    "details": {
+      "content": "😱 Tá rolando um descontão que você precisa ver!\n\n*Conjunto De 5 Potes Herméticos De Plástico Retangular Com Tampa De Vedação Top*\n\n❌ De: R$ 89,90\n✅ Por: R$ 47,89 (-47% OFF)\n\n🛒 Compre aqui: https://compre.link/w197/ymFQb7\n\nVendido por Shopee",
+      "instance": "karenloja",
+      "externalId": "3EB09728B964CAEE2C7FF6"
+    },
+    "origin": "webhook",
+    "created_at": "2026-02-16T23:14:20.449Z"
+  },
+  {
+    "id": 107537,
+    "company_id": null,
+    "event_type": "message_in",
+    "message": "Mensagem recebida (text)",
+    "details": {
+      "content": "Vende-se",
+      "instance": "karenloja",
+      "externalId": "A52367D53C26F88B332A5BE394074B71"
+    },
+    "origin": "webhook",
+    "created_at": "2026-02-16T23:09:48.937Z"
+  },
+  {
+    "id": 107535,
+    "company_id": null,
+    "event_type": "message_in",
+    "message": "Mensagem recebida (image)",
+    "details": {
+      "content": "Foto",
+      "instance": "karenloja",
+      "externalId": "A5114552745839E9F6F697FEEB8A8E84"
+    },
+    "origin": "webhook",
+    "created_at": "2026-02-16T23:09:47.862Z"
+  },
+  {
+    "id": 107533,
+    "company_id": null,
+    "event_type": "message_in",
+    "message": "Mensagem recebida (image)",
+    "details": {
+      "content": "Foto",
+      "instance": "karenloja",
+      "externalId": "A5D99144DC33DC267D755C17F2AB971A"
+    },
+    "origin": "webhook",
+    "created_at": "2026-02-16T23:09:47.075Z"
+  },
+  {
+    "id": 107531,
+    "company_id": null,
+    "event_type": "message_in",
+    "message": "Mensagem recebida (image)",
+    "details": {
+      "content": "Foto",
+      "instance": "karenloja",
+      "externalId": "A5F5865F01B016968CA6D5E3D776A06B"
+    },
+    "origin": "webhook",
+    "created_at": "2026-02-16T23:09:46.779Z"
+  },
+  {
+    "id": 107529,
+    "company_id": null,
+    "event_type": "message_in",
+    "message": "Mensagem recebida (text)",
+    "details": {
+      "content": "[senderKeyDistribution]",
+      "instance": "karenloja",
+      "externalId": "A500C7A8888069A9F75F6D59CC8A9967"
+    },
+    "origin": "webhook",
+    "created_at": "2026-02-16T23:09:45.143Z"
+  },
+  {
+    "id": 107527,
+    "company_id": null,
+    "event_type": "message_out",
+    "message": "Mensagem enviada (text)",
+    "details": {
+      "content": "teste",
+      "instance": "karenloja",
+      "externalId": "3EB0ED4C17A7C531A4E484"
+    },
+    "origin": "webhook",
+    "created_at": "2026-02-16T23:07:11.139Z"
+  },
+  {
+    "id": 107525,
+    "company_id": null,
+    "event_type": "message_in",
+    "message": "Mensagem recebida (text)",
+    "details": {
+      "content": "teste",
+      "instance": "leoloja",
+      "externalId": "3EB0ED4C17A7C531A4E484"
+    },
+    "origin": "webhook",
+    "created_at": "2026-02-16T23:07:10.459Z"
+  },
+  {
+    "id": 107523,
+    "company_id": null,
+    "event_type": "message_in",
+    "message": "Mensagem recebida (text)",
+    "details": {
+      "content": "BOA NOITE TENHO 2VAGAS PRA MOC AMANHÃ APARTIR DAS 06HS OBG DEUS ABENÇOE 🪴🙌🪴",
+      "instance": "karenloja",
+      "externalId": "AC1891CAA2418E919D01D34D093E1BFA"
+    },
+    "origin": "webhook",
+    "created_at": "2026-02-16T23:05:48.931Z"
+  },
+  {
+    "id": 107521,
+    "company_id": null,
+    "event_type": "message_in",
+    "message": "Mensagem recebida (text)",
+    "details": {
+      "content": "BOA NOITE TENHO 2VAGAS PRA MOC AMANHÃ APARTIR DAS 06HS OBG DEUS ABENÇOE 🪴👆🙌",
+      "instance": "karenloja",
+      "externalId": "AC1EEA4A4520112095370E90B9734BDD"
+    },
+    "origin": "webhook",
+    "created_at": "2026-02-16T23:05:20.658Z"
+  },
+  {
+    "id": 107519,
+    "company_id": null,
+    "event_type": "message_in",
+    "message": "Mensagem recebida (text)",
+    "details": {
+      "content": "📢 A promoção mais aguardada está oficialmente no ar!\n\n*Creme Hidratante Perfumado para Mãos Luna 40 g*\n\n❌ De: R$ 42,90\n✅ Por: R$ 15,39 (-64% OFF)\n\n🎯 Usem o cupom: *VERDE* ou *CASTANHA* ou *AMEIXA*  \n\n🛒 Compre Aqui 👉🏼 https://compre.link/w197/f7cjO6\n\n⚠️ Oferta relâmpago! Pode acabar a qualquer segundo.\n\nVendido por Natura",
+      "instance": "karenloja",
+      "externalId": "3EB078751684599CAC3720"
+    },
+    "origin": "webhook",
+    "created_at": "2026-02-16T23:00:38.428Z"
+  },
+  {
+    "id": 107518,
+    "company_id": null,
+    "event_type": "webhook_error",
+    "message": "Webhook: Falha estrutural no processamento (não-interrompível): MaxClientsInSessionMode: max clients reached - in Session mode max clients are limited to pool_size",
+    "details": {
+      "body": {
+        "data": {
+          "key": {
+            "id": "3EB078751684599CAC3720",
+            "fromMe": false,
+            "remoteJid": "120363047786603545@g.us",
+            "participant": "94764863078535@lid",
+            "addressingMode": "lid",
+            "participantAlt": "5519981685719@s.whatsapp.net"
+          },
+          "source": "web",
+          "status": "DELIVERY_ACK",
+          "message": {
+            "conversation": "📢 A promoção mais aguardada está oficialmente no ar!\n\n*Creme Hidratante Perfumado para Mãos Luna 40 g*\n\n❌ De: R$ 42,90\n✅ Por: R$ 15,39 (-64% OFF)\n\n🎯 Usem o cupom: *VERDE* ou *CASTANHA* ou *AMEIXA*  \n\n🛒 Compre Aqui 👉🏼 https://compre.link/w197/f7cjO6\n\n⚠️ Oferta relâmpago! Pode acabar a qualquer segundo.\n\nVendido por Natura"
+          },
+          "pushName": "Caio Samuel",
+          "instanceId": "b459c36a-b04c-49bc-90fd-55f6a387e780",
+          "contextInfo": {
+            "expiration": 604800,
+            "mentionedJid": [],
+            "groupMentions": [],
+            "statusAttributions": []
+          },
+          "messageType": "conversation",
+          "messageTimestamp": 1771282832
+        },
+        "event": "messages.upsert",
+        "apikey": "8A22CBC0C762-488C-A5D7-9C8E0CC9AEEC",
+        "sender": "553899540230@s.whatsapp.net",
+        "instance": "karenloja",
+        "date_time": "2026-02-16T20:00:33.150Z",
+        "server_url": "https://freelasdekaren-evolution-api.nhvvzr.easypanel.host",
+        "destination": "https://integrai.onrender.com/api/webhooks/whatsapp"
+      },
+      "error": "error: MaxClientsInSessionMode: max clients reached - in Session mode max clients are limited to pool_size\n    at /opt/render/project/src/node_modules/pg-pool/index.js:45:11\n    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)\n    at async ensureQueueSchema (/opt/render/project/src/server/controllers/queueController.ts:9:5)\n    at async <anonymous> (/opt/render/project/src/server/controllers/webhookController.ts:489:13)"
+    },
+    "origin": "webhook",
+    "created_at": "2026-02-16T23:00:34.531Z"
+  },
+  {
+    "id": 107516,
+    "company_id": null,
+    "event_type": "message_in",
+    "message": "Mensagem recebida (text)",
+    "details": {
+      "content": "BOA NOITE TENHO 2 VAGAS PARA CAPITÃO AMANHÃ A PARTIR DE 5:40 DA MANHÃ...DEUS ABENÇOE.",
+      "instance": "karenloja",
+      "externalId": "AC1E4707E67CA8DF80558B4E2D0DD5E1"
+    },
+    "origin": "webhook",
+    "created_at": "2026-02-16T23:00:08.111Z"
+  },
+  {
+    "id": 107515,
+    "company_id": null,
+    "event_type": "webhook_received",
+    "message": "QR Code solicitado para instância integrailoja",
+    "details": {
+      "instance": "integrailoja"
+    },
+    "origin": "system",
+    "created_at": "2026-02-16T22:54:45.774Z"
+  },
+  {
+    "id": 107513,
+    "company_id": null,
+    "event_type": "message_in",
+    "message": "Mensagem recebida (image)",
+    "details": {
+      "content": "Mini caixa para Pc 65$",
+      "instance": "karenloja",
+      "externalId": "A5AFE9213EF5AE6688FEBF74F302ECF0"
+    },
+    "origin": "webhook",
+    "created_at": "2026-02-16T22:54:43.506Z"
+  },
+  {
+    "id": 107511,
+    "company_id": null,
+    "event_type": "webhook_received",
+    "message": "Instagram Webhook Received",
+    "details": {
+      "entry": [
+        {
+          "id": "17841479272283728",
+          "time": 1771282355280,
+          "messaging": [
+            {
+              "sender": {
+                "id": "811127842028737"
+              },
+              "message": {
+                "mid": "aWdfZAG1faXRlbToxOklHTWVzc2FnZAUlEOjE3ODQxNDc5MjcyMjgzNzI4OjM0MDI4MjM2Njg0MTcxMDMwMTI0NDI2MDA2MDk1OTIyOTg4OTMwMTozMjY3NDM5MjI4MjMxNjIxNTE2MTA1NjMxMDgyNDI3MTg3MgZDZD",
+                "text": "fdfasa"
+              },
+              "recipient": {
+                "id": "17841479272283728"
+              },
+              "timestamp": 1771282354856
+            }
+          ]
+        }
+      ],
+      "object": "instagram"
+    },
+    "origin": "webhook",
+    "created_at": "2026-02-16T22:52:35.389Z"
+  },
+  {
+    "id": 107509,
+    "company_id": null,
+    "event_type": "message_in",
+    "message": "Mensagem recebida (text)",
+    "details": {
+      "content": "BOA NOITE! FIQUE POR DENTRO DE CADA EMPRESA PARCEIRA DA FEIRA DE VEÍCULOS E SEUS BENEFÍCIOS! Lembrando que vocês tem descontos especiais com a indicação da FEIRA 👏🏻👏🏻🙏🏻✅\n\nAPROVEITE PARA SEGUIR O INSTAGRAM DE CADA EMPRESA!🚙🛵🛻🏍️\n@feiradeveículosmoc\nhttps://www.instagram.com/invites/contact/?i=100k0uotpa5lv&utm_content=dr9u168",
+      "instance": "karenloja",
+      "externalId": "A565506FAB139C30235851BA464E96DD"
+    },
+    "origin": "webhook",
+    "created_at": "2026-02-16T22:52:34.918Z"
+  },
+  {
+    "id": 107507,
+    "company_id": null,
+    "event_type": "message_in",
+    "message": "Mensagem recebida (text)",
+    "details": {
+      "content": "Alguém saindo de capitão Eneas para janauba ?",
+      "instance": "karenloja",
+      "externalId": "3ACF7F8D4F1D297755D9"
+    },
+    "origin": "webhook",
+    "created_at": "2026-02-16T22:52:17.532Z"
+  },
+  {
+    "id": 107505,
+    "company_id": null,
+    "event_type": "message_in",
+    "message": "Mensagem recebida (text)",
+    "details": {
+      "content": "3898950497",
+      "instance": "karenloja",
+      "externalId": "A521C845FAE6FCF9BB1324FF85105E16"
+    },
+    "origin": "webhook",
+    "created_at": "2026-02-16T22:49:20.048Z"
+  },
+  {
+    "id": 107503,
+    "company_id": null,
+    "event_type": "message_in",
+    "message": "Mensagem recebida (video)",
+    "details": {
+      "content": "Vídeo",
+      "instance": "karenloja",
+      "externalId": "A5BCF6F7137E41ECD6E3262E369D7EEA"
+    },
+    "origin": "webhook",
+    "created_at": "2026-02-16T22:49:19.035Z"
+  },
+  {
+    "id": 107501,
+    "company_id": null,
+    "event_type": "message_in",
+    "message": "Mensagem recebida (text)",
+    "details": {
+      "content": "🔥 Promoção daquelas que somem rápido!\n\nDesconto entra selecionando a opção em recorrência\n\n*Concha y Toro Reservado Vinho Chileno Merlot 750ml*\n\n🔥 R$ 19,30 em recorrência\n\n🛒 Compre aqui: https://compre.link/w197/TrBNtq\n\nVendido por Amazon",
+      "instance": "karenloja",
+      "externalId": "3EB00BD675576A2EDDC63B"
+    },
+    "origin": "webhook",
+    "created_at": "2026-02-16T22:46:52.934Z"
+  },
+  {
+    "id": 107499,
+    "company_id": null,
+    "event_type": "message_in",
+    "message": "Mensagem recebida (text)",
+    "details": {
+      "content": "teste chatbot",
+      "instance": "leoloja",
+      "externalId": "3EB0D4C10E33DF68E4458F"
+    },
+    "origin": "webhook",
+    "created_at": "2026-02-16T22:45:35.588Z"
+  },
+  {
+    "id": 107497,
+    "company_id": null,
+    "event_type": "message_out",
+    "message": "Mensagem enviada (text)",
+    "details": {
+      "content": "teste chatbot",
+      "instance": "karenloja",
+      "externalId": "3EB0D4C10E33DF68E4458F"
+    },
+    "origin": "webhook",
+    "created_at": "2026-02-16T22:45:34.443Z"
+  },
+  {
+    "id": 107495,
+    "company_id": null,
+    "event_type": "message_in",
+    "message": "Mensagem recebida (text)",
+    "details": {
+      "content": "Só pra eu ter u norte",
+      "instance": "karenloja",
+      "externalId": "3EB0558DCF1DC89B7BB1B5"
+    },
+    "origin": "webhook",
+    "created_at": "2026-02-16T22:44:24.042Z"
+  },
+  {
+    "id": 107493,
+    "company_id": null,
+    "event_type": "message_in",
+    "message": "Mensagem recebida (text)",
+    "details": {
+      "content": "Pode mostra como tá bro?",
+      "instance": "karenloja",
+      "externalId": "3EB0877E5A376B3BA9BA02"
+    },
+    "origin": "webhook",
+    "created_at": "2026-02-16T22:44:13.824Z"
+  },
+  {
+    "id": 107491,
+    "company_id": null,
+    "event_type": "message_in",
+    "message": "Mensagem recebida (text)",
+    "details": {
+      "content": "Sla. To fazendo o meu sem anexar dai. Se precisar meio que tem um pre-pronto.",
+      "instance": "karenloja",
+      "externalId": "ACD8462C8173590897E3324A8CE370FF"
+    },
+    "origin": "webhook",
+    "created_at": "2026-02-16T22:42:49.220Z"
+  },
+  {
+    "id": 107489,
+    "company_id": null,
+    "event_type": "message_in",
+    "message": "Mensagem recebida (text)",
+    "details": {
+      "content": "Precisa ver se é necessário O diagrama UML, pelas questões ele não pede. Mas o link tem um software de criação pra montar se quiser",
+      "instance": "karenloja",
+      "externalId": "AC3C3D63174E9307E06EA1DCD82D28E7"
+    },
+    "origin": "webhook",
+    "created_at": "2026-02-16T22:41:48.590Z"
+  },
+  {
+    "id": 107487,
+    "company_id": null,
+    "event_type": "message_out",
+    "message": "Mensagem enviada (text)",
+    "details": {
+      "content": "[keyId]",
+      "instance": "karenloja",
+      "externalId": "3EB0BADF6969B0BADDA744"
+    },
+    "origin": "webhook",
+    "created_at": "2026-02-16T22:40:13.644Z"
+  },
+  {
+    "id": 107485,
+    "company_id": null,
+    "event_type": "message_out",
+    "message": "Mensagem enviada (text)",
+    "details": {
+      "content": "to vendo aq",
+      "instance": "karenloja",
+      "externalId": "3EB0BADF6969B0BADDA744"
+    },
+    "origin": "webhook",
+    "created_at": "2026-02-16T22:40:13.029Z"
+  },
+  {
+    "id": 107484,
+    "company_id": null,
+    "event_type": "message_in",
+    "message": "Mensagem recebida (text)",
+    "details": {
+      "content": "[keyId]",
+      "instance": "karenloja",
+      "externalId": "3ACD8697F7CD0F451159"
+    },
+    "origin": "webhook",
+    "created_at": "2026-02-16T22:39:53.781Z"
+  },
+  {
+    "id": 107483,
+    "company_id": null,
+    "event_type": "message_in",
+    "message": "Mensagem recebida (audio)",
+    "details": {
+      "content": "Mensagem de voz",
+      "instance": "karenloja",
+      "externalId": "3ACD8697F7CD0F451159"
+    },
+    "origin": "webhook",
+    "created_at": "2026-02-16T22:39:51.591Z"
+  },
+  {
+    "id": 107482,
+    "company_id": null,
+    "event_type": "message_in",
+    "message": "Mensagem recebida (text)",
+    "details": {
+      "content": "🩷🥳✨ *UM LUXOOO ESSE ÓCULOS DE SOL*\n\n✨￼Óculos de Sol Vintage Leopardo Miu Feminino Com Case Armação Aro Oval Luxo Moda Proteção UV400\n\n🤯 *Por:29,99*\n\n🛍️ *Compre aqui* https://s.shopee.com.br/10xWVHohqI\n\n🎟️ *Resgate cupons disponíveis aqui* https://s.shopee.com.br/4AsL3xJWGD\n\n⚠️ *A oferta pode esgotar a qualquer momento*",
+      "instance": "karenloja",
+      "externalId": "3A0C88BCEF081F1BCCF4"
+    },
+    "origin": "webhook",
+    "created_at": "2026-02-16T22:39:51.201Z"
+  },
+  {
+    "id": 107481,
+    "company_id": null,
+    "event_type": "message_in",
+    "message": "Mensagem recebida (text)",
+    "details": {
+      "content": "✨ *ÓCULOS DE SOL POR MENOS DE 15 REAIS* 😵😎\n\n🤯 *Por:14,59*\n\n🛍️ *Compre aqui* https://s.shopee.com.br/3qHhsM7suj\n\n🎟️ *Resgate cupons disponíveis aqui* https://s.shopee.com.br/4AsL3xJWGD\n\n⚠️ *A oferta pode esgotar a qualquer momento*",
+      "instance": "karenloja",
+      "externalId": "3A8A39915204C4CAB41E"
+    },
+    "origin": "webhook",
+    "created_at": "2026-02-16T22:39:49.318Z"
+  },
+  {
+    "id": 107479,
+    "company_id": null,
+    "event_type": "message_in",
+    "message": "Mensagem recebida (text)",
+    "details": {
+      "content": "🩷🥳✨ *ACESSÓRIO SUPER DELICADO*\n\n✨￼Ajustável Ouro Prata Colar Pulseira Conjunto Moda Onda Borda Gargantilha Versátil Presente\n\n🤯 *Por:16,62*\n\n🛍️ *Compre aqui* https://s.shopee.com.br/6fbtFVGNj1\n\n🎟️ *Resgate cupons disponíveis aqui* https://s.shopee.com.br/4AsL3xJWGD\n\n⚠️ *A oferta pode esgotar a qualquer momento*",
+      "instance": "karenloja",
+      "externalId": "3ACB6D50630D470E6DED"
+    },
+    "origin": "webhook",
+    "created_at": "2026-02-16T22:39:47.089Z"
+  },
+  {
+    "id": 107476,
+    "company_id": null,
+    "event_type": "message_in",
+    "message": "Mensagem recebida (text)",
+    "details": {
+      "content": "🩷🥳✨ *ESSE TECIDO É MARAVILHOSO*\n\n✨Calça Canelada de Cintura Alta Sem Costura para Academia Feminina, Elástica e Fitness Moda\n\n🤯 *Por: 45,00*\n\n🛍️ *Compre aqui* https://s.shopee.com.br/3VerTbUSNP\n\n🎟️ *Resgate cupons disponíveis aqui* https://s.shopee.com.br/4AsL3xJWGD\n\n⚠️ *A oferta pode esgotar a qualquer momento*",
+      "instance": "karenloja",
+      "externalId": "3AE4AEE6273A06C9505D"
+    },
+    "origin": "webhook",
+    "created_at": "2026-02-16T22:39:45.171Z"
+  },
+  {
+    "id": 107475,
+    "company_id": null,
+    "event_type": "message_in",
+    "message": "Mensagem recebida (text)",
+    "details": {
+      "content": "[keyId]",
+      "instance": "karenloja",
+      "externalId": "3A42F3A66B523FE36AF2"
+    },
+    "origin": "webhook",
+    "created_at": "2026-02-16T22:39:44.669Z"
+  },
+  {
+    "id": 107473,
+    "company_id": null,
+    "event_type": "message_in",
+    "message": "Mensagem recebida (audio)",
+    "details": {
+      "content": "Mensagem de voz",
+      "instance": "karenloja",
+      "externalId": "3A42F3A66B523FE36AF2"
+    },
+    "origin": "webhook",
+    "created_at": "2026-02-16T22:39:40.691Z"
+  },
+  {
+    "id": 107471,
+    "company_id": null,
+    "event_type": "message_in",
+    "message": "Mensagem recebida (text)",
+    "details": {
+      "content": "🩷🥳✨ *KIT COM 3 PEÇAS POR ESSE PRECINHO*\n\n✨￼Kit Conjunto Feminino 3 Peças Fitness Roupa Academia Yoga Jaqueta Top e Calça Legging Cintura Alta\n\n🤯 *Por:92,99*\n\n🛍️ *Compre aqui* https://s.shopee.com.br/5q2mFlbw5s\n\n🎟️ *Resgate cupons disponíveis aqui* https://s.shopee.com.br/4AsL3xJWGD\n\n⚠️ *A oferta pode esgotar a qualquer momento*",
+      "instance": "karenloja",
+      "externalId": "3A44A9D06AD3AA901AB4"
+    },
+    "origin": "webhook",
+    "created_at": "2026-02-16T22:39:40.402Z"
+  },
+  {
+    "id": 107469,
+    "company_id": null,
+    "event_type": "message_in",
+    "message": "Mensagem recebida (text)",
+    "details": {
+      "content": "🩷🥳✨ *OLHA A COR DESSE CONJUNTO QUE LINDA*\n\n✨￼Conjunto Fitness Calça Legging e Top com Bojo Feminino Bicolor Academia Costura Reforçada Cós Alto\n\n❌ ~De:119,90~\n🤯 *Por:87,90*\n\n🛍️ *Compre aqui* https://s.shopee.com.br/7AY9q8Csgu\n\n🎟️ *Resgate cupons disponíveis aqui* https://s.shopee.com.br/4AsL3xJWGD\n\n⚠️ *A oferta pode esgotar a qualquer momento*",
+      "instance": "karenloja",
+      "externalId": "3A2C8D382F5C1DC64AAE"
+    },
+    "origin": "webhook",
+    "created_at": "2026-02-16T22:39:33.531Z"
+  },
+  {
+    "id": 107467,
+    "company_id": null,
+    "event_type": "message_in",
+    "message": "Mensagem recebida (text)",
+    "details": {
+      "content": "🩷🥳✨ *CONJUNTO LINDOOO PARA VC TREINAR*\n\n✨￼Conjunto Fitness Poliamida Diasp Roupa Academia Blackout Virginia\n\n❌ ~De:99,90~\n🤯 *Por:79,00*\n\n🛍️ *Compre aqui* https://s.shopee.com.br/2LSu5Bk1nL\n\n🎟️ *Resgate cupons disponíveis aqui* https://s.shopee.com.br/4AsL3xJWGD\n\n⚠️ *A oferta pode esgotar a qualquer momento*",
+      "instance": "karenloja",
+      "externalId": "3A8F8E3EEAA62194DD64"
+    },
+    "origin": "webhook",
+    "created_at": "2026-02-16T22:39:32.715Z"
+  },
+  {
+    "id": 107465,
+    "company_id": null,
+    "event_type": "message_in",
+    "message": "Mensagem recebida (text)",
+    "details": {
+      "content": "🩷🥳✨ *TÊNIS LINDO ESTILOSO*\n\n✨Tênis Casual Feminino e Masculino Confortavel Academia Caminhada Envio Rapido\n\n❌ ~De:129,90~\n🤯 *Por:59,99*\n\n🛍️ *Compre aqui* https://s.shopee.com.br/1gDDHrozNU\n\n🎟️ *Resgate cupons disponíveis aqui* https://s.shopee.com.br/4AsL3xJWGD\n\n⚠️ *A oferta pode esgotar a qualquer momento*",
+      "instance": "karenloja",
+      "externalId": "3AB35BCF6D0AD417F2F9"
+    },
+    "origin": "webhook",
+    "created_at": "2026-02-16T22:39:30.985Z"
+  },
+  {
+    "id": 107463,
+    "company_id": null,
+    "event_type": "message_out",
+    "message": "Mensagem enviada (text)",
+    "details": {
+      "content": "[keyId]",
+      "instance": "karenloja",
+      "externalId": "AC238E7B98ADA8E9664EADC446742E17"
+    },
+    "origin": "webhook",
+    "created_at": "2026-02-16T22:39:09.153Z"
+  },
+  {
+    "id": 107461,
+    "company_id": null,
+    "event_type": "message_out",
+    "message": "Mensagem enviada (text)",
+    "details": {
+      "content": "Mas pra isso a gente tem que fazer o teste no nosso também",
+      "instance": "karenloja",
+      "externalId": "AC238E7B98ADA8E9664EADC446742E17"
+    },
+    "origin": "webhook",
+    "created_at": "2026-02-16T22:39:08.242Z"
+  },
+  {
+    "id": 107459,
+    "company_id": null,
+    "event_type": "message_in",
+    "message": "Mensagem recebida (text)",
+    "details": {
+      "content": "[keyId]",
+      "instance": "karenloja",
+      "externalId": "3A8A734C5F9F47815A12"
+    },
+    "origin": "webhook",
+    "created_at": "2026-02-16T22:38:43.340Z"
+  },
+  {
+    "id": 107457,
+    "company_id": null,
+    "event_type": "message_in",
+    "message": "Mensagem recebida (audio)",
+    "details": {
+      "content": "Mensagem de voz",
+      "instance": "karenloja",
+      "externalId": "3A8A734C5F9F47815A12"
+    },
+    "origin": "webhook",
+    "created_at": "2026-02-16T22:38:34.397Z"
+  },
+  {
+    "id": 107455,
+    "company_id": null,
+    "event_type": "message_in",
+    "message": "Mensagem recebida (text)",
+    "details": {
+      "content": "[keyId]",
+      "instance": "karenloja",
+      "externalId": "3A427E8D306474BA6BC7"
+    },
+    "origin": "webhook",
+    "created_at": "2026-02-16T22:38:24.857Z"
+  },
+  {
+    "id": 107453,
+    "company_id": null,
+    "event_type": "message_in",
+    "message": "Mensagem recebida (audio)",
+    "details": {
+      "content": "Mensagem de voz",
+      "instance": "karenloja",
+      "externalId": "3A427E8D306474BA6BC7"
+    },
+    "origin": "webhook",
+    "created_at": "2026-02-16T22:38:02.352Z"
+  },
+  {
+    "id": 107451,
+    "company_id": null,
+    "event_type": "message_out",
+    "message": "Mensagem enviada (text)",
+    "details": {
+      "content": "[keyId]",
+      "instance": "karenloja",
+      "externalId": "AC73741D9C5CC3895D07BF8FA1ACF6B6"
+    },
+    "origin": "webhook",
+    "created_at": "2026-02-16T22:37:31.714Z"
+  },
+  {
+    "id": 107449,
+    "company_id": null,
+    "event_type": "message_out",
+    "message": "Mensagem enviada (text)",
+    "details": {
+      "content": "Usar api oficial ou comprar tokens",
+      "instance": "karenloja",
+      "externalId": "AC73741D9C5CC3895D07BF8FA1ACF6B6"
+    },
+    "origin": "webhook",
+    "created_at": "2026-02-16T22:37:29.782Z"
+  }
+]

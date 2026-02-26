@@ -1,0 +1,248 @@
+[
+  {
+    "id": 107622,
+    "event_type": "webhook_received",
+    "message": "QR Code solicitado para instância karenloja",
+    "details": {
+      "instance": "karenloja"
+    },
+    "created_at": "2026-02-20T15:45:37.159Z"
+  },
+  {
+    "id": 107612,
+    "event_type": "webhook_received",
+    "message": "QR Code solicitado para instância karenloja",
+    "details": {
+      "instance": "karenloja"
+    },
+    "created_at": "2026-02-19T18:43:15.248Z"
+  },
+  {
+    "id": 107611,
+    "event_type": "webhook_received",
+    "message": "QR Code solicitado para instância karenloja",
+    "details": {
+      "instance": "karenloja"
+    },
+    "created_at": "2026-02-19T17:08:19.166Z"
+  },
+  {
+    "id": 107541,
+    "event_type": "message_out",
+    "message": "Mensagem enviada (sticker)",
+    "details": {
+      "content": "Figurinha",
+      "instance": "karenloja",
+      "externalId": "ACDB7E0D40421F654A30269F605AE1F8"
+    },
+    "created_at": "2026-02-16T23:17:13.303Z"
+  },
+  {
+    "id": 107539,
+    "event_type": "message_in",
+    "message": "Mensagem recebida (text)",
+    "details": {
+      "content": "😱 Tá rolando um descontão que você precisa ver!\n\n*Conjunto De 5 Potes Herméticos De Plástico Retangular Com Tampa De Vedação Top*\n\n❌ De: R$ 89,90\n✅ Por: R$ 47,89 (-47% OFF)\n\n🛒 Compre aqui: https://compre.link/w197/ymFQb7\n\nVendido por Shopee",
+      "instance": "karenloja",
+      "externalId": "3EB09728B964CAEE2C7FF6"
+    },
+    "created_at": "2026-02-16T23:14:20.449Z"
+  },
+  {
+    "id": 107537,
+    "event_type": "message_in",
+    "message": "Mensagem recebida (text)",
+    "details": {
+      "content": "Vende-se",
+      "instance": "karenloja",
+      "externalId": "A52367D53C26F88B332A5BE394074B71"
+    },
+    "created_at": "2026-02-16T23:09:48.937Z"
+  },
+  {
+    "id": 107535,
+    "event_type": "message_in",
+    "message": "Mensagem recebida (image)",
+    "details": {
+      "content": "Foto",
+      "instance": "karenloja",
+      "externalId": "A5114552745839E9F6F697FEEB8A8E84"
+    },
+    "created_at": "2026-02-16T23:09:47.862Z"
+  },
+  {
+    "id": 107533,
+    "event_type": "message_in",
+    "message": "Mensagem recebida (image)",
+    "details": {
+      "content": "Foto",
+      "instance": "karenloja",
+      "externalId": "A5D99144DC33DC267D755C17F2AB971A"
+    },
+    "created_at": "2026-02-16T23:09:47.075Z"
+  },
+  {
+    "id": 107531,
+    "event_type": "message_in",
+    "message": "Mensagem recebida (image)",
+    "details": {
+      "content": "Foto",
+      "instance": "karenloja",
+      "externalId": "A5F5865F01B016968CA6D5E3D776A06B"
+    },
+    "created_at": "2026-02-16T23:09:46.779Z"
+  },
+  {
+    "id": 107529,
+    "event_type": "message_in",
+    "message": "Mensagem recebida (text)",
+    "details": {
+      "content": "[senderKeyDistribution]",
+      "instance": "karenloja",
+      "externalId": "A500C7A8888069A9F75F6D59CC8A9967"
+    },
+    "created_at": "2026-02-16T23:09:45.143Z"
+  },
+  {
+    "id": 107527,
+    "event_type": "message_out",
+    "message": "Mensagem enviada (text)",
+    "details": {
+      "content": "teste",
+      "instance": "karenloja",
+      "externalId": "3EB0ED4C17A7C531A4E484"
+    },
+    "created_at": "2026-02-16T23:07:11.139Z"
+  },
+  {
+    "id": 107523,
+    "event_type": "message_in",
+    "message": "Mensagem recebida (text)",
+    "details": {
+      "content": "BOA NOITE TENHO 2VAGAS PRA MOC AMANHÃ APARTIR DAS 06HS OBG DEUS ABENÇOE 🪴🙌🪴",
+      "instance": "karenloja",
+      "externalId": "AC1891CAA2418E919D01D34D093E1BFA"
+    },
+    "created_at": "2026-02-16T23:05:48.931Z"
+  },
+  {
+    "id": 107521,
+    "event_type": "message_in",
+    "message": "Mensagem recebida (text)",
+    "details": {
+      "content": "BOA NOITE TENHO 2VAGAS PRA MOC AMANHÃ APARTIR DAS 06HS OBG DEUS ABENÇOE 🪴👆🙌",
+      "instance": "karenloja",
+      "externalId": "AC1EEA4A4520112095370E90B9734BDD"
+    },
+    "created_at": "2026-02-16T23:05:20.658Z"
+  },
+  {
+    "id": 107519,
+    "event_type": "message_in",
+    "message": "Mensagem recebida (text)",
+    "details": {
+      "content": "📢 A promoção mais aguardada está oficialmente no ar!\n\n*Creme Hidratante Perfumado para Mãos Luna 40 g*\n\n❌ De: R$ 42,90\n✅ Por: R$ 15,39 (-64% OFF)\n\n🎯 Usem o cupom: *VERDE* ou *CASTANHA* ou *AMEIXA*  \n\n🛒 Compre Aqui 👉🏼 https://compre.link/w197/f7cjO6\n\n⚠️ Oferta relâmpago! Pode acabar a qualquer segundo.\n\nVendido por Natura",
+      "instance": "karenloja",
+      "externalId": "3EB078751684599CAC3720"
+    },
+    "created_at": "2026-02-16T23:00:38.428Z"
+  },
+  {
+    "id": 107518,
+    "event_type": "webhook_error",
+    "message": "Webhook: Falha estrutural no processamento (não-interrompível): MaxClientsInSessionMode: max clients reached - in Session mode max clients are limited to pool_size",
+    "details": {
+      "body": {
+        "data": {
+          "key": {
+            "id": "3EB078751684599CAC3720",
+            "fromMe": false,
+            "remoteJid": "120363047786603545@g.us",
+            "participant": "94764863078535@lid",
+            "addressingMode": "lid",
+            "participantAlt": "5519981685719@s.whatsapp.net"
+          },
+          "source": "web",
+          "status": "DELIVERY_ACK",
+          "message": {
+            "conversation": "📢 A promoção mais aguardada está oficialmente no ar!\n\n*Creme Hidratante Perfumado para Mãos Luna 40 g*\n\n❌ De: R$ 42,90\n✅ Por: R$ 15,39 (-64% OFF)\n\n🎯 Usem o cupom: *VERDE* ou *CASTANHA* ou *AMEIXA*  \n\n🛒 Compre Aqui 👉🏼 https://compre.link/w197/f7cjO6\n\n⚠️ Oferta relâmpago! Pode acabar a qualquer segundo.\n\nVendido por Natura"
+          },
+          "pushName": "Caio Samuel",
+          "instanceId": "b459c36a-b04c-49bc-90fd-55f6a387e780",
+          "contextInfo": {
+            "expiration": 604800,
+            "mentionedJid": [],
+            "groupMentions": [],
+            "statusAttributions": []
+          },
+          "messageType": "conversation",
+          "messageTimestamp": 1771282832
+        },
+        "event": "messages.upsert",
+        "apikey": "8A22CBC0C762-488C-A5D7-9C8E0CC9AEEC",
+        "sender": "553899540230@s.whatsapp.net",
+        "instance": "karenloja",
+        "date_time": "2026-02-16T20:00:33.150Z",
+        "server_url": "https://freelasdekaren-evolution-api.nhvvzr.easypanel.host",
+        "destination": "https://integrai.onrender.com/api/webhooks/whatsapp"
+      },
+      "error": "error: MaxClientsInSessionMode: max clients reached - in Session mode max clients are limited to pool_size\n    at /opt/render/project/src/node_modules/pg-pool/index.js:45:11\n    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)\n    at async ensureQueueSchema (/opt/render/project/src/server/controllers/queueController.ts:9:5)\n    at async <anonymous> (/opt/render/project/src/server/controllers/webhookController.ts:489:13)"
+    },
+    "created_at": "2026-02-16T23:00:34.531Z"
+  },
+  {
+    "id": 107516,
+    "event_type": "message_in",
+    "message": "Mensagem recebida (text)",
+    "details": {
+      "content": "BOA NOITE TENHO 2 VAGAS PARA CAPITÃO AMANHÃ A PARTIR DE 5:40 DA MANHÃ...DEUS ABENÇOE.",
+      "instance": "karenloja",
+      "externalId": "AC1E4707E67CA8DF80558B4E2D0DD5E1"
+    },
+    "created_at": "2026-02-16T23:00:08.111Z"
+  },
+  {
+    "id": 107513,
+    "event_type": "message_in",
+    "message": "Mensagem recebida (image)",
+    "details": {
+      "content": "Mini caixa para Pc 65$",
+      "instance": "karenloja",
+      "externalId": "A5AFE9213EF5AE6688FEBF74F302ECF0"
+    },
+    "created_at": "2026-02-16T22:54:43.506Z"
+  },
+  {
+    "id": 107509,
+    "event_type": "message_in",
+    "message": "Mensagem recebida (text)",
+    "details": {
+      "content": "BOA NOITE! FIQUE POR DENTRO DE CADA EMPRESA PARCEIRA DA FEIRA DE VEÍCULOS E SEUS BENEFÍCIOS! Lembrando que vocês tem descontos especiais com a indicação da FEIRA 👏🏻👏🏻🙏🏻✅\n\nAPROVEITE PARA SEGUIR O INSTAGRAM DE CADA EMPRESA!🚙🛵🛻🏍️\n@feiradeveículosmoc\nhttps://www.instagram.com/invites/contact/?i=100k0uotpa5lv&utm_content=dr9u168",
+      "instance": "karenloja",
+      "externalId": "A565506FAB139C30235851BA464E96DD"
+    },
+    "created_at": "2026-02-16T22:52:34.918Z"
+  },
+  {
+    "id": 107507,
+    "event_type": "message_in",
+    "message": "Mensagem recebida (text)",
+    "details": {
+      "content": "Alguém saindo de capitão Eneas para janauba ?",
+      "instance": "karenloja",
+      "externalId": "3ACF7F8D4F1D297755D9"
+    },
+    "created_at": "2026-02-16T22:52:17.532Z"
+  },
+  {
+    "id": 107505,
+    "event_type": "message_in",
+    "message": "Mensagem recebida (text)",
+    "details": {
+      "content": "3898950497",
+      "instance": "karenloja",
+      "externalId": "A521C845FAE6FCF9BB1324FF85105E16"
+    },
+    "created_at": "2026-02-16T22:49:20.048Z"
+  }
+]

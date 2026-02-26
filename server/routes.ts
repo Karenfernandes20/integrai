@@ -149,6 +149,19 @@ router.post('/whapi/qrcode', authenticateToken, getWhapiQrCodeController);
 router.post('/whapi/connect', authenticateToken, connectWhapiInstance);
 router.post('/whapi/webhook/:instanceKey', handleWhapiWebhook);
 
+// Local Instance Routes
+import { createLocalInstance, getQRCode, getStatus, deleteLocalInstance } from './controllers/localInstance.controller.js';
+router.post('/instances/local', authenticateToken, createLocalInstance);
+router.get('/instances/local/:id/qrcode', authenticateToken, getQRCode);
+router.get('/instances/local/:id/status', authenticateToken, getStatus);
+router.delete('/instances/local/:id', authenticateToken, deleteLocalInstance);
+
+// Mini-Evolution Separada (Integração custom)
+import MiniEvoController from './controllers/miniEvoController.js';
+router.post('/minievo/webhook/:instanceKey', MiniEvoController.webhook); // Rota aberta para receber (do outro backend)
+router.post('/minievo/send', authenticateToken, MiniEvoController.sendMessage); // Rota interna para o CRM mandar msg
+
+
 // Instagram routes
 import { testInstagramConnection } from './services/instagramService';
 import { testWhatsappMetaConnection } from './services/whatsappMetaService';

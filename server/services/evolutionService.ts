@@ -7,11 +7,9 @@ const WEBHOOK_EVENTS = [
     "MESSAGES_DELETE",
     "SEND_MESSAGE",
     "CONNECTION_UPDATE",
-    "TYPEING_START",
     "CHATS_UPSERT",
     "CHATS_UPDATE",
-    "PRESENCE_UPDATE",
-    "MESSAGE_RECEIVED" // Added as per requirement
+    "PRESENCE_UPDATE"
 ];
 
 /**

@@ -1,0 +1,32 @@
+[dotenv@17.2.3] injecting env (8) from .env -- tip: 📡 add observability to secrets: https://dotenvx.com/ops
+┌─────────┬────────────────────────┬───────────────────────────────┐
+│ (index) │ column_name            │ data_type                     │
+├─────────┼────────────────────────┼───────────────────────────────┤
+│ 0       │ 'id'                   │ 'integer'                     │
+│ 1       │ 'conversation_id'      │ 'integer'                     │
+│ 2       │ 'direction'            │ 'character varying'           │
+│ 3       │ 'content'              │ 'text'                        │
+│ 4       │ 'status'               │ 'character varying'           │
+│ 5       │ 'message_type'         │ 'character varying'           │
+│ 6       │ 'media_url'            │ 'text'                        │
+│ 7       │ 'sent_at'              │ 'timestamp without time zone' │
+│ 8       │ 'external_id'          │ 'text'                        │
+│ 9       │ 'user_id'              │ 'integer'                     │
+│ 10      │ 'sender_jid'           │ 'text'                        │
+│ 11      │ 'sender_name'          │ 'character varying'           │
+│ 12      │ 'campaign_id'          │ 'integer'                     │
+│ 13      │ 'follow_up_id'         │ 'integer'                     │
+│ 14      │ 'company_id'           │ 'integer'                     │
+│ 15      │ 'instance_id'          │ 'integer'                     │
+│ 16      │ 'instance_key'         │ 'text'                        │
+│ 17      │ 'instance_name'        │ 'text'                        │
+│ 18      │ 'channel'              │ 'character varying'           │
+│ 19      │ 'instagram_message_id' │ 'text'                        │
+│ 20      │ 'sent_by_user_id'      │ 'integer'                     │
+│ 21      │ 'sent_by_user_name'    │ 'text'                        │
+│ 22      │ 'message_source'       │ 'character varying'           │
+│ 23      │ 'message_origin'       │ 'character varying'           │
+│ 24      │ 'updated_at'           │ 'timestamp without time zone' │
+│ 25      │ 'created_at'           │ 'timestamp without time zone' │
+│ 26      │ 'reactions'            │ 'jsonb'                       │
+└─────────┴────────────────────────┴───────────────────────────────┘
