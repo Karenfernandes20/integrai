@@ -52,6 +52,16 @@ export class LocalInstanceController {
             res.status(500).json({ error: e.message });
         }
     }
+
+    async disconnect(req: Request, res: Response) {
+        const { id } = req.params;
+        try {
+            await InstanceManager.disconnectInstance('local', id);
+            res.json({ success: true, message: 'Instância desconectada com sucesso.' });
+        } catch (e: any) {
+            res.status(500).json({ error: e.message });
+        }
+    }
 }
 
 export default new LocalInstanceController();

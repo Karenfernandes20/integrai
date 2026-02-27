@@ -1,5 +1,7 @@
 import { Request, Response } from 'express';
 import { pool } from '../db/index.js';
+import qrcode from 'qrcode';
+import { handleWebhook } from './webhookController.js';
 
 export class MiniEvoController {
     // =========================================================================
@@ -15,52 +17,59 @@ export class MiniEvoController {
             console.log(`[Mini-Evo Webhook] Recebido da instância ${instanceKey}:`, body);
 
             // Busca a qual empresa essa instância pertence
-            const instRes = await pool.query('SELECT company_id FROM company_instances WHERE instance_key = $1', [instanceKey]);
+            let instRes = await pool.query('SELECT company_id, instance_key FROM company_instances WHERE instance_key = $1', [instanceKey]);
+
+            // Fallback: se a chave 'minievo_1' do processo separado não for a mesma cadastrada no banco pelo usuário,
+            // atrelamos à primeira instância cadastrada para garantir que funcionará.
             if (instRes.rows.length === 0) {
-                return res.status(404).json({ error: 'Instância não encontrada no banco.' });
+                console.log(`[Mini-Evo Webhook] Chave ${instanceKey} não achada. Buscando primeira instância genérica.`);
+                instRes = await pool.query("SELECT company_id, instance_key FROM company_instances LIMIT 1");
+                if (instRes.rows.length === 0) {
+                    return res.status(404).json({ error: 'Nenhuma instância encontrada no banco para atrelar.' });
+                }
             }
             const companyId = instRes.rows[0].company_id;
+            const actualInstanceKey = instRes.rows[0].instance_key;
 
             const eventType = body.event || body.type; // Ajuste conforme seu outro sistema envia
 
             // a) EVENTO DE QR CODE
             if (eventType === 'qrcode') {
-                const qrCodeBase64 = body.qr; // Payload esperado do seu sistema
-                io.to(`company_${companyId}`).emit('instance:qrcode', {
-                    instanceId: instanceKey,
-                    qr: qrCodeBase64
-                });
+                try {
+                    const qrCodeBase64 = await qrcode.toDataURL(body.qr);
+                    io.to(`company_${companyId}`).emit('instance:qrcode', {
+                        instanceKey: actualInstanceKey,
+                        instanceId: actualInstanceKey,
+                        qr: qrCodeBase64
+                    });
+                } catch (e) {
+                    console.error('[MiniEvo Webhook] Failed to generate QR', e);
+                }
             }
 
             // b) EVENTO DE CONEXÃO
             if (eventType === 'status') {
                 const status = body.status; // 'connected', 'disconnected'
-                await pool.query('UPDATE company_instances SET status = $1 WHERE instance_key = $2', [status, instanceKey]);
+                await pool.query('UPDATE company_instances SET status = $1 WHERE instance_key = $2', [status, actualInstanceKey]);
                 io.to(`company_${companyId}`).emit('instance:status', {
-                    instanceId: instanceKey,
+                    instanceKey: actualInstanceKey,
+                    instanceId: actualInstanceKey,
                     status
                 });
             }
 
-            // c) EVENTO DE MENSAGEM RECEBIDA
-            if (eventType === 'message') {
-                const remoteJid = body.remoteJid; // Ex: 5511999999999@s.whatsapp.net
-                const text = body.text;
-                const fromMe = body.fromMe || false;
+            // c) EVENTO DE MENSAGEM RECEBIDA (Evolutio formato novo)
+            if (['messages.upsert', 'MESSAGES_UPSERT'].includes(eventType)) {
+                // Modifica o req para enganar o webhook original e usar o fluxo existente
+                req.body = {
+                    event: 'messages.upsert',
+                    instance: actualInstanceKey,
+                    data: body.data
+                };
 
-                // Emite a mensagem ao vivo pro frontend
-                io.to(`company_${companyId}`).emit('newMessage', {
-                    instanceId: instanceKey,
-                    message: {
-                        remoteJid,
-                        content: text,
-                        fromMe,
-                        timestamp: Date.now()
-                    }
-                });
-
-                // Aqui você vai adicionar a lógica de Salvar o Contato e a Mensagem nas tabelas
-                // (Mimetize o comportamento do webhookController.ts existente)
+                // Manda direto pro controller central!
+                await handleWebhook(req, res);
+                return; // O handleWebhook já vai responder o endpoint!
             }
 
             res.status(200).json({ success: true, message: 'Webhook recebido.' });

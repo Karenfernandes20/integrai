@@ -1,0 +1,37 @@
+[
+  {
+    "id": 1249,
+    "name": "Wagda Pessoal",
+    "instance_key": "wagdaloja",
+    "provider": "evolution",
+    "status": "close"
+  },
+  {
+    "id": 9582,
+    "name": "WhatsApp 1",
+    "instance_key": "leoempresateste",
+    "provider": "evolution",
+    "status": "disconnected"
+  },
+  {
+    "id": 41,
+    "name": "Karen Loja",
+    "instance_key": "karenloja",
+    "provider": "evolution",
+    "status": "connected"
+  },
+  {
+    "id": 1351,
+    "name": "WhatsApp 2",
+    "instance_key": "karen_2",
+    "provider": "evolution",
+    "status": "disconnected"
+  },
+  {
+    "id": 6,
+    "name": "Instância 1",
+    "instance_key": "integrai_1_1",
+    "provider": "evolution",
+    "status": "disconnected"
+  }
+]

@@ -1,18 +1,1 @@
-
-import { Pool } from 'pg';
-import dotenv from 'dotenv';
-dotenv.config();
-
-const pool = new Pool({ connectionString: process.env.DATABASE_URL });
-
-async function test() {
-    try {
-        const res = await pool.query('SELECT NOW()');
-        console.log(res.rows[0]);
-        await pool.end();
-    } catch (err) {
-        console.error('ERROR_TEST:', err);
-    }
-}
-
-test();
+import { pool } from './server/db/index.js'; async function run() { const res = await pool.query('SELECT instance_key, status FROM company_instances LIMIT 5;'); console.log(res.rows); process.exit(0); } run().catch(console.error);

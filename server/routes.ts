@@ -30,7 +30,7 @@ import { login, register } from './controllers/authController';
 import { authenticateToken, authorizeRole, authorizePermission } from './middleware/authMiddleware';
 import { rateLimit } from './middleware/rateLimitMiddleware';
 import { PERMISSIONS } from './config/roles';
-import { getCompanies, createCompany, updateCompany, deleteCompany, getCompanyUsers, getCompany, getCompanyInstances, updateCompanyInstance } from './controllers/companyController';
+import { getCompanies, createCompany, updateCompany, deleteCompany, getCompanyUsers, getCompany, getCompanyInstances, updateCompanyInstance, deleteCompanyInstance } from './controllers/companyController.js';
 import { startConversation, closeConversation, updateContactNameWithAudit, deleteConversation, returnToPending, transferConversationQueue, ensureConversation } from './controllers/conversationController';
 import { listQueues, createQueue, updateQueue, deleteQueue } from './controllers/queueController';
 import { getQuickAnswers, createQuickAnswer, updateQuickAnswer, deleteQuickAnswer } from './controllers/whaticket/quickAnswerController';
@@ -67,6 +67,7 @@ router.get('/companies/:id', authenticateToken, getCompany);
 router.get('/companies/:id/users', authenticateToken, authorizeRole(['SUPERADMIN']), getCompanyUsers);
 router.get('/companies/:id/instances', authenticateToken, getCompanyInstances); // New
 router.put('/companies/:id/instances/:instanceId', authenticateToken, updateCompanyInstance); // New
+router.delete('/companies/:id/instances/:instanceId', authenticateToken, deleteCompanyInstance); // New
 router.post('/companies', authenticateToken, authorizeRole(['SUPERADMIN']), upload.single('logo'), createCompany);
 router.put('/companies/:id', authenticateToken, upload.single('logo'), updateCompany);
 router.delete('/companies/:id', authenticateToken, authorizeRole(['SUPERADMIN']), deleteCompany);
@@ -150,11 +151,12 @@ router.post('/whapi/connect', authenticateToken, connectWhapiInstance);
 router.post('/whapi/webhook/:instanceKey', handleWhapiWebhook);
 
 // Local Instance Routes
-import { createLocalInstance, getQRCode, getStatus, deleteLocalInstance } from './controllers/localInstance.controller.js';
-router.post('/instances/local', authenticateToken, createLocalInstance);
-router.get('/instances/local/:id/qrcode', authenticateToken, getQRCode);
-router.get('/instances/local/:id/status', authenticateToken, getStatus);
-router.delete('/instances/local/:id', authenticateToken, deleteLocalInstance);
+import LocalInstanceController from './controllers/localInstance.controller.js';
+router.post('/instances/local', authenticateToken, LocalInstanceController.create);
+router.get('/instances/local/:id/qrcode', authenticateToken, LocalInstanceController.getQRCode);
+router.get('/instances/local/:id/status', authenticateToken, LocalInstanceController.getStatus);
+router.delete('/instances/local/:id', authenticateToken, LocalInstanceController.delete);
+router.delete('/instances/local/:id/disconnect', authenticateToken, LocalInstanceController.disconnect);
 
 // Mini-Evolution Separada (Integração custom)
 import MiniEvoController from './controllers/miniEvoController.js';

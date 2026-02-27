@@ -14,6 +14,7 @@ import fs from 'fs';
 import { fileURLToPath } from 'url';
 import pino from 'pino';
 import { Server } from 'socket.io';
+import qrcode from 'qrcode';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -65,8 +66,14 @@ export class LocalInstanceService {
             const { connection, lastDisconnect, qr } = update;
 
             if (qr) {
+                console.log(`[LocalInstance] QR Code gerado para ${instanceId}`);
                 this.qrCodes.set(instanceId, qr);
-                io.to(`company_${companyId}`).emit('instance:qrcode', { instanceId, qr });
+                try {
+                    const qrBase64 = await qrcode.toDataURL(qr);
+                    io.to(`company_${companyId}`).emit('instance:qrcode', { instanceId, qr: qrBase64 });
+                } catch (e) {
+                    console.error('[LocalInstance] Failed to generate QR Base64', e);
+                }
             }
 
             if (connection === 'close') {
@@ -77,12 +84,18 @@ export class LocalInstanceService {
                     'UPDATE company_instances SET status = $1 WHERE instance_key = $2',
                     ['disconnected', instanceId]
                 );
-                io.to(`company_${companyId}`).emit('instance:status', { instanceId, status: 'disconnected' });
+                io.to(`company_${companyId}`).emit('instance:status', { instanceKey: instanceId, status: 'disconnected' });
 
                 if (shouldReconnect) {
-                    this.connectInstance(instanceId, companyId, io);
+                    setTimeout(() => {
+                        this.connectInstance(instanceId, companyId, io);
+                    }, 5000);
                 } else {
                     this.instances.delete(instanceId);
+                    const sessionDir = path.join(sessionsPath, `instance_${instanceId}`);
+                    if (fs.existsSync(sessionDir)) {
+                        fs.rmSync(sessionDir, { recursive: true, force: true });
+                    }
                 }
             } else if (connection === 'open') {
                 this.qrCodes.delete(instanceId);
@@ -92,7 +105,7 @@ export class LocalInstanceService {
                     'UPDATE company_instances SET status = $1 WHERE instance_key = $2',
                     ['connected', instanceId]
                 );
-                io.to(`company_${companyId}`).emit('instance:status', { instanceId, status: 'connected' });
+                io.to(`company_${companyId}`).emit('instance:status', { instanceKey: instanceId, status: 'connected' });
             }
         });
 
@@ -172,10 +185,38 @@ export class LocalInstanceService {
     }
 
     static async generateQRCode(instanceId: string) {
-        return this.qrCodes.get(instanceId) || null;
+        try {
+            const OUTRO_SISTEMA_URL = process.env.MINI_EVO_URL || 'http://localhost:3001';
+            const qrRes = await fetch(`${OUTRO_SISTEMA_URL}/get-qr`);
+
+            if (qrRes.ok) {
+                const data = await qrRes.json() as any;
+                if (data.qr) {
+                    return qrcode.toDataURL(data.qr);
+                }
+            }
+        } catch (e) {
+            console.error("LocalInstance.generateQRCode: Error fetching QR from mini-evo", e);
+        }
+
+        const qrString = this.qrCodes.get(instanceId);
+        if (qrString) {
+            return qrcode.toDataURL(qrString);
+        }
+        return null;
     }
 
     static async disconnectInstance(instanceId: string) {
+        try {
+            const OUTRO_SISTEMA_URL = process.env.MINI_EVO_URL || 'http://localhost:3001';
+            await fetch(`${OUTRO_SISTEMA_URL}/logout`, { method: 'POST' });
+        } catch (e) {
+            console.error("LocalInstance.disconnectInstance: Error calling mini-evo logout", e);
+        }
+
+        await pool.query('UPDATE company_instances SET status = $1 WHERE instance_key = $2', ['disconnected', instanceId]);
+
+        // Clean up memory if any local socket was left here magically
         const sock = this.instances.get(instanceId);
         if (sock) {
             await sock.logout();

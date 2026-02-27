@@ -82,7 +82,8 @@ const QrCodePage = () => {
   const [instagramInstanceConfigs, setInstagramInstanceConfigs] = useState<InstagramInstanceConfig[]>([]);
 
   const whatsappType = company?.whatsapp_type || "evolution";
-  const isEvolutionChannel = whatsappType === "evolution";
+  const isEvolutionChannel = whatsappType === "evolution" || whatsappType === "local";
+  const isInternalApi = whatsappType === "local";
   const isOfficialChannel = whatsappType === "official";
   const isApiPlusChannel = whatsappType === "api_plus";
 
@@ -119,8 +120,26 @@ const QrCodePage = () => {
   };
 
   const fetchStatus = async () => {
-    if (!company?.whatsapp_enabled || company?.whatsapp_type !== 'evolution') return;
+    if (!company?.whatsapp_enabled) return;
+
     try {
+      if (company?.whatsapp_type === 'local') {
+        if (!selectedInstance?.instance_key) return;
+        const url = `/api/instances/local/${selectedInstance.instance_key}/status`;
+        const response = await fetch(url, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        if (response.ok) {
+          const data = await response.json();
+          if (data.status === 'connected') setConnectionState('open');
+          else if (data.status === 'disconnected') setConnectionState('close');
+          else setConnectionState(data.status || 'unknown');
+        }
+        return;
+      }
+
+      if (company?.whatsapp_type !== 'evolution') return;
+
       const targetId = selectedCompanyId || user?.company_id;
       const instanceKey = selectedInstance?.instance_key;
       const url = getApiUrl(`/api/evolution/status`);
@@ -146,6 +165,17 @@ const QrCodePage = () => {
     }
   };
 
+  // Sincroniza estado inicial rápido sem esperar o polling
+  useEffect(() => {
+    if (selectedInstance && isInternalApi) {
+      if (selectedInstance.status === 'connected') {
+        setConnectionState('open');
+      } else if (selectedInstance.status === 'disconnected') {
+        setConnectionState('close');
+      }
+    }
+  }, [selectedInstance, isInternalApi]);
+
   const handleGenerateQrKey = async (instanceOverrideOrEvent?: any, skipSave: boolean = false) => {
     // Handle overload: if first arg is mostly looks like an event or is null, ignore it.
     let targetInstance = selectedInstance;
@@ -166,6 +196,50 @@ const QrCodePage = () => {
       setConnectionState("connecting");
 
       const targetId = selectedCompanyId || user?.company_id;
+
+      if (company?.whatsapp_type === 'local' && targetInstance) {
+        try {
+          // Conectar a API local (Mini-Evo)
+          const initResponse = await fetch('/api/instances/local', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+            body: JSON.stringify({ instanceId: targetInstance.instance_key })
+          });
+
+          if (!initResponse.ok) {
+            throw new Error("Erro ao iniciar a API Interna.");
+          }
+
+          // Inicia a geração da checagem
+          setConnectionState('scanning');
+
+          // O QR Code será entregue via webhook (socket.io), o useEffect já trata a atualização.
+          // Fallback: busca manualmente o QR caso já tenha sido gerado
+          setTimeout(async () => {
+            try {
+              const qrRes = await fetch(`/api/instances/local/${targetInstance.instance_key}/qrcode`, {
+                headers: { Authorization: `Bearer ${token}` }
+              });
+              if (qrRes.ok) {
+                const data = await qrRes.json();
+                if (data.qr) {
+                  setQrCode(data.qr);
+                }
+              }
+            } catch (e) {
+              console.error("Erro no fallback de qr code", e);
+            }
+          }, 2000);
+
+          return;
+
+        } catch (error) {
+          console.error(error);
+          setError("Houve um erro conectando à API Interna.");
+          setIsLoading(false);
+          return;
+        }
+      }
 
       // If we need to save the instance first, do it
       if (company?.whatsapp_type === 'evolution' && !skipSave) {
@@ -288,7 +362,11 @@ const QrCodePage = () => {
       const params = new URLSearchParams();
       params.append("companyId", String(targetId));
       params.append("instanceKey", targetInstance.instance_key);
-      const url = `/api/evolution/disconnect?${params.toString()}`;
+      let url = `/api/evolution/disconnect?${params.toString()}`;
+
+      if (isInternalApi) {
+        url = `/api/instances/local/${targetInstance.instance_key}/disconnect`;
+      }
 
       console.log("[Disconnect] Calling:", url);
 
@@ -346,15 +424,23 @@ const QrCodePage = () => {
   // WebSocket Listener for Real-Time Status
   useEffect(() => {
     const socket = io();
+    const targetId = selectedCompanyId || user?.company_id;
+
+    if (targetId) {
+      socket.emit("join:company", targetId);
+    }
 
     socket.on('instance:status', (data: any) => {
       console.log('[QrCode] Socket instance update (Real-Time):', data);
 
-      const { instanceKey, status, state } = data;
+      const targetKey = data.instanceKey || data.instanceId || data.instance;
+      const { status, state } = data;
+
+      if (!targetKey) return;
 
       // Update global instances list
       setInstances(prev => prev.map(inst => {
-        if (inst.instance_key === instanceKey || inst.name === instanceKey) {
+        if (inst.instance_key === targetKey || inst.name === targetKey) {
           const newStatus = status; // 'connected' | 'disconnected'
           console.log(`[QrCode] TROPICAL UPDATING INSTANCE ${inst.instance_key} -> ${newStatus}`);
           return { ...inst, status: newStatus };
@@ -365,7 +451,7 @@ const QrCodePage = () => {
       // Update active selected instance state if matches
       // Use callback to access current selectedInstance
       setSelectedInstance(current => {
-        if (current && (current.instance_key === instanceKey || current.name === instanceKey)) {
+        if (current && (current.instance_key === targetKey || current.name === targetKey)) {
           const newStatus = status;
           // Also update connectionState (visual state for scanning/etc)
           if (newStatus === 'connected') setConnectionState('open');
@@ -378,10 +464,25 @@ const QrCodePage = () => {
       });
     });
 
+    socket.on('instance:qrcode', (data: any) => {
+      console.log('[QrCode] Socket instance qrcode update:', data);
+      const { instanceId, qr } = data;
+      // We only want to set the QR code if this is the instance we show
+      setSelectedInstance(current => {
+        if (current && (current.instance_key === instanceId || current.name === instanceId)) {
+          setQrCode(qr);
+          setConnectionState('scanning');
+        }
+        return current;
+      });
+    });
+
     return () => {
+      socket.off('instance:status');
+      socket.off('instance:qrcode');
       socket.disconnect();
     };
-  }, []);
+  }, [user?.company_id, selectedCompanyId]);
 
   useEffect(() => {
     if (token) {
@@ -545,11 +646,11 @@ const QrCodePage = () => {
 
       if (res.ok) {
         // Also save instance if selected
-        if (company?.whatsapp_type === 'evolution' && trimmedInstance) {
+        if ((company?.whatsapp_type === 'evolution' || company?.whatsapp_type === 'local') && trimmedInstance) {
           const instancePayload = {
             name: trimmedInstance.name,
             instance_key: trimmedInstance.instance_key,
-            api_key: trimmedInstance.api_key,
+            api_key: company?.whatsapp_type === 'local' ? '' : trimmedInstance.api_key,
             color: trimmedInstance.color
           };
 
@@ -621,10 +722,40 @@ const QrCodePage = () => {
           setIsWaModalOpen(false);
           setIsIgModalOpen(false);
           setIsMeModalOpen(false);
+          fetchCompany();
         }
       } else {
         const errorData = await res.json().catch(() => ({}));
         throw new Error(errorData.error || errorData.message || `Erro ao salvar configurações (${res.status})`);
+      }
+    } catch (e: any) {
+      alert(e.message);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleDeleteInstance = async (instance: any) => {
+    if (!instance || !instance.id) return;
+    const confirmName = window.prompt(`Isso APAGARÁ TODO O BANCO DE DADOS dessa instância (mensagens, conversas, configurações).\n\nDigite exatamente "${instance.instance_key}" para confirmar a exclusão:`);
+    if (confirmName !== instance.instance_key) {
+      if (confirmName !== null) alert("Nome incorreto. Exclusão cancelada.");
+      return;
+    }
+
+    try {
+      setIsLoading(true);
+      const targetCompanyId = company?.id || selectedCompanyId || user?.company_id;
+      const res = await fetch(`/api/companies/${targetCompanyId}/instances/${instance.id}`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (res.ok) {
+        alert("Instância Excluída: Todos os dados foram apagados com sucesso.");
+        fetchCompany();
+      } else {
+        const errorData = await res.json().catch(() => ({}));
+        throw new Error(errorData.error || "Erro ao excluir instância");
       }
     } catch (e: any) {
       alert(e.message);
@@ -644,6 +775,7 @@ const QrCodePage = () => {
     connected,
     onConfigure,
     onDisconnect,
+    onDelete,
     statusText,
     color = '#3b82f6'
   }: any) => {
@@ -713,8 +845,20 @@ const QrCodePage = () => {
               size="sm"
               className="px-3 h-9"
               onClick={onDisconnect}
+              title="Desconectar"
             >
               <Link2Off className="h-3 w-3" />
+            </Button>
+          )}
+          {onDelete && (
+            <Button
+              variant="outline"
+              size="sm"
+              className="px-3 h-9 text-red-500 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/30 border-red-200 dark:border-red-900/30"
+              onClick={onDelete}
+              title="Excluir Instância Permanentemente"
+            >
+              Remover
             </Button>
           )}
         </CardFooter>
@@ -784,6 +928,7 @@ const QrCodePage = () => {
                   setIsWaModalOpen(true);
                 }}
                 onDisconnect={() => instance ? handleDisconnect(instance) : null}
+                onDelete={instance?.id ? () => handleDeleteInstance(instance) : undefined}
                 statusText={isInstConnected ? `Conectado (${instance?.name || "Instância"})` : (instance ? "Desconectado" : "Aguardando Configuração")}
               />
             );
@@ -864,6 +1009,7 @@ const QrCodePage = () => {
                   <SelectContent>
                     <SelectItem value="official">API Oficial (Meta / Cloud API)</SelectItem>
                     <SelectItem value="evolution">Evolution API (Multi-Instância)</SelectItem>
+                    <SelectItem value="local">API Interna (Mini-Evolution)</SelectItem>
                     <SelectItem value="api_plus">WhatsApp API Plus</SelectItem>
                   </SelectContent>
                 </Select>
@@ -885,67 +1031,71 @@ const QrCodePage = () => {
 
               {isEvolutionChannel && (
                 <>
-              <div className="space-y-4 p-4 bg-zinc-50 dark:bg-zinc-900/50 rounded-2xl border border-zinc-100 dark:border-zinc-800 animate-in slide-in-from-top-4 duration-500">
-                {selectedInstance && (
-                  <div className="grid grid-cols-2 gap-4 animate-in fade-in duration-300">
-                    <div className="space-y-2">
-                      <Label className="text-[10px] font-bold uppercase text-zinc-500">Chave da Instância <span className="text-red-500">*</span></Label>
-                      <Input
-                        value={selectedInstance.instance_key || ""}
-                        onChange={(e) => setSelectedInstance(prev => prev ? { ...prev, instance_key: e.target.value } : null)}
-                        className="h-10 rounded-xl bg-white dark:bg-zinc-900 border-zinc-200 dark:border-zinc-800"
-                        placeholder="Ex: comercial01"
-                      />
-                    </div>
-                  </div>
-                )}
-                {selectedInstance && (
-                  <div className="grid grid-cols-2 gap-4 animate-in fade-in duration-300">
-                    <div className="space-y-2">
-                      <Label className="text-[10px] font-bold uppercase text-zinc-500">API Key da Instância <span className="text-red-500">*</span></Label>
-                      <div className="relative">
-                        <Input
-                          type="password"
-                          value={selectedInstance.api_key || ""}
-                          onChange={(e) => setSelectedInstance(prev => prev ? { ...prev, api_key: e.target.value } : null)}
-                          className="h-10 rounded-xl bg-white dark:bg-zinc-900 border-zinc-200 dark:border-zinc-800 pr-10"
-                          placeholder="Token da Instância"
-                        />
+                  <div className="space-y-4 p-4 bg-zinc-50 dark:bg-zinc-900/50 rounded-2xl border border-zinc-100 dark:border-zinc-800 animate-in slide-in-from-top-4 duration-500">
+                    {selectedInstance && (
+                      <div className="grid grid-cols-2 gap-4 animate-in fade-in duration-300">
+                        <div className="space-y-2">
+                          <Label className="text-[10px] font-bold uppercase text-zinc-500">Chave da Instância <span className="text-red-500">*</span></Label>
+                          <Input
+                            value={selectedInstance.instance_key || ""}
+                            onChange={(e) => setSelectedInstance(prev => prev ? { ...prev, instance_key: e.target.value } : null)}
+                            className="h-10 rounded-xl bg-white dark:bg-zinc-900 border-zinc-200 dark:border-zinc-800"
+                            placeholder="Ex: comercial01"
+                          />
+                        </div>
                       </div>
-                    </div>
-                    <div className="space-y-2">
-                      <Label className="text-[10px] font-bold uppercase text-zinc-500">Cor do Canal (Identificação)</Label>
-                      <div className="flex gap-2">
-                        <Input
-                          type="color"
-                          value={selectedInstance.color || "#3b82f6"}
-                          onChange={(e) => setSelectedInstance(prev => prev ? { ...prev, color: e.target.value } : null)}
-                          className="w-12 h-10 p-1 rounded-lg cursor-pointer bg-white dark:bg-zinc-900 border-zinc-200 dark:border-zinc-800"
-                        />
-                        <Input
-                          type="text"
-                          value={selectedInstance.color || "#3b82f6"}
-                          onChange={(e) => setSelectedInstance(prev => prev ? { ...prev, color: e.target.value } : null)}
-                          className="flex-1 h-10 rounded-xl bg-white dark:bg-zinc-900 border-zinc-200 dark:border-zinc-800 text-xs font-mono"
-                          placeholder="#000000"
-                        />
+                    )}
+                    {selectedInstance && (
+                      <div className="grid grid-cols-2 gap-4 animate-in fade-in duration-300">
+                        {!isInternalApi && (
+                          <div className="space-y-2">
+                            <Label className="text-[10px] font-bold uppercase text-zinc-500">API Key da Instância <span className="text-red-500">*</span></Label>
+                            <div className="relative">
+                              <Input
+                                type="password"
+                                value={selectedInstance.api_key || ""}
+                                onChange={(e) => setSelectedInstance(prev => prev ? { ...prev, api_key: e.target.value } : null)}
+                                className="h-10 rounded-xl bg-white dark:bg-zinc-900 border-zinc-200 dark:border-zinc-800 pr-10"
+                                placeholder="Token da Instância"
+                              />
+                            </div>
+                          </div>
+                        )}
+                        <div className="space-y-2">
+                          <Label className="text-[10px] font-bold uppercase text-zinc-500">Cor do Canal (Identificação)</Label>
+                          <div className="flex gap-2">
+                            <Input
+                              type="color"
+                              value={selectedInstance.color || "#3b82f6"}
+                              onChange={(e) => setSelectedInstance(prev => prev ? { ...prev, color: e.target.value } : null)}
+                              className="w-12 h-10 p-1 rounded-lg cursor-pointer bg-white dark:bg-zinc-900 border-zinc-200 dark:border-zinc-800"
+                            />
+                            <Input
+                              type="text"
+                              value={selectedInstance.color || "#3b82f6"}
+                              onChange={(e) => setSelectedInstance(prev => prev ? { ...prev, color: e.target.value } : null)}
+                              className="flex-1 h-10 rounded-xl bg-white dark:bg-zinc-900 border-zinc-200 dark:border-zinc-800 text-xs font-mono"
+                              placeholder="#000000"
+                            />
+                          </div>
+                        </div>
                       </div>
-                    </div>
+                    )}
                   </div>
-                )}
-              </div>
 
-              <div className="bg-zinc-50 dark:bg-zinc-900/50 p-4 rounded-2xl border border-zinc-100 dark:border-zinc-800 mt-4">
-                <div className="space-y-2">
-                  <Label className="text-[10px] font-bold uppercase text-zinc-500">URL do Servidor Evolution</Label>
-                  <Input
-                    value={company?.evolution_url || ""}
-                    onChange={(e) => handleCompanyChange('evolution_url', e.target.value)}
-                    className="h-10 rounded-xl bg-white dark:bg-zinc-900 border-zinc-200 dark:border-zinc-800"
-                    placeholder="https://sua-api.com"
-                  />
-                </div>
-              </div>
+                  {!isInternalApi && (
+                    <div className="bg-zinc-50 dark:bg-zinc-900/50 p-4 rounded-2xl border border-zinc-100 dark:border-zinc-800 mt-4">
+                      <div className="space-y-2">
+                        <Label className="text-[10px] font-bold uppercase text-zinc-500">URL do Servidor Evolution</Label>
+                        <Input
+                          value={company?.evolution_url || ""}
+                          onChange={(e) => handleCompanyChange('evolution_url', e.target.value)}
+                          className="h-10 rounded-xl bg-white dark:bg-zinc-900 border-zinc-200 dark:border-zinc-800"
+                          placeholder="https://sua-api.com"
+                        />
+                      </div>
+                    </div>
+                  )}
                 </>
               )}
 
@@ -994,11 +1144,11 @@ const QrCodePage = () => {
                   </div>
                 )}
 
-                {/* EVOLUTION VIEW - QR CODE SECTION */}
+                {/* EVOLUTION / API INTERNA VIEW - QR CODE SECTION */}
                 {isEvolutionChannel && (
                   <div className="animate-in fade-in duration-500">
                     {/* VALIDATION: Only show QR section if instance is properly configured */}
-                    {selectedInstance?.instance_key && selectedInstance?.api_key && (
+                    {selectedInstance?.instance_key && (!isEvolutionChannel || isInternalApi || selectedInstance?.api_key) && (
                       <>
                         {/* Only show QR code area if we are connecting, connected, or have a QR code */}
                         {(isConnected || connectionState === 'connecting' || connectionState === 'scanning' || qrCode) && (
@@ -1058,7 +1208,7 @@ const QrCodePage = () => {
                     )}
 
                     {/* Instruction message if not configured yet */}
-                    {(!selectedInstance?.instance_key || !selectedInstance?.api_key) && (
+                    {(!selectedInstance?.instance_key || (!isInternalApi && !selectedInstance?.api_key)) && (
                       <div className="mt-4 p-4 bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-900 rounded-xl">
                         <div className="flex items-start gap-3">
                           <Info className="h-5 w-5 text-blue-600 flex-shrink-0 mt-0.5" />

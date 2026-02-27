@@ -1084,7 +1084,7 @@ export const getCompanyInstances = async (req: Request, res: Response) => {
         }
 
         const { sync } = req.query;
-        let result = await pool.query('SELECT id, company_id, name, instance_key, api_key, status, created_at, color FROM company_instances WHERE company_id = $1 ORDER BY created_at ASC, id ASC', [id]);
+        let result = await pool.query('SELECT id, company_id, name, instance_key, api_key, status, created_at, color, type FROM company_instances WHERE company_id = $1 ORDER BY created_at ASC, id ASC', [id]);
         let instances = result.rows;
 
         console.log(`[getCompanyInstances] Company ${id}: Found ${instances.length} instances in DB`);
@@ -1110,37 +1110,43 @@ export const getCompanyInstances = async (req: Request, res: Response) => {
             const syncedInstances = [];
             for (const inst of instances) {
                 try {
-                    const config = await getEvolutionConfig(user, 'sync_list', id, inst.instance_key);
-                    const url = `${config.url}/instance/connectionState/${inst.instance_key}`;
+                    if (inst.type === 'local') {
+                        // Não sincroniza com Evolution, status já é mantido no Banco pelos Webhooks / WebSocket local
+                        const dbRes = await pool.query('SELECT status FROM company_instances WHERE id = $1', [inst.id]);
+                        if (dbRes.rows.length > 0) inst.status = dbRes.rows[0].status;
+                    } else {
+                        const config = await getEvolutionConfig(user, 'sync_list', id, inst.instance_key);
+                        const url = `${config.url}/instance/connectionState/${inst.instance_key}`;
 
-                    const response = await fetch(url, {
-                        method: 'GET',
-                        headers: {
-                            'Content-Type': 'application/json',
-                            'apikey': config.apikey
-                        }
-                    });
+                        const response = await fetch(url, {
+                            method: 'GET',
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'apikey': config.apikey
+                            }
+                        });
 
-                    if (response.ok) {
-                        const data = await response.json();
-                        // Evolution V2 returns { instance: { state: 'open' } } or { state: 'open' }
-                        const state = data?.instance?.state || data?.state;
+                        if (response.ok) {
+                            const data = await response.json();
+                            // Evolution V2 returns { instance: { state: 'open' } } or { state: 'open' }
+                            const state = data?.instance?.state || data?.state;
 
-                        // Normalize status
-                        const lowerState = (state || '').toLowerCase();
-                        let status = 'disconnected';
-                        if (['open', 'connected', 'online'].includes(lowerState)) status = 'connected';
-                        else if (['connecting', 'pairing'].includes(lowerState)) status = 'connecting';
+                            // Normalize status
+                            const lowerState = (state || '').toLowerCase();
+                            let status = 'disconnected';
+                            if (['open', 'connected', 'online'].includes(lowerState)) status = 'connected';
+                            else if (['connecting', 'pairing'].includes(lowerState)) status = 'connecting';
 
-                        if (status !== inst.status) {
-                            await pool.query('UPDATE company_instances SET status = $1 WHERE id = $2', [status, inst.id]);
-                            inst.status = status;
-                        }
-                    } else if (response.status === 404) {
-                        // Instance not found in evolution but exists in our DB
-                        if (inst.status !== 'disconnected') {
-                            await pool.query('UPDATE company_instances SET status = $1 WHERE id = $2', ['disconnected', inst.id]);
-                            inst.status = 'disconnected';
+                            if (status !== inst.status) {
+                                await pool.query('UPDATE company_instances SET status = $1 WHERE id = $2', [status, inst.id]);
+                                inst.status = status;
+                            }
+                        } else if (response.status === 404) {
+                            // Instance not found in evolution but exists in our DB
+                            if (inst.status !== 'disconnected') {
+                                await pool.query('UPDATE company_instances SET status = $1 WHERE id = $2', ['disconnected', inst.id]);
+                                inst.status = 'disconnected';
+                            }
                         }
                     }
                 } catch (err) {
@@ -1213,5 +1219,69 @@ export const updateCompanyInstance = async (req: Request, res: Response) => {
     } catch (error) {
         console.error('Error updating instance:', error);
         res.status(500).json({ error: 'Failed to update instance' });
+    }
+};
+
+export const deleteCompanyInstance = async (req: Request, res: Response) => {
+    try {
+        if (!pool) return res.status(500).json({ error: 'Database not configured' });
+        const { id, instanceId } = req.params;
+        const user = (req as any).user;
+
+        if (user.role !== 'SUPERADMIN' && Number(user.company_id) !== Number(id)) {
+            return res.status(403).json({ error: 'Unauthorized' });
+        }
+
+        const instRes = await pool.query('SELECT * FROM company_instances WHERE id = $1 AND company_id = $2', [instanceId, id]);
+        if (instRes.rows.length === 0) {
+            return res.status(404).json({ error: 'Instance not found' });
+        }
+
+        const instance = instRes.rows[0];
+
+        // 1. Tenta desconectar caso esteja conectada (pra evitar zumbis)
+        try {
+            if (instance.type === 'local') {
+                const OUTRO_SISTEMA_URL = process.env.MINI_EVO_URL || 'http://localhost:3001';
+                await fetch(`${OUTRO_SISTEMA_URL}/logout`, { method: 'POST' }).catch(() => { });
+            } else if (instance.type === 'evolution') {
+                const config = await getEvolutionConfig(user, 'delete_instance', id, instance.instance_key);
+                if (config.url && config.apikey) {
+                    await fetch(`${config.url.replace(/\/$/, '')}/instance/logout/${instance.instance_key}`, {
+                        method: 'DELETE',
+                        headers: { apikey: config.apikey }
+                    }).catch(() => { });
+                }
+            }
+        } catch (e) {
+            console.error('[deleteCompanyInstance] Attempted disconnect but failed silently:', e);
+        }
+
+        // 2. Apaga informações ligadas a essa instância  (para garantir "apagar todo banco" da instancia)
+        if (instance.instance_key) {
+            await pool.query(
+                `DELETE FROM whatsapp_messages WHERE conversation_id IN (SELECT id FROM whatsapp_conversations WHERE company_id = $1 AND channel = $2)`,
+                [id, instance.instance_key]
+            );
+            await pool.query(
+                `DELETE FROM conversations_tags WHERE conversation_id IN (SELECT id FROM whatsapp_conversations WHERE company_id = $1 AND channel = $2)`,
+                [id, instance.instance_key]
+            );
+            await pool.query(
+                `DELETE FROM whatsapp_conversations WHERE company_id = $1 AND channel = $2`,
+                [id, instance.instance_key]
+            );
+            const tableName = `messages_instance_${instance.instance_key.replace(/[^a-zA-Z0-9]/g, '_')}`;
+            await pool.query(`DROP TABLE IF EXISTS ${tableName}`);
+        }
+
+        // 3. Deleta a própria instância no banco
+        await pool.query('DELETE FROM company_instances WHERE id = $1 AND company_id = $2', [instanceId, id]);
+
+        console.log(`[deleteCompanyInstance] Successfully deleted instance ${instanceId} and all related DB data.`);
+        res.json({ success: true, message: 'Instância e dados excluídos com sucesso.' });
+    } catch (error) {
+        console.error('Error deleting company instance:', error);
+        res.status(500).json({ error: 'Failed to delete instance' });
     }
 };
