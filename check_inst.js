@@ -11,7 +11,7 @@ const pool = new Pool({
 
 async function checkInstances() {
     try {
-        const res = await pool.query('SELECT instance_key, api_key, status FROM company_instances LIMIT 10');
+        const res = await pool.query("SELECT instance_key, api_key FROM company_instances WHERE instance_key LIKE 'instancia_%' LIMIT 5");
         console.log(JSON.stringify(res.rows, null, 2));
     } catch (err) {
         console.error(err);

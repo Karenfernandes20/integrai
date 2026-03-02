@@ -24,11 +24,17 @@ export class LocalInstanceController {
         const { id } = req.params;
         try {
             const qr = await InstanceManager.getQRCode('local', id);
+
+            if (qr === 'IS_CONNECTED') {
+                return res.json({ status: 'connected', message: 'Instance is already connected' });
+            }
+
             if (!qr) {
-                return res.status(404).json({ error: 'QR Code not available or already connected' });
+                return res.status(404).json({ error: 'QR Code not available' });
             }
             res.json({ qr });
         } catch (e: any) {
+            console.error(`[LocalInstanceController] Error getting QR for ${id}:`, e);
             res.status(500).json({ error: e.message });
         }
     }

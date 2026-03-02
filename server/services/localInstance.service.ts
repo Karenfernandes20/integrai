@@ -128,20 +128,40 @@ export class LocalInstanceService {
             const instRes = await pool.query('SELECT api_key FROM company_instances WHERE instance_key = $1', [instanceId]);
             const token = instRes.rows[0]?.api_key;
 
-            console.log(`[LocalInstance] Fetching QR from Mini-Evolution for ${instanceId}...`);
-            const response = await fetch(`${this.getMiniEvoUrl()}/instance/connect/${instanceId}`, {
+            if (!token) {
+                console.warn(`[LocalInstance] No api_key found in DB for instance ${instanceId}. This may lead to 401/403 errors.`);
+            }
+
+            const url = `${this.getMiniEvoUrl()}/instance/connect/${instanceId}`;
+            console.log(`[LocalInstance] Fetching QR from: ${url} (Token provided: ${token ? 'yes' : 'no'})`);
+
+            const response = await fetch(url, {
                 headers: { 'apikey': (token as string) || '' }
             });
 
-            const data: any = await response.json();
+            if (!response.ok) {
+                const errorBody = await response.text().catch(() => "No body");
+                console.error(`[LocalInstance] Mini-Evolution error ${response.status}:`, errorBody);
+                return null;
+            }
+
+            const data: any = await response.json().catch(() => ({}));
+            console.log(`[LocalInstance] Mini-Evolution response for ${instanceId}:`, JSON.stringify(data));
+
             if (data && data.qrcode) {
                 const qr = data.qrcode;
                 if (qr.startsWith('data:image')) return qr;
                 return qrcode.toDataURL(qr);
             }
-            console.log(`[LocalInstance] No QR returned from Mini-Evolution for ${instanceId}. Status:`, data.status);
+
+            if (data.status === 'connected') {
+                console.log(`[LocalInstance] Instance ${instanceId} is ALREADY connected.`);
+                return 'IS_CONNECTED';
+            }
+
+            console.log(`[LocalInstance] No QR returned from Mini-Evolution for ${instanceId}. Response Status/State:`, data.status || data.state);
         } catch (e: any) {
-            console.error("LocalInstance.generateQRCode: Error fetching QR from mini-evo", e.message);
+            console.error("LocalInstance.generateQRCode: CRITICAL ERROR:", e.message);
         }
         return null;
     }

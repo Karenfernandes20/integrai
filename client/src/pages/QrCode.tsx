@@ -224,33 +224,35 @@ const QrCodePage = () => {
 
             // Se o QrCode já foi recebido via Socket, para o polling
             setQrCode(currentQr => {
-              if (currentQr) {
+              if (currentQr && currentQr !== 'loading') {
                 clearInterval(pollInterval);
                 return currentQr;
               }
-
-              // Se não tem QR, tenta buscar via API
-              (async () => {
-                try {
-                  console.log(`[QrCode] Polling QR manual para ${targetInstance.instance_key}...`);
-                  const qrRes = await fetch(`/api/instances/local/${targetInstance.instance_key}/qrcode`, {
-                    headers: { Authorization: `Bearer ${token}` }
-                  });
-                  if (qrRes.ok) {
-                    const data = await qrRes.json();
-                    if (data.qr) {
-                      console.log("[QrCode] QR manual recebido com sucesso!");
-                      setQrCode(data.qr);
-                      clearInterval(pollInterval);
-                    }
-                  }
-                } catch (e) {
-                  console.error("Erro no polling de qr code", e);
-                }
-              })();
-
-              return null;
+              return currentQr;
             });
+
+            // Tenta buscar via API
+            try {
+              console.log(`[QrCode] Polling QR manual para ${targetInstance.instance_key}...`);
+              const qrRes = await fetch(`/api/instances/local/${targetInstance.instance_key}/qrcode`, {
+                headers: { Authorization: `Bearer ${token}` }
+              });
+
+              if (qrRes.ok) {
+                const data = await qrRes.json();
+                if (data.qr) {
+                  console.log("[QrCode] QR manual recebido com sucesso!");
+                  setQrCode(data.qr);
+                  clearInterval(pollInterval);
+                } else if (data.status === 'connected') {
+                  console.log("[QrCode] Instance already connected detected by polling.");
+                  setConnectionState('open');
+                  clearInterval(pollInterval);
+                }
+              }
+            } catch (e) {
+              console.error("Erro no polling de qr code", e);
+            }
           }, 3000);
 
           return;
