@@ -82,8 +82,8 @@ const QrCodePage = () => {
   const [instagramInstanceConfigs, setInstagramInstanceConfigs] = useState<InstagramInstanceConfig[]>([]);
 
   const whatsappType = company?.whatsapp_type || "evolution";
-  const isEvolutionChannel = whatsappType === "evolution" || whatsappType === "local";
-  const isInternalApi = whatsappType === "local";
+  const isEvolutionChannel = whatsappType === "evolution" || whatsappType === "local" || whatsappType === "api_plus";
+  const isInternalApi = whatsappType === "local" || whatsappType === "api_plus";
   const isOfficialChannel = whatsappType === "official";
   const isApiPlusChannel = whatsappType === "api_plus";
 
@@ -123,7 +123,7 @@ const QrCodePage = () => {
     if (!company?.whatsapp_enabled) return;
 
     try {
-      if (company?.whatsapp_type === 'local') {
+      if (company?.whatsapp_type === 'local' || company?.whatsapp_type === 'api_plus') {
         if (!selectedInstance?.instance_key) return;
         const url = `/api/instances/local/${selectedInstance.instance_key}/status`;
         const response = await fetch(url, {
@@ -197,7 +197,7 @@ const QrCodePage = () => {
 
       const targetId = selectedCompanyId || user?.company_id;
 
-      if (company?.whatsapp_type === 'local' && targetInstance) {
+      if ((company?.whatsapp_type === 'local' || company?.whatsapp_type === 'api_plus') && targetInstance) {
         try {
           // Conectar a API local (Mini-Evo)
           const initResponse = await fetch('/api/instances/local', {
@@ -576,13 +576,13 @@ const QrCodePage = () => {
       if (!targetId) return;
 
       // Validation for Evolution mode
-      if (company?.whatsapp_type === 'evolution' && selectedInstance && isWaModalOpen) {
+      if ((company?.whatsapp_type === 'evolution' || company?.whatsapp_type === 'api_plus') && selectedInstance && isWaModalOpen) {
         if (!selectedInstance.name?.trim()) {
           alert("O nome amigável (Nome Comercial) é obrigatório.");
           return;
         }
         if (!selectedInstance.instance_key?.trim()) {
-          alert("A chave da instância é obrigatória.");
+          alert("O nome da instância (Mini-Evolution) é obrigatório.");
           return;
         }
         if (!selectedInstance.api_key?.trim()) {
@@ -598,7 +598,8 @@ const QrCodePage = () => {
         name: selectedInstance.name?.trim() || "",
         instance_key: selectedInstance.instance_key?.trim() || "",
         api_key: selectedInstance.api_key?.trim() || "",
-        color: selectedInstance.color || "#3b82f6"
+        color: selectedInstance.color || "#3b82f6",
+        type: company?.whatsapp_type === 'api_plus' ? 'local' : (company?.whatsapp_type || 'evolution')
       } : null;
 
       // Build a proper allInstances array that includes all current instances
@@ -646,7 +647,7 @@ const QrCodePage = () => {
 
       if (res.ok) {
         // Also save instance if selected
-        if ((company?.whatsapp_type === 'evolution' || company?.whatsapp_type === 'local') && trimmedInstance) {
+        if ((company?.whatsapp_type === 'evolution' || company?.whatsapp_type === 'local' || company?.whatsapp_type === 'api_plus') && trimmedInstance) {
           const instancePayload = {
             name: trimmedInstance.name,
             instance_key: trimmedInstance.instance_key,
@@ -1035,28 +1036,32 @@ const QrCodePage = () => {
                     {selectedInstance && (
                       <div className="grid grid-cols-2 gap-4 animate-in fade-in duration-300">
                         <div className="space-y-2">
-                          <Label className="text-[10px] font-bold uppercase text-zinc-500">Chave da Instância <span className="text-red-500">*</span></Label>
+                          <Label className="text-[10px] font-bold uppercase text-zinc-500">
+                            {whatsappType === 'api_plus' ? 'Nome da Instância (Mini-Evolution)' : 'Chave da Instância'} <span className="text-red-500">*</span>
+                          </Label>
                           <Input
                             value={selectedInstance.instance_key || ""}
                             onChange={(e) => setSelectedInstance(prev => prev ? { ...prev, instance_key: e.target.value } : null)}
                             className="h-10 rounded-xl bg-white dark:bg-zinc-900 border-zinc-200 dark:border-zinc-800"
-                            placeholder="Ex: comercial01"
+                            placeholder={whatsappType === 'api_plus' ? "Ex: instancia_001" : "Ex: comercial01"}
                           />
                         </div>
                       </div>
                     )}
                     {selectedInstance && (
                       <div className="grid grid-cols-2 gap-4 animate-in fade-in duration-300">
-                        {!isInternalApi && (
+                        {(whatsappType === 'api_plus' || !isInternalApi) && (
                           <div className="space-y-2">
-                            <Label className="text-[10px] font-bold uppercase text-zinc-500">API Key da Instância <span className="text-red-500">*</span></Label>
+                            <Label className="text-[10px] font-bold uppercase text-zinc-500">
+                              {whatsappType === 'api_plus' ? 'Token da Instância (Mini-Evolution)' : 'API Key da Instância'} <span className="text-red-500">*</span>
+                            </Label>
                             <div className="relative">
                               <Input
                                 type="password"
                                 value={selectedInstance.api_key || ""}
                                 onChange={(e) => setSelectedInstance(prev => prev ? { ...prev, api_key: e.target.value } : null)}
                                 className="h-10 rounded-xl bg-white dark:bg-zinc-900 border-zinc-200 dark:border-zinc-800 pr-10"
-                                placeholder="Token da Instância"
+                                placeholder="Token gerado no painel"
                               />
                             </div>
                           </div>
@@ -1228,16 +1233,16 @@ const QrCodePage = () => {
                   </div>
                 )}
 
-                {/* API PLUS VIEW */}
+                {/* API PLUS VIEW - REPURPOSED */}
                 {isApiPlusChannel && (
-                  <div className="space-y-4 animate-in fade-in duration-300">
-                    <div className="space-y-2">
-                      <Label className="text-[10px] font-bold uppercase">Token API Plus</Label>
-                      <Input type="password" value={company?.whatsapp_api_plus_token || ""} onChange={(e) => handleCompanyChange('whatsapp_api_plus_token', e.target.value)} className="h-9 rounded-lg" />
-                    </div>
-                    <div className="p-3 bg-zinc-100 dark:bg-zinc-800 rounded-xl text-[10px] text-zinc-500 font-medium">
-                      Esta é uma integração legada. Use apenas se necessário.
-                    </div>
+                  <div className="p-4 bg-blue-50 dark:bg-blue-900/20 rounded-2xl border border-blue-100 dark:border-blue-800/50 animate-in fade-in duration-300">
+                    <p className="text-sm font-bold text-blue-700 dark:text-blue-400 mb-2 flex items-center gap-2">
+                      <Info className="h-4 w-4" /> Conexão Mini-Evolution Plus
+                    </p>
+                    <p className="text-xs text-blue-600 dark:text-blue-500">
+                      Utilize esta opção para conectar instâncias criadas externamente no seu painel Mini-Evolution.
+                      Basta colar o <strong>Nome da Instância</strong> e o <strong>Token</strong> nos campos acima.
+                    </p>
                   </div>
                 )}
               </div>

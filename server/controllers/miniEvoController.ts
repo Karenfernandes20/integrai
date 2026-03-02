@@ -90,10 +90,17 @@ export class MiniEvoController {
         const OUTRO_SISTEMA_URL = process.env.MINI_EVO_URL || 'http://localhost:3001';
 
         try {
+            // Busca o token (api_key) da instância no banco
+            const instRes = await pool.query('SELECT api_key FROM company_instances WHERE instance_key = $1 OR name = $1', [instanceKey]);
+            const token = instRes.rows[0]?.api_key;
+
             // Faz a ponte chamando o seu mini-evolution
             const response = await fetch(`${OUTRO_SISTEMA_URL}/send-message`, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: {
+                    'Content-Type': 'application/json',
+                    'apikey': token || '' // Envia o token para autorização
+                },
                 body: JSON.stringify({
                     instanceKey,
                     remoteJid,
@@ -102,7 +109,8 @@ export class MiniEvoController {
             });
 
             if (!response.ok) {
-                throw new Error(`Erro na API separada: ${response.statusText}`);
+                const errText = await response.text();
+                throw new Error(`Erro na API separada: ${response.status} ${errText}`);
             }
 
             const data = await response.json();

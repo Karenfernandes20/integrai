@@ -336,7 +336,7 @@ export const handleWebhook = async (req: Request, res: Response) => {
 
                                 // Group Name or Contact Name
                                 const contactName = isGroup
-                                    ? (message.groupName || message.subject || "Grupo " + remoteJid)
+                                    ? (data?.groupName || message.groupName || message.subject || "Grupo " + remoteJid)
                                     : (pushName || phone);
 
                                 const newConv = await pool.query(
