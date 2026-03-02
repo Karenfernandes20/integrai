@@ -6,7 +6,6 @@ import { fileURLToPath } from 'url';
 import pino from 'pino';
 import { Server } from 'socket.io';
 import qrcode from 'qrcode';
-import axios from 'axios';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -41,10 +40,12 @@ export class LocalInstanceService {
 
         // Proxy to Mini-Evolution to wake up/init instance
         try {
-            await axios.get(`${this.getMiniEvoUrl()}/instance/connect/${instanceId}`, {
-                headers: { 'apikey': token }
+            console.log(`[LocalInstance] Connecting to Mini-Evolution for ${instanceId}...`);
+            const response = await fetch(`${this.getMiniEvoUrl()}/instance/connect/${instanceId}`, {
+                headers: { 'apikey': (token as string) || '' }
             });
-            console.log(`[LocalInstance] Proxying connect to Mini-Evolution for ${instanceId}`);
+            const data: any = await response.json();
+            console.log(`[LocalInstance] Mini-Evolution status for ${instanceId}:`, data.status);
         } catch (e: any) {
             console.error(`[LocalInstance] Error waking up instance ${instanceId}:`, e.message);
         }
@@ -127,16 +128,18 @@ export class LocalInstanceService {
             const instRes = await pool.query('SELECT api_key FROM company_instances WHERE instance_key = $1', [instanceId]);
             const token = instRes.rows[0]?.api_key;
 
-            const response = await axios.get(`${this.getMiniEvoUrl()}/instance/connect/${instanceId}`, {
-                headers: { 'apikey': token }
+            console.log(`[LocalInstance] Fetching QR from Mini-Evolution for ${instanceId}...`);
+            const response = await fetch(`${this.getMiniEvoUrl()}/instance/connect/${instanceId}`, {
+                headers: { 'apikey': (token as string) || '' }
             });
 
-            if (response.data && response.data.qrcode) {
-                // If it's already a data URL (base64 from Mini-Evo), return it. Otherwise convert.
-                const qr = response.data.qrcode;
+            const data: any = await response.json();
+            if (data && data.qrcode) {
+                const qr = data.qrcode;
                 if (qr.startsWith('data:image')) return qr;
                 return qrcode.toDataURL(qr);
             }
+            console.log(`[LocalInstance] No QR returned from Mini-Evolution for ${instanceId}. Status:`, data.status);
         } catch (e: any) {
             console.error("LocalInstance.generateQRCode: Error fetching QR from mini-evo", e.message);
         }
@@ -148,9 +151,13 @@ export class LocalInstanceService {
             const instRes = await pool.query('SELECT api_key FROM company_instances WHERE instance_key = $1', [instanceId]);
             const token = instRes.rows[0]?.api_key;
 
-            await axios.delete(`${this.getMiniEvoUrl()}/management/instances/${instanceId}`, {
-                data: { confirmName: instanceId }, // External API requirement
-                headers: { 'apikey': token }
+            await fetch(`${this.getMiniEvoUrl()}/management/instances/${instanceId}`, {
+                method: 'DELETE',
+                headers: {
+                    'apikey': (token as string) || '',
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ confirmName: instanceId })
             });
         } catch (e: any) {
             console.error("LocalInstance.disconnectInstance: Error calling mini-evo logout", e.message);

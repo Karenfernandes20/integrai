@@ -213,23 +213,45 @@ const QrCodePage = () => {
           // Inicia a geração da checagem
           setConnectionState('scanning');
 
-          // O QR Code será entregue via webhook (socket.io), o useEffect já trata a atualização.
-          // Fallback: busca manualmente o QR caso já tenha sido gerado
-          setTimeout(async () => {
-            try {
-              const qrRes = await fetch(`/api/instances/local/${targetInstance.instance_key}/qrcode`, {
-                headers: { Authorization: `Bearer ${token}` }
-              });
-              if (qrRes.ok) {
-                const data = await qrRes.json();
-                if (data.qr) {
-                  setQrCode(data.qr);
-                }
-              }
-            } catch (e) {
-              console.error("Erro no fallback de qr code", e);
+          // Polling para o QR Code (caso o socket demore ou falhe)
+          const pollStart = Date.now();
+          const pollInterval = setInterval(async () => {
+            if (Date.now() - pollStart > 120000) { // 2 minutos de limite
+              clearInterval(pollInterval);
+              console.log("[QrCode] QR Code polling timeout after 2 minutes.");
+              return;
             }
-          }, 2000);
+
+            // Se o QrCode já foi recebido via Socket, para o polling
+            setQrCode(currentQr => {
+              if (currentQr) {
+                clearInterval(pollInterval);
+                return currentQr;
+              }
+
+              // Se não tem QR, tenta buscar via API
+              (async () => {
+                try {
+                  console.log(`[QrCode] Polling QR manual para ${targetInstance.instance_key}...`);
+                  const qrRes = await fetch(`/api/instances/local/${targetInstance.instance_key}/qrcode`, {
+                    headers: { Authorization: `Bearer ${token}` }
+                  });
+                  if (qrRes.ok) {
+                    const data = await qrRes.json();
+                    if (data.qr) {
+                      console.log("[QrCode] QR manual recebido com sucesso!");
+                      setQrCode(data.qr);
+                      clearInterval(pollInterval);
+                    }
+                  }
+                } catch (e) {
+                  console.error("Erro no polling de qr code", e);
+                }
+              })();
+
+              return null;
+            });
+          }, 3000);
 
           return;
 
