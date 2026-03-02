@@ -21,7 +21,7 @@ export class LocalInstanceService {
     private static qrCodes: Map<string, string> = new Map();
 
     private static getMiniEvoUrl() {
-        return (process.env.MINI_EVO_URL || 'http://localhost:3001').replace(/\/$/, "");
+        return (process.env.MINI_EVO_URL || 'http://127.0.0.1:3001').replace(/\/$/, "");
     }
 
     static async createLocalInstance(instanceId: string, companyId: number, io: Server) {
@@ -159,9 +159,18 @@ export class LocalInstanceService {
                 return 'IS_CONNECTED';
             }
 
+            if (data.status === 'connecting') {
+                console.log(`[LocalInstance] Instance ${instanceId} is still connecting/waiting for QR...`);
+                return 'IS_CONNECTING';
+            }
+
             console.log(`[LocalInstance] No QR returned from Mini-Evolution for ${instanceId}. Response Status/State:`, data.status || data.state);
         } catch (e: any) {
-            console.error("LocalInstance.generateQRCode: CRITICAL ERROR:", e.message);
+            if (e.message.includes('ECONNREFUSED')) {
+                console.error(`[LocalInstance] CRITICAL: Mini-Evolution server is NOT RUNNING on ${this.getMiniEvoUrl()}`);
+            } else {
+                console.error("LocalInstance.generateQRCode: CRITICAL ERROR:", e.message);
+            }
         }
         return null;
     }

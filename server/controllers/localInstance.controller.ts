@@ -29,6 +29,10 @@ export class LocalInstanceController {
                 return res.json({ status: 'connected', message: 'Instance is already connected' });
             }
 
+            if (qr === 'IS_CONNECTING') {
+                return res.json({ status: 'connecting', message: 'Warming up instance, please wait...' });
+            }
+
             if (!qr) {
                 return res.status(404).json({ error: 'QR Code not available' });
             }

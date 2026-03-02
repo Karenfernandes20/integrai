@@ -87,7 +87,7 @@ export class MiniEvoController {
         const { instanceKey, remoteJid, text } = req.body;
 
         // Substitua pela porta/URL do seu outro sistema rodando localmente
-        const OUTRO_SISTEMA_URL = process.env.MINI_EVO_URL || 'http://localhost:3001';
+        const OUTRO_SISTEMA_URL = process.env.MINI_EVO_URL || 'http://127.0.0.1:3001';
 
         try {
             // Busca o token (api_key) da instância no banco
