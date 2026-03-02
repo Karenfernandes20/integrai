@@ -544,8 +544,9 @@ const GruposPage = () => {
                 </ScrollArea>
             </div>
 
-            <div className="flex-1 flex flex-col bg-[#e8e3dc] dark:bg-zinc-950/90 relative p-3 md:p-4">
-                <div className="absolute inset-0 opacity-[0.05] dark:opacity-[0.03] pointer-events-none bg-[url('https://w0.peakpx.com/wallpaper/818/148/wallpaper-whatsapp-background.jpg')] bg-repeat"></div>
+            {/* Right Column / Chat Area */}
+            <div className="flex-1 flex flex-col bg-[#efeae2] dark:bg-[#0b141a] relative">
+                <div className="absolute inset-0 opacity-[0.06] dark:opacity-[0.04] pointer-events-none bg-[url('https://w0.peakpx.com/wallpaper/818/148/wallpaper-whatsapp-background.jpg')] bg-repeat"></div>
 
                 {!selectedGroup ? (
                     <div className="flex-1 flex flex-col items-center justify-center text-muted-foreground relative z-10">
@@ -555,153 +556,152 @@ const GruposPage = () => {
                         <p className="font-medium">Selecione um grupo para visualizar</p>
                     </div>
                 ) : (
-                    <div className="relative z-10 flex-1 min-h-0">
-                        <div className="h-full rounded-2xl border border-zinc-200/80 dark:border-zinc-800 bg-white/95 dark:bg-zinc-900/95 shadow-sm flex flex-col overflow-hidden">
-                            <div className="h-16 flex-none bg-zinc-100 dark:bg-zinc-800 flex items-center justify-between px-4 border-b border-zinc-200 dark:border-zinc-700 shadow-sm">
-                                <div className="flex items-center gap-3">
-                                    <Avatar className="h-10 w-10">
-                                        <AvatarImage src={selectedGroup.profile_pic_url || `https://api.dicebear.com/7.x/initials/svg?seed=${getGroupDisplayName(selectedGroup)}`} />
-                                        <AvatarFallback>{(getGroupDisplayName(selectedGroup) || "G")[0]}</AvatarFallback>
-                                    </Avatar>
-                                    <div className="flex flex-col">
-                                        <span className="font-semibold text-sm">{getGroupDisplayName(selectedGroup)}</span>
-                                        <span className="text-[10px] text-muted-foreground">ID: {selectedGroup.phone}</span>
-                                    </div>
-                                </div>
-                                <div className="flex items-center gap-1">
-                                    <Button variant="ghost" size="icon" className="text-zinc-500" onClick={handleRefreshMetadata} title="Atualizar dados do grupo">
-                                        <RefreshCw className="h-5 w-5" />
-                                    </Button>
-                                    <Button variant="ghost" size="icon" className="text-zinc-500">
-                                        <MoreVertical className="h-5 w-5" />
-                                    </Button>
+                    <div className="relative z-10 flex-1 flex flex-col h-full overflow-hidden">
+                        {/* Chat Header */}
+                        <div className="h-[60px] flex-none bg-[#f0f2f5] dark:bg-[#202c33] flex items-center justify-between px-4 border-b border-zinc-200 dark:border-zinc-700">
+                            <div className="flex items-center gap-3">
+                                <Avatar className="h-10 w-10 border border-zinc-200 dark:border-zinc-700">
+                                    <AvatarImage src={selectedGroup.profile_pic_url || `https://api.dicebear.com/7.x/initials/svg?seed=${getGroupDisplayName(selectedGroup)}`} />
+                                    <AvatarFallback className="bg-blue-100 text-blue-600">{(getGroupDisplayName(selectedGroup) || "G")[0]}</AvatarFallback>
+                                </Avatar>
+                                <div className="flex flex-col">
+                                    <span className="font-semibold text-[15px]">{getGroupDisplayName(selectedGroup)}</span>
+                                    <span className="text-[11px] text-muted-foreground opacity-80">ID: {selectedGroup.phone}</span>
                                 </div>
                             </div>
+                            <div className="flex items-center gap-1">
+                                <Button variant="ghost" size="icon" className="text-zinc-500 hover:bg-zinc-200/50 dark:hover:bg-zinc-700/50" onClick={handleRefreshMetadata} title="Atualizar dados do grupo">
+                                    <RefreshCw className="h-5 w-5" />
+                                </Button>
+                                <Button variant="ghost" size="icon" className="text-zinc-500 hover:bg-zinc-200/50 dark:hover:bg-zinc-700/50">
+                                    <MoreVertical className="h-5 w-5" />
+                                </Button>
+                            </div>
+                        </div>
 
-                            <div
-                                ref={scrollRef}
-                                className="flex-1 overflow-y-auto p-4 flex flex-col gap-2 bg-[#efeae2]/80 dark:bg-zinc-950/70"
-                            >
-                                {isLoadingMessages ? (
-                                    <div className="flex-1 flex items-center justify-center text-muted-foreground italic text-sm">
-                                        Carregando mensagens...
-                                    </div>
-                                ) : messages.length === 0 ? (
-                                    <div className="flex-1 flex items-center justify-center text-muted-foreground italic text-sm">
-                                        Início da conversa do grupo
-                                    </div>
-                                ) : (
-                                    messages.map((msg) => (
-                                        <div
-                                            key={msg.id}
-                                            className={cn(
-                                                "flex flex-col w-full mb-1",
-                                                msg.direction === "outbound" ? "items-end" : "items-start"
-                                            )}
-                                        >
-                                            <div
-                                                className={cn(
-                                                    "relative max-w-[85%] px-3 py-1.5 shadow-sm text-[14px] break-words",
-                                                    msg.direction === "outbound"
-                                                        ? "bg-[#d9fdd3] dark:bg-[#005c4b] text-zinc-900 dark:text-zinc-100 self-end ml-auto rounded-lg rounded-tr-none"
-                                                        : "bg-white dark:bg-[#202c33] text-zinc-900 dark:text-zinc-100 self-start mr-auto rounded-lg rounded-tl-none"
-                                                )}
-                                            >
-                                                {msg.direction === 'inbound' && (
-                                                    <span className="text-[10px] font-bold text-orange-600 dark:text-orange-400 mb-0.5 block">
-                                                        {msg.sender_name || (msg.participant ? msg.participant.split('@')[0] : 'Desconhecido')}
-                                                    </span>
-                                                )}
-
-                                                {(() => {
-                                                    const type = msg.message_type || 'text';
-                                                    const proxyUrl = `/api/evolution/media/${msg.id}`;
-
-                                                    if (type === 'image') {
-                                                        return (
-                                                            <div className="flex flex-col gap-1">
-                                                                {msg.id ? (
-                                                                    <AuthImage src={proxyUrl} alt="Image" className="max-w-full rounded h-auto max-h-[300px]" token={token || ""} />
-                                                                ) : (
-                                                                    <span className="italic opacity-60">Imagem sem ID</span>
-                                                                )}
-                                                                {msg.content && msg.content !== '[Imagem]' && <span>{msg.content}</span>}
-                                                            </div>
-                                                        );
-                                                    }
-                                                    if (type === 'audio') {
-                                                        return <AuthAudio src={proxyUrl} token={token || ""} />;
-                                                    }
-                                                    if (['video', 'document', 'sticker'].includes(type) && msg.media_url) {
-                                                        return (
-                                                            <div className="flex items-center gap-2 p-1">
-                                                                <div className="p-2 bg-black/10 rounded"><FileText className="h-5 w-5" /></div>
-                                                                <a href={proxyUrl} target="_blank" className="underline text-xs">{type.toUpperCase()} recebido</a>
-                                                            </div>
-                                                        )
-                                                    }
-                                                    return <span className="pr-10">{msg.content}</span>;
-                                                })()}
-                                                <span className="absolute right-2 bottom-1 text-[9px] flex items-center gap-1 text-zinc-400">
-                                                    {formatTime(msg.sent_at)}
-                                                    {msg.direction === "outbound" && <CheckCheck className="h-3 w-3 text-[#53bdeb]" />}
+                        {/* Chat Messages */}
+                        <div
+                            ref={scrollRef}
+                            className="flex-1 overflow-y-auto p-4 md:p-6 flex flex-col gap-2 scroll-smooth custom-scrollbar"
+                        >
+                            {isLoadingMessages ? (
+                                <div className="flex-1 flex items-center justify-center text-muted-foreground italic text-sm">
+                                    Carregando mensagens...
+                                </div>
+                            ) : messages.length === 0 ? (
+                                <div className="flex-1 flex items-center justify-center text-muted-foreground italic text-sm">
+                                    Início da conversa do grupo
+                                </div>
+                            ) : (
+                                messages.map((msg) => (
+                                    <div
+                                        key={msg.id}
+                                        className={cn(
+                                            "flex flex-col w-full mb-1",
+                                            msg.direction === "outbound" ? "items-end" : "items-start"
+                                        )}
+                                    >
+                                        <div className={cn(
+                                            "relative max-w-[85%] px-3 py-1.5 shadow-sm text-[14px] break-words",
+                                            msg.direction === "outbound"
+                                                ? "bg-[#d9fdd3] dark:bg-[#005c4b] text-zinc-900 dark:text-zinc-100 self-end ml-auto rounded-lg rounded-tr-none"
+                                                : "bg-white dark:bg-[#202c33] text-zinc-900 dark:text-zinc-100 self-start mr-auto rounded-lg rounded-tl-none"
+                                        )}>
+                                            {msg.direction === 'inbound' && (
+                                                <span className="text-[10px] font-bold text-orange-600 dark:text-orange-400 mb-0.5 block">
+                                                    {msg.sender_name || (msg.participant ? msg.participant.split('@')[0] : 'Desconhecido')}
                                                 </span>
-                                            </div>
+                                            )}
+
+                                            {(() => {
+                                                const type = msg.message_type || 'text';
+                                                const proxyUrl = `/api/evolution/media/${msg.id}`;
+
+                                                if (type === 'image') {
+                                                    return (
+                                                        <div className="flex flex-col gap-1">
+                                                            {msg.id ? (
+                                                                <AuthImage src={proxyUrl} alt="Image" className="max-w-full rounded h-auto max-h-[300px]" token={token || ""} />
+                                                            ) : (
+                                                                <span className="italic opacity-60">Imagem sem ID</span>
+                                                            )}
+                                                            {msg.content && msg.content !== '[Imagem]' && <span>{msg.content}</span>}
+                                                        </div>
+                                                    );
+                                                }
+                                                if (type === 'audio') {
+                                                    return <AuthAudio src={proxyUrl} token={token || ""} />;
+                                                }
+                                                if (['video', 'document', 'sticker'].includes(type) && msg.media_url) {
+                                                    return (
+                                                        <div className="flex items-center gap-2 p-1">
+                                                            <div className="p-2 bg-black/10 rounded"><FileText className="h-5 w-5" /></div>
+                                                            <a href={proxyUrl} target="_blank" className="underline text-xs">{type.toUpperCase()} recebido</a>
+                                                        </div>
+                                                    )
+                                                }
+                                                return <span className="pr-10">{msg.content}</span>;
+                                            })()}
+                                            <span className="absolute right-2 bottom-1 text-[9px] flex items-center gap-1 text-zinc-400">
+                                                {formatTime(msg.sent_at)}
+                                                {msg.direction === "outbound" && <CheckCheck className="h-3 w-3 text-[#53bdeb]" />}
+                                            </span>
                                         </div>
-                                    ))
-                                )}
-                            </div>
-
-                            <div className="h-16 flex-none bg-zinc-100 dark:bg-zinc-800 px-4 py-2 flex items-center gap-2 border-t border-zinc-200 dark:border-zinc-700 relative z-20 shadow-inner">
-                                {showEmojiPicker && (
-                                    <div className="absolute bottom-20 left-4 z-50 shadow-2xl">
-                                        <EmojiPicker onEmojiClick={onEmojiClick} width={300} height={400} />
                                     </div>
-                                )}
+                                ))
+                            )}
+                        </div>
 
-                                <Button
-                                    variant="ghost"
-                                    size="icon"
-                                    className="text-zinc-500 text-xl hover:bg-transparent"
-                                    onClick={() => setShowEmojiPicker(!showEmojiPicker)}
-                                >
-                                    😊
-                                </Button>
+                        {/* Chat Input Area */}
+                        <div className="min-h-[62px] flex-none bg-[#f0f2f5] dark:bg-[#202c33] px-4 py-2 flex items-center gap-2 border-t border-zinc-200 dark:border-zinc-700 relative z-20">
+                            {showEmojiPicker && (
+                                <div className="absolute bottom-20 left-4 z-50 shadow-2xl">
+                                    <EmojiPicker onEmojiClick={onEmojiClick} width={300} height={400} />
+                                </div>
+                            )}
 
-                                <input
-                                    type="file"
-                                    ref={fileInputRef}
-                                    className="hidden"
-                                    onChange={handleFileChange}
+                            <Button
+                                variant="ghost"
+                                size="icon"
+                                className="text-zinc-500 text-xl hover:bg-transparent"
+                                onClick={() => setShowEmojiPicker(!showEmojiPicker)}
+                            >
+                                😊
+                            </Button>
+
+                            <input
+                                type="file"
+                                ref={fileInputRef}
+                                className="hidden"
+                                onChange={handleFileChange}
+                            />
+                            <Button
+                                variant="ghost"
+                                size="icon"
+                                className="text-zinc-500 hover:bg-transparent"
+                                onClick={() => fileInputRef.current?.click()}
+                            >
+                                <Paperclip className="h-5 w-5" />
+                            </Button>
+
+                            <form className="flex-1 flex gap-2" onSubmit={handleSendMessage}>
+                                <Input
+                                    className="flex-1 bg-white dark:bg-zinc-700 border-none focus-visible:ring-0 placeholder:text-zinc-400"
+                                    placeholder="Digite uma mensagem"
+                                    value={newMessage}
+                                    onChange={(e) => setNewMessage(e.target.value)}
+                                    onFocus={() => setShowEmojiPicker(false)}
                                 />
-                                <Button
-                                    variant="ghost"
-                                    size="icon"
-                                    className="text-zinc-500 hover:bg-transparent"
-                                    onClick={() => fileInputRef.current?.click()}
-                                >
-                                    <Paperclip className="h-5 w-5" />
-                                </Button>
-
-                                <form className="flex-1 flex gap-2" onSubmit={handleSendMessage}>
-                                    <Input
-                                        className="flex-1 bg-white dark:bg-zinc-700 border-none focus-visible:ring-0 placeholder:text-zinc-400"
-                                        placeholder="Digite uma mensagem"
-                                        value={newMessage}
-                                        onChange={(e) => setNewMessage(e.target.value)}
-                                        onFocus={() => setShowEmojiPicker(false)}
-                                    />
-                                    {newMessage.trim() ? (
-                                        <Button type="submit" size="icon" className="bg-[#00a884] hover:bg-[#008f6f] text-white rounded-full">
-                                            <Send className="h-5 w-5 ml-0.5" />
-                                        </Button>
-                                    ) : (
-                                        <Button type="button" size="icon" variant="ghost" className="text-zinc-500">
-                                            <Mic className="h-5 w-5" />
-                                        </Button>
-                                    )}
-                                </form>
-                            </div>
+                                {newMessage.trim() ? (
+                                    <Button type="submit" size="icon" className="bg-[#00a884] hover:bg-[#008f6f] text-white rounded-full">
+                                        <Send className="h-5 w-5 ml-0.5" />
+                                    </Button>
+                                ) : (
+                                    <Button type="button" size="icon" variant="ghost" className="text-zinc-500">
+                                        <Mic className="h-5 w-5" />
+                                    </Button>
+                                )}
+                            </form>
                         </div>
                     </div>
                 )}
@@ -709,4 +709,5 @@ const GruposPage = () => {
         </div>
     );
 };
+
 export default GruposPage;
