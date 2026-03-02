@@ -1,20 +1,12 @@
 
 import { pool } from '../db/index.js';
-import makeWASocket, {
-    DisconnectReason,
-    useMultiFileAuthState,
-    fetchLatestBaileysVersion,
-    makeCacheableSignalKeyStore,
-    type WASocket,
-    type ConnectionState
-} from '@whiskeysockets/baileys';
-import { Boom } from '@hapi/boom';
 import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
 import pino from 'pino';
 import { Server } from 'socket.io';
 import qrcode from 'qrcode';
+import axios from 'axios';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -27,8 +19,11 @@ if (!fs.existsSync(sessionsPath)) {
 const logger = pino({ level: 'silent' });
 
 export class LocalInstanceService {
-    private static instances: Map<string, WASocket> = new Map();
     private static qrCodes: Map<string, string> = new Map();
+
+    private static getMiniEvoUrl() {
+        return (process.env.MINI_EVO_URL || 'http://localhost:3001').replace(/\/$/, "");
+    }
 
     static async createLocalInstance(instanceId: string, companyId: number, io: Server) {
         // Initialize table for messages
@@ -40,87 +35,27 @@ export class LocalInstanceService {
             ['local', 'connecting', instanceId, companyId]
         );
 
-        return this.connectInstance(instanceId, companyId, io);
+        // Fetch token for this instance
+        const instRes = await pool.query('SELECT api_key FROM company_instances WHERE instance_key = $1', [instanceId]);
+        const token = instRes.rows[0]?.api_key;
+
+        // Proxy to Mini-Evolution to wake up/init instance
+        try {
+            await axios.get(`${this.getMiniEvoUrl()}/instance/connect/${instanceId}`, {
+                headers: { 'apikey': token }
+            });
+            console.log(`[LocalInstance] Proxying connect to Mini-Evolution for ${instanceId}`);
+        } catch (e: any) {
+            console.error(`[LocalInstance] Error waking up instance ${instanceId}:`, e.message);
+        }
+
+        return { status: 'initializing' };
     }
 
     static async connectInstance(instanceId: string, companyId: number, io: Server) {
-        const sessionDir = path.join(sessionsPath, `instance_${instanceId}`);
-        const { state, saveCreds } = await useMultiFileAuthState(sessionDir);
-        const { version, isLatest } = await fetchLatestBaileysVersion();
-
-        const sock = makeWASocket({
-            version,
-            auth: {
-                creds: state.creds,
-                keys: makeCacheableSignalKeyStore(state.keys, logger),
-            },
-            printQRInTerminal: false,
-            logger
-        });
-
-        this.instances.set(instanceId, sock);
-
-        sock.ev.on('creds.update', saveCreds);
-
-        sock.ev.on('connection.update', async (update: Partial<ConnectionState>) => {
-            const { connection, lastDisconnect, qr } = update;
-
-            if (qr) {
-                console.log(`[LocalInstance] QR Code gerado para ${instanceId}`);
-                this.qrCodes.set(instanceId, qr);
-                try {
-                    const qrBase64 = await qrcode.toDataURL(qr);
-                    io.to(`company_${companyId}`).emit('instance:qrcode', { instanceId, qr: qrBase64 });
-                } catch (e) {
-                    console.error('[LocalInstance] Failed to generate QR Base64', e);
-                }
-            }
-
-            if (connection === 'close') {
-                this.qrCodes.delete(instanceId);
-                const shouldReconnect = (lastDisconnect?.error as Boom)?.output?.statusCode !== DisconnectReason.loggedOut;
-
-                await pool.query(
-                    'UPDATE company_instances SET status = $1 WHERE instance_key = $2',
-                    ['disconnected', instanceId]
-                );
-                io.to(`company_${companyId}`).emit('instance:status', { instanceKey: instanceId, status: 'disconnected' });
-
-                if (shouldReconnect) {
-                    setTimeout(() => {
-                        this.connectInstance(instanceId, companyId, io);
-                    }, 5000);
-                } else {
-                    this.instances.delete(instanceId);
-                    const sessionDir = path.join(sessionsPath, `instance_${instanceId}`);
-                    if (fs.existsSync(sessionDir)) {
-                        fs.rmSync(sessionDir, { recursive: true, force: true });
-                    }
-                }
-            } else if (connection === 'open') {
-                this.qrCodes.delete(instanceId);
-                console.log(`[LocalInstance] Instance ${instanceId} connected`);
-
-                await pool.query(
-                    'UPDATE company_instances SET status = $1 WHERE instance_key = $2',
-                    ['connected', instanceId]
-                );
-                io.to(`company_${companyId}`).emit('instance:status', { instanceKey: instanceId, status: 'connected' });
-            }
-        });
-
-        sock.ev.on('messages.upsert', async (m) => {
-            if (m.type === 'append' || m.type === 'notify') {
-                for (const msg of m.messages) {
-                    if (!msg.key.fromMe) {
-                        await this.saveMessage(instanceId, msg, io);
-                    }
-                }
-            }
-        });
-
-        return sock;
+        return this.createLocalInstance(instanceId, companyId, io);
     }
+
 
     private static async ensureMessageTable(instanceId: string) {
         const tableName = `messages_instance_${instanceId.replace(/[^a-zA-Z0-9]/g, '_')}`;
@@ -142,7 +77,10 @@ export class LocalInstanceService {
         const tableName = `messages_instance_${instanceId.replace(/[^a-zA-Z0-9]/g, '_')}`;
         const remoteJid = msg.key.remoteJid;
         const fromMe = msg.key.fromMe || false;
-        const timestamp = msg.messageTimestamp;
+        const rawTimestamp = msg.messageTimestamp;
+        const timestamp = typeof rawTimestamp === 'object' && rawTimestamp !== null ?
+            (rawTimestamp.low || rawTimestamp.toNumber?.() || Date.now()) :
+            (rawTimestamp || Math.floor(Date.now() / 1000));
 
         let content = '';
         let messageType = 'text';
@@ -186,42 +124,39 @@ export class LocalInstanceService {
 
     static async generateQRCode(instanceId: string) {
         try {
-            const OUTRO_SISTEMA_URL = process.env.MINI_EVO_URL || 'http://localhost:3001';
-            const qrRes = await fetch(`${OUTRO_SISTEMA_URL}/get-qr`);
+            const instRes = await pool.query('SELECT api_key FROM company_instances WHERE instance_key = $1', [instanceId]);
+            const token = instRes.rows[0]?.api_key;
 
-            if (qrRes.ok) {
-                const data = await qrRes.json() as any;
-                if (data.qr) {
-                    return qrcode.toDataURL(data.qr);
-                }
+            const response = await axios.get(`${this.getMiniEvoUrl()}/instance/connect/${instanceId}`, {
+                headers: { 'apikey': token }
+            });
+
+            if (response.data && response.data.qrcode) {
+                // If it's already a data URL (base64 from Mini-Evo), return it. Otherwise convert.
+                const qr = response.data.qrcode;
+                if (qr.startsWith('data:image')) return qr;
+                return qrcode.toDataURL(qr);
             }
-        } catch (e) {
-            console.error("LocalInstance.generateQRCode: Error fetching QR from mini-evo", e);
-        }
-
-        const qrString = this.qrCodes.get(instanceId);
-        if (qrString) {
-            return qrcode.toDataURL(qrString);
+        } catch (e: any) {
+            console.error("LocalInstance.generateQRCode: Error fetching QR from mini-evo", e.message);
         }
         return null;
     }
 
     static async disconnectInstance(instanceId: string) {
         try {
-            const OUTRO_SISTEMA_URL = process.env.MINI_EVO_URL || 'http://localhost:3001';
-            await fetch(`${OUTRO_SISTEMA_URL}/logout`, { method: 'POST' });
-        } catch (e) {
-            console.error("LocalInstance.disconnectInstance: Error calling mini-evo logout", e);
+            const instRes = await pool.query('SELECT api_key FROM company_instances WHERE instance_key = $1', [instanceId]);
+            const token = instRes.rows[0]?.api_key;
+
+            await axios.delete(`${this.getMiniEvoUrl()}/management/instances/${instanceId}`, {
+                data: { confirmName: instanceId }, // External API requirement
+                headers: { 'apikey': token }
+            });
+        } catch (e: any) {
+            console.error("LocalInstance.disconnectInstance: Error calling mini-evo logout", e.message);
         }
 
         await pool.query('UPDATE company_instances SET status = $1 WHERE instance_key = $2', ['disconnected', instanceId]);
-
-        // Clean up memory if any local socket was left here magically
-        const sock = this.instances.get(instanceId);
-        if (sock) {
-            await sock.logout();
-            this.instances.delete(instanceId);
-        }
     }
 
     static async deleteInstance(instanceId: string) {
@@ -235,9 +170,12 @@ export class LocalInstanceService {
         }
     }
 
-    static getInstanceStatus(instanceId: string) {
-        const sock = this.instances.get(instanceId);
-        if (!sock) return 'disconnected';
-        return 'connected'; // Simplified, should check actual sock state
+    static async getInstanceStatus(instanceId: string): Promise<string> {
+        try {
+            const instRes = await pool.query('SELECT status FROM company_instances WHERE instance_key = $1', [instanceId]);
+            return instRes.rows[0]?.status || 'disconnected';
+        } catch (e) {
+            return 'disconnected';
+        }
     }
 }
