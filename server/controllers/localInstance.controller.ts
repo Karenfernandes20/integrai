@@ -23,23 +23,25 @@ export class LocalInstanceController {
     async getQRCode(req: Request, res: Response) {
         const { id } = req.params;
         try {
-            const qr = await InstanceManager.getQRCode('local', id);
+            const result: any = await InstanceManager.getQRCode('local', id);
 
-            if (qr === 'IS_CONNECTED') {
-                return res.json({ status: 'connected', message: 'Instance is already connected' });
+            if (!result) {
+                return res.status(404).json({
+                    status: 'error',
+                    error: 'Instância não gerou resposta.',
+                    details: 'O serviço de QR code retornou vazio. Verifique se o Mini-Evolution está conectado.'
+                });
             }
 
-            if (qr === 'IS_CONNECTING') {
-                return res.json({ status: 'connecting', message: 'Warming up instance, please wait...' });
+            // Se for erro, retorna 200 com status error para o frontend tratar visualmente sem quebrar o polling
+            if (result.status === 'error') {
+                return res.json(result);
             }
 
-            if (!qr) {
-                return res.status(404).json({ error: 'QR Code not available' });
-            }
-            res.json({ qr });
+            res.json(result);
         } catch (e: any) {
             console.error(`[LocalInstanceController] Error getting QR for ${id}:`, e);
-            res.status(500).json({ error: e.message });
+            res.status(500).json({ status: 'error', error: e.message });
         }
     }
 

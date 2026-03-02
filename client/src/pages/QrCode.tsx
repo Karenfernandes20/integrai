@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "../components/ui/card";
 import { Button } from "../components/ui/button";
-import { QrCode as QrIcon, RefreshCcw, Instagram, MessageCircle, MessageSquare, Settings, Link2, Link2Off, ChevronRight, CheckCircle2, XCircle, AlertCircle, Info, ExternalLink } from "lucide-react";
+import { QrCode as QrIcon, RefreshCcw, Instagram, MessageCircle, MessageSquare, Settings, Link2, Link2Off, ChevronRight, CheckCircle2, XCircle, AlertCircle, Info, ExternalLink, Activity } from "lucide-react";
 import { useAuth } from "../contexts/AuthContext";
 import { io } from "socket.io-client";
 import { cn } from "../lib/utils";
@@ -65,6 +65,7 @@ const QrCodePage = () => {
   const [instanceName, setInstanceName] = useState<string>("Carregando...");
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [errorDetails, setErrorDetails] = useState<any>(null);
 
   // Multi-Company (Superadmin)
   const [availableCompanies, setAvailableCompanies] = useState<any[]>([]);
@@ -206,8 +207,9 @@ const QrCodePage = () => {
             body: JSON.stringify({ instanceId: targetInstance.instance_key })
           });
 
+          const initData = await initResponse.json().catch(() => ({}));
           if (!initResponse.ok) {
-            throw new Error("Erro ao iniciar a API Interna.");
+            throw new Error(initData.error || "Erro ao iniciar a API Interna.");
           }
 
           // Inicia a geração da checagem
@@ -219,17 +221,9 @@ const QrCodePage = () => {
             if (Date.now() - pollStart > 120000) { // 2 minutos de limite
               clearInterval(pollInterval);
               console.log("[QrCode] QR Code polling timeout after 2 minutes.");
+              setError("Tempo limite atingido aguardando o QR Code.");
               return;
             }
-
-            // Se o QrCode já foi recebido via Socket, para o polling
-            setQrCode(currentQr => {
-              if (currentQr && currentQr !== 'loading') {
-                clearInterval(pollInterval);
-                return currentQr;
-              }
-              return currentQr;
-            });
 
             // Tenta buscar via API
             try {
@@ -240,26 +234,42 @@ const QrCodePage = () => {
 
               if (qrRes.ok) {
                 const data = await qrRes.json();
-                if (data.qr) {
+
+                if (data.status === 'error') {
+                  setError(data.error);
+                  setErrorDetails(data.details);
+                  // Not clearing interval yet, maybe it's a temporary connectivity issue?
+                  // Actually, if it's a hard error, let's clear it.
+                  if (data.error.includes('fora do ar')) clearInterval(pollInterval);
+                } else if (data.qr) {
                   console.log("[QrCode] QR manual recebido com sucesso!");
                   setQrCode(data.qr);
+                  setConnectionState('scanning');
+                  setError(null);
+                  setErrorDetails(null);
                   clearInterval(pollInterval);
                 } else if (data.status === 'connected') {
                   console.log("[QrCode] Instance already connected detected by polling.");
                   setConnectionState('open');
+                  setError(null);
+                  setErrorDetails(null);
                   clearInterval(pollInterval);
+                } else if (data.status === 'connecting') {
+                  // Still waiting, message is in data.message if needed
+                  console.log("[QrCode] Polling status: connecting...");
                 }
               }
-            } catch (e) {
+            } catch (e: any) {
               console.error("Erro no polling de qr code", e);
+              setError("Erro de conexão com o servidor.");
             }
-          }, 3000);
+          }, 4000);
 
           return;
 
-        } catch (error) {
+        } catch (error: any) {
           console.error(error);
-          setError("Houve um erro conectando à API Interna.");
+          setError(error.message || "Houve um erro conectando à API Interna.");
           setIsLoading(false);
           return;
         }
@@ -1226,9 +1236,82 @@ const QrCodePage = () => {
                                 </div>
                               </div>
                             ) : (
-                              <div className="text-center py-8">
-                                <div className="animate-spin h-8 w-8 border-4 border-primary border-t-transparent rounded-full mx-auto mb-4"></div>
-                                <p className="text-sm font-medium text-zinc-500">Gerando QR Code...</p>
+                              <div className="text-center py-8 w-full">
+                                {!error ? (
+                                  <>
+                                    <div className="relative h-16 w-16 mx-auto mb-6">
+                                      <div className="absolute inset-0 border-4 border-primary/20 rounded-full"></div>
+                                      <div className="absolute inset-0 border-4 border-primary border-t-transparent rounded-full animate-spin"></div>
+                                      <RefreshCcw className="absolute inset-0 m-auto h-6 w-6 text-primary/40" />
+                                    </div>
+                                    <div className="space-y-2">
+                                      <p className="text-base font-bold text-zinc-800 dark:text-white">Gerando QR Code...</p>
+                                      <p className="text-[11px] text-zinc-500 max-w-[200px] mx-auto leading-relaxed">
+                                        Isso pode levar até 30 segundos enquanto o serviço Baileys inicializa.
+                                      </p>
+                                    </div>
+
+                                    <div className="mt-8 pt-6 border-t border-zinc-100 dark:border-zinc-800 w-full">
+                                      <div className="flex items-center justify-center gap-2 mb-3">
+                                        <Activity className="h-3 w-3 text-green-500 animate-pulse" />
+                                        <span className="text-[10px] font-bold uppercase tracking-widest text-zinc-400">Diagnóstico em Tempo Real</span>
+                                      </div>
+                                      <div className="grid grid-cols-2 gap-2">
+                                        <div className="bg-zinc-50 dark:bg-zinc-800/50 p-2 rounded-xl text-center border border-zinc-100 dark:border-zinc-700/50">
+                                          <p className="text-[8px] font-bold text-zinc-400 uppercase">Motor</p>
+                                          <p className="text-[10px] font-bold text-zinc-600 dark:text-zinc-300">Mini-Evolution</p>
+                                        </div>
+                                        <div className="bg-zinc-50 dark:bg-zinc-800/50 p-2 rounded-xl text-center border border-zinc-100 dark:border-zinc-700/50">
+                                          <p className="text-[8px] font-bold text-zinc-400 uppercase">Poll Status</p>
+                                          <p className="text-[10px] font-bold text-blue-600">Ativo (4s)</p>
+                                        </div>
+                                      </div>
+                                    </div>
+                                  </>
+                                ) : (
+                                  <div className="p-6 bg-red-50 dark:bg-red-950/20 border-2 border-dashed border-red-200 dark:border-red-900/40 rounded-3xl animate-in zoom-in duration-300">
+                                    <div className="h-12 w-12 bg-red-100 dark:bg-red-900/40 rounded-full flex items-center justify-center mx-auto mb-4">
+                                      <AlertCircle className="h-6 w-6 text-red-600" />
+                                    </div>
+                                    <h3 className="text-sm font-bold text-red-800 dark:text-red-400 uppercase tracking-wider mb-2">Erro na Geração</h3>
+                                    <p className="text-sm text-red-700 dark:text-red-400 font-medium mb-4">{error}</p>
+
+                                    {errorDetails && (
+                                      <div className="mb-4">
+                                        <p className="text-[9px] font-bold text-red-400 uppercase mb-1 text-left ml-1 italic tracking-widest">Detalhes do Erro:</p>
+                                        <div className="p-3 bg-white/60 dark:bg-black/40 rounded-xl text-[10px] font-mono text-zinc-600 dark:text-zinc-300 text-left overflow-x-auto whitespace-pre-wrap border border-red-100 dark:border-red-900/20 max-h-[120px] custom-scrollbar">
+                                          {typeof errorDetails === 'string' ? errorDetails : JSON.stringify(errorDetails, null, 2)}
+                                        </div>
+                                      </div>
+                                    )}
+
+                                    <div className="grid grid-cols-2 gap-2 mt-2">
+                                      <Button
+                                        variant="outline"
+                                        size="sm"
+                                        className="h-10 rounded-xl bg-white border-red-200 hover:bg-red-50 text-red-600 font-bold text-xs"
+                                        onClick={() => handleGenerateQrKey(selectedInstance)}
+                                      >
+                                        Repetir
+                                      </Button>
+                                      <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        className="h-10 rounded-xl text-zinc-500 font-bold text-xs"
+                                        onClick={() => { setError(null); setErrorDetails(null); }}
+                                      >
+                                        Limpar
+                                      </Button>
+                                    </div>
+
+                                    <div className="mt-6 pt-4 border-t border-red-100 dark:border-red-900/30 text-left">
+                                      <p className="text-[9px] font-black text-red-300 uppercase tracking-widest mb-1">Dica de Sucesso:</p>
+                                      <p className="text-[10px] text-red-800/60 dark:text-red-400/60 leading-tight">
+                                        Verifique se o terminal do Mini-Evolution está aberto e se o Token API da instância coincide com o cadastrado.
+                                      </p>
+                                    </div>
+                                  </div>
+                                )}
                               </div>
                             )}
                           </div>

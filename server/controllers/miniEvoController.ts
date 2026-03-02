@@ -16,17 +16,15 @@ export class MiniEvoController {
         try {
             console.log(`[Mini-Evo Webhook] Recebido da instância ${instanceKey}:`, body);
 
-            // Busca a qual empresa essa instância pertence
-            let instRes = await pool.query('SELECT company_id, instance_key FROM company_instances WHERE instance_key = $1', [instanceKey]);
+            // Busca a qual empresa essa instância pertence - Busca por key ou por name (para robustez)
+            let instRes = await pool.query(
+                'SELECT company_id, instance_key FROM company_instances WHERE instance_key = $1 OR name = $1',
+                [instanceKey]
+            );
 
-            // Fallback: se a chave 'minievo_1' do processo separado não for a mesma cadastrada no banco pelo usuário,
-            // atrelamos à primeira instância cadastrada para garantir que funcionará.
             if (instRes.rows.length === 0) {
-                console.log(`[Mini-Evo Webhook] Chave ${instanceKey} não achada. Buscando primeira instância genérica.`);
-                instRes = await pool.query("SELECT company_id, instance_key FROM company_instances LIMIT 1");
-                if (instRes.rows.length === 0) {
-                    return res.status(404).json({ error: 'Nenhuma instância encontrada no banco para atrelar.' });
-                }
+                console.warn(`[Mini-Evo Webhook] Instância ${instanceKey} não encontrada no banco.`);
+                return res.status(404).json({ error: 'Instância não encontrada.' });
             }
             const companyId = instRes.rows[0].company_id;
             const actualInstanceKey = instRes.rows[0].instance_key;
@@ -49,12 +47,21 @@ export class MiniEvoController {
 
             // b) EVENTO DE CONEXÃO
             if (eventType === 'status') {
-                const status = body.status; // 'connected', 'disconnected'
+                const rawStatus = body.status; // 'connected', 'open', 'disconnected', 'close'
+                let status = 'disconnected';
+                if (['connected', 'open', 'online'].includes(String(rawStatus).toLowerCase())) {
+                    status = 'connected';
+                }
+
+                console.log(`[Mini-Evo Webhook] Updating status for ${actualInstanceKey}: ${status} (raw: ${rawStatus})`);
+
                 await pool.query('UPDATE company_instances SET status = $1 WHERE instance_key = $2', [status, actualInstanceKey]);
+
                 io.to(`company_${companyId}`).emit('instance:status', {
                     instanceKey: actualInstanceKey,
                     instanceId: actualInstanceKey,
-                    status
+                    status,
+                    state: status === 'connected' ? 'open' : 'close'
                 });
             }
 

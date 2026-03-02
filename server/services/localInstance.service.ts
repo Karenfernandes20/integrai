@@ -34,23 +34,65 @@ export class LocalInstanceService {
             ['local', 'connecting', instanceId, companyId]
         );
 
-        // Fetch token for this instance
-        const instRes = await pool.query('SELECT api_key FROM company_instances WHERE instance_key = $1', [instanceId]);
-        const token = instRes.rows[0]?.api_key;
+        // Fetch instance data (name and api_key)
+        const instRes = await pool.query('SELECT name, api_key FROM company_instances WHERE instance_key = $1', [instanceId]);
+        const instance = instRes.rows[0];
+        const token = instance?.api_key;
+        const name = instance?.name || instanceId;
 
-        // Proxy to Mini-Evolution to wake up/init instance
+        // 1. Ensure instance exists in Mini-Evolution
+        try {
+            console.log(`[LocalInstance] Ensuring registration for ${instanceId} in Mini-Evolution...`);
+            const regResponse = await fetch(`${this.getMiniEvoUrl()}/management/instances`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    key: instanceId,
+                    name: name,
+                    token: token
+                })
+            });
+            if (!regResponse.ok) {
+                console.warn(`[LocalInstance] Registration warning: ${await regResponse.text()}`);
+            }
+        } catch (e: any) {
+            console.error(`[LocalInstance] Failed to register/check instance: ${e.message}`);
+        }
+
+        // 2. Proxy to Mini-Evolution to wake up/init instance
         try {
             console.log(`[LocalInstance] Connecting to Mini-Evolution for ${instanceId}...`);
             const response = await fetch(`${this.getMiniEvoUrl()}/instance/connect/${instanceId}`, {
                 headers: { 'apikey': (token as string) || '' }
             });
+
+            if (!response.ok) {
+                const text = await response.text();
+                let errorDetails = text;
+                try {
+                    const json = JSON.parse(text);
+                    errorDetails = json.error || json.message || text;
+                } catch (e) { }
+                throw new Error(`Mini-Evolution respondeu ${response.status}: ${errorDetails}`);
+            }
+
             const data: any = await response.json();
             console.log(`[LocalInstance] Mini-Evolution status for ${instanceId}:`, data.status);
+
+            if (data.status === 'connected' || data.status === 'open') {
+                await pool.query('UPDATE company_instances SET status = $1 WHERE instance_key = $2', ['connected', instanceId]);
+                io.to(`company_${companyId}`).emit('instance:status', {
+                    instanceKey: instanceId,
+                    status: 'connected',
+                    state: 'open'
+                });
+            }
+
+            return { success: true, status: data.status, message: data.message };
         } catch (e: any) {
             console.error(`[LocalInstance] Error waking up instance ${instanceId}:`, e.message);
+            throw e;
         }
-
-        return { status: 'initializing' };
     }
 
     static async connectInstance(instanceId: string, companyId: number, io: Server) {
@@ -129,11 +171,11 @@ export class LocalInstanceService {
             const token = instRes.rows[0]?.api_key;
 
             if (!token) {
-                console.warn(`[LocalInstance] No api_key found in DB for instance ${instanceId}. This may lead to 401/403 errors.`);
+                console.warn(`[LocalInstance] No api_key found in DB for instance ${instanceId}.`);
             }
 
             const url = `${this.getMiniEvoUrl()}/instance/connect/${instanceId}`;
-            console.log(`[LocalInstance] Fetching QR from: ${url} (Token provided: ${token ? 'yes' : 'no'})`);
+            console.log(`[LocalInstance] Fetching QR from: ${url}`);
 
             const response = await fetch(url, {
                 headers: { 'apikey': (token as string) || '' }
@@ -142,7 +184,18 @@ export class LocalInstanceService {
             if (!response.ok) {
                 const errorBody = await response.text().catch(() => "No body");
                 console.error(`[LocalInstance] Mini-Evolution error ${response.status}:`, errorBody);
-                return null;
+
+                let parsedError = errorBody;
+                try {
+                    const json = JSON.parse(errorBody);
+                    parsedError = json.error || json.message || errorBody;
+                } catch (e) { }
+
+                return {
+                    status: 'error',
+                    error: `Mini-Evolution respondeu ${response.status}`,
+                    details: parsedError
+                };
             }
 
             const data: any = await response.json().catch(() => ({}));
@@ -150,29 +203,36 @@ export class LocalInstanceService {
 
             if (data && data.qrcode) {
                 const qr = data.qrcode;
-                if (qr.startsWith('data:image')) return qr;
-                return qrcode.toDataURL(qr);
+                const finalQr = qr.startsWith('data:image') ? qr : await qrcode.toDataURL(qr);
+                return { status: 'scanning', qr: finalQr };
             }
 
-            if (data.status === 'connected') {
-                console.log(`[LocalInstance] Instance ${instanceId} is ALREADY connected.`);
-                return 'IS_CONNECTED';
+            if (data.status === 'connected' || data.status === 'open') {
+                // If it's already connected, update DB. Webhook or polling will notify frontend
+                await pool.query('UPDATE company_instances SET status = $1 WHERE instance_key = $2', ['connected', instanceId]);
+                return { status: 'connected', message: 'Instância já conectada.' };
             }
 
             if (data.status === 'connecting') {
-                console.log(`[LocalInstance] Instance ${instanceId} is still connecting/waiting for QR...`);
-                return 'IS_CONNECTING';
+                return { status: 'connecting', message: data.message || 'WhatsApp está iniciando, aguarde...' };
             }
 
-            console.log(`[LocalInstance] No QR returned from Mini-Evolution for ${instanceId}. Response Status/State:`, data.status || data.state);
+            return {
+                status: 'error',
+                error: 'Resposta inesperada do Mini-Evolution',
+                details: data
+            };
         } catch (e: any) {
+            console.error("LocalInstance.generateQRCode: CRITICAL ERROR:", e.message);
             if (e.message.includes('ECONNREFUSED')) {
-                console.error(`[LocalInstance] CRITICAL: Mini-Evolution server is NOT RUNNING on ${this.getMiniEvoUrl()}`);
-            } else {
-                console.error("LocalInstance.generateQRCode: CRITICAL ERROR:", e.message);
+                return {
+                    status: 'error',
+                    error: 'Mini-Evolution fora do ar',
+                    details: `Não foi possível conectar em ${this.getMiniEvoUrl()}. Certifique-se que o processo separado está rodando.`
+                };
             }
+            return { status: 'error', error: e.message };
         }
-        return null;
     }
 
     static async disconnectInstance(instanceId: string) {
