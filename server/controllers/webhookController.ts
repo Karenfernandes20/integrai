@@ -369,7 +369,7 @@ export const handleWebhook = async (req: Request, res: Response) => {
                                      SET last_message = $1, 
                                          last_message_at = $2,
                                          unread_count = CASE WHEN $3 = 'inbound' THEN unread_count + 1 ELSE unread_count END,
-                                         status = CASE WHEN status = 'CLOSED' THEN 'PENDING' ELSE status END,
+                                         status = CASE WHEN $3 = 'inbound' THEN 'PENDING' WHEN status = 'CLOSED' THEN 'PENDING' ELSE status END,
                                          updated_at = NOW()
                                      WHERE id = $4`,
                                     [text || (msg.imageMessage ? 'Imagem' : 'Mensagem'), sentAt.toISOString(), fromMe ? 'outbound' : 'inbound', conversationId]

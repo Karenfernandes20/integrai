@@ -234,14 +234,20 @@ export const getEvolutionConfig = async (user: any, source: string = 'unknown', 
     if (targetInstanceKey) {
       // Find specific requested instance
       const instRes = await pool.query(
-        'SELECT instance_key, api_key FROM company_instances WHERE instance_key = $1 AND company_id = $2',
+        'SELECT instance_key, api_key, type FROM company_instances WHERE instance_key = $1 AND company_id = $2',
         [targetInstanceKey, resolvedCompanyId]
       );
       if (instRes.rows.length > 0) {
         config.instance = instRes.rows[0].instance_key;
-        if (instRes.rows[0].api_key && instRes.rows[0].api_key.length > 10) {
+        if (instRes.rows[0].api_key && instRes.rows[0].api_key.length > 5) { // tokens are longer than 10 usually
           config.apikey = instRes.rows[0].api_key;
         }
+
+        // Se for local, sobrescreve a URL para o Mini-Evo
+        if (instRes.rows[0].type === 'local') {
+          config.url = (process.env.MINI_EVO_URL || 'http://localhost:3001').replace(/\/$/, "");
+        }
+
         return config;
       }
     }
@@ -730,7 +736,7 @@ export const getEvolutionConnectionState = async (req: Request, res: Response) =
       else if (['connecting', 'pairing'].includes(lowerState)) status = 'connecting';
 
       pool.query('UPDATE company_instances SET status = $1 WHERE instance_key = $2', [status, EVOLUTION_INSTANCE])
-        .catch(e => console.error('[Status Sync] Failed to update DB:', e));
+        .catch((e: any) => console.error('[Status Sync] Failed to update DB:', e));
     }
     return res.json(data);
 
@@ -1408,7 +1414,7 @@ export const syncEvolutionContacts = async (req: Request, res: Response) => {
       if (pool && resolvedCompanyId) {
         const resInst = await pool.query('SELECT instance_key FROM company_instances WHERE company_id = $1', [resolvedCompanyId]);
         if (resInst.rows.length > 0) {
-          instancesToProcess = resInst.rows.map(r => r.instance_key);
+          instancesToProcess = resInst.rows.map((r: any) => r.instance_key);
         }
       }
       // Fallback: If no multi-instances found, try one pass with explicit undefined to trigger getEvolutionConfig default logic

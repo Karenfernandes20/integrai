@@ -977,10 +977,8 @@ const AtendimentoPage = () => {
       });
       setSelectedConversation(newConv);
 
-      // CRITICAL: We need to trigger conversation creation on backend if we want to handleStartAtendimento
-      // However, handleStartAtendimento requires a real ID.
-      // We'll let the user manually click 'Atender' or we can trigger a 'FindOrCreate' here.
-      // For now, let's at least ensure the UI shows it correctly.
+      // Trigger automatic start to create DB entry and set to OPEN
+      handleStartAtendimento(newConv);
     }
 
     // ALWAYS clean params after processing to keep the URL clean and avoid loops
@@ -4092,23 +4090,23 @@ const AtendimentoPage = () => {
                                           isOutbound ? "bg-[#DBEAFE]/30" : "bg-[#F1F5F9]"
                                         )}>
                                           <div className="flex items-center gap-3">
-                                          <div className={cn(
-                                            "w-8 h-8 rounded-full flex items-center justify-center shrink-0",
-                                            isOutbound ? "bg-[#2563EB]/10 text-[#2563EB]" : "bg-white text-[#2563EB] shadow-sm"
-                                          )}
-                                            onClick={() => handleAudioSpeedToggle(msg.id, document.getElementById(`audio-${msg.id}`) as HTMLAudioElement)}
-                                          >
-                                            <span className="text-[10px] font-bold">
-                                              {audioSpeeds[msg.id] ? `${audioSpeeds[msg.id]}x` : '1x'}
-                                            </span>
-                                          </div>
-                                          <audio
-                                            id={`audio-${msg.id}`}
-                                            src={getMediaUrl(msg)}
-                                            controls
-                                            className="h-8 flex-1"
-                                            controlsList="nodownload noplaybackrate"
-                                          />
+                                            <div className={cn(
+                                              "w-8 h-8 rounded-full flex items-center justify-center shrink-0",
+                                              isOutbound ? "bg-[#2563EB]/10 text-[#2563EB]" : "bg-white text-[#2563EB] shadow-sm"
+                                            )}
+                                              onClick={() => handleAudioSpeedToggle(msg.id, document.getElementById(`audio-${msg.id}`) as HTMLAudioElement)}
+                                            >
+                                              <span className="text-[10px] font-bold">
+                                                {audioSpeeds[msg.id] ? `${audioSpeeds[msg.id]}x` : '1x'}
+                                              </span>
+                                            </div>
+                                            <audio
+                                              id={`audio-${msg.id}`}
+                                              src={getMediaUrl(msg)}
+                                              controls
+                                              className="h-8 flex-1"
+                                              controlsList="nodownload noplaybackrate"
+                                            />
                                           </div>
                                           <button
                                             type="button"

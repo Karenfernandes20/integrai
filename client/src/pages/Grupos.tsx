@@ -253,6 +253,10 @@ const GruposPage = () => {
             transports: ["polling", "websocket"],
         });
 
+        if (socket.connected && user?.company_id) {
+            socket.emit("join:company", user.company_id);
+        }
+
         socket.on("connect", () => {
             if (user?.company_id) {
                 socket.emit("join:company", user.company_id);
@@ -609,41 +613,41 @@ const GruposPage = () => {
                                                     </span>
                                                 )}
 
-                                            {(() => {
-                                                const type = msg.message_type || 'text';
-                                                const proxyUrl = `/api/evolution/media/${msg.id}`;
+                                                {(() => {
+                                                    const type = msg.message_type || 'text';
+                                                    const proxyUrl = `/api/evolution/media/${msg.id}`;
 
-                                                if (type === 'image') {
-                                                    return (
-                                                        <div className="flex flex-col gap-1">
-                                                            {msg.id ? (
-                                                                <AuthImage src={proxyUrl} alt="Image" className="max-w-full rounded h-auto max-h-[300px]" token={token || ""} />
-                                                            ) : (
-                                                                <span className="italic opacity-60">Imagem sem ID</span>
-                                                            )}
-                                                            {msg.content && msg.content !== '[Imagem]' && <span>{msg.content}</span>}
-                                                        </div>
-                                                    );
-                                                }
-                                                if (type === 'audio') {
-                                                    return <AuthAudio src={proxyUrl} token={token || ""} />;
-                                                }
-                                                if (['video', 'document', 'sticker'].includes(type) && msg.media_url) {
-                                                    return (
-                                                        <div className="flex items-center gap-2 p-1">
-                                                            <div className="p-2 bg-black/10 rounded"><FileText className="h-5 w-5" /></div>
-                                                            <a href={proxyUrl} target="_blank" className="underline text-xs">{type.toUpperCase()} recebido</a>
-                                                        </div>
-                                                    )
-                                                }
-                                                return <span className="pr-10">{msg.content}</span>;
-                                            })()}
-                                            <span className="absolute right-2 bottom-1 text-[9px] flex items-center gap-1 text-zinc-400">
-                                                {formatTime(msg.sent_at)}
-                                                {msg.direction === "outbound" && <CheckCheck className="h-3 w-3 text-[#53bdeb]" />}
-                                            </span>
+                                                    if (type === 'image') {
+                                                        return (
+                                                            <div className="flex flex-col gap-1">
+                                                                {msg.id ? (
+                                                                    <AuthImage src={proxyUrl} alt="Image" className="max-w-full rounded h-auto max-h-[300px]" token={token || ""} />
+                                                                ) : (
+                                                                    <span className="italic opacity-60">Imagem sem ID</span>
+                                                                )}
+                                                                {msg.content && msg.content !== '[Imagem]' && <span>{msg.content}</span>}
+                                                            </div>
+                                                        );
+                                                    }
+                                                    if (type === 'audio') {
+                                                        return <AuthAudio src={proxyUrl} token={token || ""} />;
+                                                    }
+                                                    if (['video', 'document', 'sticker'].includes(type) && msg.media_url) {
+                                                        return (
+                                                            <div className="flex items-center gap-2 p-1">
+                                                                <div className="p-2 bg-black/10 rounded"><FileText className="h-5 w-5" /></div>
+                                                                <a href={proxyUrl} target="_blank" className="underline text-xs">{type.toUpperCase()} recebido</a>
+                                                            </div>
+                                                        )
+                                                    }
+                                                    return <span className="pr-10">{msg.content}</span>;
+                                                })()}
+                                                <span className="absolute right-2 bottom-1 text-[9px] flex items-center gap-1 text-zinc-400">
+                                                    {formatTime(msg.sent_at)}
+                                                    {msg.direction === "outbound" && <CheckCheck className="h-3 w-3 text-[#53bdeb]" />}
+                                                </span>
+                                            </div>
                                         </div>
-                                    </div>
                                     ))
                                 )}
                             </div>
@@ -655,47 +659,47 @@ const GruposPage = () => {
                                     </div>
                                 )}
 
-                            <Button
-                                variant="ghost"
-                                size="icon"
-                                className="text-zinc-500 text-xl hover:bg-transparent"
-                                onClick={() => setShowEmojiPicker(!showEmojiPicker)}
-                            >
-                                😊
-                            </Button>
+                                <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className="text-zinc-500 text-xl hover:bg-transparent"
+                                    onClick={() => setShowEmojiPicker(!showEmojiPicker)}
+                                >
+                                    😊
+                                </Button>
 
-                            <input
-                                type="file"
-                                ref={fileInputRef}
-                                className="hidden"
-                                onChange={handleFileChange}
-                            />
-                            <Button
-                                variant="ghost"
-                                size="icon"
-                                className="text-zinc-500 hover:bg-transparent"
-                                onClick={() => fileInputRef.current?.click()}
-                            >
-                                <Paperclip className="h-5 w-5" />
-                            </Button>
+                                <input
+                                    type="file"
+                                    ref={fileInputRef}
+                                    className="hidden"
+                                    onChange={handleFileChange}
+                                />
+                                <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className="text-zinc-500 hover:bg-transparent"
+                                    onClick={() => fileInputRef.current?.click()}
+                                >
+                                    <Paperclip className="h-5 w-5" />
+                                </Button>
 
                                 <form className="flex-1 flex gap-2" onSubmit={handleSendMessage}>
-                                <Input
-                                    className="flex-1 bg-white dark:bg-zinc-700 border-none focus-visible:ring-0 placeholder:text-zinc-400"
-                                    placeholder="Digite uma mensagem"
-                                    value={newMessage}
-                                    onChange={(e) => setNewMessage(e.target.value)}
-                                    onFocus={() => setShowEmojiPicker(false)}
-                                />
-                                {newMessage.trim() ? (
-                                    <Button type="submit" size="icon" className="bg-[#00a884] hover:bg-[#008f6f] text-white rounded-full">
-                                        <Send className="h-5 w-5 ml-0.5" />
-                                    </Button>
-                                ) : (
-                                    <Button type="button" size="icon" variant="ghost" className="text-zinc-500">
-                                        <Mic className="h-5 w-5" />
-                                    </Button>
-                                )}
+                                    <Input
+                                        className="flex-1 bg-white dark:bg-zinc-700 border-none focus-visible:ring-0 placeholder:text-zinc-400"
+                                        placeholder="Digite uma mensagem"
+                                        value={newMessage}
+                                        onChange={(e) => setNewMessage(e.target.value)}
+                                        onFocus={() => setShowEmojiPicker(false)}
+                                    />
+                                    {newMessage.trim() ? (
+                                        <Button type="submit" size="icon" className="bg-[#00a884] hover:bg-[#008f6f] text-white rounded-full">
+                                            <Send className="h-5 w-5 ml-0.5" />
+                                        </Button>
+                                    ) : (
+                                        <Button type="button" size="icon" variant="ghost" className="text-zinc-500">
+                                            <Mic className="h-5 w-5" />
+                                        </Button>
+                                    )}
                                 </form>
                             </div>
                         </div>
