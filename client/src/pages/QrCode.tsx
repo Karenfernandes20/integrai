@@ -278,9 +278,10 @@ const QrCodePage = () => {
                   setError(null);
                   setErrorDetails(null);
                   clearInterval(pollInterval);
-                } else if (data.status === 'connected') {
+                } else if (data.status === 'connected' || data.status === 'open') {
                   console.log("[QrCode] Instance already connected detected by polling.");
                   setConnectionState('open');
+                  setQrCode(null);
                   setError(null);
                   setErrorDetails(null);
                   clearInterval(pollInterval);
@@ -518,8 +519,11 @@ const QrCodePage = () => {
         if (current && (current.instance_key === targetKey || current.name === targetKey)) {
           const newStatus = status;
           // Also update connectionState (visual state for scanning/etc)
-          if (newStatus === 'connected') setConnectionState('open');
-          else if (newStatus === 'disconnected') setConnectionState('close');
+          if (newStatus === 'connected' || newStatus === 'open') {
+            setConnectionState('open');
+            setQrCode(null); // Clear QR explicitly when connected
+          }
+          else if (newStatus === 'disconnected' || newStatus === 'close') setConnectionState('close');
           else setConnectionState(state || 'unknown');
 
           return { ...current, status: newStatus };
@@ -531,11 +535,13 @@ const QrCodePage = () => {
     socket.on('instance:qrcode', (data: any) => {
       console.log('[QrCode] Socket instance qrcode update:', data);
       const { instanceId, qr } = data;
-      // We only want to set the QR code if this is the instance we show
+      // We only want to set the QR code if this is the instance we show AND it's not connected
       setSelectedInstance(current => {
         if (current && (current.instance_key === instanceId || current.name === instanceId)) {
-          setQrCode(qr);
-          setConnectionState('scanning');
+          if (current.status !== 'connected' && current.status !== 'open') {
+            setQrCode(qr);
+            setConnectionState('scanning');
+          }
         }
         return current;
       });
