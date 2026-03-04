@@ -187,15 +187,26 @@ export function AppSidebar() {
     // Let's keep simpler logic for now: FAQ usually ends up near bottom or just leave as is.
   }
 
+  const isLoja = (user as any)?.company?.category === 'loja' ||
+    (user as any)?.company?.operation_type === 'loja' ||
+    profile === 'LOJA';
+
   // Permission Logic
   const filteredNavItems = navItems.filter(item => {
     // 1. SuperAdmin Only Check
     if (item.superAdminOnly && user?.role !== 'SUPERADMIN') return false;
 
-    // 2. Grant Everything to Superadmin
+    // 2. Grant Everything to Superadmin - But respect the Loja hide request if not superadmin or if specifically requested
+    // If you are impersonating or a superadmin, you might still want to see the items for troubleshooting.
+    // However, the user said "tirar da aba lateral", let's apply it except for Superadmins unless they are in the context of the user.
     if (user?.role === 'SUPERADMIN') return true;
 
-    // 3. Permission Check
+    // Hide specifically requested items for Loja profile
+    if (isLoja && (item.label === "Usuários" || item.label === "Cidades")) {
+      return false;
+    }
+
+    // 4. Permission Check
     return hasPermission(user?.permissions, item.requiredPermission);
   });
 

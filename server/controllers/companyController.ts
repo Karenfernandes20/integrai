@@ -720,12 +720,19 @@ export const updateCompany = async (req: Request, res: Response) => {
                             const nameToUse = def.name || targetInst.name || `WhatsApp ${i + 1}`;
                             const apiKeyToUse = def.api_key !== undefined ? def.api_key : null;
                             const colorToUse = def.color || targetInst.color || '#3b82f6';
+                            const typeToUse = def.type || targetInst.type || 'evolution';
 
-                            console.log(`[Update Company ${id}] Updating instance ${targetInst.id}: name=${nameToUse}, key=${keyToUse}, color=${colorToUse}, type=${def.type || 'evolution'}`);
+                            // For official and instagram, if they have some config, we assume connected
+                            let statusToUse = targetInst.status;
+                            if (typeToUse === 'official' || typeToUse === 'instagram') {
+                                statusToUse = 'connected';
+                            }
+
+                            console.log(`[Update Company ${id}] Updating instance ${targetInst.id}: name=${nameToUse}, key=${keyToUse}, color=${colorToUse}, type=${typeToUse}`);
 
                             await pool.query(
-                                `UPDATE company_instances SET name = $1, instance_key = $2, api_key = $3, color = $4, type = $5, default_queue_id = $6 WHERE id = $7`,
-                                [nameToUse, keyToUse, apiKeyToUse, colorToUse, def.type || targetInst.type || 'evolution', def.default_queue_id || null, targetInst.id]
+                                `UPDATE company_instances SET name = $1, instance_key = $2, api_key = $3, color = $4, type = $5, default_queue_id = $6, status = $7 WHERE id = $8`,
+                                [nameToUse, keyToUse, apiKeyToUse, colorToUse, typeToUse, def.default_queue_id || null, statusToUse, targetInst.id]
                             );
                         } else {
                             // CREATE new instance only if has instance_key
@@ -734,13 +741,19 @@ export const updateCompany = async (req: Request, res: Response) => {
                                 continue;
                             }
 
-                            console.log(`[Update Company ${id}] Creating new instance: name=${def.name}, key=${sanitizedKey}, type=${def.type || 'evolution'}, queue_id=${def.default_queue_id}`);
+                            const typeToUse = def.type || 'evolution';
+                            let initialStatus = 'disconnected';
+                            if (typeToUse === 'official' || typeToUse === 'instagram') {
+                                initialStatus = 'connected';
+                            }
+
+                            console.log(`[Update Company ${id}] Creating new instance: name=${def.name}, key=${sanitizedKey}, type=${typeToUse}, queue_id=${def.default_queue_id}`);
 
                             const createRes = await pool.query(
                                 `INSERT INTO company_instances (company_id, name, instance_key, api_key, status, color, type, default_queue_id)
-                                 VALUES ($1, $2, $3, $4, 'disconnected', $5, $6, $7)
+                                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
                                  RETURNING id, company_id, name, instance_key, api_key, status, created_at, color, type, default_queue_id`,
-                                [id, def.name || `WhatsApp ${i + 1}`, sanitizedKey, def.api_key || null, def.color || '#3b82f6', def.type || 'evolution', def.default_queue_id || null]
+                                [id, def.name || `WhatsApp ${i + 1}`, sanitizedKey, def.api_key || null, initialStatus, def.color || '#3b82f6', typeToUse, def.default_queue_id || null]
                             );
 
                             if (createRes.rows.length > 0) {
@@ -1110,8 +1123,8 @@ export const getCompanyInstances = async (req: Request, res: Response) => {
             const syncedInstances = [];
             for (const inst of instances) {
                 try {
-                    if (inst.type === 'local') {
-                        // Não sincroniza com Evolution, status já é mantido no Banco pelos Webhooks / WebSocket local
+                    if (inst.type === 'local' || inst.type === 'official' || inst.type === 'instagram') {
+                        // Status is managed elsewhere or assumed connected
                         const dbRes = await pool.query('SELECT status FROM company_instances WHERE id = $1', [inst.id]);
                         if (dbRes.rows.length > 0) inst.status = dbRes.rows[0].status;
                     } else {
@@ -1198,16 +1211,26 @@ export const updateCompanyInstance = async (req: Request, res: Response) => {
             : null;
 
         // Update with all columns
+        // First get current type to decide on status
+        const typeRes = await pool.query('SELECT type, status FROM company_instances WHERE id = $1', [instanceId]);
+        const currentType = typeRes.rows[0]?.type || 'evolution';
+        let statusToUse = typeRes.rows[0]?.status;
+
+        if (currentType === 'official' || currentType === 'instagram') {
+            statusToUse = 'connected';
+        }
+
         const result = await pool.query(
             `UPDATE company_instances 
              SET name = COALESCE($1, name), 
                  instance_key = COALESCE($2, instance_key),
                  api_key = $3,
                  color = COALESCE($4, color),
-                 default_queue_id = $5
-             WHERE id = $6 AND company_id = $7 
+                 default_queue_id = $5,
+                 status = $6
+             WHERE id = $7 AND company_id = $8 
              RETURNING id, company_id, name, instance_key, api_key, status, created_at, color, default_queue_id`,
-            [name || null, sanitizedKey || null, api_key || null, color || null, req.body.default_queue_id || null, instanceId, id]
+            [name || null, sanitizedKey || null, api_key || null, color || null, req.body.default_queue_id || null, statusToUse, instanceId, id]
         );
 
         if (result.rows.length === 0) {
