@@ -1416,6 +1416,19 @@ const QrCodePage = () => {
                       </>
                     )}
 
+                    {/* BUTTON TO GENERATE QR CODE - ONLY SHOWS IF SAVED AND NOT CONNECTED */}
+                    {(selectedInstance?.instance_key && (!isEvolutionChannel || isInternalApi || selectedInstance?.api_key) && selectedInstance.id && !isConnected && connectionState !== 'connecting' && connectionState !== 'scanning' && !qrCode) && (
+                      <div className="mt-4 flex justify-center animate-in fade-in duration-300">
+                        <Button
+                          className="w-full max-w-sm h-12 rounded-xl font-bold bg-green-600 hover:bg-green-700 shadow-xl shadow-green-100 dark:shadow-none flex items-center gap-2"
+                          disabled={isLoading}
+                          onClick={() => handleGenerateQrKey(selectedInstance, true)}
+                        >
+                          <QrIcon className="h-5 w-5" /> Digitalizar QR Code
+                        </Button>
+                      </div>
+                    )}
+
                     {/* Instruction message if not configured yet */}
                     {(!selectedInstance?.instance_key || (!isInternalApi && !selectedInstance?.api_key)) && (
                       <div className="mt-4 p-4 bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-900 rounded-xl">
@@ -1428,7 +1441,7 @@ const QrCodePage = () => {
                               • <strong>Nome Amigável</strong> (Ex: Recepção, Comercial)<br />
                               • <strong>Chave da Instância</strong> (Nome único do robô)<br />
                               {whatsappType === 'evolution' && <>• <strong>API Key da Instância</strong><br /></>}
-                              Depois clique em "Salvar e Conectar" para gerar o QR Code.
+                              Depois clique em "Salvar Alterações" e em seguida em "Digitalizar QR Code" para gerar o QR Code.
                             </p>
                           </div>
                         </div>
@@ -1464,12 +1477,18 @@ const QrCodePage = () => {
               <Button
                 className={cn(
                   "rounded-xl px-8 font-bold shadow-lg h-11",
-                  isEvolutionChannel && !isConnected ? "bg-green-600 hover:bg-green-700 text-white shadow-green-200" : "bg-primary shadow-primary/20"
+                  isConnected ? "bg-zinc-600 hover:bg-zinc-700 text-white shadow-zinc-200" : "bg-primary shadow-primary/20"
                 )}
-                onClick={() => handleSaveCompany(isEvolutionChannel && !isConnected)}
+                onClick={() => {
+                  if (isConnected) {
+                    setIsWaModalOpen(false);
+                  } else {
+                    handleSaveCompany(false);
+                  }
+                }}
                 disabled={isLoading}
               >
-                {isLoading ? "Processando..." : (isEvolutionChannel && !isConnected ? "Salvar e Conectar" : "Salvar Alterações")}
+                {isLoading ? "Processando..." : (isConnected ? "Fechar" : "Salvar Alterações")}
               </Button>
             </DialogFooter>
           </DialogContent>
