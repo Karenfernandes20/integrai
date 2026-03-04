@@ -705,9 +705,9 @@ export const updateCompany = async (req: Request, res: Response) => {
                     if (def.id) {
                         targetInst = currentInsts.find((ci: any) => ci.id === def.id);
                     }
-                    // Case 2: No ID but index matches an existing instance - use that
-                    else if (currentInsts[i]) {
-                        targetInst = currentInsts[i];
+                    // Case 2: Match by instance_key if no ID
+                    else if (def.instance_key) {
+                        targetInst = currentInsts.find((ci: any) => ci.instance_key === def.instance_key);
                     }
 
                     const rawKey = def.instance_key || `instancia_${i + 1}_${Date.now()}`;

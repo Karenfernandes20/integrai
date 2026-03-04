@@ -44,14 +44,15 @@ export interface MenuItem {
     to: string;
     requiredPermission?: string;
     superAdminOnly?: boolean;
+    featureKey?: string;
 }
 
 const COMMON_ITEMS: MenuItem[] = [
     { label: "Atendimento", icon: MessageCircle, to: "/app/atendimento", requiredPermission: "crm.view" },
     { label: "Dashboard", icon: LayoutDashboard, to: "/app/dashboard", requiredPermission: "bi.view" },
-    { label: "Mensagens Rápidas", icon: MessageSquare, to: "/app/mensagens-rapidas" },
-    { label: "Filas", icon: GitBranch, to: "/app/filas" },
-    { label: "Campanhas", icon: FileText, to: "/app/campanhas" },
+    { label: "Mensagens Rápidas", icon: MessageSquare, to: "/app/mensagens-rapidas", featureKey: "quick_replies" },
+    { label: "Filas", icon: GitBranch, to: "/app/filas", featureKey: "multi_queues" },
+    { label: "Campanhas", icon: FileText, to: "/app/campanhas", featureKey: "auto_messages" },
     { label: "Motivos de Encerramento", icon: Flag, to: "/app/motivos-encerramento", requiredPermission: "settings.company" },
 ];
 
@@ -61,13 +62,13 @@ const GENERIC_MENU: MenuItem[] = [
     { label: "Grupos", icon: Users, to: "/app/grupos", requiredPermission: "crm.view" },
     { label: "Follow-up", icon: CalendarCheck, to: "/app/follow-up", requiredPermission: "crm.view" },
     { label: "Contatos", icon: Users, to: "/app/contatos", requiredPermission: "reg.clients" },
-    { label: "CRM", icon: KanbanSquare, to: "/app/crm", requiredPermission: "crm.view" },
-    { label: "Tags", icon: TagsIcon, to: "/app/tags", requiredPermission: "crm.view" },
+    { label: "CRM", icon: KanbanSquare, to: "/app/crm", requiredPermission: "crm.view", featureKey: "crm_integration" },
+    { label: "Tags", icon: TagsIcon, to: "/app/tags", requiredPermission: "crm.view", featureKey: "custom_tags" },
     { label: "Financeiro", icon: Wallet2, to: "/app/financeiro", requiredPermission: "finance.view" },
     { label: "Usuários", icon: Users, to: "/app/usuarios", requiredPermission: "reg.users" },
     { label: "Cidades", icon: MapPin, to: "/app/cidades", requiredPermission: "settings.company" },
     { label: "QR Code", icon: QrCode, to: "/app/qr-code", requiredPermission: "settings.qrcode" },
-    { label: "Chatbot", icon: Bot, to: "/app/chatbot", requiredPermission: "bot.view" },
+    { label: "Chatbot", icon: Bot, to: "/app/chatbot", requiredPermission: "bot.view", featureKey: "chatbot" },
     { label: "Ajuda / FAQ", icon: HelpCircle, to: "/app/faq" },
     { label: "Configurações", icon: Settings, to: "/app/configuracoes", requiredPermission: "settings.company" },
 ];
@@ -107,10 +108,10 @@ const LOJA_MENU: MenuItem[] = [
     { label: "Estoque", icon: Package, to: "/app/loja/estoque", requiredPermission: "inventory.view" },
     { label: "Financeiro", icon: Wallet2, to: "/app/financeiro", requiredPermission: "finance.view" },
     { label: "Fornecedores", icon: Truck, to: "/app/loja/fornecedores", requiredPermission: "reg.clients" },
-    { label: "Relatórios", icon: TrendingUp, to: "/app/relatorios", requiredPermission: "bi.view" },
+    { label: "Relatórios", icon: TrendingUp, to: "/app/relatorios", requiredPermission: "bi.view", featureKey: "advanced_reports" },
     { label: "Metas & Equipe", icon: Target, to: "/app/loja/metas", requiredPermission: "bi.view" },
     { label: "QR Code", icon: QrCode, to: "/app/qr-code", requiredPermission: "settings.qrcode" },
-    { label: "Chatbot", icon: Bot, to: "/app/chatbot", requiredPermission: "bot.view" },
+    { label: "Chatbot", icon: Bot, to: "/app/chatbot", requiredPermission: "bot.view", featureKey: "chatbot" },
     { label: "Motivos de Encerramento", icon: Flag, to: "/app/motivos-encerramento", requiredPermission: "settings.company" },
     { label: "Configurações", icon: Settings, to: "/app/configuracoes", requiredPermission: "settings.company" },
 ];
@@ -163,7 +164,7 @@ export const SUPERADMIN_ITEMS: MenuItem[] = [
     { label: "Logs", icon: Terminal, to: "/app/logs", superAdminOnly: true },
     { label: "Alertas", icon: Bell, to: "/app/alertas", superAdminOnly: true },
     { label: "Saúde", icon: Activity, to: "/app/saude", superAdminOnly: true },
-    { label: "Auditoria", icon: Fingerprint, to: "/app/auditoria", superAdminOnly: true },
+    { label: "Auditoria", icon: Fingerprint, to: "/app/auditoria", superAdminOnly: true, featureKey: "activity_log" },
     { label: "Templates", icon: LayoutTemplate, to: "/app/templates", superAdminOnly: true },
     { label: "Roadmap", icon: Map, to: "/app/roadmap", superAdminOnly: true },
 ];

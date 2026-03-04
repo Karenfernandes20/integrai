@@ -1,3 +1,4 @@
+
 import { createContext, useContext, useState, useEffect, ReactNode } from "react";
 import { CompanySummary } from "../types";
 import { useTheme } from "next-themes";
@@ -24,6 +25,8 @@ interface AuthContextType {
     logout: () => void;
     isLoading: boolean;
     updateUserTheme: (theme: string) => void;
+    featureFlags: Record<string, boolean>;
+    refreshFeatureFlags: () => Promise<void>;
 
     isAuthenticated: boolean;
     refreshUser: () => Promise<void>;
@@ -34,13 +37,31 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
     const [user, setUser] = useState<User | null>(null);
     const [token, setToken] = useState<string | null>(null);
+    const [featureFlags, setFeatureFlags] = useState<Record<string, boolean>>({});
     const [isLoading, setIsLoading] = useState(true);
     const { setTheme } = useTheme();
+
+    // Feature flag logic
+    const fetchFlags = async (authToken: string, companyId: number) => {
+        try {
+            const res = await fetch(`/api/companies/${companyId}/features`, {
+                headers: { Authorization: `Bearer ${authToken}` }
+            });
+            if (res.ok) {
+                const data = await res.json();
+                setFeatureFlags(data);
+                localStorage.setItem("feature_flags", JSON.stringify(data));
+            }
+        } catch (e) {
+            console.error("Error fetching feature flags in AuthContext", e);
+        }
+    };
 
     useEffect(() => {
         // Load from localStorage on mount
         const storedToken = localStorage.getItem("auth_token");
         const storedUser = localStorage.getItem("auth_user");
+        const storedFlags = localStorage.getItem("feature_flags");
 
         if (storedToken && storedUser) {
             setToken(storedToken);
@@ -49,6 +70,17 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
             // Restore user theme
             if (parsedUser.theme) {
                 setTheme(parsedUser.theme);
+            }
+
+            if (storedFlags) {
+                try {
+                    setFeatureFlags(JSON.parse(storedFlags));
+                } catch (e) { }
+            }
+
+            // Background refresh flags
+            if (parsedUser.company_id) {
+                fetchFlags(storedToken, parsedUser.company_id);
             }
         }
         setIsLoading(false);
@@ -59,6 +91,10 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         localStorage.setItem("auth_user", JSON.stringify(newUser));
         setToken(newToken);
         setUser(newUser);
+
+        if (newUser.company_id) {
+            fetchFlags(newToken, newUser.company_id);
+        }
 
         // Apply user theme preference
         if (newUser.theme) {
@@ -71,8 +107,10 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     const logout = () => {
         localStorage.removeItem("auth_token");
         localStorage.removeItem("auth_user");
+        localStorage.removeItem("feature_flags");
         setToken(null);
         setUser(null);
+        setFeatureFlags({});
         setTheme('light'); // Reset to default on logout
     };
 
@@ -104,15 +142,14 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     };
 
     const refreshUser = async () => {
-        // Implement logic to re-fetch user profile if needed, or parse existing token?
-        // Since we store User in LocalStorage, 'refresh' implies fetching latest data from format.
-        // For now, we can just save current user back to update timestamps if changed locally, 
-        // OR better: Assume the caller might update 'user' state via login() again if they have new data.
-
-        // Actually, to truly refresh, we would need an endpoint /me.
-        // MOCK for now: just reread LS
         const storedUser = localStorage.getItem("auth_user");
         if (storedUser) setUser(JSON.parse(storedUser));
+    };
+
+    const refreshFeatureFlags = async () => {
+        if (token && user?.company_id) {
+            await fetchFlags(token, user.company_id);
+        }
     };
 
     return (
@@ -126,6 +163,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
                 isAuthenticated: !!user,
                 refreshUser,
                 updateUserTheme,
+                featureFlags,
+                refreshFeatureFlags,
             }}
         >
             {children}

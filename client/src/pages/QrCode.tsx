@@ -1084,7 +1084,6 @@ const QrCodePage = () => {
                   <SelectContent>
                     <SelectItem value="official">API Oficial (Meta / Cloud API)</SelectItem>
                     <SelectItem value="evolution">Evolution API (Multi-Instância)</SelectItem>
-                    <SelectItem value="local">API Interna (Mini-Evolution)</SelectItem>
                     <SelectItem value="api_plus">WhatsApp API Plus</SelectItem>
                   </SelectContent>
                 </Select>

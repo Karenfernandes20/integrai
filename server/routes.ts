@@ -24,7 +24,7 @@ import {
   handleInstagramWebhook,
   verifyWhatsappOfficialWebhook,
   handleWhatsappOfficialWebhook
-} from './controllers/webhookController';
+} from './controllers/webhookController.js';
 import { getCities, createCity } from './controllers/cityController';
 import { login, register } from './controllers/authController.js';
 import { authenticateToken, authorizeRole, authorizePermission } from './middleware/authMiddleware.js';
@@ -37,6 +37,8 @@ import { getQuickAnswers, createQuickAnswer, updateQuickAnswer, deleteQuickAnswe
 import { getUserQueues, setUserQueues } from './controllers/whaticket/userQueueController';
 import { getInternalMessages, sendInternalMessage, getUnreadInternalCount, markInternalAsRead } from './controllers/whaticket/internalChatController';
 import { getFollowUps, createFollowUp, updateFollowUp, deleteFollowUp, getFollowUpStats } from './controllers/followUpController';
+import { getFeatureFlags, toggleFeatureFlag } from './controllers/featureFlagController.js';
+import { requireFeature } from './middleware/featureFlagMiddleware.js';
 
 
 
@@ -71,6 +73,10 @@ router.delete('/companies/:id/instances/:instanceId', authenticateToken, deleteC
 router.post('/companies', authenticateToken, authorizeRole(['SUPERADMIN']), upload.single('logo'), createCompany);
 router.put('/companies/:id', authenticateToken, upload.single('logo'), updateCompany);
 router.delete('/companies/:id', authenticateToken, authorizeRole(['SUPERADMIN']), deleteCompany);
+
+// Feature Flags
+router.get('/companies/:companyId/features', authenticateToken, getFeatureFlags);
+router.post('/companies/:companyId/features/toggle', authenticateToken, toggleFeatureFlag);
 
 // User routes (Protected)
 router.get('/users', authenticateToken, authorizeRole(['SUPERADMIN', 'ADMIN']), getUsers);
@@ -354,17 +360,17 @@ import {
   getChatbots, createChatbot, updateChatbot, deleteChatbot,
   getFlow, saveFlow, publishFlow,
   getInstances, toggleInstance
-} from './controllers/chatbotController';
+} from './controllers/chatbotController.js';
 
-router.get('/bots', authenticateToken, getChatbots);
-router.post('/bots', authenticateToken, createChatbot);
-router.put('/bots/:id', authenticateToken, updateChatbot);
-router.delete('/bots/:id', authenticateToken, deleteChatbot);
-router.get('/bots/:id/flow', authenticateToken, getFlow);
-router.post('/bots/:id/flow', authenticateToken, saveFlow);
-router.post('/bots/:id/publish', authenticateToken, publishFlow);
-router.get('/bots/:id/instances', authenticateToken, getInstances);
-router.post('/bots/:id/instances', authenticateToken, toggleInstance);
+router.get('/bots', authenticateToken, requireFeature('chatbot'), getChatbots);
+router.post('/bots', authenticateToken, requireFeature('chatbot'), createChatbot);
+router.put('/bots/:id', authenticateToken, requireFeature('chatbot'), updateChatbot);
+router.delete('/bots/:id', authenticateToken, requireFeature('chatbot'), deleteChatbot);
+router.get('/bots/:id/flow', authenticateToken, requireFeature('chatbot'), getFlow);
+router.post('/bots/:id/flow', authenticateToken, requireFeature('chatbot'), saveFlow);
+router.post('/bots/:id/publish', authenticateToken, requireFeature('chatbot'), publishFlow);
+router.get('/bots/:id/instances', authenticateToken, requireFeature('chatbot'), getInstances);
+router.post('/bots/:id/instances', authenticateToken, requireFeature('chatbot'), toggleInstance);
 
 // Chatbot Execution Webhook
 import { processChatbotMessage } from './services/chatbotService';

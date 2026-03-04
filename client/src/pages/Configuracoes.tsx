@@ -33,6 +33,8 @@ import { EvolutionStatus } from "../components/EvolutionStatus";
 import { InstagramStatus } from "../components/InstagramStatus";
 import { WhatsAppMetaStatus } from "../components/WhatsAppMetaStatus";
 import { PERMISSION_GROUPS, ROLE_PRESETS } from "../lib/permissions";
+import { IntegrationsSection } from "../components/configuracoes/IntegrationsSection";
+import { FeaturesSection } from "../components/configuracoes/FeaturesSection";
 
 type AccessType = "admin" | "gerente" | "vendedor" | "atendimento";
 type BillingStatus = "active" | "past_due" | "cancelled" | "trialing" | string;
@@ -712,38 +714,20 @@ const ConfiguracoesPage = () => {
           <BillingSection />
         </TabsContent>
 
-        <TabsContent value="integrations" className="mt-6">
-          <div className="grid gap-6 md:grid-cols-1">
-            <Card>
-              <CardHeader>
-                <CardTitle>WhatsApp (QR Code + API Plus + Meta)</CardTitle>
-                <CardDescription>Configuração completa do canal oficial com validação Meta.</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <WhatsAppMetaStatus />
-              </CardContent>
-            </Card>
+        <TabsContent value="integrations" className="mt-6 space-y-12">
+          <section>
+            <div className="mb-6">
+              <h3 className="text-lg font-semibold mb-1">Painel de Integrações</h3>
+              <p className="text-sm text-muted-foreground">Ative e configure as conexões externas do sistema.</p>
+            </div>
+            <IntegrationsSection />
+          </section>
 
-            <Card>
-              <CardHeader>
-                <CardTitle>WhatsApp (Evolution API)</CardTitle>
-                <CardDescription>Conexão com seu número oficial.</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <EvolutionStatus />
-              </CardContent>
-            </Card>
+          <Separator />
 
-            <Card>
-              <CardHeader>
-                <CardTitle>Instagram Business</CardTitle>
-                <CardDescription>Integração oficial Meta.</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <InstagramStatus />
-              </CardContent>
-            </Card>
-          </div>
+          <section>
+            <FeaturesSection />
+          </section>
         </TabsContent>
       </Tabs>
     </div>

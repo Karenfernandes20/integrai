@@ -74,7 +74,7 @@ const hasPermission = (userPermissions: string[] | undefined, requiredPermission
 export function AppSidebar() {
   const location = useLocation();
   const navigate = useNavigate();
-  const { user, token, logout } = useAuth(); // Destructure token here
+  const { user, token, logout, featureFlags } = useAuth();
   const [isEditProfileOpen, setIsEditProfileOpen] = useState(false);
   const [taskCount, setTaskCount] = useState(0);
   const [alertCount, setAlertCount] = useState(0);
@@ -206,7 +206,12 @@ export function AppSidebar() {
       return false;
     }
 
-    // 4. Permission Check
+    // 4. Feature Flag Check
+    if (item.featureKey && featureFlags[item.featureKey] === false) {
+      return false;
+    }
+
+    // 5. Permission Check
     return hasPermission(user?.permissions, item.requiredPermission);
   });
 

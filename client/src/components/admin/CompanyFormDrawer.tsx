@@ -177,8 +177,12 @@ export function CompanyFormDrawer({ open, onOpenChange, editingCompany, token, o
                     });
                     if (res.ok) {
                         const data = await res.json();
-                        const max = editingCompany.max_instances || (data && data.length > 0 ? data.length : 1);
-                        const instList = [...(data || [])];
+
+                        // Only get WhatsApp instances (exclude Instagram/Messenger etc)
+                        const waInstances = data.filter((i: any) => i.type !== 'instagram' && i.type !== 'messenger');
+
+                        const max = editingCompany.max_instances || (waInstances.length > 0 ? waInstances.length : 1);
+                        const instList = [...waInstances];
 
                         // If no instances found, pre-seed with legacy data for the first slot
                         if (instList.length === 0) {

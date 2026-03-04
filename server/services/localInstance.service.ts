@@ -25,11 +25,7 @@ export class LocalInstanceService {
     }
 
     private static async getCompanyUrlForInstance(instanceId: string) {
-        const res = await pool.query(
-            'SELECT c.evolution_url FROM company_instances ci JOIN companies c ON ci.company_id = c.id WHERE ci.instance_key = $1',
-            [instanceId]
-        );
-        return res.rows[0]?.evolution_url || this.getMiniEvoUrl();
+        return this.getMiniEvoUrl();
     }
 
     static async createLocalInstance(instanceId: string, companyId: number, io: Server, apiKey?: string) {
