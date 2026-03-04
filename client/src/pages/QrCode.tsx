@@ -1164,10 +1164,10 @@ const QrCodePage = () => {
                     )}
                     {selectedInstance && (
                       <div className="grid grid-cols-2 gap-4 animate-in fade-in duration-300">
-                        {(!isInternalApi && whatsappType === 'evolution') && (
+                        {(!isInternalApi && (whatsappType === 'evolution' || whatsappType === 'api_plus')) && (
                           <div className="space-y-2">
                             <Label className="text-[10px] font-bold uppercase text-zinc-500">
-                              API Key da Instância <span className="text-red-500">*</span>
+                              API Key / Token {whatsappType === 'api_plus' ? '(Opcional/Auto)' : '*'}
                             </Label>
                             <div className="relative">
                               <Input
@@ -1175,7 +1175,7 @@ const QrCodePage = () => {
                                 value={selectedInstance.api_key || ""}
                                 onChange={(e) => setSelectedInstance(prev => prev ? { ...prev, api_key: e.target.value } : null)}
                                 className="h-10 rounded-xl bg-white dark:bg-zinc-900 border-zinc-200 dark:border-zinc-800 pr-10"
-                                placeholder="Token gerado no painel"
+                                placeholder={whatsappType === 'api_plus' ? "Vazio = Auto-gerar" : "Token gerado no painel"}
                               />
                             </div>
                           </div>
