@@ -1164,7 +1164,7 @@ const QrCodePage = () => {
                     )}
                     {selectedInstance && (
                       <div className="grid grid-cols-2 gap-4 animate-in fade-in duration-300">
-                        {(!isInternalApi && (whatsappType === 'evolution' || whatsappType === 'api_plus')) && (
+                        {(whatsappType === 'evolution' || whatsappType === 'api_plus') && (
                           <div className="space-y-2">
                             <Label className="text-[10px] font-bold uppercase text-zinc-500">
                               API Key / Token {whatsappType === 'api_plus' ? '(Opcional/Auto)' : '*'}
