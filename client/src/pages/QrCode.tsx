@@ -648,10 +648,10 @@ const QrCodePage = () => {
           return;
         }
         if (!selectedInstance.instance_key?.trim()) {
-          alert("O nome da instância (Mini-Evolution) é obrigatório.");
+          alert("A Chave da Instância é obrigatória.");
           return;
         }
-        if (!selectedInstance.api_key?.trim()) {
+        if (company?.whatsapp_type !== 'api_plus' && company?.whatsapp_type !== 'local' && !selectedInstance.api_key?.trim()) {
           alert("A API Key da instância é obrigatória.");
           return;
         }
@@ -723,7 +723,7 @@ const QrCodePage = () => {
           const instancePayload = {
             name: trimmedInstance.name,
             instance_key: trimmedInstance.instance_key,
-            api_key: company?.whatsapp_type === 'local' ? '' : trimmedInstance.api_key,
+            api_key: trimmedInstance.api_key,
             color: trimmedInstance.color,
             default_queue_id: trimmedInstance.default_queue_id,
             type: trimmedInstance.type
@@ -1158,10 +1158,10 @@ const QrCodePage = () => {
                     )}
                     {selectedInstance && (
                       <div className="grid grid-cols-2 gap-4 animate-in fade-in duration-300">
-                        {(whatsappType === 'api_plus' || !isInternalApi) && (
+                        {(!isInternalApi && whatsappType === 'evolution') && (
                           <div className="space-y-2">
                             <Label className="text-[10px] font-bold uppercase text-zinc-500">
-                              {whatsappType === 'api_plus' ? 'Token da Instância (Mini-Evolution)' : 'API Key da Instância'} <span className="text-red-500">*</span>
+                              API Key da Instância <span className="text-red-500">*</span>
                             </Label>
                             <div className="relative">
                               <Input
@@ -1426,8 +1426,8 @@ const QrCodePage = () => {
                             <p className="text-xs text-blue-700 dark:text-blue-400">
                               Preencha os campos obrigatórios acima:<br />
                               • <strong>Nome Amigável</strong> (Ex: Recepção, Comercial)<br />
-                              • <strong>Chave da Instância</strong> (Ex: integrai)<br />
-                              • <strong>API Key da Instância</strong><br />
+                              • <strong>Chave da Instância</strong> (Nome único do robô)<br />
+                              {whatsappType === 'evolution' && <>• <strong>API Key da Instância</strong><br /></>}
                               Depois clique em "Salvar e Conectar" para gerar o QR Code.
                             </p>
                           </div>
@@ -1437,15 +1437,14 @@ const QrCodePage = () => {
                   </div>
                 )}
 
-                {/* API PLUS VIEW - REPURPOSED */}
                 {isApiPlusChannel && (
-                  <div className="p-4 bg-blue-50 dark:bg-blue-900/20 rounded-2xl border border-blue-100 dark:border-blue-800/50 animate-in fade-in duration-300">
-                    <p className="text-sm font-bold text-blue-700 dark:text-blue-400 mb-2 flex items-center gap-2">
-                      <Info className="h-4 w-4" /> Conexão Mini-Evolution Plus
+                  <div className="p-4 bg-emerald-50 dark:bg-emerald-900/20 rounded-2xl border border-emerald-100 dark:border-emerald-800/50 animate-in fade-in duration-300">
+                    <p className="text-sm font-bold text-emerald-700 dark:text-emerald-400 mb-2 flex items-center gap-2">
+                      <Info className="h-4 w-4" /> Conexão Mini-Evolution API Plus
                     </p>
-                    <p className="text-xs text-blue-600 dark:text-blue-500">
-                      Utilize esta opção para conectar instâncias criadas externamente no seu painel Mini-Evolution.
-                      Basta colar o <strong>Nome da Instância</strong> e o <strong>Token</strong> nos campos acima.
+                    <p className="text-xs text-emerald-600 dark:text-emerald-500">
+                      Você pode conectar <strong>quantas instâncias quiser</strong> nesta empresa!
+                      Preencha o <strong>Nome Amigável</strong> e digite uma <strong>Chave da Instância</strong> única para cada número de WhatsApp. O sistema gerenciará todo o resto invisivelmente.
                     </p>
                   </div>
                 )}

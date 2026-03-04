@@ -718,9 +718,15 @@ export const updateCompany = async (req: Request, res: Response) => {
                             // UPDATE existing instance
                             const keyToUse = (def.instance_key && def.instance_key.trim()) ? sanitizedKey : targetInst.instance_key;
                             const nameToUse = def.name || targetInst.name || `WhatsApp ${i + 1}`;
-                            const apiKeyToUse = def.api_key !== undefined ? def.api_key : null;
                             const colorToUse = def.color || targetInst.color || '#3b82f6';
                             const typeToUse = def.type || targetInst.type || 'evolution';
+
+                            // Auto generate token if api plus / local and missing
+                            let apiKeyToUse = def.api_key !== undefined ? def.api_key : targetInst?.api_key || null;
+                            if ((typeToUse === 'local' || typeToUse === 'api_plus') && !apiKeyToUse) {
+                                const crypto = require('crypto');
+                                apiKeyToUse = 'me_' + crypto.randomBytes(16).toString('hex');
+                            }
 
                             // For official and instagram, if they have some config, we assume connected
                             let statusToUse = targetInst.status;
@@ -747,13 +753,19 @@ export const updateCompany = async (req: Request, res: Response) => {
                                 initialStatus = 'connected';
                             }
 
+                            let apiKeyToUse = def.api_key || null;
+                            if ((typeToUse === 'local' || typeToUse === 'api_plus') && !apiKeyToUse) {
+                                const crypto = require('crypto');
+                                apiKeyToUse = 'me_' + crypto.randomBytes(16).toString('hex');
+                            }
+
                             console.log(`[Update Company ${id}] Creating new instance: name=${def.name}, key=${sanitizedKey}, type=${typeToUse}, queue_id=${def.default_queue_id}`);
 
                             const createRes = await pool.query(
                                 `INSERT INTO company_instances (company_id, name, instance_key, api_key, status, color, type, default_queue_id)
                                  VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
                                  RETURNING id, company_id, name, instance_key, api_key, status, created_at, color, type, default_queue_id`,
-                                [id, def.name || `WhatsApp ${i + 1}`, sanitizedKey, def.api_key || null, initialStatus, def.color || '#3b82f6', typeToUse, def.default_queue_id || null]
+                                [id, def.name || `WhatsApp ${i + 1}`, sanitizedKey, apiKeyToUse, initialStatus, def.color || '#3b82f6', typeToUse, def.default_queue_id || null]
                             );
 
                             if (createRes.rows.length > 0) {
@@ -772,11 +784,17 @@ export const updateCompany = async (req: Request, res: Response) => {
                                     [finalName, retryKey, def.api_key || null, def.color || '#3b82f6', targetInst.id]
                                 );
                             } else {
+                                let fallbackKeyToUse = def.api_key || null;
+                                if ((def.type === 'local' || def.type === 'api_plus') && !fallbackKeyToUse) {
+                                    const crypto = require('crypto');
+                                    fallbackKeyToUse = 'me_' + crypto.randomBytes(16).toString('hex');
+                                }
+
                                 await pool.query(
                                     `INSERT INTO company_instances (company_id, name, instance_key, api_key, status, color)
                                      VALUES ($1, $2, $3, $4, 'disconnected', $5)
                                      RETURNING id, company_id, name, instance_key, api_key, status, created_at, color`,
-                                    [id, finalName, retryKey, def.api_key || null, def.color || '#3b82f6']
+                                    [id, finalName, retryKey, fallbackKeyToUse, def.color || '#3b82f6']
                                 );
                             }
                         } else {
