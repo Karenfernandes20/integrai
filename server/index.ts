@@ -13,6 +13,7 @@ import { processFollowUps } from "./services/followUpScheduler.js";
 import { setSystemModeInMem, systemMode } from "./systemState.js";
 import { checkChatbotTimeouts } from "./services/chatbotService.js";
 import { ensureQueueSchema } from "./controllers/queueController.js";
+import { ensureClosingReasonSchema } from "./controllers/closingReasonController.js";
 
 
 
@@ -175,6 +176,8 @@ const initializeDatabase = async () => {
       try {
         console.log("Ensuring Queue Schema...");
         await ensureQueueSchema();
+        console.log("Ensuring Closing Reason Schema...");
+        await ensureClosingReasonSchema();
 
         console.log("Running on-the-fly migration for Multi-Instance...");
         await pool.query(`ALTER TABLE companies ADD COLUMN IF NOT EXISTS max_instances INTEGER DEFAULT 1;`);

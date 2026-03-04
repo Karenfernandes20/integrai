@@ -666,7 +666,10 @@ export const getConversations = async (req: Request, res: Response) => {
                 LIMIT 1
             ) co ON TRUE
             LEFT JOIN companies comp ON c.company_id = comp.id
-            LEFT JOIN company_instances ci ON (COALESCE(c.last_instance_key, c.instance) = ci.instance_key AND ci.company_id = c.company_id)
+            LEFT JOIN company_instances ci ON (
+                COALESCE(c.last_instance_key, c.instance) = ci.instance_key 
+                AND (c.company_id IS NULL OR ci.company_id = c.company_id)
+            )
             LEFT JOIN queues q ON c.queue_id = q.id
             LEFT JOIN app_users au ON au.id = c.user_id
             WHERE 1=1

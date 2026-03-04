@@ -1,8 +1,8 @@
 
 import { Request, Response } from 'express';
-import { pool } from '../db';
-import { ensureClosingReasonSchema } from './closingReasonController';
-import { ensureQueueSchema } from './queueController';
+import { pool } from '../db/index.js';
+import { ensureClosingReasonSchema } from './closingReasonController.js';
+import { ensureQueueSchema } from './queueController.js';
 
 interface AuthenticatedRequest extends Request {
     user?: any;
@@ -25,13 +25,13 @@ const auditLog = async (conversationId: number, userId: number, action: string, 
 export const startConversation = async (req: AuthenticatedRequest, res: Response) => {
     try {
         if (!pool) return res.status(500).json({ error: "DB not configured" });
-        await ensureClosingReasonSchema();
-        await ensureQueueSchema();
 
-        const { id } = req.params;
-        const userId = req.user.id;
-        const companyId = req.user.company_id;
-        const { queueId, instance } = req.body;
+        const id = Number(req.params.id);
+        if (isNaN(id)) return res.status(400).json({ error: "ID de conversa inválido" });
+
+        const userId = Number(req.user.id);
+        const companyId = Number(req.user.company_id || 0);
+        const { queueId, instance } = req.body || {};
 
         // Check current status and company
         const check = await pool.query('SELECT status, user_id, phone, instance, company_id FROM whatsapp_conversations WHERE id = $1', [id]);
@@ -50,13 +50,22 @@ export const startConversation = async (req: AuthenticatedRequest, res: Response
         }
 
         // Prepare update fields
-        const updates = ['status = $1', 'user_id = $2', 'started_at = NOW()', 'opened_at = NOW()', 'opened_by_user_id = $2', 'company_id = COALESCE(company_id, $4)'];
+        const updates = [
+            'status = $1',
+            'user_id = $2',
+            'started_at = NOW()',
+            'opened_at = NOW()',
+            'opened_by_user_id = $2',
+            'company_id = COALESCE(company_id, $4)'
+        ];
         const values = ['OPEN', userId, id, companyId];
         let paramIndex = 5;
 
+        console.log(`[startConversation] Updating conv ${id} for user ${userId} and company ${companyId}`);
+
         if (queueId) {
             updates.push(`queue_id = $${paramIndex}`);
-            values.push(queueId);
+            values.push(Number(queueId));
             paramIndex++;
         }
 

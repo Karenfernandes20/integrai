@@ -7,13 +7,13 @@ import {
   clearUsers,
   resetUserPassword,
   updateProfile,
-} from './controllers/userController';
-import { getStages, getLeads, updateLeadStage, updateLead, createStage, deleteStage, getCrmDashboardStats, createLead } from './controllers/crmController';
-import { getProfessionals, createProfessional, updateProfessional, deleteProfessional } from './controllers/professionalsController';
+} from './controllers/userController.js';
+import { getStages, getLeads, updateLeadStage, updateLead, createStage, deleteStage, getCrmDashboardStats, createLead } from './controllers/crmController.js';
+import { getProfessionals, createProfessional, updateProfessional, deleteProfessional } from './controllers/professionalsController.js';
 import {
   getInsurancePlans, createInsurancePlan, updateInsurancePlan, deleteInsurancePlan,
   getProfessionalInsuranceConfigs, upsertProfessionalInsuranceConfig
-} from './controllers/insuranceController';
+} from './controllers/insuranceController.js';
 import { getClinicalBIStats } from './controllers/clinicalBIController';
 import {
   handleWebhook,
@@ -26,12 +26,12 @@ import {
   handleWhatsappOfficialWebhook
 } from './controllers/webhookController';
 import { getCities, createCity } from './controllers/cityController';
-import { login, register } from './controllers/authController';
-import { authenticateToken, authorizeRole, authorizePermission } from './middleware/authMiddleware';
-import { rateLimit } from './middleware/rateLimitMiddleware';
+import { login, register } from './controllers/authController.js';
+import { authenticateToken, authorizeRole, authorizePermission } from './middleware/authMiddleware.js';
+import { rateLimit } from './middleware/rateLimitMiddleware.js';
 import { PERMISSIONS } from './config/roles';
 import { getCompanies, createCompany, updateCompany, deleteCompany, getCompanyUsers, getCompany, getCompanyInstances, updateCompanyInstance, deleteCompanyInstance } from './controllers/companyController.js';
-import { startConversation, closeConversation, updateContactNameWithAudit, deleteConversation, returnToPending, transferConversationQueue, ensureConversation } from './controllers/conversationController';
+import { startConversation, closeConversation, updateContactNameWithAudit, deleteConversation, returnToPending, transferConversationQueue, ensureConversation } from './controllers/conversationController.js';
 import { listQueues, createQueue, updateQueue, deleteQueue } from './controllers/queueController';
 import { getQuickAnswers, createQuickAnswer, updateQuickAnswer, deleteQuickAnswer } from './controllers/whaticket/quickAnswerController';
 import { getUserQueues, setUserQueues } from './controllers/whaticket/userQueueController';
