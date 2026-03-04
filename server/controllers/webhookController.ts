@@ -25,7 +25,7 @@ interface WebhookMessage {
 }
 
 // Caching for performance
-const instanceMetaCache = new Map<string, { companyId: number, instanceId: number | null, instanceName: string }>();
+const instanceMetaCache = new Map<string, { companyId: number, instanceId: number | null, instanceName: string, defaultQueueId: number | null }>();
 const stagesCache: { map: any, lastFetch: number } = { map: null, lastFetch: 0 };
 const STAGE_CACHE_TTL = 300000; // 5 minutes
 
@@ -190,7 +190,7 @@ export const handleWebhook = async (req: Request, res: Response) => {
                 let meta = instanceMetaCache.get(instance);
                 if (!meta) {
                     const instanceLookup = await pool.query(
-                        `SELECT id, company_id, name 
+                        `SELECT id, company_id, name, default_queue_id 
                          FROM company_instances 
                          WHERE LOWER(instance_key) = LOWER($1) OR LOWER(name) = LOWER($1) 
                          LIMIT 1`,
@@ -198,7 +198,7 @@ export const handleWebhook = async (req: Request, res: Response) => {
                     );
                     if (instanceLookup.rows.length > 0) {
                         const row = instanceLookup.rows[0];
-                        meta = { companyId: row.company_id, instanceId: row.id, instanceName: row.name || instance };
+                        meta = { companyId: row.company_id, instanceId: row.id, instanceName: row.name || instance, defaultQueueId: row.default_queue_id };
                         instanceMetaCache.set(instance, meta);
                     } else {
                         // Fallback compatível com ambientes legados sem company_instances populada
@@ -215,7 +215,8 @@ export const handleWebhook = async (req: Request, res: Response) => {
                             meta = {
                                 companyId: row.id,
                                 instanceId: null,
-                                instanceName: row.evolution_instance || instance
+                                instanceName: row.evolution_instance || instance,
+                                defaultQueueId: null
                             };
                             instanceMetaCache.set(instance, meta);
                             console.log(`[Webhook] Using legacy instance mapping via companies.evolution_instance for instance ${instance}`);
@@ -227,7 +228,7 @@ export const handleWebhook = async (req: Request, res: Response) => {
                     console.warn(`[Webhook] Instance ${instance} not found in DB. Ignoring.`);
                     continue;
                 }
-                const { companyId, instanceId, instanceName: instanceDisplayName } = meta;
+                const { companyId, instanceId, instanceName: instanceDisplayName, defaultQueueId } = meta;
 
                 // --- REQUIRED LOGGING ---
                 if (['MESSAGES_UPSERT', 'messages.upsert'].includes(eventType)) {
@@ -332,7 +333,7 @@ export const handleWebhook = async (req: Request, res: Response) => {
                             if (convRes.rows.length === 0) {
                                 // CREATE
                                 const phone = extractPhoneFromJid(remoteJid);
-                                const defaultQueueId = await getOrCreateQueueId(companyId, 'Recepção');
+                                const queueToUse = defaultQueueId || null;
 
                                 // Group Name or Contact Name
                                 const contactName = isGroup
@@ -352,7 +353,7 @@ export const handleWebhook = async (req: Request, res: Response) => {
                                         companyId,
                                         isGroup,
                                         isGroup ? contactName : null,
-                                        defaultQueueId,
+                                        queueToUse,
                                         fromMe ? 0 : 1 // Start with 1 unread if inbound
                                     ]
                                 );
@@ -665,7 +666,7 @@ export const getConversations = async (req: Request, res: Response) => {
                 LIMIT 1
             ) co ON TRUE
             LEFT JOIN companies comp ON c.company_id = comp.id
-            LEFT JOIN company_instances ci ON c.last_instance_key = ci.instance_key
+            LEFT JOIN company_instances ci ON (COALESCE(c.last_instance_key, c.instance) = ci.instance_key AND ci.company_id = c.company_id)
             LEFT JOIN queues q ON c.queue_id = q.id
             LEFT JOIN app_users au ON au.id = c.user_id
             WHERE 1=1
@@ -1139,7 +1140,16 @@ export const handleWhatsappOfficialWebhook = async (req: Request, res: Response)
 
                             let currentStatus = 'PENDING';
                             let isNew = false;
-                            const instanceName = 'official';
+
+                            // Load instance settings for Official API
+                            const instRes = await pool!.query(
+                                'SELECT id, instance_key, name, default_queue_id FROM company_instances WHERE company_id = $1 AND type = $2 LIMIT 1',
+                                [compId, 'official']
+                            );
+                            const instanceData = instRes.rows[0];
+                            const instanceName = instanceData?.instance_key || 'official';
+                            const instanceDisplayName = instanceData?.name || 'official';
+                            const defaultQueueId = instanceData?.default_queue_id || null;
 
                             if (checkConv.rows.length > 0) {
                                 conversationId = checkConv.rows[0].id;
@@ -1162,14 +1172,12 @@ export const handleWhatsappOfficialWebhook = async (req: Request, res: Response)
                             } else {
                                 // Create new conversation
                                 isNew = true;
-                                const defaultQueueId = await getOrCreateQueueId(compId, 'Recepção');
-
                                 const newConv = await pool!.query(
                                     `INSERT INTO whatsapp_conversations (
                                         external_id, phone, contact_name, instance, status, company_id, 
                                         is_group, queue_id, channel, last_message_at
                                     ) VALUES ($1, $2, $3, $4, $5, $6, false, $7, 'whatsapp', NOW()) RETURNING id`,
-                                    [remoteJid, phone, senderName, instanceName, 'PENDING', compId, defaultQueueId]
+                                    [remoteJid, phone, senderName, instanceDisplayName, 'PENDING', compId, defaultQueueId]
                                 );
                                 conversationId = newConv.rows[0].id;
                             }
@@ -1383,7 +1391,13 @@ export const handleInstagramWebhook = async (req: Request, res: Response) => {
                                     WHERE id = $4
                                 `, [finalDisplayName, username, profilePic, conversationId]);
                             } else {
-                                const defaultQueueId = await getOrCreateQueueId(company.id, 'Recepção');
+                                // Resolve default queue for instagram
+                                const instRes = await pool!.query(
+                                    'SELECT default_queue_id FROM company_instances WHERE company_id = $1 AND type = $2 LIMIT 1',
+                                    [company.id, 'instagram']
+                                );
+                                const defaultQueueId = instRes.rows[0]?.default_queue_id || null;
+
                                 // Create New Conversation
                                 const newConv = await pool!.query(`
                                     INSERT INTO whatsapp_conversations 

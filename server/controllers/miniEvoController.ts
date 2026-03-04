@@ -93,16 +93,21 @@ export class MiniEvoController {
     async sendMessage(req: Request, res: Response) {
         const { instanceKey, remoteJid, text } = req.body;
 
-        // Substitua pela porta/URL do seu outro sistema rodando localmente
-        const OUTRO_SISTEMA_URL = process.env.MINI_EVO_URL || 'http://127.0.0.1:3001';
-
         try {
-            // Busca o token (api_key) da instância no banco
-            const instRes = await pool.query('SELECT api_key FROM company_instances WHERE instance_key = $1 OR name = $1', [instanceKey]);
+            // Busca o token (api_key) e a URL (evolution_url) da instância no banco
+            const instRes = await pool.query(
+                `SELECT ci.api_key, c.evolution_url 
+                 FROM company_instances ci 
+                 JOIN companies c ON ci.company_id = c.id 
+                 WHERE ci.instance_key = $1 OR ci.name = $1`,
+                [instanceKey]
+            );
+
             const token = instRes.rows[0]?.api_key;
+            const baseUrl = instRes.rows[0]?.evolution_url || process.env.MINI_EVO_URL || 'http://127.0.0.1:3001';
 
             // Faz a ponte chamando o seu mini-evolution
-            const response = await fetch(`${OUTRO_SISTEMA_URL}/send-message`, {
+            const response = await fetch(`${baseUrl.replace(/\/$/, '')}/send-message`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',

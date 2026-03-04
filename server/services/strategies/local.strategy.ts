@@ -3,12 +3,12 @@ import { InstanceStrategy } from './instance.strategy.js';
 import { LocalInstanceService } from '../localInstance.service.js';
 
 export class LocalStrategy implements InstanceStrategy {
-    async createInstance(instanceId: string, companyId: number, io: any) {
-        return LocalInstanceService.createLocalInstance(instanceId, companyId, io);
+    async createInstance(instanceId: string, companyId: number, io: any, apiKey?: string) {
+        return LocalInstanceService.createLocalInstance(instanceId, companyId, io, apiKey);
     }
 
-    async connectInstance(instanceId: string, companyId: number, io: any) {
-        return LocalInstanceService.connectInstance(instanceId, companyId, io);
+    async connectInstance(instanceId: string, companyId: number, io: any, apiKey?: string) {
+        return LocalInstanceService.connectInstance(instanceId, companyId, io, apiKey);
     }
 
     async disconnectInstance(instanceId: string) {

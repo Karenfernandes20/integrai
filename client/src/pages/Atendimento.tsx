@@ -3232,16 +3232,16 @@ const AtendimentoPage = () => {
               <span
                 className="px-1 py-0.5 rounded-[4px] font-bold uppercase tracking-tight shadow-sm border"
                 style={{
-                  backgroundColor: `${conv.queue_color || '#16A34A'}1A`,
-                  color: conv.queue_color || '#16A34A',
-                  borderColor: `${conv.queue_color || '#16A34A'}33`
+                  backgroundColor: conv.queue_id ? `${conv.queue_color || '#16A34A'}1A` : '#F1F5F9',
+                  color: conv.queue_id ? (conv.queue_color || '#16A34A') : '#64748B',
+                  borderColor: conv.queue_id ? `${conv.queue_color || '#16A34A'}33` : '#E2E8F0'
                 }}
               >
-                Fila: {conv.queue_name || "Recepção"}
+                Fila: {conv.queue_name || "Sem Fila"}
               </span>
               {conv.channel === 'instagram' && (
                 <span className="px-1 py-0.5 rounded-[4px] bg-gradient-to-r from-[#F58529]/10 to-[#DD2A7B]/10 text-[#DD2A7B] border border-[#DD2A7B]/20 font-bold uppercase tracking-wider">
-                  Instagram
+                  {conv.instance_friendly_name || "Instagram"}
                 </span>
               )}
               {conv.status === 'OPEN' && (
@@ -4927,7 +4927,12 @@ const AtendimentoPage = () => {
                   instances.filter((i: any) => i.status === 'connected' || i.status === 'open').map((inst: any) => (
                     <div
                       key={inst.id}
-                      onClick={() => setSelectedStartInstanceKey(inst.instance_key)}
+                      onClick={() => {
+                        setSelectedStartInstanceKey(inst.instance_key);
+                        if (inst.default_queue_id) {
+                          setSelectedStartQueueId(String(inst.default_queue_id));
+                        }
+                      }}
                       className={cn(
                         "flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-all",
                         selectedStartInstanceKey === inst.instance_key

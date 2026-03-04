@@ -3,12 +3,12 @@ import { pool } from '../../db/index.js';
 import { resolveEvolutionConfig } from '../../controllers/evolutionController.js';
 
 export class EvolutionStrategy implements InstanceStrategy {
-    async createInstance(instanceId: string, companyId: number, io: any) {
+    async createInstance(instanceId: string, companyId: number, io: any, apiKey?: string) {
         // Evolution creates instance when connect is called if it doesn't exist
         return this.connectInstance(instanceId, companyId, io);
     }
 
-    async connectInstance(instanceId: string, companyId: number, io: any): Promise<any> {
+    async connectInstance(instanceId: string, companyId: number, io: any, apiKey?: string): Promise<any> {
         const config = await resolveEvolutionConfig({ instanceKey: instanceId, companyId });
         const EVOLUTION_API_URL = config.url;
         const EVOLUTION_API_KEY = config.apikey;

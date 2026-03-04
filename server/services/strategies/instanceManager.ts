@@ -19,12 +19,12 @@ export class InstanceManager {
         }
     }
 
-    static async createInstance(type: string, instanceId: string, companyId: number, io: any) {
-        return this.getStrategy(type).createInstance(instanceId, companyId, io);
+    static async createInstance(type: string, instanceId: string, companyId: number, io: any, apiKey?: string) {
+        return this.getStrategy(type).createInstance(instanceId, companyId, io, apiKey);
     }
 
-    static async connectInstance(type: string, instanceId: string, companyId: number, io: any) {
-        return this.getStrategy(type).connectInstance(instanceId, companyId, io);
+    static async connectInstance(type: string, instanceId: string, companyId: number, io: any, apiKey?: string) {
+        return this.getStrategy(type).connectInstance(instanceId, companyId, io, apiKey);
     }
 
     static async disconnectInstance(type: string, instanceId: string) {

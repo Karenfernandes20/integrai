@@ -24,7 +24,15 @@ export class LocalInstanceService {
         return (process.env.MINI_EVO_URL || 'http://127.0.0.1:3001').replace(/\/$/, "");
     }
 
-    static async createLocalInstance(instanceId: string, companyId: number, io: Server) {
+    private static async getCompanyUrlForInstance(instanceId: string) {
+        const res = await pool.query(
+            'SELECT c.evolution_url FROM company_instances ci JOIN companies c ON ci.company_id = c.id WHERE ci.instance_key = $1',
+            [instanceId]
+        );
+        return res.rows[0]?.evolution_url || this.getMiniEvoUrl();
+    }
+
+    static async createLocalInstance(instanceId: string, companyId: number, io: Server, apiKey?: string) {
         // Initialize table for messages
         await this.ensureMessageTable(instanceId);
 
@@ -37,13 +45,15 @@ export class LocalInstanceService {
         // Fetch instance data (name and api_key)
         const instRes = await pool.query('SELECT name, api_key FROM company_instances WHERE instance_key = $1', [instanceId]);
         const instance = instRes.rows[0];
-        const token = instance?.api_key;
+        const token = apiKey || instance?.api_key;
         const name = instance?.name || instanceId;
+
+        const baseUrl = await this.getCompanyUrlForInstance(instanceId);
 
         // 1. Ensure instance exists in Mini-Evolution
         try {
-            console.log(`[LocalInstance] Ensuring registration for ${instanceId} in Mini-Evolution...`);
-            const regResponse = await fetch(`${this.getMiniEvoUrl()}/management/instances`, {
+            console.log(`[LocalInstance] Ensuring registration for ${instanceId} in Mini-Evolution at ${baseUrl}...`);
+            const regResponse = await fetch(`${baseUrl}/management/instances`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -61,8 +71,8 @@ export class LocalInstanceService {
 
         // 2. Proxy to Mini-Evolution to wake up/init instance
         try {
-            console.log(`[LocalInstance] Connecting to Mini-Evolution for ${instanceId}...`);
-            const response = await fetch(`${this.getMiniEvoUrl()}/instance/connect/${instanceId}`, {
+            console.log(`[LocalInstance] Connecting to Mini-Evolution for ${instanceId} at ${baseUrl}...`);
+            const response = await fetch(`${baseUrl}/instance/connect/${instanceId}`, {
                 headers: { 'apikey': (token as string) || '' }
             });
 
@@ -95,8 +105,8 @@ export class LocalInstanceService {
         }
     }
 
-    static async connectInstance(instanceId: string, companyId: number, io: Server) {
-        return this.createLocalInstance(instanceId, companyId, io);
+    static async connectInstance(instanceId: string, companyId: number, io: Server, apiKey?: string) {
+        return this.createLocalInstance(instanceId, companyId, io, apiKey);
     }
 
 
@@ -167,14 +177,20 @@ export class LocalInstanceService {
 
     static async generateQRCode(instanceId: string) {
         try {
-            const instRes = await pool.query('SELECT api_key FROM company_instances WHERE instance_key = $1', [instanceId]);
-            const token = instRes.rows[0]?.api_key;
+            const instRes = await pool.query(
+                'SELECT ci.api_key FROM company_instances ci WHERE ci.instance_key = $1',
+                [instanceId]
+            );
+
+            const instanceData = instRes.rows[0];
+            const token = instanceData?.api_key;
+            const baseUrl = await this.getCompanyUrlForInstance(instanceId);
 
             if (!token) {
                 console.warn(`[LocalInstance] No api_key found in DB for instance ${instanceId}.`);
             }
 
-            const url = `${this.getMiniEvoUrl()}/instance/connect/${instanceId}`;
+            const url = `${baseUrl}/instance/connect/${instanceId}`;
             console.log(`[LocalInstance] Fetching QR from: ${url}`);
 
             const response = await fetch(url, {
@@ -223,12 +239,13 @@ export class LocalInstanceService {
                 details: data
             };
         } catch (e: any) {
+            const baseUrl = await this.getCompanyUrlForInstance(instanceId).catch(() => this.getMiniEvoUrl());
             console.error("LocalInstance.generateQRCode: CRITICAL ERROR:", e.message);
             if (e.message.includes('ECONNREFUSED')) {
                 return {
                     status: 'error',
                     error: 'Mini-Evolution fora do ar',
-                    details: `Não foi possível conectar em ${this.getMiniEvoUrl()}. Certifique-se que o processo separado está rodando.`
+                    details: `Não foi possível conectar em ${baseUrl}. Certifique-se que o processo separado está rodando.`
                 };
             }
             return { status: 'error', error: e.message };
@@ -239,8 +256,9 @@ export class LocalInstanceService {
         try {
             const instRes = await pool.query('SELECT api_key FROM company_instances WHERE instance_key = $1', [instanceId]);
             const token = instRes.rows[0]?.api_key;
+            const baseUrl = await this.getCompanyUrlForInstance(instanceId);
 
-            await fetch(`${this.getMiniEvoUrl()}/management/instances/${instanceId}`, {
+            await fetch(`${baseUrl}/management/instances/${instanceId}`, {
                 method: 'DELETE',
                 headers: {
                     'apikey': (token as string) || '',

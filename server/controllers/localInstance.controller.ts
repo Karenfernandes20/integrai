@@ -3,7 +3,7 @@ import { InstanceManager } from '../services/strategies/instanceManager.js';
 
 export class LocalInstanceController {
     async create(req: Request, res: Response) {
-        const { instanceId } = req.body;
+        const { instanceId, apiKey } = req.body;
         const companyId = (req as any).user.company_id;
         const io = req.app.get('io');
 
@@ -12,7 +12,7 @@ export class LocalInstanceController {
         }
 
         try {
-            await InstanceManager.createInstance('local', instanceId, companyId, io);
+            await InstanceManager.createInstance('local', instanceId, companyId, io, apiKey);
             res.json({ success: true, message: 'Instance initialization started' });
         } catch (e: any) {
             console.error('[createLocalInstance] Error:', e);

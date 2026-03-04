@@ -724,8 +724,8 @@ export const updateCompany = async (req: Request, res: Response) => {
                             console.log(`[Update Company ${id}] Updating instance ${targetInst.id}: name=${nameToUse}, key=${keyToUse}, color=${colorToUse}, type=${def.type || 'evolution'}`);
 
                             await pool.query(
-                                `UPDATE company_instances SET name = $1, instance_key = $2, api_key = $3, color = $4, type = $5 WHERE id = $6`,
-                                [nameToUse, keyToUse, apiKeyToUse, colorToUse, def.type || targetInst.type || 'evolution', targetInst.id]
+                                `UPDATE company_instances SET name = $1, instance_key = $2, api_key = $3, color = $4, type = $5, default_queue_id = $6 WHERE id = $7`,
+                                [nameToUse, keyToUse, apiKeyToUse, colorToUse, def.type || targetInst.type || 'evolution', def.default_queue_id || null, targetInst.id]
                             );
                         } else {
                             // CREATE new instance only if has instance_key
@@ -734,13 +734,13 @@ export const updateCompany = async (req: Request, res: Response) => {
                                 continue;
                             }
 
-                            console.log(`[Update Company ${id}] Creating new instance: name=${def.name}, key=${sanitizedKey}, type=${def.type || 'evolution'}`);
+                            console.log(`[Update Company ${id}] Creating new instance: name=${def.name}, key=${sanitizedKey}, type=${def.type || 'evolution'}, queue_id=${def.default_queue_id}`);
 
                             const createRes = await pool.query(
-                                `INSERT INTO company_instances (company_id, name, instance_key, api_key, status, color, type)
-                                 VALUES ($1, $2, $3, $4, 'disconnected', $5, $6)
-                                 RETURNING id, company_id, name, instance_key, api_key, status, created_at, color, type`,
-                                [id, def.name || `WhatsApp ${i + 1}`, sanitizedKey, def.api_key || null, def.color || '#3b82f6', def.type || 'evolution']
+                                `INSERT INTO company_instances (company_id, name, instance_key, api_key, status, color, type, default_queue_id)
+                                 VALUES ($1, $2, $3, $4, 'disconnected', $5, $6, $7)
+                                 RETURNING id, company_id, name, instance_key, api_key, status, created_at, color, type, default_queue_id`,
+                                [id, def.name || `WhatsApp ${i + 1}`, sanitizedKey, def.api_key || null, def.color || '#3b82f6', def.type || 'evolution', def.default_queue_id || null]
                             );
 
                             if (createRes.rows.length > 0) {
@@ -1084,7 +1084,7 @@ export const getCompanyInstances = async (req: Request, res: Response) => {
         }
 
         const { sync } = req.query;
-        let result = await pool.query('SELECT id, company_id, name, instance_key, api_key, status, created_at, color, type FROM company_instances WHERE company_id = $1 ORDER BY created_at ASC, id ASC', [id]);
+        let result = await pool.query('SELECT id, company_id, name, instance_key, api_key, status, created_at, color, type, default_queue_id FROM company_instances WHERE company_id = $1 ORDER BY created_at ASC, id ASC', [id]);
         let instances = result.rows;
 
         console.log(`[getCompanyInstances] Company ${id}: Found ${instances.length} instances in DB`);
@@ -1203,10 +1203,11 @@ export const updateCompanyInstance = async (req: Request, res: Response) => {
              SET name = COALESCE($1, name), 
                  instance_key = COALESCE($2, instance_key),
                  api_key = $3,
-                 color = COALESCE($4, color)
-             WHERE id = $5 AND company_id = $6 
-             RETURNING id, company_id, name, instance_key, api_key, status, created_at, color`,
-            [name || null, sanitizedKey || null, api_key || null, color || null, instanceId, id]
+                 color = COALESCE($4, color),
+                 default_queue_id = $5
+             WHERE id = $6 AND company_id = $7 
+             RETURNING id, company_id, name, instance_key, api_key, status, created_at, color, default_queue_id`,
+            [name || null, sanitizedKey || null, api_key || null, color || null, req.body.default_queue_id || null, instanceId, id]
         );
 
         if (result.rows.length === 0) {

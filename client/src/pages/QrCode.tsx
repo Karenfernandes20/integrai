@@ -19,6 +19,8 @@ type InstagramInstanceConfig = {
   callback_url: string;
   webhook_token: string;
   color: string;
+  name?: string;
+  default_queue_id?: number | null;
 };
 
 const DEFAULT_INSTAGRAM_COLOR = '#DD2A7B';
@@ -52,7 +54,9 @@ const normalizeInstagramConfigs = (
     return {
       callback_url: (current.callback_url || '').trim() || buildInstagramCallbackUrl(),
       webhook_token: token,
-      color: (current.color || '').trim() || DEFAULT_INSTAGRAM_COLOR
+      color: (current.color || '').trim() || DEFAULT_INSTAGRAM_COLOR,
+      name: (current.name || '').trim() || `Instagram ${index + 1}`,
+      default_queue_id: current.default_queue_id || null
     };
   });
 };
@@ -81,6 +85,7 @@ const QrCodePage = () => {
   const [isMeModalOpen, setIsMeModalOpen] = useState(false);
   const [selectedInstagramIndex, setSelectedInstagramIndex] = useState(0);
   const [instagramInstanceConfigs, setInstagramInstanceConfigs] = useState<InstagramInstanceConfig[]>([]);
+  const [queues, setQueues] = useState<any[]>([]);
 
   const whatsappType = company?.whatsapp_type || "evolution";
   const isEvolutionChannel = whatsappType === "evolution" || whatsappType === "local" || whatsappType === "api_plus";
@@ -177,6 +182,28 @@ const QrCodePage = () => {
     }
   }, [selectedInstance, isInternalApi]);
 
+  useEffect(() => {
+    const fetchQueues = async () => {
+      if (!token) return;
+      try {
+        const targetId = selectedCompanyId || user?.company_id;
+        if (!targetId) return;
+
+        const res = await fetch(`/api/queues?companyId=${targetId}`, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        if (res.ok) {
+          const data = await res.json();
+          setQueues(Array.isArray(data) ? data : []);
+        }
+      } catch (e) {
+        console.error("[QrCode] Error fetching queues:", e);
+      }
+    };
+
+    fetchQueues();
+  }, [token, selectedCompanyId, user?.company_id]);
+
   const handleGenerateQrKey = async (instanceOverrideOrEvent?: any, skipSave: boolean = false) => {
     // Handle overload: if first arg is mostly looks like an event or is null, ignore it.
     let targetInstance = selectedInstance;
@@ -204,7 +231,10 @@ const QrCodePage = () => {
           const initResponse = await fetch('/api/instances/local', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-            body: JSON.stringify({ instanceId: targetInstance.instance_key })
+            body: JSON.stringify({
+              instanceId: targetInstance.instance_key,
+              apiKey: targetInstance.api_key
+            })
           });
 
           const initData = await initResponse.json().catch(() => ({}));
@@ -582,7 +612,9 @@ const QrCodePage = () => {
         next[index] = {
           callback_url: buildInstagramCallbackUrl(),
           webhook_token: token,
-          color: DEFAULT_INSTAGRAM_COLOR
+          color: DEFAULT_INSTAGRAM_COLOR,
+          name: `Instagram ${index + 1}`,
+          default_queue_id: null
         };
       }
       next[index] = { ...next[index], [field]: value };
@@ -638,10 +670,10 @@ const QrCodePage = () => {
 
       // Build a proper allInstances array that includes all current instances
       const allInstances: any[] = [];
-      const maxSlots = Number(company?.whatsapp_limit || 1);
+      const waSlots = Number(company?.whatsapp_limit || 1);
 
-      for (let i = 0; i < maxSlots; i++) {
-        const existingInst = instances[i];
+      for (let i = 0; i < waSlots; i++) {
+        const existingInst = instances.filter(inst => inst.type !== 'instagram')[i];
         // If we're editing this slot and it matches, use the updated version
         const isEditingThisSlot = trimmedInstance && (
           (!trimmedInstance.id && trimmedInstance.slot_index === i) ||
@@ -649,18 +681,24 @@ const QrCodePage = () => {
         );
 
         if (isEditingThisSlot) {
-          console.log(`[QrCode] Adding edited instance at index ${i}:`, trimmedInstance);
           allInstances.push(trimmedInstance);
         } else if (existingInst) {
-          console.log(`[QrCode] Keeping existing instance at index ${i}:`, { id: existingInst.id, name: existingInst.name });
           allInstances.push(existingInst);
-        } else {
-          console.log(`[QrCode] Skipping empty slot ${i}`);
         }
       }
 
+      // Add Instagram instances from config
+      instagramInstanceConfigs.forEach((cfg, idx) => {
+        allInstances.push({
+          ...cfg,
+          type: 'instagram',
+          instance_key: cfg.webhook_token, // Unique enough
+          slot_index: idx
+        });
+      });
+
       console.log("[QrCode] Building instanceDefinitions:", {
-        maxSlots,
+        waSlots,
         selectedInstance: trimmedInstance,
         allInstances
       });
@@ -681,12 +719,14 @@ const QrCodePage = () => {
 
       if (res.ok) {
         // Also save instance if selected
-        if ((company?.whatsapp_type === 'evolution' || company?.whatsapp_type === 'local' || company?.whatsapp_type === 'api_plus') && trimmedInstance) {
+        if ((company?.whatsapp_type === 'evolution' || company?.whatsapp_type === 'local' || company?.whatsapp_type === 'api_plus' || company?.whatsapp_type === 'official') && trimmedInstance) {
           const instancePayload = {
             name: trimmedInstance.name,
             instance_key: trimmedInstance.instance_key,
             api_key: company?.whatsapp_type === 'local' ? '' : trimmedInstance.api_key,
-            color: trimmedInstance.color
+            color: trimmedInstance.color,
+            default_queue_id: trimmedInstance.default_queue_id,
+            type: trimmedInstance.type
           };
 
           console.log("[QrCode] Saving individual instance:", {
@@ -1053,13 +1093,48 @@ const QrCodePage = () => {
               {selectedInstance && (
                 <div className="space-y-4 p-4 bg-zinc-50 dark:bg-zinc-900/50 rounded-2xl border border-zinc-100 dark:border-zinc-800 animate-in slide-in-from-top-4 duration-500">
                   <div className="space-y-2">
-                    <Label className="text-[10px] font-bold uppercase text-zinc-500">Nome de Apresentação do Canal</Label>
+                    <Label className="text-[10px] font-bold uppercase text-zinc-500 flex items-center justify-between">
+                      <span>Nome de Apresentação do Canal <span className="text-red-500">*</span></span>
+                      <span className="text-[8px] font-normal lowercase opacity-70">(Ex: Comercial, Suporte)</span>
+                    </Label>
                     <Input
                       value={selectedInstance.name || ""}
                       onChange={(e) => setSelectedInstance(prev => prev ? { ...prev, name: e.target.value } : null)}
-                      className="h-10 rounded-xl bg-white dark:bg-zinc-900 border-zinc-200 dark:border-zinc-800 focus:ring-primary/20"
-                      placeholder="Ex: Comercial, Suporte, etc."
+                      required
+                      className="h-10 rounded-xl bg-white dark:bg-zinc-900 border-zinc-200 dark:border-zinc-800 focus:ring-primary/20 shadow-sm"
+                      placeholder="Nome amigável para este canal..."
                     />
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label className="text-[10px] font-bold uppercase text-zinc-500">Fila padrão para novas mensagens</Label>
+                    <Select
+                      value={String(selectedInstance.default_queue_id || "none")}
+                      onValueChange={(v) => setSelectedInstance(prev => prev ? { ...prev, default_queue_id: v === 'none' ? null : Number(v) } : null)}
+                    >
+                      <SelectTrigger className="h-10 rounded-xl bg-white dark:bg-zinc-900 border-zinc-200 dark:border-zinc-800 shadow-sm">
+                        <SelectValue placeholder="Sem fila (Conversas ficarão pendentes)" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="none">
+                          <div className="flex items-center gap-2">
+                            <div className="w-2 h-2 rounded-full bg-zinc-400" />
+                            <span>Sem fila</span>
+                          </div>
+                        </SelectItem>
+                        {queues.map(q => (
+                          <SelectItem key={q.id} value={String(q.id)}>
+                            <div className="flex items-center gap-2">
+                              <div className="w-2 h-2 rounded-full" style={{ backgroundColor: q.color || '#3b82f6' }} />
+                              <span>{q.name}</span>
+                            </div>
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <p className="text-[9px] text-zinc-400 pl-1">
+                      Mensagens novas deste canal serão direcionadas automaticamente para esta fila.
+                    </p>
                   </div>
                 </div>
               )}
@@ -1122,16 +1197,39 @@ const QrCodePage = () => {
                     )}
                   </div>
 
-                  {!isInternalApi && (
-                    <div className="bg-zinc-50 dark:bg-zinc-900/50 p-4 rounded-2xl border border-zinc-100 dark:border-zinc-800 mt-4">
-                      <div className="space-y-2">
-                        <Label className="text-[10px] font-bold uppercase text-zinc-500">URL do Servidor Evolution</Label>
-                        <Input
-                          value={company?.evolution_url || ""}
-                          onChange={(e) => handleCompanyChange('evolution_url', e.target.value)}
-                          className="h-10 rounded-xl bg-white dark:bg-zinc-900 border-zinc-200 dark:border-zinc-800"
-                          placeholder="https://sua-api.com"
-                        />
+                  {(whatsappType === 'evolution' || whatsappType === 'api_plus') && (
+                    <div className="bg-zinc-50 dark:bg-zinc-900/50 p-4 rounded-2xl border border-zinc-100 dark:border-zinc-800 mt-4 animate-in slide-in-from-top-1 duration-300">
+                      <div className="space-y-4">
+                        <div className="space-y-2">
+                          <Label className="text-[10px] font-bold uppercase text-zinc-500 flex items-center gap-1">
+                            <Link2 className="h-3 w-3" />
+                            {whatsappType === 'api_plus' ? 'URL do Servidor Mini-Evolution' : 'URL do Servidor Evolution'}
+                          </Label>
+                          <Input
+                            value={company?.evolution_url || ""}
+                            onChange={(e) => handleCompanyChange('evolution_url', e.target.value)}
+                            className="h-10 rounded-xl bg-white dark:bg-zinc-900 border-zinc-200 dark:border-zinc-800"
+                            placeholder={whatsappType === 'api_plus' ? "Ex: https://minievo.meusistema.com" : "https://sua-api.com"}
+                          />
+                          {whatsappType === 'api_plus' && !company?.evolution_url && (
+                            <p className="text-[10px] text-amber-600 dark:text-amber-500 italic">
+                              * Deixe em branco para usar o servidor padrão do sistema.
+                            </p>
+                          )}
+                        </div>
+
+                        {whatsappType === 'evolution' && (
+                          <div className="space-y-2">
+                            <Label className="text-[10px] font-bold uppercase text-zinc-500">Global API Key</Label>
+                            <Input
+                              type="password"
+                              value={company?.evolution_apikey || ""}
+                              onChange={(e) => handleCompanyChange('evolution_apikey', e.target.value)}
+                              className="h-10 rounded-xl bg-white dark:bg-zinc-900 border-zinc-200 dark:border-zinc-800"
+                              placeholder="Key global da API Evolution"
+                            />
+                          </div>
+                        )}
                       </div>
                     </div>
                   )}
@@ -1415,20 +1513,67 @@ const QrCodePage = () => {
                 <Input type="password" value={company?.instagram_access_token || ""} onChange={(e) => handleCompanyChange('instagram_access_token', e.target.value)} className="rounded-xl h-10" placeholder="Token Meta" />
               </div>
 
-              <div className="space-y-2 border-t pt-4 mt-2">
-                <Label className="text-[11px] font-bold uppercase text-zinc-400">Instância do Instagram</Label>
-                <Select value={String(selectedInstagramIndex)} onValueChange={(value) => setSelectedInstagramIndex(Number(value))}>
-                  <SelectTrigger className="rounded-xl h-10">
-                    <SelectValue placeholder="Selecione a instância" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {Array.from({ length: Number(company?.instagram_limit || 1) }).map((_, idx) => (
-                      <SelectItem key={`ig-modal-${idx}`} value={String(idx)}>
-                        Instagram {idx + 1}
+              <div className="space-y-4 p-4 bg-zinc-50 dark:bg-zinc-900/50 rounded-2xl border border-zinc-100 dark:border-zinc-800 animate-in slide-in-from-top-4 duration-500">
+                <div className="space-y-2 border-b pb-4 mb-2">
+                  <Label className="text-[11px] font-bold uppercase text-zinc-400">Instância do Instagram</Label>
+                  <Select value={String(selectedInstagramIndex)} onValueChange={(value) => setSelectedInstagramIndex(Number(value))}>
+                    <SelectTrigger className="rounded-xl h-10 bg-white dark:bg-zinc-900 border-zinc-200 dark:border-zinc-800">
+                      <SelectValue placeholder="Selecione a instância" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {Array.from({ length: Number(company?.instagram_limit || 1) }).map((_, idx) => (
+                        <SelectItem key={`ig-modal-${idx}`} value={String(idx)}>
+                          Instagram {idx + 1}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-2">
+                  <Label className="text-[10px] font-bold uppercase text-zinc-500 flex items-center justify-between">
+                    <span>Nome de Apresentação <span className="text-red-500">*</span></span>
+                    <span className="text-[8px] font-normal lowercase opacity-70">(Ex: Direct Vendas)</span>
+                  </Label>
+                  <Input
+                    value={selectedInstagramConfig?.name || ""}
+                    onChange={(e) => handleInstagramInstanceConfigChange(selectedInstagramIndex, 'name' as any, e.target.value)}
+                    required
+                    className="h-10 rounded-xl bg-white dark:bg-zinc-900 border-zinc-200 dark:border-zinc-800 focus:ring-pink-500/20 shadow-sm"
+                    placeholder="Nome para este canal..."
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label className="text-[10px] font-bold uppercase text-zinc-500">Fila padrão para novas diretas</Label>
+                  <Select
+                    value={String(selectedInstagramConfig?.default_queue_id || "none")}
+                    onValueChange={(v) => {
+                      const val = v === 'none' ? null : Number(v);
+                      handleInstagramInstanceConfigChange(selectedInstagramIndex, 'default_queue_id' as any, val as any);
+                    }}
+                  >
+                    <SelectTrigger className="h-10 rounded-xl bg-white dark:bg-zinc-900 border-zinc-200 dark:border-zinc-800 shadow-sm">
+                      <SelectValue placeholder="Sem fila (Ficarão pendentes)" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">
+                        <div className="flex items-center gap-2">
+                          <div className="w-2 h-2 rounded-full bg-zinc-400" />
+                          <span>Sem fila</span>
+                        </div>
                       </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                      {queues.map(q => (
+                        <SelectItem key={q.id} value={String(q.id)}>
+                          <div className="flex items-center gap-2">
+                            <div className="w-2 h-2 rounded-full" style={{ backgroundColor: q.color || '#3b82f6' }} />
+                            <span>{q.name}</span>
+                          </div>
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
 
               <div className="grid gap-4 md:grid-cols-2">
