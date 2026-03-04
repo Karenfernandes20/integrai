@@ -1,6 +1,6 @@
 ﻿
 import { Request, Response } from 'express';
-import { pool } from '../db';
+import { pool } from '../db/index.js';
 
 /**
  * Chatbot Controller V2 - Professional Builder
@@ -31,8 +31,8 @@ export const createChatbot = async (req: Request, res: Response) => {
         const companyId = (req as any).user?.company_id;
         if (!companyId) return res.status(403).json({ error: 'ID de empresa nÃ£o encontrado na sessÃ£o.' });
 
-        const { name, description } = req.body;
-        console.log(`[Create Chatbot] Company: ${companyId}, Name: ${name}`);
+        const { name, description, template } = req.body;
+        console.log(`[Create Chatbot] Company: ${companyId}, Name: ${name}, Template: ${template}`);
 
         const result = await pool!.query(
             `INSERT INTO chatbots (company_id, name, description, status) 
@@ -43,13 +43,59 @@ export const createChatbot = async (req: Request, res: Response) => {
 
         const chatbotId = result.rows[0].id;
 
-        // Create initial version 
-        const initialFlow = {
+        let initialFlow = {
             nodes: [
-                { id: 'node-start', type: 'start', position: { x: 100, y: 100 }, data: { label: 'InÃ­cio' } }
-            ],
-            edges: []
+                { id: 'node-start', type: 'start', position: { x: 100, y: 100 }, data: { label: 'Início' } }
+            ] as any[],
+            edges: [] as any[]
         };
+
+        if (template === 'clinic') {
+            initialFlow.nodes.push(
+                { id: 'node-msg1', type: 'message', position: { x: 100, y: 300 }, data: { content: 'Olá! Bem-vindo à nossa Clínica.' } },
+                { id: 'node-q1', type: 'question', position: { x: 100, y: 500 }, data: { question: 'Qual especialidade você procura?', validation_type: 'options', validation_options: ['Cardiologia', 'Ortopedia', 'Geral'], variable: 'especialidade' } },
+                { id: 'node-handoff', type: 'handoff', position: { x: 100, y: 700 }, data: { transfer_only_business_hours: true } }
+            );
+            initialFlow.edges.push(
+                { id: 'edge-1', source: 'node-start', target: 'node-msg1' },
+                { id: 'edge-2', source: 'node-msg1', target: 'node-q1' },
+                { id: 'edge-3', source: 'node-q1', target: 'node-handoff' }
+            );
+        } else if (template === 'store') {
+            initialFlow.nodes.push(
+                { id: 'node-msg1', type: 'message', position: { x: 100, y: 300 }, data: { content: 'Olá! Bem-vindo à nossa Loja.' } },
+                { id: 'node-q1', type: 'question', position: { x: 100, y: 500 }, data: { question: 'Você gostaria de ver nosso catálogo ou falar com um vendedor?', validation_type: 'options', validation_options: ['Catalogo', 'Vendedor'], variable: 'escolha' } }
+            );
+            initialFlow.edges.push(
+                { id: 'edge-1', source: 'node-start', target: 'node-msg1' },
+                { id: 'edge-2', source: 'node-msg1', target: 'node-q1' }
+            );
+        } else if (template === 'support') {
+            initialFlow.nodes.push(
+                { id: 'node-msg1', type: 'message', position: { x: 100, y: 300 }, data: { content: 'Bem-vindo ao Suporte Técnico.' } },
+                { id: 'node-q1', type: 'question', position: { x: 100, y: 500 }, data: { question: 'Por favor, descreva em poucas palavras o seu problema:' } }
+            );
+            initialFlow.edges.push({ id: 'edge-1', source: 'node-start', target: 'node-msg1' }, { id: 'edge-2', source: 'node-msg1', target: 'node-q1' });
+        } else if (template === 'restaurant') {
+            initialFlow.nodes.push(
+                { id: 'node-msg1', type: 'message', position: { x: 100, y: 300 }, data: { content: 'Olá! Aqui é do Restaurante.' } },
+                { id: 'node-q1', type: 'question', position: { x: 100, y: 500 }, data: { question: 'Deseja ver o cardápio ou fazer um pedido agora?', validation_options: ['Cardapio', 'Pedido'] } }
+            );
+            initialFlow.edges.push({ id: 'edge-1', source: 'node-start', target: 'node-msg1' }, { id: 'edge-2', source: 'node-msg1', target: 'node-q1' });
+        } else if (template === 'leads') {
+            initialFlow.nodes.push(
+                { id: 'node-msg1', type: 'message', position: { x: 100, y: 300 }, data: { content: 'Olá! Que bom ter você aqui.' } },
+                { id: 'node-q1', type: 'question', position: { x: 100, y: 500 }, data: { question: 'Qual é o seu nome completo?', variable: 'name' } },
+                { id: 'node-q2', type: 'question', position: { x: 100, y: 700 }, data: { question: 'E o seu melhor e-mail?', validation_type: 'email', variable: 'email' } },
+                { id: 'node-msg2', type: 'message', position: { x: 100, y: 900 }, data: { content: 'Obrigado! Entraremos em contato em breve.' } }
+            );
+            initialFlow.edges.push(
+                { id: 'edge-1', source: 'node-start', target: 'node-msg1' },
+                { id: 'edge-2', source: 'node-msg1', target: 'node-q1' },
+                { id: 'edge-3', source: 'node-q1', target: 'node-q2' },
+                { id: 'edge-4', source: 'node-q2', target: 'node-msg2' }
+            );
+        }
 
         await pool!.query(
             `INSERT INTO chatbot_versions (chatbot_id, version_number, flow_json, is_published)

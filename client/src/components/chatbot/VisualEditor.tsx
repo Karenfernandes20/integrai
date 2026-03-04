@@ -6,8 +6,9 @@ import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import {
     MessageSquare, HelpCircle, GitFork, Zap, UserCheck,
-    Plus, Minus, X, MousePointer2, Save, Play, Trash2
+    Plus, Minus, X, MousePointer2, Save, Play, Trash2, Smartphone
 } from 'lucide-react';
+import { Simulator } from './Simulator';
 
 const NODE_WIDTH = 250;
 const HEADER_HEIGHT = 40;
@@ -31,12 +32,30 @@ export const VisualEditor: React.FC<VisualEditorProps> = ({
     const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null);
     const [isSnapToGrid, setIsSnapToGrid] = useState(true);
     const [showGrid, setShowGrid] = useState(true);
+    const [isSimulatorOpen, setIsSimulatorOpen] = useState(false);
 
     const [queues, setQueues] = useState<any[]>([]);
     const [tags, setTags] = useState<any[]>([]);
     const [users, setUsers] = useState<any[]>([]);
     const [chatbots, setChatbots] = useState<any[]>([]);
     const { token } = useAuth();
+    const [errors, setErrors] = useState<string[]>([]);
+
+    useEffect(() => {
+        const errs: string[] = [];
+        const starts = nodes.filter(n => n.type === 'start');
+        if (starts.length === 0) errs.push('É necessário ter um bloco START (Início).');
+        if (starts.length > 1) errs.push('Apenas um bloco START é permitido.');
+
+        nodes.forEach(n => {
+            if (n.type !== 'start') {
+                const hasIncoming = edges.some(e => e.target === n.id);
+                if (!hasIncoming) errs.push(`Bloco "${n.data.label || n.type}" não está conectado ao fluxo.`);
+            }
+        });
+
+        setErrors(errs);
+    }, [nodes, edges]);
 
     // Sync from props (when initial data arrives from API)
     useEffect(() => {
@@ -421,6 +440,27 @@ export const VisualEditor: React.FC<VisualEditorProps> = ({
 
     return (
         <div className="flex flex-col h-full w-full relative overflow-hidden bg-[#f8fafc] select-none">
+            {/* Validation Alert */}
+            <div className="absolute top-6 left-6 z-50 flex flex-col gap-2">
+                {errors.length === 0 ? (
+                    <div className="flex items-center gap-2 bg-emerald-50 text-emerald-700 px-3 py-1.5 rounded-lg border border-emerald-200/50 shadow-sm animate-in fade-in">
+                        <UserCheck size={14} className="text-emerald-500" />
+                        <span className="text-xs font-bold">Fluxo Válido</span>
+                    </div>
+                ) : (
+                    <div className="flex flex-col gap-1 bg-rose-50 text-rose-700 px-3 py-2 rounded-lg border border-rose-200/50 shadow-sm animate-in fade-in max-w-[250px]">
+                        <div className="flex items-center gap-2">
+                            <Zap size={14} className="text-rose-500" />
+                            <span className="text-xs font-bold">Fluxo com {errors.length} erro(s)</span>
+                        </div>
+                        <ul className="text-[10px] pl-5 list-disc mt-1 opacity-80">
+                            {errors.slice(0, 3).map((e, i) => <li key={i}>{e}</li>)}
+                            {errors.length > 3 && <li>+ {errors.length - 3} outros</li>}
+                        </ul>
+                    </div>
+                )}
+            </div>
+
             {/* Toolbar */}
             <div className="absolute top-6 left-1/2 -translate-x-1/2 z-50 flex items-center gap-1 bg-white/90 backdrop-blur-xl p-2 rounded-2xl shadow-2xl border border-slate-200/60 ring-1 ring-black/5 animate-in slide-in-from-top duration-500">
                 <div className="flex gap-1 pr-3 border-r border-slate-200/60">
@@ -456,7 +496,20 @@ export const VisualEditor: React.FC<VisualEditorProps> = ({
                 </div>
 
                 <div className="flex gap-2 pl-2">
-                    <Button size="sm" onClick={() => onSave && onSave(nodes, edges)} className="bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl shadow-lg shadow-blue-200/50 border-none transition-all hover:scale-105 active:scale-95 px-4 h-9">
+                    <Button
+                        size="sm"
+                        variant="secondary"
+                        onClick={() => setIsSimulatorOpen(true)}
+                        className="bg-purple-100 hover:bg-purple-200 text-purple-700 font-bold rounded-xl transition-all h-9"
+                    >
+                        <Smartphone className="h-4 w-4 mr-2" /> Testar Bot
+                    </Button>
+                    <Button
+                        size="sm"
+                        onClick={() => onSave && onSave(nodes, edges)}
+                        disabled={errors.length > 0}
+                        className="bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl shadow-lg shadow-blue-200/50 border-none transition-all hover:scale-105 active:scale-95 disabled:hover:scale-100 disabled:opacity-50 px-4 h-9"
+                    >
                         <Save className="h-4 w-4 mr-2" /> Salvar
                     </Button>
                 </div>
@@ -800,6 +853,33 @@ export const VisualEditor: React.FC<VisualEditorProps> = ({
                                             </div>
                                         </div>
 
+                                        <div className="space-y-2">
+                                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-1">Tipo de Mídia (Opcional)</label>
+                                            <select
+                                                className="w-full text-xs p-3 border rounded-xl bg-white shadow-sm font-bold"
+                                                value={node.data.media_type || ''}
+                                                onChange={e => updateData('media_type', e.target.value)}
+                                            >
+                                                <option value="">Nenhuma</option>
+                                                <option value="image">Imagem</option>
+                                                <option value="video">Vídeo</option>
+                                                <option value="audio">Áudio</option>
+                                                <option value="document">Documento</option>
+                                            </select>
+                                        </div>
+
+                                        {node.data.media_type && (
+                                            <div className="space-y-2">
+                                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-1">URL da Mídia</label>
+                                                <input
+                                                    className="w-full text-xs p-3 border rounded-xl bg-white shadow-sm"
+                                                    value={node.data.media_url || ''}
+                                                    onChange={e => updateData('media_url', e.target.value)}
+                                                    placeholder="https://exemplo.com/arquivo.jpg"
+                                                />
+                                            </div>
+                                        )}
+
                                         <div className="flex items-center space-x-3 bg-indigo-50/50 p-4 rounded-2xl border border-indigo-100/50 transition-colors hover:bg-indigo-50">
                                             <input
                                                 type="checkbox"
@@ -858,10 +938,39 @@ export const VisualEditor: React.FC<VisualEditorProps> = ({
                                                 >
                                                     <option value="any">Qualquer conteúdo</option>
                                                     <option value="number">Apenas números</option>
-                                                    <option value="options">Lista de opções</option>
+                                                    <option value="options">Lista de opções Exatas</option>
                                                     <option value="email">Formato de Email</option>
                                                     <option value="regex">Expressão Regular (Regex)</option>
                                                 </select>
+                                            </div>
+
+                                            {(node.data.validation_type === 'options' || node.data.validation_type === 'regex') && (
+                                                <div className="space-y-2 animate-in slide-in-from-top-2">
+                                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Opções válidas ou Regex</label>
+                                                    <input
+                                                        className="w-full text-xs p-3 border rounded-xl font-mono bg-white shadow-sm"
+                                                        value={node.data.validation_type === 'options' ? (node.data.validation_options?.join(',') || '') : (node.data.validation_regex || '')}
+                                                        onChange={e => {
+                                                            if (node.data.validation_type === 'options') {
+                                                                updateData('validation_options', e.target.value.split(',').map(s => s.trim()));
+                                                            } else {
+                                                                updateData('validation_regex', e.target.value);
+                                                            }
+                                                        }}
+                                                        placeholder={node.data.validation_type === 'options' ? "1,2,abc,sim" : "^[A-Z]{3}-\\\\d{4}$"}
+                                                    />
+                                                    {node.data.validation_type === 'options' && <span className="text-[9px] text-slate-400 font-bold block mt-1">Separe por vírgulas.</span>}
+                                                </div>
+                                            )}
+
+                                            <div className="space-y-2 pt-2 border-t">
+                                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Mensagem de Erro</label>
+                                                <input
+                                                    className="w-full text-xs p-3 border rounded-xl bg-white shadow-sm"
+                                                    value={node.data.error_message || ''}
+                                                    onChange={e => updateData('error_message', e.target.value)}
+                                                    placeholder="Opção inválida, tente novamente."
+                                                />
                                             </div>
                                         </div>
                                     </div>
@@ -940,6 +1049,50 @@ export const VisualEditor: React.FC<VisualEditorProps> = ({
                                                     </div>
                                                 </div>
                                             ))}
+                                        </div>
+                                    </div>
+                                )}
+
+                                {node.type === 'handoff' && (
+                                    <div className="space-y-6 animate-in fade-in duration-400">
+                                        <div className="space-y-2">
+                                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-1">Fila de Atendimento</label>
+                                            <select
+                                                className="w-full text-xs p-3 border rounded-xl bg-white shadow-sm font-bold"
+                                                value={node.data.queue_id || ''}
+                                                onChange={e => updateData('queue_id', e.target.value)}
+                                            >
+                                                <option value="">Selecione uma Fila...</option>
+                                                {queues.map(q => (
+                                                    <option key={q.id} value={q.id}>{q.name}</option>
+                                                ))}
+                                            </select>
+                                        </div>
+
+                                        <div className="flex items-center space-x-3 bg-rose-50/50 p-4 rounded-2xl border border-rose-100/50 transition-colors hover:bg-rose-50">
+                                            <input
+                                                type="checkbox"
+                                                id="transfer_only_business_hours"
+                                                className="rounded-lg border-rose-300 text-rose-600 focus:ring-rose-500 h-5 w-5 transition-all"
+                                                checked={!!node.data.transfer_only_business_hours}
+                                                onChange={e => updateData('transfer_only_business_hours', e.target.checked)}
+                                            />
+                                            <label htmlFor="transfer_only_business_hours" className="text-sm font-bold text-rose-900 cursor-pointer select-none">
+                                                Apenas no Horário Comercial
+                                            </label>
+                                        </div>
+
+                                        <div className="flex items-center space-x-3 bg-amber-50/50 p-4 rounded-2xl border border-amber-100/50 transition-colors hover:bg-amber-50">
+                                            <input
+                                                type="checkbox"
+                                                id="notify_supervisor"
+                                                className="rounded-lg border-amber-300 text-amber-600 focus:ring-amber-500 h-5 w-5 transition-all"
+                                                checked={!!node.data.notify_supervisor}
+                                                onChange={e => updateData('notify_supervisor', e.target.checked)}
+                                            />
+                                            <label htmlFor="notify_supervisor" className="text-sm font-bold text-amber-900 cursor-pointer select-none">
+                                                Notificar Supervisor
+                                            </label>
                                         </div>
                                     </div>
                                 )}
@@ -1094,6 +1247,13 @@ export const VisualEditor: React.FC<VisualEditorProps> = ({
                     </div>
                 )}
             </div>
+
+            <Simulator
+                open={isSimulatorOpen}
+                onOpenChange={setIsSimulatorOpen}
+                nodes={nodes}
+                edges={edges}
+            />
         </div>
     );
 };

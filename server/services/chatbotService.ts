@@ -138,7 +138,7 @@ const getGlobalVariables = async (companyId: number, contactPhone: string, insta
 
             // 3. Persistent Conversation Variables
             const pVars = await pool!.query('SELECT key, value FROM conversation_variables WHERE conversation_id = $1', [c.id]);
-            pVars.rows.forEach(v => {
+            pVars.rows.forEach((v: any) => {
                 vars[v.key] = v.value;
             });
         } else {
@@ -295,6 +295,47 @@ export const processChatbotMessage = async (instanceKey: string, contactPhone: s
         if (conversationId) {
             const state = await getConversationState(conversationId);
             if (state?.waiting_for_input) {
+                const nodeWaiting = flow.nodes.find(n => n.id === state.current_node_id);
+                let isValid = true;
+                let errorMessage = 'Entrada inválida.';
+                let invalidTargetNode: string | null = null;
+
+                if (nodeWaiting && (nodeWaiting.type === 'question' || nodeWaiting.type === 'message' || nodeWaiting.type === 'input')) {
+                    const data = nodeWaiting.data;
+                    const text = String(messageText || '').trim();
+                    errorMessage = data.error_message || errorMessage;
+
+                    if (data.validation_type === 'number') {
+                        if (isNaN(Number(text))) isValid = false;
+                    } else if (data.validation_type === 'options') {
+                        const ops = (data.validation_options || []).map((o: string) => String(o).trim().toLowerCase());
+                        if (ops.length > 0 && !ops.includes(text.toLowerCase())) isValid = false;
+                    } else if (data.validation_type === 'email') {
+                        if (!/^\\S+@\\S+\\.\\S+$/.test(text)) isValid = false;
+                    } else if (data.validation_type === 'regex' && data.validation_regex) {
+                        try {
+                            if (!new RegExp(data.validation_regex).test(text)) isValid = false;
+                        } catch (e) { isValid = false; }
+                    }
+
+                    if (!isValid) {
+                        const invalidEdge = flow.edges.find(e => e.source === nodeWaiting.id && e.sourceHandle === 'invalid');
+                        if (invalidEdge) invalidTargetNode = invalidEdge.target;
+                    }
+                }
+
+                if (!isValid) {
+                    await sendMessage(instanceKey, contactPhone, errorMessage, bot.company_id);
+                    if (invalidTargetNode) {
+                        // Move execution to the invalid flow path
+                        await pool!.query('UPDATE chatbot_sessions SET current_node_id = $1, last_activity = NOW() WHERE id = $2', [invalidTargetNode, session.id]);
+                        await saveConversationState({ conversationId, currentNodeId: invalidTargetNode, waitingForInput: false, expectedVariable: null });
+                        session.current_node_id = invalidTargetNode;
+                        await executeNode(bot.id, bot.company_id, session, flow, '', instanceKey, io, 0, conversationId);
+                    }
+                    return; // Stop processing, user needs to try again
+                }
+
                 const expectedVariable = String(state.expected_variable || '').trim();
                 if (expectedVariable) {
                     await saveVariable(bot.company_id, contactPhone, expectedVariable, String(messageText || '').trim());
@@ -408,10 +449,12 @@ const executeNode = async (
         case 'message': {
             const data = currentNode.data;
             const text = resolveVariables(data.content || '');
+            const mediaUrl = data.media_url ? resolveVariables(data.media_url) : undefined;
+            const mediaType = data.media_type;
 
             // Se a opção "Capturar resposta do cliente" estiver ativa no bloco de texto
             if (data.capture_response) {
-                await sendMessage(instanceKey, session.contact_key, text, botCompanyId);
+                await sendMessage(instanceKey, session.contact_key, text, botCompanyId, mediaUrl, mediaType);
                 if (conversationId) {
                     const varName = String(data.variable_name || 'last_response').replace(/[{}]/g, '');
                     await saveConversationState({
@@ -424,7 +467,7 @@ const executeNode = async (
                 return;
             } else {
                 // Comportamento normal: envia e segue para o próximo
-                await sendMessage(instanceKey, session.contact_key, text, botCompanyId);
+                await sendMessage(instanceKey, session.contact_key, text, botCompanyId, mediaUrl, mediaType);
             }
 
             await pool!.query(
@@ -635,7 +678,37 @@ const executeNode = async (
         }
 
         case 'handoff': {
-            await sendMessage(instanceKey, session.contact_key, 'Transferindo para um atendente...', botCompanyId);
+            const data = currentNode.data;
+            let transfer = true;
+
+            // Optional: check business hours
+            if (data.transfer_only_business_hours) {
+                const hour = new Date().getHours();
+                const day = new Date().getDay();
+                // Simples comercial check: Seg-Sex 08:00 as 18:00
+                if (day === 0 || day === 6 || hour < 8 || hour >= 18) {
+                    transfer = false;
+                    await sendMessage(instanceKey, session.contact_key, 'Nosso atendimento humano está indisponível no momento.', botCompanyId);
+                }
+            }
+
+            if (transfer) {
+                await sendMessage(instanceKey, session.contact_key, 'Transferindo para um atendente...', botCompanyId);
+
+                // Add to queue if specified
+                if (data.queue_id && botCompanyId) {
+                    await pool!.query('UPDATE whatsapp_conversations SET queue_id = $1 WHERE company_id = $2 AND external_id = $3', [data.queue_id, botCompanyId, session.contact_key]);
+                    if (io) io.to(`company_${botCompanyId}`).emit('conversation:update_queue', { phone: session.contact_key, queueId: data.queue_id });
+                }
+
+                // If notify supervisor
+                if (data.notify_supervisor && botCompanyId) {
+                    console.log(`[ChatbotService] NOTIFY SUPERVISOR for company ${botCompanyId} about contact ${session.contact_key}`);
+                    // (Omitted: create notification record for supervisor)
+                }
+            }
+
+            // Always exit the bot
             await pool!.query('DELETE FROM chatbot_sessions WHERE id = $1', [session.id]);
             return;
         }
@@ -660,7 +733,7 @@ const executeNode = async (
     }
 };
 
-const sendMessage = async (instanceKey: string, phone: string, text: string, companyId?: number) => {
+const sendMessage = async (instanceKey: string, phone: string, text: string, companyId?: number, mediaUrl?: string, mediaType?: string) => {
     try {
         const config = await getEvolutionConfig({ company_id: companyId }, 'chatbot_service', companyId, instanceKey);
         const apiUrl = config.url;
@@ -672,14 +745,37 @@ const sendMessage = async (instanceKey: string, phone: string, text: string, com
             return;
         }
 
-        await axios.post(`${apiUrl}/message/sendText/${resolvedInstance}`, {
-            number: phone,
-            text,
-            delay: 1200,
-            linkPreview: false
-        }, {
-            headers: { apikey: apiKey }
-        });
+        if (mediaUrl) {
+            let endpoint = 'sendMedia';
+            let mediatypeParam = 'image';
+
+            if (mediaType === 'video') mediatypeParam = 'video';
+            else if (mediaType === 'audio') mediatypeParam = 'audio';
+            else if (mediaType === 'document') mediatypeParam = 'document';
+
+            await axios.post(`${apiUrl}/message/${endpoint}/${resolvedInstance}`, {
+                number: phone,
+                options: {
+                    delay: 1200,
+                    presence: 'composing'
+                },
+                mediaMessage: {
+                    mediatype: mediatypeParam,
+                    caption: text || undefined,
+                    media: mediaUrl
+                }
+            }, { headers: { apikey: apiKey } });
+
+        } else {
+            await axios.post(`${apiUrl}/message/sendText/${resolvedInstance}`, {
+                number: phone,
+                text,
+                delay: 1200,
+                linkPreview: false
+            }, {
+                headers: { apikey: apiKey }
+            });
+        }
     } catch (e: any) {
         console.error('[ChatbotService] Failed to send message:', e.response?.data || e.message);
     }

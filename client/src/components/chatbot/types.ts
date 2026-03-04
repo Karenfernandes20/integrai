@@ -12,7 +12,10 @@ export interface NodeData {
     content?: string; // Standard for messages
     question?: string; // Standard for questions
     variable?: string; // Variable to save response
-    validation_type?: 'text' | 'number' | 'regex' | 'options' | 'any';
+    capture_response?: boolean;
+    media_url?: string;
+    media_type?: 'image' | 'audio' | 'video' | 'document';
+    validation_type?: 'text' | 'number' | 'regex' | 'options' | 'any' | 'email';
     validation_regex?: string;
     validation_options?: string[];
     max_attempts?: number;
@@ -22,6 +25,9 @@ export interface NodeData {
     timeout_node_id?: string;
     actions?: any[]; // For 'actions' node
     rules?: any[]; // For 'condition' node
+    queue_id?: number; // For handoff
+    transfer_only_business_hours?: boolean;
+    notify_supervisor?: boolean;
     [key: string]: any;
 }
 

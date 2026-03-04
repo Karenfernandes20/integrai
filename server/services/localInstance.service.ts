@@ -97,6 +97,9 @@ export class LocalInstanceService {
             return { success: true, status: data.status, message: data.message };
         } catch (e: any) {
             console.error(`[LocalInstance] Error waking up instance ${instanceId}:`, e.message);
+            if (e.message?.includes('fetch failed') || e.code === 'ECONNREFUSED') {
+                throw new Error(`Não foi possível conectar ao servidor da API Plus (Mini-Evolution) em ${baseUrl}. O servidor pode estar offline ou configurado incorretamente.`);
+            }
             throw e;
         }
     }
@@ -203,11 +206,11 @@ export class LocalInstanceService {
                     parsedError = json.error || json.message || errorBody;
                 } catch (e) { }
 
-                return {
-                    status: 'error',
-                    error: `Mini-Evolution respondeu ${response.status}`,
-                    details: parsedError
-                };
+                if (response.status === 404) {
+                    return { status: 'error', error: 'Instância não encontrada na API Interna.' };
+                }
+
+                throw new Error(`Mini-Evolution respondeu ${response.status}: ${parsedError}`);
             }
 
             const data: any = await response.json().catch(() => ({}));
@@ -237,11 +240,11 @@ export class LocalInstanceService {
         } catch (e: any) {
             const baseUrl = await this.getCompanyUrlForInstance(instanceId).catch(() => this.getMiniEvoUrl());
             console.error("LocalInstance.generateQRCode: CRITICAL ERROR:", e.message);
-            if (e.message.includes('ECONNREFUSED')) {
+            if (e.message.includes('ECONNREFUSED') || e.message.includes('fetch failed')) {
                 return {
                     status: 'error',
-                    error: 'Mini-Evolution fora do ar',
-                    details: `Não foi possível conectar em ${baseUrl}. Certifique-se que o processo separado está rodando.`
+                    error: 'API Interna (Mini Evolution) fora do ar',
+                    details: `Não foi possível conectar em ${baseUrl}. O servidor nodejs separado de conexões está offline ou o proxy bloqueou o acesso.`
                 };
             }
             return { status: 'error', error: e.message };

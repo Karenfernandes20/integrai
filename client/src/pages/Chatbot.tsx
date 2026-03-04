@@ -32,6 +32,7 @@ const Chatbot = () => {
     const [isNewBotOpen, setIsNewBotOpen] = useState(false);
     const [newBotName, setNewBotName] = useState('');
     const [newBotDesc, setNewBotDesc] = useState('');
+    const [newBotTemplate, setNewBotTemplate] = useState('');
 
     useEffect(() => {
         if (token) fetchBots();
@@ -64,7 +65,7 @@ const Chatbot = () => {
                     'Content-Type': 'application/json',
                     Authorization: `Bearer ${token}`
                 },
-                body: JSON.stringify({ name: newBotName, description: newBotDesc })
+                body: JSON.stringify({ name: newBotName, description: newBotDesc, template: newBotTemplate })
             });
 
             if (res.ok) {
@@ -72,6 +73,7 @@ const Chatbot = () => {
                 setIsNewBotOpen(false);
                 setNewBotName('');
                 setNewBotDesc('');
+                setNewBotTemplate('');
                 fetchBots();
             } else {
                 throw new Error("Falha ao criar");
@@ -182,8 +184,8 @@ const Chatbot = () => {
                                     {bot.description || "Sem descrição"}
                                 </CardDescription>
                             </CardHeader>
-                            <CardContent>
-                                <div className="flex items-center gap-4 text-sm text-slate-600">
+                            <CardContent className="space-y-4">
+                                <div className="flex items-center gap-4 text-sm text-slate-600 border-b border-slate-50 pb-4">
                                     <div className="flex items-center gap-1.5">
                                         <div className={`w-2 h-2 rounded-full ${(bot.status === 'active' || bot.status === 'published') ? 'bg-emerald-500' : 'bg-slate-300'}`} />
                                         {(bot.status === 'active' || bot.status === 'published') ? 'Ativo' : 'Inativo'}
@@ -191,6 +193,16 @@ const Chatbot = () => {
                                     <div className="flex items-center gap-1.5">
                                         <Network size={14} />
                                         {bot.active_instances_count} instâncias
+                                    </div>
+                                </div>
+                                <div className="grid grid-cols-2 gap-2 text-xs">
+                                    <div className="bg-slate-50 p-2 rounded-lg">
+                                        <p className="text-slate-400 font-bold mb-1">Sessões Ativas</p>
+                                        <p className="text-lg font-black text-slate-700">0</p>
+                                    </div>
+                                    <div className="bg-slate-50 p-2 rounded-lg">
+                                        <p className="text-slate-400 font-bold mb-1">Taxa de Conclusão</p>
+                                        <p className="text-lg font-black text-slate-700">0%</p>
                                     </div>
                                 </div>
                             </CardContent>
@@ -231,6 +243,30 @@ const Chatbot = () => {
                                 value={newBotDesc}
                                 onChange={(e) => setNewBotDesc(e.target.value)}
                             />
+                        </div>
+                        <div className="space-y-2">
+                            <label className="text-sm font-medium pt-2 block border-t">Começar a partir de um Template (Opcional)</label>
+                            <div className="grid grid-cols-2 gap-2">
+                                {[
+                                    { id: '', label: 'Em branco (Padrão)', icon: <Bot size={14} /> },
+                                    { id: 'clinic', label: 'Clínica (Agendamento)', icon: <Bot size={14} /> },
+                                    { id: 'store', label: 'Loja (Catálogo/Pedidos)', icon: <Bot size={14} /> },
+                                    { id: 'support', label: 'Suporte Técnico', icon: <Bot size={14} /> },
+                                    { id: 'restaurant', label: 'Restaurante', icon: <Bot size={14} /> },
+                                    { id: 'leads', label: 'Captura de Leads', icon: <Bot size={14} /> }
+                                ].map(tpl => (
+                                    <button
+                                        key={tpl.id}
+                                        onClick={() => setNewBotTemplate(tpl.id)}
+                                        className={`flex items-center gap-2 p-2 rounded-xl text-left border text-xs font-bold transition-all ${newBotTemplate === tpl.id ? 'border-emerald-500 bg-emerald-50 text-emerald-700 ring-2 ring-emerald-500/20' : 'border-slate-200 bg-white hover:border-slate-300 text-slate-600'}`}
+                                    >
+                                        <div className={`p-1 rounded-md ${newBotTemplate === tpl.id ? 'bg-emerald-100' : 'bg-slate-100'}`}>
+                                            {tpl.icon}
+                                        </div>
+                                        {tpl.label}
+                                    </button>
+                                ))}
+                            </div>
                         </div>
                     </div>
                     <DialogFooter>
