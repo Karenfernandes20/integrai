@@ -51,7 +51,10 @@ export class LocalInstanceService {
             console.log(`[LocalInstance] Ensuring registration for ${instanceId} in Mini-Evolution at ${baseUrl}...`);
             const regResponse = await fetch(`${baseUrl}/management/instances`, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: {
+                    'Content-Type': 'application/json',
+                    'apikey': (token as string) || process.env.GLOBAL_API_KEY || 'minievo-session-token-998877'
+                },
                 body: JSON.stringify({
                     key: instanceId,
                     name: name,
