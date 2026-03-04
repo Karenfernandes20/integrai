@@ -4,6 +4,7 @@ import { logAudit } from '../auditLogger.js';
 import { getEvolutionConfig } from './evolutionController.js';
 import { validateInstagramCredentials } from '../services/instagramService.js';
 import { validateMetaConnection, validateWhatsappMetaPayload } from '../services/whatsappMetaService.js';
+import crypto from 'crypto';
 
 const normalizeDateAtNoon = (value?: string | Date | null) => {
     if (!value) return null;
@@ -720,11 +721,8 @@ export const updateCompany = async (req: Request, res: Response) => {
                             const nameToUse = def.name || targetInst.name || `WhatsApp ${i + 1}`;
                             const colorToUse = def.color || targetInst.color || '#3b82f6';
                             const typeToUse = def.type || targetInst.type || 'evolution';
-
-                            // Auto generate token if api plus / local and missing
                             let apiKeyToUse = def.api_key !== undefined ? def.api_key : targetInst?.api_key || null;
                             if ((typeToUse === 'local' || typeToUse === 'api_plus') && !apiKeyToUse) {
-                                const crypto = require('crypto');
                                 apiKeyToUse = 'me_' + crypto.randomBytes(16).toString('hex');
                             }
 
@@ -755,7 +753,6 @@ export const updateCompany = async (req: Request, res: Response) => {
 
                             let apiKeyToUse = def.api_key || null;
                             if ((typeToUse === 'local' || typeToUse === 'api_plus') && !apiKeyToUse) {
-                                const crypto = require('crypto');
                                 apiKeyToUse = 'me_' + crypto.randomBytes(16).toString('hex');
                             }
 
@@ -786,7 +783,6 @@ export const updateCompany = async (req: Request, res: Response) => {
                             } else {
                                 let fallbackKeyToUse = def.api_key || null;
                                 if ((def.type === 'local' || def.type === 'api_plus') && !fallbackKeyToUse) {
-                                    const crypto = require('crypto');
                                     fallbackKeyToUse = 'me_' + crypto.randomBytes(16).toString('hex');
                                 }
 
