@@ -2487,14 +2487,23 @@ export const syncAllProfilePics = async (req: Request, res: Response) => {
     const companyId = user?.company_id;
 
     // Fetch both conversations and contacts without profile pics for the current instance/company
+    // Also include URLs that likely expired (contain mmg.whatsapp.net and are NOT from our domain)
     let query = `
       SELECT DISTINCT jid_or_phone, external_id, phone, is_group 
       FROM (
         SELECT external_id as jid_or_phone, external_id, phone, is_group FROM whatsapp_conversations 
-        WHERE (profile_pic_url IS NULL OR profile_pic_url = '') AND instance = $1 AND company_id = $2
+        WHERE (
+          profile_pic_url IS NULL 
+          OR profile_pic_url = '' 
+          OR profile_pic_url LIKE '%mmg.whatsapp.net%'
+        ) AND instance = $1 AND company_id = $2
         UNION
         SELECT jid as jid_or_phone, jid as external_id, phone, false as is_group FROM whatsapp_contacts 
-        WHERE (profile_pic_url IS NULL OR profile_pic_url = '') AND instance = $1 AND company_id = $2
+        WHERE (
+          profile_pic_url IS NULL 
+          OR profile_pic_url = '' 
+          OR profile_pic_url LIKE '%mmg.whatsapp.net%'
+        ) AND instance = $1 AND company_id = $2
       ) sub
     `;
     const params = [EVOLUTION_INSTANCE, companyId];
