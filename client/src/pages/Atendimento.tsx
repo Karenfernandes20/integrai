@@ -292,6 +292,11 @@ const AtendimentoPage = () => {
 
   const [viewMode, setViewMode] = useState<'PENDING' | 'OPEN' | 'CLOSED'>('OPEN');
   const [conversations, setConversations] = useState<Conversation[]>([]);
+  const conversationsRef = useRef<Conversation[]>([]);
+  useEffect(() => {
+    conversationsRef.current = conversations;
+  }, [conversations]);
+
   const [pendingConversations, setPendingConversations] = useState<Conversation[]>([]);
   const [openConversations, setOpenConversations] = useState<Conversation[]>([]);
   const [closedConversations, setClosedConversations] = useState<Conversation[]>([]);
@@ -1727,9 +1732,24 @@ const AtendimentoPage = () => {
         });
         if (res.ok) {
           const data = await res.json();
-          // Map system status to UI status
           const status = data.status || 'disconnected';
-          setWhatsappStatus(status === 'connected' ? 'open' : (status === 'connecting' ? 'connecting' : 'close'));
+          const apiStatus = status === 'connected' ? 'open' : (status === 'connecting' ? 'connecting' : 'close');
+
+          // Fallback: if API says disconnected but we have recent inbound messages (< 5 min),
+          // treat as connected — avoids false "disconnected" warnings when Evolution API is slow.
+          if (apiStatus === 'close' || apiStatus === 'unknown') {
+            const hasRecentActivity = conversationsRef.current.some(c => {
+              if (!c.last_message_at) return false;
+              const diffMs = Date.now() - new Date(c.last_message_at).getTime();
+              return diffMs < 5 * 60 * 1000; // 5 minutes
+            });
+            if (hasRecentActivity) {
+              setWhatsappStatus('open');
+              return;
+            }
+          }
+
+          setWhatsappStatus(apiStatus);
         }
       } catch (e) {
         setWhatsappStatus('unknown');
@@ -3201,12 +3221,20 @@ const AtendimentoPage = () => {
                     </div>
                   </div>
                 )}
-                <h3 className={cn(
-                  "text-[13px] font-semibold truncate leading-tight tracking-tight",
-                  isSelected ? "text-[#0F172A]" : "text-[#475569] group-hover:text-[#0F172A]"
-                )}>
-                  {getDisplayName(conv)}
-                </h3>
+                <div className="min-w-0 flex-1">
+                  <h3 className={cn(
+                    "text-[13px] font-semibold truncate leading-tight tracking-tight",
+                    isSelected ? "text-[#0F172A]" : "text-[#475569] group-hover:text-[#0F172A]"
+                  )}>
+                    {getDisplayName(conv)}
+                  </h3>
+                  {/* Phone subtitle — only for WhatsApp when name ≠ number */}
+                  {conv.channel !== 'instagram' && !conv.is_group && conv.phone && getDisplayName(conv) !== conv.phone?.replace(/\D/g, '') && (
+                    <p className="text-[10px] text-[#94A3B8] truncate leading-tight tabular-nums">
+                      {conv.phone?.replace(/\D/g, '').replace(/^55(\d{2})(\d{4,5})(\d{4})$/, '+55 $1 $2-$3') || conv.phone}
+                    </p>
+                  )}
+                </div>
               </div>
               <span className={cn(
                 "text-[10px] tabular-nums shrink-0 font-medium opacity-70",

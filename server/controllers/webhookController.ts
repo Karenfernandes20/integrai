@@ -365,12 +365,18 @@ export const handleWebhook = async (req: Request, res: Response) => {
                                 if (conv.status === 'CLOSED') conversationClosed = true;
 
                                 // Update unread count and last message
+                                // IMPORTANT: Only revert to PENDING if conversation was CLOSED (customer re-opened).
+                                // OPEN conversations must stay OPEN even when new inbound messages arrive.
                                 await pool.query(
                                     `UPDATE whatsapp_conversations 
                                      SET last_message = $1, 
                                          last_message_at = $2,
                                          unread_count = CASE WHEN $3 = 'inbound' THEN unread_count + 1 ELSE unread_count END,
-                                         status = CASE WHEN $3 = 'inbound' THEN 'PENDING' WHEN status = 'CLOSED' THEN 'PENDING' ELSE status END,
+                                         status = CASE 
+                                             WHEN status = 'CLOSED' AND $3 = 'inbound' THEN 'PENDING'
+                                             ELSE status
+                                         END,
+                                         user_id = CASE WHEN status = 'CLOSED' AND $3 = 'inbound' THEN NULL ELSE user_id END,
                                          updated_at = NOW()
                                      WHERE id = $4`,
                                     [text || (msg.imageMessage ? 'Imagem' : 'Mensagem'), sentAt.toISOString(), fromMe ? 'outbound' : 'inbound', conversationId]
