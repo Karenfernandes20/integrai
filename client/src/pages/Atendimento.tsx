@@ -804,9 +804,9 @@ const AtendimentoPage = () => {
       return conv.phone || "Usuário Instagram";
     }
 
-    // WhatsApp Logic - Priority 1: Saved name from database
-    if (isUsableName(conv.contact_name) && conv.contact_name !== conv.phone) {
-      return conv.contact_name!;
+    // WhatsApp Logic - Priority 1: Saved name from database (CRM name)
+    if (isUsableName(conv.contact_saved_name) && conv.contact_saved_name !== conv.phone) {
+      return conv.contact_saved_name!;
     }
 
     const raw = conv.phone.replace(/\D/g, "");
@@ -815,8 +815,14 @@ const AtendimentoPage = () => {
       return fromDB!;
     }
 
+    // Priority 2: Push Name from remote WhatsApp user
     if (isUsableName(conv.contact_push_name)) {
       return conv.contact_push_name!;
+    }
+
+    // Priority 3: the contact_name saved during conversation creation (might have the agent name if she initiated the chat)
+    if (isUsableName(conv.contact_name) && conv.contact_name !== conv.phone) {
+      return conv.contact_name!;
     }
 
     // Final fallback: formatted phone

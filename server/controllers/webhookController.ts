@@ -338,7 +338,7 @@ export const handleWebhook = async (req: Request, res: Response) => {
                                 // Group Name or Contact Name
                                 const contactName = isGroup
                                     ? (data?.groupName || message.groupName || message.subject || "Grupo " + remoteJid)
-                                    : (pushName || phone);
+                                    : (fromMe ? phone : (pushName || phone));
 
                                 const newConv = await pool.query(
                                     `INSERT INTO whatsapp_conversations 
