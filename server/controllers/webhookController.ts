@@ -8,7 +8,7 @@ import { normalizePhone, extractPhoneFromJid, isGroupJid } from '../utils/phoneU
 import { downloadMediaFromEvolution } from '../services/mediaService.js';
 import { returnToPending } from './conversationController.js';
 import { handleWhaticketGreeting } from '../services/whaticketService.js';
-import { getEvolutionConfig } from './evolutionController.js';
+import { getEvolutionConfig, triggerProfilePicSyncForItem } from './evolutionController.js';
 import { getInstagramProfile, formatInstagramUsername } from '../services/instagramProfileService.js';
 
 // Tipo simplificado da mensagem
@@ -359,6 +359,9 @@ export const handleWebhook = async (req: Request, res: Response) => {
                                 );
                                 conversationId = newConv.rows[0].id;
                                 console.log(`[Webhook] Created new conversation ${conversationId} for ${remoteJid}`);
+
+                                // Automatically trigger profile pic sync for new conversation
+                                triggerProfilePicSyncForItem(companyId, instance, remoteJid, isGroup, req.app.get('io'));
                             } else {
                                 const conv = convRes.rows[0];
                                 conversationId = conv.id;

@@ -3,6 +3,7 @@ import { Request, Response } from 'express';
 import { pool } from '../db/index.js';
 import { resolveCompanyByInstanceKey } from '../utils/evolutionUtils.js';
 import { getOrCreateQueueId } from './queueController.js';
+import { triggerProfilePicSyncForItem } from './evolutionController.js';
 
 const isUsableGroupTitle = (value?: string | null) => {
     if (!value) return false;
@@ -89,7 +90,7 @@ const ensureLeadForFirstPendingMessage = async (
     return insertedLead.rows[0] || null;
 };
 
-export const processIncomingMessage = async (companyId: number, instanceName: string, msg: any) => {
+export const processIncomingMessage = async (companyId: number, instanceName: string, msg: any, io?: any) => {
     try {
         if (!pool) throw new Error("Database not configured");
 
@@ -258,6 +259,9 @@ export const processIncomingMessage = async (companyId: number, instanceName: st
             conversationId = newConv.rows[0].id;
             var finalConversationStatus = newConv.rows[0].status;
             console.log(`[Message Processor] Created New Conversation ${conversationId} (PENDING)`);
+
+            // Trigger profile pic sync for new conversation
+            triggerProfilePicSyncForItem(companyId, instanceName, remoteJid, isGroup, io);
 
             if (!isGroup) {
                 try {

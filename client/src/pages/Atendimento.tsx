@@ -1056,6 +1056,33 @@ const AtendimentoPage = () => {
     processQueue();
   }, [conversations.length, token]); // Run when list size changes (initial load or manual update)
 
+  // AUTO-SYNC PROFILE PICTURES
+  useEffect(() => {
+    if (conversations.length === 0 && importedContacts.length === 0) return;
+
+    // Check if any conversation or contact is missing a profile pic OR has an expired one (mmg.whatsapp.net)
+    const needsSync = conversations.some(c =>
+      !c.profile_pic_url ||
+      c.profile_pic_url === '' ||
+      c.profile_pic_url.includes('mmg.whatsapp.net')
+    ) || importedContacts.some(c =>
+      !c.profile_pic_url ||
+      c.profile_pic_url === '' ||
+      c.profile_pic_url.includes('mmg.whatsapp.net')
+    );
+
+    if (!needsSync) return;
+
+    console.log("[AutoSync] Triggering background profile picture sync...");
+
+    // Call the sync endpoint (it processes in background)
+    fetch('/api/evolution/profile-pic/sync', {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${token}` }
+    }).catch(err => console.error("[AutoSync] Failed to trigger sync:", err));
+
+  }, [conversations.length, importedContacts.length, token]); // Trigger when lists load or change
+
 
 
   // Scroll Logic mimicking WhatsApp Web
@@ -1282,11 +1309,13 @@ const AtendimentoPage = () => {
             last_message: newMessage.content,
             last_message_at: newMessage.sent_at,
             unread_count: (existing.unread_count || 0) + (newMessage.direction === 'inbound' && !isChatOpen ? 1 : 0),
-            // Update names if the socket brings better info
-            contact_name: (newMessage.contact_name && newMessage.contact_name !== newMessage.phone && (existing.contact_name === existing.phone || !existing.contact_name))
+            // Update names if the socket brings better info (ONLY for inbound messages)
+            contact_name: (newMessage.direction === 'inbound' && newMessage.contact_name && newMessage.contact_name !== newMessage.phone && (existing.contact_name === existing.phone || !existing.contact_name))
               ? newMessage.contact_name
               : existing.contact_name,
-            contact_push_name: newMessage.contact_push_name || existing.contact_push_name,
+            contact_push_name: (newMessage.direction === 'inbound')
+              ? (newMessage.contact_push_name || existing.contact_push_name)
+              : existing.contact_push_name,
             // BUG FIX: Use conversation_status if available, otherwise keep existing status. 
             // Do NOT use newMessage.status as it is message status (sent/received), not conversation status.
             status: newMessage.conversation_status || existing.status
@@ -1296,8 +1325,12 @@ const AtendimentoPage = () => {
           conversationToUpdate = {
             id: newMessage.conversation_id,
             phone: newMessage.phone,
-            contact_name: newMessage.contact_name || newMessage.phone,
-            contact_push_name: newMessage.contact_push_name,
+            contact_name: (newMessage.direction === 'inbound')
+              ? (newMessage.contact_name || newMessage.phone)
+              : newMessage.phone,
+            contact_push_name: (newMessage.direction === 'inbound')
+              ? newMessage.contact_push_name
+              : undefined,
             last_message: newMessage.content,
             last_message_at: newMessage.sent_at,
             unread_count: newMessage.direction === 'inbound' ? 1 : 0,

@@ -2166,7 +2166,7 @@ export const handleEvolutionWebhook = async (req: Request, res: Response) => {
           await ensureCompanyInstanceRegistration(resolvedCompanyId, instance);
 
           for (const msg of messages) {
-            const result = await processIncomingMessage(resolvedCompanyId, instance, msg);
+            const result = await processIncomingMessage(resolvedCompanyId, instance, msg, io);
 
             if (result && io) {
               const payload = {
@@ -2472,6 +2472,76 @@ export const getEvolutionProfilePic = async (req: Request, res: Response) => {
   }
 };
 
+// Helper to trigger a single profile pic sync in the background
+export const triggerProfilePicSyncForItem = async (
+  companyId: number,
+  instance: string,
+  jidOrPhone: string,
+  isGroup: boolean,
+  io?: any
+) => {
+  try {
+    const config = await getEvolutionConfig({ company_id: companyId }, 'sync_single_pic', companyId, instance);
+    const baseUrl = (config.url || '').replace(/\/$/, "");
+    const apiKey = config.apikey;
+
+    if (!baseUrl || !apiKey) return;
+
+    console.log(`[SyncPic] Background sync for ${jidOrPhone} (Instance: ${instance})...`);
+
+    // Run in background
+    (async () => {
+      try {
+        const response = await fetch(`${baseUrl}/chat/fetchProfilePictureUrl/${instance}`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "apikey": apiKey },
+          body: JSON.stringify({ number: jidOrPhone })
+        });
+
+        let picUrl: string | null = null;
+        if (response.ok) {
+          const data = await response.json();
+          picUrl = data.profilePictureUrl || data.url;
+        }
+
+        // Fallback for groups
+        if (!picUrl && isGroup) {
+          const gRes = await fetch(`${baseUrl}/group/findGroup/${instance}?groupJid=${encodeURIComponent(jidOrPhone)}`, {
+            headers: { "apikey": apiKey }
+          });
+          if (gRes.ok) {
+            const gData = await gRes.json();
+            picUrl = gData.profilePictureUrl || gData.pic || gData.picture;
+          }
+        }
+
+        if (picUrl) {
+          await Promise.all([
+            pool?.query("UPDATE whatsapp_conversations SET profile_pic_url = $1 WHERE (external_id = $2 OR phone = $3) AND company_id = $4", [picUrl, jidOrPhone, jidOrPhone.split('@')[0], companyId]),
+            pool?.query("UPDATE whatsapp_contacts SET profile_pic_url = $1 WHERE (jid = $2 OR phone = $3) AND company_id = $4", [picUrl, jidOrPhone, jidOrPhone.split('@')[0], companyId])
+          ]);
+
+          if (io) {
+            const convRes = await pool?.query("SELECT id FROM whatsapp_conversations WHERE (external_id = $1 OR phone = $2) AND company_id = $3", [jidOrPhone, jidOrPhone.split('@')[0], companyId]);
+            if (convRes && convRes.rows.length > 0) {
+              const room = `company_${companyId}`;
+              io.to(room).emit('conversation:update', {
+                id: convRes.rows[0].id,
+                profile_pic_url: picUrl
+              });
+            }
+          }
+          console.log(`[SyncPic] ✅ Background sync success for ${jidOrPhone}`);
+        }
+      } catch (err) {
+        console.error(`[SyncPic] Error:`, err);
+      }
+    })();
+  } catch (e) {
+    console.error(`[SyncPic] Failed to initiate:`, e);
+  }
+};
+
 export const syncAllProfilePics = async (req: Request, res: Response) => {
   const config = await getEvolutionConfig((req as any).user, 'syncAllProfilePics');
   const EVOLUTION_API_URL = config.url;
@@ -2552,6 +2622,21 @@ export const syncAllProfilePics = async (req: Request, res: Response) => {
                 pool.query("UPDATE whatsapp_conversations SET profile_pic_url = $1 WHERE (external_id = $2 OR phone = $3) AND company_id = $4", [picUrl, item.external_id, item.phone, companyId]),
                 pool.query("UPDATE whatsapp_contacts SET profile_pic_url = $1 WHERE (jid = $2 OR phone = $3) AND company_id = $4", [picUrl, item.external_id, item.phone, companyId])
               ]);
+
+              // Emit socket update if possible
+              const io = req.app.get('io');
+              if (io) {
+                // Find the conversation ID to emit the update
+                const convRes = await pool.query("SELECT id FROM whatsapp_conversations WHERE (external_id = $1 OR phone = $2) AND company_id = $3", [item.external_id, item.phone, companyId]);
+                if (convRes.rows.length > 0) {
+                  const room = `company_${companyId}`;
+                  io.to(room).emit('conversation:update', {
+                    id: convRes.rows[0].id,
+                    profile_pic_url: picUrl
+                  });
+                }
+              }
+
               count++;
               console.log(`[SyncPics] ✅ Updated pic for ${target}`);
             } else {
