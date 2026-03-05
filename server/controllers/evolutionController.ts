@@ -908,42 +908,29 @@ export const sendEvolutionMessage = async (req: Request, res: Response) => {
 
         // Basic normalization of remoteJid
         const safePhone = targetPhone || "";
-        const remoteJid = safePhone; // Already normalized above
-        const messageIsGroup = remoteJid.endsWith('@g.us') || inferredGroup;
+        const messageIsGroup = safePhone.endsWith('@g.us') || inferredGroup;
+
+        // Normalize JID: Strip device node (:1)
+        const normalizedRemoteJid = messageIsGroup ? safePhone : safePhone.split(':')[0].split('@')[0] + '@s.whatsapp.net';
+
         const user = (req as any).user;
         const resolvedCompanyId = config.company_id;
 
-        const conversationPhone = messageIsGroup ? remoteJid : safePhone;
+        const conversationPhone = messageIsGroup ? normalizedRemoteJid : safePhone;
         const resolvedGroupTitle = messageIsGroup
-          ? (await resolveStoredGroupTitle(resolvedCompanyId, remoteJid)) || "Grupo"
+          ? (await resolveStoredGroupTitle(resolvedCompanyId, normalizedRemoteJid)) || "Grupo"
           : null;
 
-        // Find or create conversation
+        // Find or create conversation by JID + Company
         let conversationId: number;
 
-        // CHECK INSTANCE AND COMPANY isolation
         const checkConv = await pool.query(
           `SELECT id, status, user_id, is_group, group_name
            FROM whatsapp_conversations
            WHERE external_id = $1
              AND company_id = $2
-             AND (
-               instance = $3
-               OR last_instance_key = $3
-               OR instance IS NULL
-               OR instance = ''
-             )
-           ORDER BY
-             CASE
-               WHEN instance = $3 THEN 0
-               WHEN last_instance_key = $3 THEN 1
-               WHEN instance IS NULL OR instance = '' THEN 2
-               ELSE 9
-             END,
-             updated_at DESC NULLS LAST,
-             id DESC
            LIMIT 1`,
-          [remoteJid, resolvedCompanyId, EVOLUTION_INSTANCE]
+          [normalizedRemoteJid, resolvedCompanyId]
         );
 
         if (checkConv.rows.length > 0) {
@@ -953,7 +940,8 @@ export const sendEvolutionMessage = async (req: Request, res: Response) => {
             `UPDATE whatsapp_conversations 
              SET last_message = $1, last_message_at = NOW(), status = 'OPEN', user_id = COALESCE(user_id, $2), company_id = COALESCE(company_id, $3),
                  is_group = CASE WHEN $5 THEN true ELSE is_group END,
-                 instance = COALESCE(NULLIF(instance, ''), $7),
+                 instance = $7,
+                 last_instance_key = $7,
                  group_name = CASE
                    WHEN $5 THEN COALESCE(NULLIF(group_name, external_id), $6, group_name, 'Grupo')
                    ELSE group_name
@@ -968,10 +956,10 @@ export const sendEvolutionMessage = async (req: Request, res: Response) => {
         } else {
           // Create new conversation as OPEN and assigned to the sender
           const newConv = await pool.query(
-            `INSERT INTO whatsapp_conversations (external_id, phone, contact_name, instance, status, user_id, last_message, last_message_at, company_id, is_group, group_name) 
-             VALUES ($1, $2, $3, $4, 'OPEN', $5, $6, NOW(), $7, $8, $9) RETURNING id`,
+            `INSERT INTO whatsapp_conversations (external_id, phone, contact_name, instance, last_instance_key, status, user_id, last_message, last_message_at, company_id, is_group, group_name, channel) 
+             VALUES ($1, $2, $3, $4, $4, 'OPEN', $5, $6, NOW(), $7, $8, $9, 'whatsapp') RETURNING id`,
             [
-              remoteJid,
+              normalizedRemoteJid,
               conversationPhone,
               messageIsGroup ? resolvedGroupTitle : conversationPhone,
               EVOLUTION_INSTANCE,
@@ -1013,7 +1001,7 @@ export const sendEvolutionMessage = async (req: Request, res: Response) => {
           user_id: user.id,
           agent_name: user.full_name,
           phone: conversationPhone,
-          remoteJid: remoteJid,
+          remoteJid: normalizedRemoteJid,
           is_group: messageIsGroup,
           group_name: messageIsGroup ? resolvedGroupTitle : null
         };
@@ -1120,37 +1108,28 @@ export const sendEvolutionMedia = async (req: Request, res: Response) => {
         const remoteJid = safePhone.includes('@')
           ? safePhone
           : (inferredGroup ? `${safePhone}@g.us` : `${safePhone}@s.whatsapp.net`);
-        const messageIsGroup = remoteJid.endsWith('@g.us') || inferredGroup;
-        const conversationPhone = messageIsGroup ? remoteJid : safePhone;
+
+        // Normalize JID: Strip device node (:1)
+        const normalizedRemoteJid = remoteJid.includes('@g.us')
+          ? remoteJid.split(':')[0].split('@')[0] + '@g.us'
+          : remoteJid.split(':')[0].split('@')[0] + '@s.whatsapp.net';
+
+        const messageIsGroup = normalizedRemoteJid.endsWith('@g.us') || inferredGroup;
+        const conversationPhone = messageIsGroup ? normalizedRemoteJid : safePhone;
         const resolvedGroupTitle = messageIsGroup
-          ? (await resolveStoredGroupTitle(resolvedCompanyId, remoteJid)) || "Grupo"
+          ? (await resolveStoredGroupTitle(resolvedCompanyId, normalizedRemoteJid)) || "Grupo"
           : null;
         const content = caption || `[${mediaType}]`;
 
-        // Find or create conversation
+        // Find or create conversation by JID + Company
         let conversationId: number;
         const checkConv = await pool.query(
           `SELECT id
            FROM whatsapp_conversations
            WHERE external_id = $1
              AND company_id = $2
-             AND (
-               instance = $3
-               OR last_instance_key = $3
-               OR instance IS NULL
-               OR instance = ''
-             )
-           ORDER BY
-             CASE
-               WHEN instance = $3 THEN 0
-               WHEN last_instance_key = $3 THEN 1
-               WHEN instance IS NULL OR instance = '' THEN 2
-               ELSE 9
-             END,
-             updated_at DESC NULLS LAST,
-             id DESC
            LIMIT 1`,
-          [remoteJid, resolvedCompanyId, EVOLUTION_INSTANCE]
+          [normalizedRemoteJid, resolvedCompanyId]
         );
 
         if (checkConv.rows.length > 0) {
@@ -1159,7 +1138,8 @@ export const sendEvolutionMedia = async (req: Request, res: Response) => {
             `UPDATE whatsapp_conversations 
              SET last_message = $1, last_message_at = NOW(), status = 'OPEN', user_id = COALESCE(user_id, $2), company_id = COALESCE(company_id, $3),
                  is_group = CASE WHEN $5 THEN true ELSE is_group END,
-                 instance = COALESCE(NULLIF(instance, ''), $7),
+                 instance = $7,
+                 last_instance_key = $7,
                  group_name = CASE
                    WHEN $5 THEN COALESCE(NULLIF(group_name, external_id), $6, group_name, 'Grupo')
                    ELSE group_name
@@ -1173,9 +1153,10 @@ export const sendEvolutionMedia = async (req: Request, res: Response) => {
           );
         } else {
           const newConv = await pool.query(
-            `INSERT INTO whatsapp_conversations (external_id, phone, contact_name, instance, status, user_id, last_message, last_message_at, company_id, is_group, group_name) VALUES ($1, $2, $3, $4, 'OPEN', $5, $6, NOW(), $7, $8, $9) RETURNING id`,
+            `INSERT INTO whatsapp_conversations (external_id, phone, contact_name, instance, last_instance_key, status, user_id, last_message, last_message_at, company_id, is_group, group_name, channel) 
+             VALUES ($1, $2, $3, $4, $4, 'OPEN', $5, $6, NOW(), $7, $8, $9, 'whatsapp') RETURNING id`,
             [
-              remoteJid,
+              normalizedRemoteJid,
               conversationPhone,
               messageIsGroup ? resolvedGroupTitle : conversationPhone,
               EVOLUTION_INSTANCE,
@@ -1225,7 +1206,7 @@ export const sendEvolutionMedia = async (req: Request, res: Response) => {
           message_type: mediaType,
           media_url: media.startsWith('http') ? media : null,
           phone: conversationPhone,
-          remoteJid: remoteJid,
+          remoteJid: normalizedRemoteJid,
           is_group: messageIsGroup,
           group_name: messageIsGroup ? resolvedGroupTitle : null
         };
@@ -2363,13 +2344,14 @@ export const getEvolutionMedia = async (req: Request, res: Response) => {
 
     // 1. Get message details
     const msgQuery = await pool.query(
-      "SELECT external_id, direction, conversation_id, message_type FROM whatsapp_messages WHERE id = $1",
+      "SELECT external_id, direction, conversation_id, message_type, content FROM whatsapp_messages WHERE id = $1",
       [messageId]
     );
     if (msgQuery.rows.length === 0) return res.status(404).send("Message not found");
 
-    const { external_id, direction, conversation_id, message_type } = msgQuery.rows[0];
+    const { external_id, direction, conversation_id, message_type, content } = msgQuery.rows[0];
 
+    // ... (lines 2373 - 2415 remain similar, but I'll replace the block)
     // 2. Get instance from conversation
     const convQuery = await pool.query("SELECT instance, phone, external_id as remote_jid FROM whatsapp_conversations WHERE id = $1", [conversation_id]);
     if (convQuery.rows.length === 0) return res.status(404).send("Conversation not found");
@@ -2393,7 +2375,7 @@ export const getEvolutionMedia = async (req: Request, res: Response) => {
           remoteJid: remote_jid
         }
       },
-      convertToMp4: false
+      convertToMp4: message_type === 'video'
     };
 
     const response = await fetch(url, {
@@ -2408,19 +2390,47 @@ export const getEvolutionMedia = async (req: Request, res: Response) => {
     }
 
     const data = await response.json();
-
     if (!data.base64) return res.status(404).send("Media content not found");
 
     const imgBuffer = Buffer.from(data.base64, 'base64');
+    const filename = content || 'arquivo';
+    console.log(`[Media Proxy] Serving ${message_type} for msg ${external_id} (${imgBuffer.length} bytes)`);
 
-    // Set content type based on message type if possible
-    if (message_type === 'image' || message_type === 'sticker' || message_type === 'stickerMessage') res.setHeader('Content-Type', 'image/webp');
-    else if (message_type === 'audio' || message_type === 'audioMessage') {
-      res.setHeader('Content-Type', 'audio/ogg; codecs=opus');
+    // Set common headers
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('Access-Control-Expose-Headers', 'Content-Disposition');
+
+    // Determine MIME type
+    let contentType = 'application/octet-stream';
+    const lowFilename = filename.toLowerCase();
+
+    if (message_type === 'image' || message_type === 'sticker' || message_type === 'stickerMessage') {
+      contentType = 'image/webp';
+    } else if (message_type === 'audio' || message_type === 'audioMessage') {
+      // WhatsApp standard is ogg/opus. For better compatibility across browsers (like Safari),
+      // sometimes audio/mpeg or audio/mp4 works better as a hint, but audio/ogg is correct for WA.
+      contentType = 'audio/ogg; codecs=opus';
       res.setHeader('Accept-Ranges', 'bytes');
+    } else if (message_type === 'video') {
+      contentType = 'video/mp4';
+    } else if (message_type === 'document' || lowFilename.includes('.')) {
+      if (lowFilename.endsWith('.pdf')) contentType = 'application/pdf';
+      else if (lowFilename.endsWith('.doc') || lowFilename.endsWith('.docx')) contentType = 'application/msword';
+      else if (lowFilename.endsWith('.xls') || lowFilename.endsWith('.xlsx')) contentType = 'application/vnd.ms-excel';
+      else if (lowFilename.endsWith('.ppt') || lowFilename.endsWith('.pptx')) contentType = 'application/vnd.ms-powerpoint';
+      else if (lowFilename.endsWith('.txt')) contentType = 'text/plain';
+      else if (lowFilename.endsWith('.zip')) contentType = 'application/zip';
     }
-    else if (message_type === 'video') res.setHeader('Content-Type', 'video/mp4');
-    else res.setHeader('Content-Type', 'application/octet-stream');
+
+    res.setHeader('Content-Type', contentType);
+
+    // Suggest filename for downloads and inline viewing
+    // Use 'inline' for PDF/Images to allow browser preview, 'attachment' for others if desired.
+    const disposition = (contentType === 'application/pdf' || contentType.startsWith('image/') || contentType.startsWith('video/') || contentType.startsWith('audio/'))
+      ? 'inline'
+      : 'attachment';
+
+    res.setHeader('Content-Disposition', `${disposition}; filename="${encodeURIComponent(filename)}"`);
 
     return res.send(imgBuffer);
 

@@ -99,7 +99,13 @@ export const processIncomingMessage = async (companyId: number, instanceName: st
 
         // 1. Validate Ignore Criteria
         const fromMe = key.fromMe === true;
-        const remoteJid = key.remoteJid;
+        let remoteJid = key.remoteJid;
+
+        // Normalize JID: Remove device/node suffixes (e.g. 551199999999:1@s.whatsapp.net -> 551199999999@s.whatsapp.net)
+        if (remoteJid && remoteJid.includes(':') && remoteJid.includes('@')) {
+            remoteJid = remoteJid.split(':')[0].split('@')[0] + '@' + remoteJid.split('@')[1];
+        }
+
         const isGroup = remoteJid && remoteJid.endsWith('@g.us');
 
         // Ignore invalid or broadcast (Allow groups now)
@@ -185,9 +191,13 @@ export const processIncomingMessage = async (companyId: number, instanceName: st
         let conversationId: number;
 
         // Find conversation by remoteJid (Group JID or User JID)
+        // LOOSE SEARCH: Also check by clean phone if not a group to merge conversations started manually in the UI
         const convRes = await pool.query(
-            `SELECT id, status, contact_name, group_name, group_subject FROM whatsapp_conversations WHERE external_id = $1 AND company_id = $2`,
-            [remoteJid, companyId]
+            `SELECT id, status, contact_name, group_name, group_subject, external_id 
+             FROM whatsapp_conversations 
+             WHERE (external_id = $1 OR (phone = $2 AND is_group = false)) AND company_id = $3
+             ORDER BY CASE WHEN external_id = $1 THEN 0 ELSE 1 END, id DESC LIMIT 1`,
+            [remoteJid, isGroup ? groupPhone : senderPhone, companyId]
         );
 
         if (convRes.rows.length > 0) {
@@ -230,11 +240,12 @@ export const processIncomingMessage = async (companyId: number, instanceName: st
                     unread_count = unread_count + 1,
                     status = CASE WHEN status = 'CLOSED' THEN 'PENDING' ELSE status END,
                     user_id = CASE WHEN status = 'CLOSED' THEN NULL ELSE user_id END, 
-                    instance = $2
-                    ${nameUpdateQuery}
+                    instance = $2,
+                    external_id = COALESCE(external_id, $4)
+                    ${nameUpdateQuery.replace(', contact_name = $4', ', contact_name = $5').replace(', group_name = $4', ', group_name = $5')}
                 WHERE id = $3
                 RETURNING status
-            `, params);
+            `, [...params.slice(0, 3), remoteJid, ...params.slice(3)]);
 
             const newStatus = updateResult.rows[0]?.status || 'OPEN'; // Fallback if update fails (shouldn't happens)
             console.log(`[Message Processor] Updated Conversation ${conversationId} (Status: ${newStatus})`);

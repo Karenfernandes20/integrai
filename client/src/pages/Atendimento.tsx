@@ -4219,10 +4219,15 @@ const AtendimentoPage = () => {
                                               "text-[9px] uppercase tracking-wider font-medium opacity-70",
                                               isOutbound ? "text-[#64748B]" : "text-[#64748B]"
                                             )}>
-                                              PDF / Documento • Abrir
+                                              DOCUMENTO • CLIQUE PARA ABRIR
                                             </p>
                                           </div>
-                                          <Download className={cn("w-4 h-4 text-[#94A3B8]")} />
+                                          <div className="flex flex-col items-center gap-1">
+                                            <Download className={cn("w-4 h-4 text-[#94A3B8]")} />
+                                            {(msg.content || '').toLowerCase().endsWith('.pdf') && (
+                                              <span className="text-[8px] font-bold text-[#2563EB]">PDF</span>
+                                            )}
+                                          </div>
                                         </div>
                                       )}
 

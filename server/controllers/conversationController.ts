@@ -411,24 +411,30 @@ export const ensureConversation = async (req: AuthenticatedRequest, res: Respons
 
         // Normalize phone
         const cleanPhone = phone.replace(/\D/g, '');
+        const jid = `${cleanPhone}@s.whatsapp.net`;
 
         // Check if exists
         const check = await pool.query(
-            'SELECT * FROM whatsapp_conversations WHERE (phone = $1 OR phone = $2) AND company_id = $3 LIMIT 1',
-            [cleanPhone, phone, companyId]
+            'SELECT * FROM whatsapp_conversations WHERE (phone = $1 OR external_id = $2) AND company_id = $3 LIMIT 1',
+            [cleanPhone, jid, companyId]
         );
 
         if (check.rows.length > 0) {
+            // If it exists but external_id is missing, update it
+            if (!check.rows[0].external_id) {
+                await pool.query('UPDATE whatsapp_conversations SET external_id = $1 WHERE id = $2', [jid, check.rows[0].id]);
+                check.rows[0].external_id = jid;
+            }
             return res.json(check.rows[0]);
         }
 
         // Create new
         const result = await pool.query(
             `INSERT INTO whatsapp_conversations 
-             (phone, contact_name, status, company_id, last_message_at, created_at)
-             VALUES ($1, $2, 'PENDING', $3, NOW(), NOW())
+             (external_id, phone, contact_name, status, company_id, last_message_at, created_at, channel)
+             VALUES ($1, $2, $3, 'PENDING', $4, NOW(), NOW(), 'whatsapp')
              RETURNING *`,
-            [cleanPhone, name || phone, companyId]
+            [jid, cleanPhone, name || phone, companyId]
         );
 
         return res.json(result.rows[0]);
