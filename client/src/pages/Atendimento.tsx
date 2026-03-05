@@ -1282,6 +1282,11 @@ const AtendimentoPage = () => {
             last_message: newMessage.content,
             last_message_at: newMessage.sent_at,
             unread_count: (existing.unread_count || 0) + (newMessage.direction === 'inbound' && !isChatOpen ? 1 : 0),
+            // Update names if the socket brings better info
+            contact_name: (newMessage.contact_name && newMessage.contact_name !== newMessage.phone && (existing.contact_name === existing.phone || !existing.contact_name))
+              ? newMessage.contact_name
+              : existing.contact_name,
+            contact_push_name: newMessage.contact_push_name || existing.contact_push_name,
             // BUG FIX: Use conversation_status if available, otherwise keep existing status. 
             // Do NOT use newMessage.status as it is message status (sent/received), not conversation status.
             status: newMessage.conversation_status || existing.status
@@ -1292,6 +1297,7 @@ const AtendimentoPage = () => {
             id: newMessage.conversation_id,
             phone: newMessage.phone,
             contact_name: newMessage.contact_name || newMessage.phone,
+            contact_push_name: newMessage.contact_push_name,
             last_message: newMessage.content,
             last_message_at: newMessage.sent_at,
             unread_count: newMessage.direction === 'inbound' ? 1 : 0,

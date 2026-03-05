@@ -439,10 +439,15 @@ export const handleWebhook = async (req: Request, res: Response) => {
                                 });
 
                                 // 4. Socket Emit
-                                // 4. Socket Emit
                                 const io = req.app.get('io');
                                 if (io) {
                                     const room = `company_${companyId}`;
+
+                                    // Determinar o nome real do contato para exibição na conversa (não o do remetente se for fromMe)
+                                    const convContactName = convRes.rows[0]?.contact_name || (isGroup
+                                        ? (data?.groupName || message.groupName || message.subject || "Grupo " + remoteJid)
+                                        : (fromMe ? extractPhoneFromJid(remoteJid) : (pushName || extractPhoneFromJid(remoteJid))));
+
                                     const payloadEmit = {
                                         id: result.rows[0].id,
                                         conversation_id: conversationId,
@@ -454,11 +459,13 @@ export const handleWebhook = async (req: Request, res: Response) => {
                                         status: 'received',
                                         external_id: messageId,
                                         sender_jid: senderJid,
-                                        sender_name: pushName,
+                                        sender_name: pushName, // Nome de quem enviou ESTA mensagem
                                         sent_at: sentAt.toISOString(),
                                         is_group: isGroup,
-                                        contact_name: pushName,
-                                        instance: instance
+                                        contact_name: convContactName, // Nome da CONVERSA (Fixo do contato)
+                                        contact_push_name: fromMe ? null : pushName, // Se veio dele, este é o pushname dele
+                                        instance: instance,
+                                        phone: extractPhoneFromJid(remoteJid)
                                     };
 
                                     // Emit standard event
