@@ -87,6 +87,8 @@ export const AdminLayout = () => {
   }, [user?.company?.logo_url, user?.role]);
 
   const isAtendimento = location.pathname.startsWith("/app/atendimento");
+  // Grupos also needs full-height treatment to avoid double scroll
+  const isFullHeight = isAtendimento || location.pathname.startsWith("/app/grupos");
 
   // Calculate Profile
   const profile = getOperationalProfile(user?.company);
@@ -94,15 +96,15 @@ export const AdminLayout = () => {
 
   return (
     <SidebarProvider>
-      <div className={cn("w-full bg-background flex flex-col", isAtendimento ? "h-[100dvh] overflow-hidden" : "min-h-screen")}>
+      <div className={cn("w-full bg-background flex flex-col", isFullHeight ? "h-[100dvh] overflow-hidden" : "min-h-screen")}>
         <SystemModeBanner />
         <SubscriptionBanner />
         <UpgradeModal open={showUpgradeModal} onOpenChange={setShowUpgradeModal} />
 
-        <div className={cn("flex w-full flex-1", isAtendimento ? "h-full overflow-hidden" : "")}>
+        <div className={cn("flex w-full flex-1", isFullHeight ? "h-full overflow-hidden" : "")}>
           <AppSidebar />
 
-          <SidebarInset className={cn(isAtendimento && "h-[100dvh] overflow-hidden flex flex-col")}>
+          <SidebarInset className={cn(isFullHeight && "h-[100dvh] overflow-hidden flex flex-col")}>
             <header className="sticky top-0 z-20 flex h-16 items-center justify-between border-b bg-background/80 px-4 backdrop-blur-md shrink-0">
               <div className="flex items-center gap-3">
                 <SidebarTrigger className="-ml-1 sm:mr-1" />
@@ -170,7 +172,7 @@ export const AdminLayout = () => {
 
             <main className={cn(
               "flex-1 bg-gradient-to-b from-background via-background to-primary-soft/10",
-              (isAtendimento || location.pathname.startsWith("/app/agenda")) ? "p-0 overflow-hidden h-[calc(100dvh-4rem)]" : "px-2 sm:px-4 pb-8 pt-2 sm:pt-4"
+              (isFullHeight || location.pathname.startsWith("/app/agenda")) ? "p-0 overflow-hidden h-[calc(100dvh-4rem)]" : "px-2 sm:px-4 pb-8 pt-2 sm:pt-4"
             )}>
               {status?.overdue && user?.role !== 'SUPERADMIN' ? (
                 <div className="flex flex-col items-center justify-center h-full text-center space-y-6 p-4 sm:p-8">
@@ -197,7 +199,7 @@ export const AdminLayout = () => {
               ) : (
                 <div className={cn(
                   "mx-auto flex flex-col h-full",
-                  isAtendimento ? "max-w-full gap-0" :
+                  isFullHeight ? "max-w-full gap-0" :
                     location.pathname.startsWith("/app/crm") ? "max-w-full gap-4 p-2 sm:p-4" :
                       location.pathname.startsWith("/app/agenda") ? "max-w-full gap-0 p-0 sm:p-1" : "max-w-6xl gap-4 sm:gap-6"
                 )}>
@@ -206,7 +208,7 @@ export const AdminLayout = () => {
               )}
             </main>
 
-            {!isAtendimento && (
+            {!isFullHeight && (
               <footer className="border-t py-4 px-6 bg-background/50 text-xs text-muted-foreground flex justify-center gap-4">
                 <span>&copy; {new Date().getFullYear()} Integrai</span>
                 <span>•</span>

@@ -11,17 +11,20 @@ import {
     MoreVertical,
     RefreshCw,
     Volume2,
-    VolumeX
+    VolumeX,
+    MessageSquare,
 } from "lucide-react";
 import { Input } from "../components/ui/input";
 import { Button } from "../components/ui/button";
-import { ScrollArea } from "../components/ui/scroll-area";
 import { Avatar, AvatarFallback, AvatarImage } from "../components/ui/avatar";
 import { cn } from "../lib/utils";
 import { io } from "socket.io-client";
 import { toast } from "sonner";
 import EmojiPicker, { EmojiClickData } from "emoji-picker-react";
 
+/* ─────────────────────────────────────────
+   Types
+───────────────────────────────────────── */
 interface GroupConversation {
     id: number | string;
     phone: string;
@@ -50,49 +53,46 @@ interface Message {
     sender_name?: string;
 }
 
-// Helper component for authenticated media
-const AuthImage = ({ src, alt, className, token }: { src: string, alt: string, className?: string, token: string }) => {
+/* ─────────────────────────────────────────
+   Auth media helpers
+───────────────────────────────────────── */
+const AuthImage = ({ src, alt, className, token }: { src: string; alt: string; className?: string; token: string }) => {
     const [imgSrc, setImgSrc] = useState<string | null>(null);
 
     useEffect(() => {
         if (!src) return;
-        if (src.startsWith('data:')) {
-            setImgSrc(src);
-            return;
-        }
-
-        fetch(src, { headers: { 'Authorization': `Bearer ${token}` } })
-            .then(res => res.blob())
-            .then(blob => setImgSrc(URL.createObjectURL(blob)))
+        if (src.startsWith("data:")) { setImgSrc(src); return; }
+        fetch(src, { headers: { Authorization: `Bearer ${token}` } })
+            .then(r => r.blob()).then(b => setImgSrc(URL.createObjectURL(b)))
             .catch(() => setImgSrc(null));
     }, [src, token]);
 
-    if (!imgSrc) return <div className="w-full h-32 bg-zinc-200 dark:bg-zinc-800 flex items-center justify-center text-xs text-zinc-500">Imagem indisponível</div>;
+    if (!imgSrc) return <div className="w-full h-32 bg-zinc-200 dark:bg-zinc-800 flex items-center justify-center text-xs text-zinc-500 rounded">Imagem indisponível</div>;
     return <img src={imgSrc} alt={alt} className={className} />;
 };
 
-const AuthAudio = ({ src, token }: { src: string, token: string }) => {
+const AuthAudio = ({ src, token }: { src: string; token: string }) => {
     const [audioSrc, setAudioSrc] = useState<string | null>(null);
 
     useEffect(() => {
         if (!src) return;
-        if (src.startsWith('data:')) {
-            setAudioSrc(src);
-            return;
-        }
-        fetch(src, { headers: { 'Authorization': `Bearer ${token}` } })
-            .then(res => res.blob())
-            .then(blob => setAudioSrc(URL.createObjectURL(blob)))
-            .catch(err => console.error("Audio fetch error", err));
+        if (src.startsWith("data:")) { setAudioSrc(src); return; }
+        fetch(src, { headers: { Authorization: `Bearer ${token}` } })
+            .then(r => r.blob()).then(b => setAudioSrc(URL.createObjectURL(b)))
+            .catch(e => console.error("Audio fetch error", e));
     }, [src, token]);
 
-    if (!audioSrc) return <span className="text-xs text-red-500">Erro áudio</span>;
-    return <audio controls src={audioSrc} className="w-64 h-8" />;
+    if (!audioSrc) return <span className="text-xs text-zinc-400 italic">Carregando áudio...</span>;
+    return <audio controls src={audioSrc} className="w-56 h-8" />;
 };
 
+/* ─────────────────────────────────────────
+   Main Component
+───────────────────────────────────────── */
 const GruposPage = () => {
     const SAO_PAULO_TZ = "America/Sao_Paulo";
     const { token, user } = useAuth();
+
     const [groups, setGroups] = useState<GroupConversation[]>([]);
     const [searchTerm, setSearchTerm] = useState("");
     const [isLoading, setIsLoading] = useState(true);
@@ -103,8 +103,7 @@ const GruposPage = () => {
     const [showEmojiPicker, setShowEmojiPicker] = useState(false);
     const [isSyncingGroups, setIsSyncingGroups] = useState(false);
     const [isGroupNotificationMuted, setIsGroupNotificationMuted] = useState<boolean>(() => {
-        const saved = localStorage.getItem("group_notification_muted");
-        return saved === "true";
+        return localStorage.getItem("group_notification_muted") === "true";
     });
 
     const scrollRef = useRef<HTMLDivElement>(null);
@@ -117,596 +116,496 @@ const GruposPage = () => {
         groupMutedRef.current = isGroupNotificationMuted;
     }, [isGroupNotificationMuted]);
 
+    /* ── Notification sound ── */
     const playGroupNotificationSound = async () => {
         if (groupMutedRef.current) return;
-
         try {
-            const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
-            if (audioContext.state === "suspended") await audioContext.resume();
-
-            const playDigitalNote = (freq: number, start: number, duration: number, vol: number) => {
-                const osc = audioContext.createOscillator();
-                const osc2 = audioContext.createOscillator();
-                const gain = audioContext.createGain();
-
+            const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
+            if (ctx.state === "suspended") await ctx.resume();
+            const play = (freq: number, start: number, dur: number, vol: number) => {
+                const osc = ctx.createOscillator();
+                const gain = ctx.createGain();
                 osc.type = "sine";
-                osc2.type = "triangle";
-
                 osc.frequency.setValueAtTime(freq, start);
-                osc2.frequency.setValueAtTime(freq, start);
-
                 gain.gain.setValueAtTime(0, start);
                 gain.gain.linearRampToValueAtTime(vol, start + 0.02);
-                gain.gain.exponentialRampToValueAtTime(0.001, start + duration);
-
-                osc.connect(gain);
-                osc2.connect(gain);
-                gain.connect(audioContext.destination);
-
-                osc.start(start);
-                osc2.start(start);
-                osc.stop(start + duration);
-                osc2.stop(start + duration);
+                gain.gain.exponentialRampToValueAtTime(0.001, start + dur);
+                osc.connect(gain); gain.connect(ctx.destination);
+                osc.start(start); osc.stop(start + dur);
             };
-
-            const now = audioContext.currentTime;
-            playDigitalNote(1174.66, now, 0.35, 0.28);
-            playDigitalNote(880.0, now + 0.07, 0.45, 0.24);
-
-            setTimeout(() => audioContext.close(), 1800);
-        } catch (error) {
-            console.error("Error playing group notification sound:", error);
-        }
+            const now = ctx.currentTime;
+            play(1174.66, now, 0.35, 0.28);
+            play(880.0, now + 0.07, 0.45, 0.24);
+            setTimeout(() => ctx.close(), 1800);
+        } catch { }
     };
 
+    /* ── Selected group side-effect ── */
     useEffect(() => {
         selectedGroupRef.current = selectedGroup;
-        if (selectedGroup) {
-            fetchMessages(selectedGroup.id);
-        } else {
-            setMessages([]);
-        }
+        if (selectedGroup) fetchMessages(selectedGroup.id);
+        else setMessages([]);
     }, [selectedGroup]);
 
+    /* ── Fetch groups ── */
     const fetchGroups = async () => {
         try {
-            const res = await fetch("/api/evolution/conversations", {
-                headers: { "Authorization": `Bearer ${token}` }
-            });
+            const res = await fetch("/api/evolution/conversations", { headers: { Authorization: `Bearer ${token}` } });
             if (res.ok) {
                 const data = await res.json();
-                const groupsOnly = data.filter((c: any) => c.is_group === true || c.computed_is_group === true);
-                setGroups(groupsOnly);
+                setGroups(data.filter((c: any) => c.is_group === true || c.computed_is_group === true));
             }
-        } catch (error) {
-            console.error("Error fetching groups:", error);
-        } finally {
-            setIsLoading(false);
-        }
+        } catch (e) { console.error("Error fetching groups:", e); }
+        finally { setIsLoading(false); }
     };
 
-    const fetchMessages = async (conversationId: number | string) => {
+    /* ── Fetch messages ── */
+    const fetchMessages = async (id: number | string) => {
         setIsLoadingMessages(true);
         try {
-            const res = await fetch(`/api/evolution/messages/${conversationId}`, {
-                headers: { "Authorization": `Bearer ${token}` }
-            });
+            const res = await fetch(`/api/evolution/messages/${id}`, { headers: { Authorization: `Bearer ${token}` } });
             if (res.ok) {
-                const data = await res.json();
-                setMessages(data);
-                setTimeout(() => {
-                    if (scrollRef.current) {
-                        scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-                    }
-                }, 100);
+                setMessages(await res.json());
+                setTimeout(() => { if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight; }, 100);
             }
-        } catch (error) {
-            console.error("Error fetching messages:", error);
-        } finally {
-            setIsLoadingMessages(false);
-        }
+        } catch (e) { console.error("Error fetching messages:", e); }
+        finally { setIsLoadingMessages(false); }
     };
 
-    // Auto-refresh groups with generic names
+    /* ── Auto-refresh groups with generic names ── */
     useEffect(() => {
-        if (groups.length === 0) return;
-
-        const groupsToRefresh = groups.filter(g => {
+        if (!groups.length) return;
+        const toRefresh = groups.filter(g => {
             const name = g.group_subject || g.group_name || g.contact_name;
-            return !name || name === 'Grupo' || name === g.phone || /^Grupo \d+/.test(name) || /@g\.us$/.test(name) || !g.profile_pic_url;
+            return !name || name === "Grupo" || name === g.phone || /^Grupo \d+/.test(name) || /@g\.us$/.test(name) || !g.profile_pic_url;
         });
-
-        if (groupsToRefresh.length === 0) return;
-
-        const processQueue = async () => {
-            for (const group of groupsToRefresh) {
+        if (!toRefresh.length) return;
+        (async () => {
+            for (const g of toRefresh) {
                 try {
-                    const res = await fetch(`/api/evolution/conversations/${group.id}/refresh`, {
-                        method: "POST",
-                        headers: { "Authorization": `Bearer ${token}` }
+                    const res = await fetch(`/api/evolution/conversations/${g.id}/refresh`, {
+                        method: "POST", headers: { Authorization: `Bearer ${token}` }
                     });
-
                     if (res.ok) {
                         const data = await res.json();
-                        setGroups(prev => prev.map(c =>
-                            c.id === group.id ? { ...c, group_name: data.name, contact_name: data.name, profile_pic_url: data.pic } : c
-                        ));
-                        if (selectedGroup?.id === group.id) {
-                            setSelectedGroup(prev => prev ? { ...prev, group_name: data.name, contact_name: data.name, profile_pic_url: data.pic } : null);
-                        }
+                        setGroups(prev => prev.map(c => c.id === g.id ? { ...c, group_name: data.name, contact_name: data.name, profile_pic_url: data.pic } : c));
+                        if (selectedGroup?.id === g.id) setSelectedGroup(p => p ? { ...p, group_name: data.name, contact_name: data.name, profile_pic_url: data.pic } : null);
                     }
                     await new Promise(r => setTimeout(r, 1000));
-                } catch (e) {
-                    console.error(`[AutoRefresh] Failed to refresh group ${group.id}`, e);
-                }
+                } catch { }
             }
-        };
-
-        processQueue();
+        })();
     }, [groups.length]);
 
+    /* ── Socket + polling ── */
     useEffect(() => {
         fetchGroups();
         const interval = setInterval(fetchGroups, 10000);
+        const socket = io({ transports: ["polling", "websocket"] });
 
-        const socket = io({
-            transports: ["polling", "websocket"],
-        });
-
-        if (socket.connected && user?.company_id) {
-            socket.emit("join:company", user.company_id);
-        }
-
-        socket.on("connect", () => {
-            if (user?.company_id) {
-                socket.emit("join:company", user.company_id);
-            }
-        });
+        const joinRoom = () => { if (user?.company_id) socket.emit("join:company", user.company_id); };
+        if (socket.connected) joinRoom();
+        socket.on("connect", joinRoom);
 
         socket.on("message:received", (msg: any) => {
-            const isInboundMessage = msg.direction === "inbound" || msg.fromMe === false;
-            if (isInboundMessage) {
-                playGroupNotificationSound();
-            }
-
+            if (msg.direction === "inbound" || msg.fromMe === false) playGroupNotificationSound();
             if (selectedGroupRef.current && (selectedGroupRef.current.phone === msg.phone || selectedGroupRef.current.id === msg.conversation_id)) {
-                setMessages(prev => {
-                    if (prev.find(m => m.id === msg.id)) return prev;
-                    return [...prev, msg];
-                });
-                setTimeout(() => {
-                    if (scrollRef.current) {
-                        scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-                    }
-                }, 100);
+                setMessages(prev => prev.find(m => m.id === msg.id) ? prev : [...prev, msg]);
+                setTimeout(() => { if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight; }, 100);
             }
             fetchGroups();
         });
 
-        return () => {
-            clearInterval(interval);
-            socket.disconnect();
-        };
+        return () => { clearInterval(interval); socket.disconnect(); };
     }, [token, user?.company_id]);
 
+    /* ── Handlers ── */
     const handleSyncAllGroups = async () => {
         setIsSyncingGroups(true);
-        const toastId = toast.loading("Sincronizando grupos da API...");
+        const id = toast.loading("Sincronizando grupos da API...");
         try {
-            const res = await fetch("/api/evolution/groups/sync", {
-                method: "POST",
-                headers: { "Authorization": `Bearer ${token}` }
-            });
-            if (res.ok) {
-                const data = await res.json();
-                toast.success(data.message || "Grupos sincronizados!", { id: toastId });
-                fetchGroups();
-            } else {
-                toast.error("Falha ao sincronizar", { id: toastId });
-            }
-        } catch (e) {
-            toast.error("Erro de conexão", { id: toastId });
-        } finally {
-            setIsSyncingGroups(false);
-        }
+            const res = await fetch("/api/evolution/groups/sync", { method: "POST", headers: { Authorization: `Bearer ${token}` } });
+            if (res.ok) { toast.success((await res.json()).message || "Grupos sincronizados!", { id }); fetchGroups(); }
+            else toast.error("Falha ao sincronizar", { id });
+        } catch { toast.error("Erro de conexão", { id }); }
+        finally { setIsSyncingGroups(false); }
     };
 
     const handleSendMessage = async (e?: React.FormEvent) => {
         if (e) e.preventDefault();
         if (!newMessage.trim() || !selectedGroup) return;
-
         const text = newMessage;
-        setNewMessage("");
-        setShowEmojiPicker(false);
-
+        setNewMessage(""); setShowEmojiPicker(false);
         try {
             const res = await fetch("/api/evolution/messages/send", {
                 method: "POST",
-                headers: {
-                    "Content-Type": "application/json",
-                    "Authorization": `Bearer ${token}`
-                },
-                body: JSON.stringify({
-                    number: selectedGroup.phone,
-                    text: text,
-                    isGroup: true
-                })
+                headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+                body: JSON.stringify({ number: selectedGroup.phone, text, isGroup: true })
             });
-
-            if (!res.ok) {
-                toast.error("Erro ao enviar mensagem");
-            }
-        } catch (error) {
-            console.error("Error sending message:", error);
-            toast.error("Erro de conexão");
-        }
+            if (!res.ok) toast.error("Erro ao enviar mensagem");
+        } catch { toast.error("Erro de conexão"); }
     };
 
     const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
         if (!file || !selectedGroup) return;
-
-        const formData = new FormData();
-        formData.append("file", file);
-        formData.append("number", selectedGroup.phone);
-        formData.append("isGroup", "true");
-
+        const fd = new FormData();
+        fd.append("file", file); fd.append("number", selectedGroup.phone); fd.append("isGroup", "true");
         try {
-            const res = await fetch("/api/evolution/messages/send", {
-                method: "POST",
-                headers: {
-                    "Authorization": `Bearer ${token}`
-                },
-                body: formData
-            });
-
-            if (!res.ok) {
-                toast.error("Erro ao enviar arquivo");
-            }
-        } catch (error) {
-            console.error("Error sending file:", error);
-            toast.error("Erro de conexão");
-        }
-    };
-
-    const onEmojiClick = (emojiData: EmojiClickData) => {
-        setNewMessage(prev => prev + emojiData.emoji);
-    };
-
-    const filteredGroups = groups.filter(group => {
-        if (!searchTerm) return true;
-        const search = searchTerm.toLowerCase();
-        const name = getGroupDisplayName(group).toLowerCase();
-        return name.includes(search);
-    });
-
-    const formatTime = (dateString?: string) => {
-        if (!dateString) return "";
-        const date = new Date(dateString);
-        const now = new Date();
-        const diff = now.getTime() - date.getTime();
-        const hours = diff / (1000 * 60 * 60);
-
-        if (hours < 24) {
-            return new Intl.DateTimeFormat('pt-BR', {
-                timeZone: SAO_PAULO_TZ,
-                hour: '2-digit',
-                minute: '2-digit',
-                hour12: false
-            }).format(date);
-        }
-        return new Intl.DateTimeFormat('pt-BR', {
-            timeZone: SAO_PAULO_TZ,
-            day: '2-digit',
-            month: '2-digit'
-        }).format(date);
-    };
-
-    const isUsableGroupName = (value?: string | null) => {
-        if (!value) return false;
-        const name = String(value).trim();
-        if (!name) return false;
-        if (/@g\.us$/i.test(name) || /@s\.whatsapp\.net$/i.test(name)) return false;
-        if (/^\d{8,16}$/.test(name)) return false;
-        return true;
-    };
-
-    const getGroupDisplayName = (group?: GroupConversation | null) => {
-        if (!group) return "Grupo (Nome não sincronizado)";
-        if (isUsableGroupName(group.group_subject)) return String(group.group_subject).trim();
-        if (isUsableGroupName(group.group_name)) return String(group.group_name).trim();
-        if (isUsableGroupName(group.contact_name)) return String(group.contact_name).trim();
-        return "Grupo (Nome não sincronizado)";
+            const res = await fetch("/api/evolution/messages/send", { method: "POST", headers: { Authorization: `Bearer ${token}` }, body: fd });
+            if (!res.ok) toast.error("Erro ao enviar arquivo");
+        } catch { toast.error("Erro de conexão"); }
     };
 
     const handleRefreshMetadata = async () => {
         if (!selectedGroup) return;
-        const toastId = toast.loading("Atualizando dados do grupo...");
+        const id = toast.loading("Atualizando dados do grupo...");
         try {
-            const res = await fetch(`/api/evolution/conversations/${selectedGroup.id}/refresh`, {
-                method: "POST",
-                headers: { "Authorization": `Bearer ${token}` }
-            });
+            const res = await fetch(`/api/evolution/conversations/${selectedGroup.id}/refresh`, { method: "POST", headers: { Authorization: `Bearer ${token}` } });
             if (res.ok) {
                 const data = await res.json();
-                toast.success(`Atualizado: ${data.name || 'Sem nome'}`, { id: toastId });
-                setGroups(prev => prev.map(c =>
-                    c.id === selectedGroup.id ? { ...c, group_name: data.name, contact_name: data.name, profile_pic_url: data.pic } : c
-                ));
-                setSelectedGroup(prev => prev ? { ...prev, group_name: data.name, contact_name: data.name, profile_pic_url: data.pic } : null);
-            } else {
-                toast.error("Falha ao atualizar", { id: toastId });
-            }
-        } catch (e) {
-            toast.error("Erro de conexão", { id: toastId });
-        }
+                toast.success(`Atualizado: ${data.name || "Sem nome"}`, { id });
+                setGroups(prev => prev.map(c => c.id === selectedGroup.id ? { ...c, group_name: data.name, contact_name: data.name, profile_pic_url: data.pic } : c));
+                setSelectedGroup(p => p ? { ...p, group_name: data.name, contact_name: data.name, profile_pic_url: data.pic } : null);
+            } else toast.error("Falha ao atualizar", { id });
+        } catch { toast.error("Erro de conexão", { id }); }
     };
 
+    /* ── Helpers ── */
+    const isUsableGroupName = (v?: string | null) => {
+        if (!v) return false;
+        const n = String(v).trim();
+        return !!n && !/@g\.us$/i.test(n) && !/@s\.whatsapp\.net$/i.test(n) && !/^\d{8,16}$/.test(n);
+    };
+
+    const getGroupDisplayName = (g?: GroupConversation | null) => {
+        if (!g) return "Grupo";
+        if (isUsableGroupName(g.group_subject)) return String(g.group_subject).trim();
+        if (isUsableGroupName(g.group_name)) return String(g.group_name).trim();
+        if (isUsableGroupName(g.contact_name)) return String(g.contact_name).trim();
+        return "Grupo";
+    };
+
+    const formatTime = (d?: string) => {
+        if (!d) return "";
+        const date = new Date(d), now = new Date();
+        const diffH = (now.getTime() - date.getTime()) / 3600000;
+        if (diffH < 24) return new Intl.DateTimeFormat("pt-BR", { timeZone: SAO_PAULO_TZ, hour: "2-digit", minute: "2-digit", hour12: false }).format(date);
+        return new Intl.DateTimeFormat("pt-BR", { timeZone: SAO_PAULO_TZ, day: "2-digit", month: "2-digit" }).format(date);
+    };
+
+    const filteredGroups = groups.filter(g => {
+        if (!searchTerm) return true;
+        return getGroupDisplayName(g).toLowerCase().includes(searchTerm.toLowerCase());
+    });
+
+    /* ── Message renderer ── */
+    const renderMessageContent = (msg: Message) => {
+        const type = msg.message_type || "text";
+        const proxyUrl = `/api/evolution/media/${msg.id}`;
+        if (type === "image") return (
+            <div className="flex flex-col gap-1">
+                {msg.id ? <AuthImage src={proxyUrl} alt="Imagem" className="max-w-full rounded-lg max-h-64 object-cover" token={token || ""} /> : <span className="italic opacity-60 text-xs">Imagem sem ID</span>}
+                {msg.content && msg.content !== "[Imagem]" && <span className="text-sm">{msg.content}</span>}
+            </div>
+        );
+        if (type === "audio" || type === "audioMessage") return <AuthAudio src={proxyUrl} token={token || ""} />;
+        if (type === "video") return (
+            <div className="flex items-center gap-2 bg-black/10 rounded-lg p-2">
+                <div className="text-2xl">🎥</div>
+                <a href={proxyUrl} target="_blank" rel="noreferrer" className="text-xs underline">Vídeo recebido</a>
+            </div>
+        );
+        if (type === "document" || type === "documentMessage") return (
+            <div className="flex items-center gap-2 bg-zinc-100 dark:bg-zinc-800 rounded-lg p-2">
+                <FileText className="h-5 w-5 text-zinc-500 shrink-0" />
+                <a href={proxyUrl} target="_blank" rel="noreferrer" className="text-xs underline truncate">Documento</a>
+            </div>
+        );
+        return <span className="pr-10 break-words">{msg.content}</span>;
+    };
+
+    /* ─────────────────────────────────────────
+       Render
+    ───────────────────────────────────────── */
     return (
-        <div className="flex h-[calc(100vh-64px)] overflow-hidden bg-background">
-            <div className="w-[350px] flex-none border-r flex flex-col bg-card">
-                <div className="p-4 border-b space-y-4">
-                    <div className="flex items-center justify-between">
-                        <h2 className="text-xl font-bold flex items-center gap-2">
-                            <Users className="h-5 w-5" />
-                            Grupos
-                        </h2>
+        <>
+            {/* Custom scrollbar style */}
+            <style>{`
+                .grupos-list::-webkit-scrollbar { width: 5px; }
+                .grupos-list::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
+                .grupos-list::-webkit-scrollbar-track { background: transparent; }
+                .grupos-messages::-webkit-scrollbar { width: 5px; }
+                .grupos-messages::-webkit-scrollbar-thumb { background: #cbd5e140; border-radius: 10px; }
+                .grupos-messages::-webkit-scrollbar-track { background: transparent; }
+            `}</style>
+
+            {/* ══════════════════════════════════════════
+                MAIN LAYOUT — flex row, 100% of parent
+                (parent from AdminLayout is h-[calc(100dvh-4rem)] overflow-hidden)
+            ════════════════════════════════════════════ */}
+            <div className="flex h-full w-full overflow-hidden bg-[#f0f2f5] dark:bg-[#111b21]">
+
+                {/* ── LEFT PANEL: Groups List ── */}
+                <div
+                    className="flex flex-col bg-white dark:bg-[#111b21] border-r border-zinc-200 dark:border-zinc-800"
+                    style={{ width: 360, minWidth: 260, maxWidth: 400, flexShrink: 0 }}
+                >
+                    {/* Header */}
+                    <div className="flex items-center justify-between px-4 py-3 bg-[#f0f2f5] dark:bg-[#202c33] border-b border-zinc-200 dark:border-zinc-700 shrink-0">
                         <div className="flex items-center gap-2">
+                            <Users className="h-5 w-5 text-zinc-600 dark:text-zinc-300" />
+                            <h2 className="font-semibold text-[15px] text-zinc-800 dark:text-zinc-100">Grupos</h2>
+                            <span className="text-[11px] text-zinc-400 font-normal">({filteredGroups.length})</span>
+                        </div>
+                        <div className="flex items-center gap-1">
                             <Button
-                                variant="ghost"
-                                size="icon"
-                                className="h-8 w-8 text-zinc-500"
-                                title={isGroupNotificationMuted ? "Ativar som dos grupos" : "Mutar som dos grupos"}
-                                onClick={() => setIsGroupNotificationMuted(prev => !prev)}
+                                variant="ghost" size="icon"
+                                className="h-8 w-8 text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-100 hover:bg-zinc-200/60 dark:hover:bg-zinc-700/60 rounded-full"
+                                title={isGroupNotificationMuted ? "Ativar som" : "Mutar som"}
+                                onClick={() => setIsGroupNotificationMuted(p => !p)}
                             >
-                                {isGroupNotificationMuted ? <VolumeX className="h-4 w-4 text-[#DC2626]" /> : <Volume2 className="h-4 w-4 text-[#16A34A]" />}
+                                {isGroupNotificationMuted
+                                    ? <VolumeX className="h-4 w-4 text-red-500" />
+                                    : <Volume2 className="h-4 w-4 text-emerald-500" />}
                             </Button>
                             <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={handleSyncAllGroups}
-                                disabled={isSyncingGroups}
-                                className="h-8 gap-2 border-primary/20 hover:bg-primary/5 text-primary"
+                                variant="ghost" size="icon"
+                                className={cn("h-8 w-8 rounded-full text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-100 hover:bg-zinc-200/60 dark:hover:bg-zinc-700/60", isSyncingGroups && "text-blue-500")}
+                                onClick={handleSyncAllGroups} disabled={isSyncingGroups}
+                                title="Sincronizar grupos"
                             >
-                                <RefreshCw className={cn("h-3.5 w-3.5", isSyncingGroups && "animate-spin")} />
-                                Sincronizar
+                                <RefreshCw className={cn("h-4 w-4", isSyncingGroups && "animate-spin")} />
                             </Button>
                         </div>
                     </div>
-                    <div className="relative">
-                        <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
-                        <Input
-                            placeholder="Pesquisar grupos..."
-                            className="pl-9"
-                            value={searchTerm}
-                            onChange={(e) => setSearchTerm(e.target.value)}
-                        />
-                    </div>
-                </div>
 
-                <ScrollArea className="flex-1">
-                    <div className="pl-2 pr-4 py-2 space-y-1">
+                    {/* Search */}
+                    <div className="px-3 py-2 bg-white dark:bg-[#111b21] border-b border-zinc-100 dark:border-zinc-800 shrink-0">
+                        <div className="relative">
+                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-zinc-400" />
+                            <input
+                                className="w-full bg-[#f0f2f5] dark:bg-[#202c33] text-sm text-zinc-800 dark:text-zinc-100 placeholder-zinc-400 rounded-lg pl-9 pr-3 py-2 border-none outline-none focus:ring-2 focus:ring-[#00a884]/30 transition"
+                                placeholder="Pesquisar grupos..."
+                                value={searchTerm}
+                                onChange={e => setSearchTerm(e.target.value)}
+                            />
+                        </div>
+                    </div>
+
+                    {/* Groups List — ONLY scroll here */}
+                    <div className="grupos-list flex-1 overflow-y-auto overflow-x-hidden">
                         {isLoading ? (
-                            <div className="text-center py-8 text-muted-foreground text-sm">
-                                Carregando grupos...
+                            <div className="flex flex-col items-center justify-center h-32 gap-2 text-zinc-400">
+                                <RefreshCw className="h-5 w-5 animate-spin" />
+                                <span className="text-sm">Carregando grupos...</span>
                             </div>
                         ) : filteredGroups.length === 0 ? (
-                            <div className="text-center py-8 text-muted-foreground text-sm">
-                                Nenhum grupo encontrado
+                            <div className="flex flex-col items-center justify-center h-40 gap-3 text-zinc-400 px-6 text-center">
+                                <Users className="h-10 w-10 opacity-30" />
+                                <span className="text-sm">{searchTerm ? "Nenhum grupo encontrado" : "Nenhum grupo disponível"}</span>
                             </div>
-                        ) : (
-                            filteredGroups.map((group) => (
+                        ) : filteredGroups.map(group => {
+                            const isSelected = selectedGroup?.id === group.id;
+                            const name = getGroupDisplayName(group);
+                            const initials = name.split(" ").slice(0, 2).map(w => w[0]).join("").toUpperCase();
+
+                            return (
                                 <div
                                     key={group.id}
                                     onClick={() => setSelectedGroup(group)}
                                     className={cn(
-                                        "group mr-1 flex items-center gap-2.5 p-1.5 rounded-lg cursor-pointer transition-all duration-200 border border-transparent",
-                                        selectedGroup?.id === group.id
-                                            ? "bg-[#e7fce3] dark:bg-[#005c4b]/30 border-[#00a884]/20 shadow-sm"
-                                            : "hover:bg-zinc-50 dark:hover:bg-zinc-900 border-zinc-100/50 dark:border-zinc-800/50"
+                                        "flex items-center gap-3 px-4 py-3 cursor-pointer transition-colors duration-150 border-b border-zinc-50 dark:border-zinc-800/50",
+                                        isSelected
+                                            ? "bg-[#f0fdf4] dark:bg-[#005c4b]/30 border-l-[3px] border-l-[#00a884]"
+                                            : "hover:bg-[#f5f6f6] dark:hover:bg-[#2a3942]/50 border-l-[3px] border-l-transparent"
                                     )}
                                 >
-                                    <div className="relative shrink-0">
-                                        <Avatar className="h-9 w-9 border-2 border-white dark:border-zinc-900 shadow-sm">
-                                            <AvatarImage src={group.profile_pic_url || `https://api.dicebear.com/7.x/initials/svg?seed=${getGroupDisplayName(group)}`} />
-                                            <AvatarFallback className="bg-blue-100 text-blue-600">
-                                                <Users className="h-4 w-4" />
+                                    {/* Avatar */}
+                                    <div className="shrink-0">
+                                        <Avatar className="h-11 w-11 ring-2 ring-white dark:ring-zinc-800 shadow-sm">
+                                            <AvatarImage src={group.profile_pic_url || `https://api.dicebear.com/7.x/initials/svg?seed=${name}&backgroundColor=00897b`} />
+                                            <AvatarFallback className="bg-teal-600 text-white text-sm font-bold">
+                                                {initials || <Users className="h-4 w-4" />}
                                             </AvatarFallback>
                                         </Avatar>
                                     </div>
 
+                                    {/* Info */}
                                     <div className="flex-1 min-w-0">
-                                        <div className="flex justify-between items-center mb-0.5">
+                                        <div className="flex items-center justify-between mb-0.5">
                                             <span className={cn(
-                                                "font-semibold truncate text-[13px]",
-                                                selectedGroup?.id === group.id ? "text-[#008069] dark:text-[#00a884]" : "text-zinc-900 dark:text-zinc-100"
+                                                "font-semibold text-[14px] truncate",
+                                                isSelected ? "text-[#00a884]" : "text-zinc-900 dark:text-zinc-100"
                                             )}>
-                                                {getGroupDisplayName(group)}
+                                                {name}
                                             </span>
-                                            <span className="text-[10px] text-muted-foreground whitespace-nowrap ml-2 opacity-80">
+                                            <span className="text-[11px] text-zinc-400 whitespace-nowrap ml-2 shrink-0">
                                                 {formatTime(group.last_message_at)}
                                             </span>
                                         </div>
-                                        <p className="text-[11px] text-muted-foreground truncate opacity-90 uppercase tracking-tight">
-                                            {group.last_message || "Nenhuma mensagem"}
+                                        <div className="flex items-center justify-between gap-1">
+                                            <p className="text-[12px] text-zinc-500 dark:text-zinc-400 truncate flex-1">
+                                                {group.last_message || <span className="italic opacity-60">Nenhuma mensagem</span>}
+                                            </p>
+                                            {group.unread_count && group.unread_count > 0 ? (
+                                                <span className="shrink-0 min-w-[20px] h-5 px-1.5 flex items-center justify-center rounded-full bg-[#25d366] text-white text-[10px] font-bold shadow-sm">
+                                                    {group.unread_count > 99 ? "99+" : group.unread_count}
+                                                </span>
+                                            ) : null}
+                                        </div>
+                                    </div>
+                                </div>
+                            );
+                        })}
+                    </div>
+                </div>
+
+                {/* ── RIGHT PANEL: Chat ── */}
+                <div className="flex-1 flex flex-col h-full overflow-hidden relative">
+                    {/* WhatsApp-style wallpaper */}
+                    <div
+                        className="absolute inset-0 opacity-[0.07] dark:opacity-[0.04] pointer-events-none z-0"
+                        style={{ backgroundImage: "url(\"data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23000000' fill-opacity='1'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E\")", backgroundSize: "60px 60px" }}
+                    />
+
+                    {!selectedGroup ? (
+                        /* Empty State */
+                        <div className="flex-1 flex flex-col items-center justify-center gap-5 text-zinc-400 z-10 relative">
+                            <div className="w-24 h-24 rounded-full bg-zinc-200 dark:bg-zinc-700 flex items-center justify-center">
+                                <MessageSquare className="h-10 w-10 opacity-40" />
+                            </div>
+                            <div className="text-center">
+                                <p className="font-semibold text-lg text-zinc-600 dark:text-zinc-300">Selecione um grupo</p>
+                                <p className="text-sm text-zinc-400 mt-1">Escolha um grupo da lista para ver as mensagens</p>
+                            </div>
+                        </div>
+                    ) : (
+                        <div className="relative z-10 flex flex-col h-full overflow-hidden">
+                            {/* Chat Header */}
+                            <div className="h-[60px] shrink-0 bg-[#f0f2f5] dark:bg-[#202c33] flex items-center justify-between px-4 border-b border-zinc-200 dark:border-zinc-700 z-10">
+                                <div className="flex items-center gap-3">
+                                    <Avatar className="h-10 w-10">
+                                        <AvatarImage src={selectedGroup.profile_pic_url || `https://api.dicebear.com/7.x/initials/svg?seed=${getGroupDisplayName(selectedGroup)}&backgroundColor=00897b`} />
+                                        <AvatarFallback className="bg-teal-600 text-white font-bold">
+                                            {(getGroupDisplayName(selectedGroup) || "G")[0]}
+                                        </AvatarFallback>
+                                    </Avatar>
+                                    <div>
+                                        <p className="font-semibold text-[15px] text-zinc-900 dark:text-zinc-100 leading-tight">
+                                            {getGroupDisplayName(selectedGroup)}
+                                        </p>
+                                        <p className="text-[11px] text-zinc-500 dark:text-zinc-400 leading-tight">
+                                            {selectedGroup.phone}
                                         </p>
                                     </div>
-
-                                    {group.unread_count && group.unread_count > 0 && (
-                                        <div className="shrink-0 min-w-[18px] h-[18px] px-1 flex items-center justify-center rounded-full bg-[#25d366] text-white text-[10px] font-bold shadow-sm">
-                                            {group.unread_count}
-                                        </div>
-                                    )}
                                 </div>
-                            ))
-                        )}
-                    </div>
-                </ScrollArea>
-            </div>
-
-            {/* Right Column / Chat Area */}
-            <div className="flex-1 flex flex-col bg-[#efeae2] dark:bg-[#0b141a] relative">
-                <div className="absolute inset-0 opacity-[0.06] dark:opacity-[0.04] pointer-events-none bg-[url('https://w0.peakpx.com/wallpaper/818/148/wallpaper-whatsapp-background.jpg')] bg-repeat"></div>
-
-                {!selectedGroup ? (
-                    <div className="flex-1 flex flex-col items-center justify-center text-muted-foreground relative z-10">
-                        <div className="bg-zinc-100 dark:bg-zinc-800 p-4 rounded-full mb-4">
-                            <Users className="h-12 w-12 opacity-20" />
-                        </div>
-                        <p className="font-medium">Selecione um grupo para visualizar</p>
-                    </div>
-                ) : (
-                    <div className="relative z-10 flex-1 flex flex-col h-full overflow-hidden">
-                        {/* Chat Header */}
-                        <div className="h-[60px] flex-none bg-[#f0f2f5] dark:bg-[#202c33] flex items-center justify-between px-4 border-b border-zinc-200 dark:border-zinc-700">
-                            <div className="flex items-center gap-3">
-                                <Avatar className="h-10 w-10 border border-zinc-200 dark:border-zinc-700">
-                                    <AvatarImage src={selectedGroup.profile_pic_url || `https://api.dicebear.com/7.x/initials/svg?seed=${getGroupDisplayName(selectedGroup)}`} />
-                                    <AvatarFallback className="bg-blue-100 text-blue-600">{(getGroupDisplayName(selectedGroup) || "G")[0]}</AvatarFallback>
-                                </Avatar>
-                                <div className="flex flex-col">
-                                    <span className="font-semibold text-[15px]">{getGroupDisplayName(selectedGroup)}</span>
-                                    <span className="text-[11px] text-muted-foreground opacity-80">ID: {selectedGroup.phone}</span>
-                                </div>
-                            </div>
-                            <div className="flex items-center gap-1">
-                                <Button variant="ghost" size="icon" className="text-zinc-500 hover:bg-zinc-200/50 dark:hover:bg-zinc-700/50" onClick={handleRefreshMetadata} title="Atualizar dados do grupo">
-                                    <RefreshCw className="h-5 w-5" />
-                                </Button>
-                                <Button variant="ghost" size="icon" className="text-zinc-500 hover:bg-zinc-200/50 dark:hover:bg-zinc-700/50">
-                                    <MoreVertical className="h-5 w-5" />
-                                </Button>
-                            </div>
-                        </div>
-
-                        {/* Chat Messages */}
-                        <div
-                            ref={scrollRef}
-                            className="flex-1 overflow-y-auto p-4 md:p-6 flex flex-col gap-2 scroll-smooth custom-scrollbar"
-                        >
-                            {isLoadingMessages ? (
-                                <div className="flex-1 flex items-center justify-center text-muted-foreground italic text-sm">
-                                    Carregando mensagens...
-                                </div>
-                            ) : messages.length === 0 ? (
-                                <div className="flex-1 flex items-center justify-center text-muted-foreground italic text-sm">
-                                    Início da conversa do grupo
-                                </div>
-                            ) : (
-                                messages.map((msg) => (
-                                    <div
-                                        key={msg.id}
-                                        className={cn(
-                                            "flex flex-col w-full mb-1",
-                                            msg.direction === "outbound" ? "items-end" : "items-start"
-                                        )}
+                                <div className="flex items-center gap-1">
+                                    <Button
+                                        variant="ghost" size="icon"
+                                        className="h-9 w-9 text-zinc-500 hover:bg-zinc-200/60 dark:hover:bg-zinc-700/60 rounded-full"
+                                        onClick={handleRefreshMetadata} title="Atualizar dados do grupo"
                                     >
-                                        <div className={cn(
-                                            "relative max-w-[85%] px-3 py-1.5 shadow-sm text-[14px] break-words",
-                                            msg.direction === "outbound"
-                                                ? "bg-[#d9fdd3] dark:bg-[#005c4b] text-zinc-900 dark:text-zinc-100 self-end ml-auto rounded-lg rounded-tr-none"
-                                                : "bg-white dark:bg-[#202c33] text-zinc-900 dark:text-zinc-100 self-start mr-auto rounded-lg rounded-tl-none"
-                                        )}>
-                                            {msg.direction === 'inbound' && (
-                                                <span className="text-[10px] font-bold text-orange-600 dark:text-orange-400 mb-0.5 block">
-                                                    {msg.sender_name || (msg.participant ? msg.participant.split('@')[0] : 'Desconhecido')}
-                                                </span>
-                                            )}
+                                        <RefreshCw className="h-4 w-4" />
+                                    </Button>
+                                    <Button variant="ghost" size="icon" className="h-9 w-9 text-zinc-500 hover:bg-zinc-200/60 dark:hover:bg-zinc-700/60 rounded-full">
+                                        <MoreVertical className="h-4 w-4" />
+                                    </Button>
+                                </div>
+                            </div>
 
-                                            {(() => {
-                                                const type = msg.message_type || 'text';
-                                                const proxyUrl = `/api/evolution/media/${msg.id}`;
-
-                                                if (type === 'image') {
-                                                    return (
-                                                        <div className="flex flex-col gap-1">
-                                                            {msg.id ? (
-                                                                <AuthImage src={proxyUrl} alt="Image" className="max-w-full rounded h-auto max-h-[300px]" token={token || ""} />
-                                                            ) : (
-                                                                <span className="italic opacity-60">Imagem sem ID</span>
-                                                            )}
-                                                            {msg.content && msg.content !== '[Imagem]' && <span>{msg.content}</span>}
-                                                        </div>
-                                                    );
-                                                }
-                                                if (type === 'audio') {
-                                                    return <AuthAudio src={proxyUrl} token={token || ""} />;
-                                                }
-                                                if (['video', 'document', 'sticker'].includes(type) && msg.media_url) {
-                                                    return (
-                                                        <div className="flex items-center gap-2 p-1">
-                                                            <div className="p-2 bg-black/10 rounded"><FileText className="h-5 w-5" /></div>
-                                                            <a href={proxyUrl} target="_blank" className="underline text-xs">{type.toUpperCase()} recebido</a>
-                                                        </div>
-                                                    )
-                                                }
-                                                return <span className="pr-10">{msg.content}</span>;
-                                            })()}
-                                            <span className="absolute right-2 bottom-1 text-[9px] flex items-center gap-1 text-zinc-400">
-                                                {formatTime(msg.sent_at)}
-                                                {msg.direction === "outbound" && <CheckCheck className="h-3 w-3 text-[#53bdeb]" />}
-                                            </span>
+                            {/* Messages — scroll only here */}
+                            <div
+                                ref={scrollRef}
+                                className="grupos-messages flex-1 overflow-y-auto overflow-x-hidden px-4 py-4 flex flex-col gap-1"
+                            >
+                                {isLoadingMessages ? (
+                                    <div className="flex-1 flex items-center justify-center text-zinc-400 gap-2">
+                                        <RefreshCw className="h-4 w-4 animate-spin" />
+                                        <span className="text-sm">Carregando mensagens...</span>
+                                    </div>
+                                ) : messages.length === 0 ? (
+                                    <div className="flex-1 flex items-center justify-center">
+                                        <div className="bg-white/80 dark:bg-zinc-800/80 rounded-xl px-5 py-3 text-sm text-zinc-500 shadow-sm">
+                                            Início da conversa do grupo
                                         </div>
                                     </div>
-                                ))
-                            )}
-                        </div>
+                                ) : messages.map(msg => {
+                                    const isOut = msg.direction === "outbound";
+                                    return (
+                                        <div key={msg.id} className={cn("flex w-full", isOut ? "justify-end" : "justify-start")}>
+                                            <div className={cn(
+                                                "relative max-w-[75%] min-w-[80px] px-3 pt-1.5 pb-5 shadow-sm text-[13.5px] break-words rounded-lg",
+                                                isOut
+                                                    ? "bg-[#d9fdd3] dark:bg-[#005c4b] text-zinc-900 dark:text-zinc-100 rounded-tr-none ml-12"
+                                                    : "bg-white dark:bg-[#202c33] text-zinc-900 dark:text-zinc-100 rounded-tl-none mr-12"
+                                            )}>
+                                                {/* Sender name for inbound */}
+                                                {!isOut && (
+                                                    <span className="text-[11px] font-bold text-teal-600 dark:text-teal-400 block mb-1 leading-tight">
+                                                        {msg.sender_name || (msg.participant ? msg.participant.split("@")[0] : "Desconhecido")}
+                                                    </span>
+                                                )}
+                                                {renderMessageContent(msg)}
+                                                {/* Time & status */}
+                                                <span className="absolute right-2 bottom-1 flex items-center gap-1 text-[10px] text-zinc-400">
+                                                    {formatTime(msg.sent_at)}
+                                                    {isOut && <CheckCheck className="h-3 w-3 text-[#53bdeb]" />}
+                                                </span>
+                                            </div>
+                                        </div>
+                                    );
+                                })}
+                            </div>
 
-                        {/* Chat Input Area */}
-                        <div className="min-h-[62px] flex-none bg-[#f0f2f5] dark:bg-[#202c33] px-4 py-2 flex items-center gap-2 border-t border-zinc-200 dark:border-zinc-700 relative z-20">
-                            {showEmojiPicker && (
-                                <div className="absolute bottom-20 left-4 z-50 shadow-2xl">
-                                    <EmojiPicker onEmojiClick={onEmojiClick} width={300} height={400} />
-                                </div>
-                            )}
-
-                            <Button
-                                variant="ghost"
-                                size="icon"
-                                className="text-zinc-500 text-xl hover:bg-transparent"
-                                onClick={() => setShowEmojiPicker(!showEmojiPicker)}
-                            >
-                                😊
-                            </Button>
-
-                            <input
-                                type="file"
-                                ref={fileInputRef}
-                                className="hidden"
-                                onChange={handleFileChange}
-                            />
-                            <Button
-                                variant="ghost"
-                                size="icon"
-                                className="text-zinc-500 hover:bg-transparent"
-                                onClick={() => fileInputRef.current?.click()}
-                            >
-                                <Paperclip className="h-5 w-5" />
-                            </Button>
-
-                            <form className="flex-1 flex gap-2" onSubmit={handleSendMessage}>
-                                <Input
-                                    className="flex-1 bg-white dark:bg-zinc-700 border-none focus-visible:ring-0 placeholder:text-zinc-400"
-                                    placeholder="Digite uma mensagem"
-                                    value={newMessage}
-                                    onChange={(e) => setNewMessage(e.target.value)}
-                                    onFocus={() => setShowEmojiPicker(false)}
-                                />
-                                {newMessage.trim() ? (
-                                    <Button type="submit" size="icon" className="bg-[#00a884] hover:bg-[#008f6f] text-white rounded-full">
-                                        <Send className="h-5 w-5 ml-0.5" />
-                                    </Button>
-                                ) : (
-                                    <Button type="button" size="icon" variant="ghost" className="text-zinc-500">
-                                        <Mic className="h-5 w-5" />
-                                    </Button>
+                            {/* Input Area */}
+                            <div className="shrink-0 bg-[#f0f2f5] dark:bg-[#202c33] px-3 py-2.5 flex items-end gap-2 border-t border-zinc-200 dark:border-zinc-700 relative">
+                                {/* Emoji Picker */}
+                                {showEmojiPicker && (
+                                    <div className="absolute bottom-16 left-4 z-50 shadow-2xl rounded-xl overflow-hidden">
+                                        <EmojiPicker onEmojiClick={(d: EmojiClickData) => setNewMessage(p => p + d.emoji)} width={300} height={380} />
+                                    </div>
                                 )}
-                            </form>
+
+                                <Button
+                                    variant="ghost" size="icon"
+                                    className="h-9 w-9 shrink-0 text-zinc-500 hover:bg-zinc-200/60 dark:hover:bg-zinc-700/60 rounded-full text-lg"
+                                    onClick={() => setShowEmojiPicker(v => !v)}
+                                >😊</Button>
+
+                                <input type="file" ref={fileInputRef} className="hidden" onChange={handleFileChange} />
+                                <Button
+                                    variant="ghost" size="icon"
+                                    className="h-9 w-9 shrink-0 text-zinc-500 hover:bg-zinc-200/60 dark:hover:bg-zinc-700/60 rounded-full"
+                                    onClick={() => fileInputRef.current?.click()}
+                                >
+                                    <Paperclip className="h-5 w-5" />
+                                </Button>
+
+                                <form className="flex-1 flex gap-2 items-end" onSubmit={handleSendMessage}>
+                                    <Input
+                                        className="flex-1 bg-white dark:bg-[#2a3942] border-none shadow-none focus-visible:ring-0 rounded-full text-[14px] placeholder:text-zinc-400"
+                                        placeholder="Digite uma mensagem"
+                                        value={newMessage}
+                                        onChange={e => setNewMessage(e.target.value)}
+                                        onFocus={() => setShowEmojiPicker(false)}
+                                    />
+                                    {newMessage.trim() ? (
+                                        <Button type="submit" size="icon" className="h-9 w-9 shrink-0 bg-[#00a884] hover:bg-[#008f6f] text-white rounded-full shadow-md">
+                                            <Send className="h-4 w-4 ml-0.5" />
+                                        </Button>
+                                    ) : (
+                                        <Button type="button" size="icon" variant="ghost" className="h-9 w-9 shrink-0 text-zinc-500 hover:bg-zinc-200/60 dark:hover:bg-zinc-700/60 rounded-full">
+                                            <Mic className="h-5 w-5" />
+                                        </Button>
+                                    )}
+                                </form>
+                            </div>
                         </div>
-                    </div>
-                )}
+                    )}
+                </div>
             </div>
-        </div>
+        </>
     );
 };
 
