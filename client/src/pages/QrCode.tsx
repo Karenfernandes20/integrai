@@ -225,6 +225,66 @@ const QrCodePage = () => {
 
       const targetId = selectedCompanyId || user?.company_id;
 
+      // Se for Evolution ou API Plus, salve a instância no banco ANTES de conectar
+      if (isEvolutionChannel && !skipSave) {
+        const maxSlots = Number(company?.whatsapp_limit || 1);
+        const allInstances: any[] = [];
+
+        for (let i = 0; i < maxSlots; i++) {
+          const existingInst = instances[i];
+          if (targetInstance && (!targetInstance.id && targetInstance.slot_index === i) || (targetInstance.id && existingInst?.id === targetInstance.id)) {
+            allInstances.push(targetInstance);
+          } else if (existingInst) {
+            allInstances.push(existingInst);
+          }
+        }
+
+        const saveRes = await fetch(`/api/companies/${targetId}`, {
+          method: "PUT",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`
+          },
+          body: JSON.stringify({
+            ...company,
+            instanceDefinitions: allInstances
+          })
+        });
+
+        if (saveRes.ok) {
+          if (targetInstance.id) {
+            await fetch(`/api/companies/${targetId}/instances/${targetInstance.id}`, {
+              method: "PUT",
+              headers: {
+                "Content-Type": "application/json",
+                Authorization: `Bearer ${token}`
+              },
+              body: JSON.stringify({
+                name: targetInstance.name,
+                instance_key: targetInstance.instance_key,
+                api_key: targetInstance.api_key,
+                color: targetInstance.color
+              })
+            });
+            const instRes = await fetch(`/api/companies/${targetId}/instances`, {
+              headers: { "Authorization": `Bearer ${token}` }
+            });
+            if (instRes.ok) {
+              const instData = await instRes.json();
+              setInstances(instData);
+              const updated = instData.find((i: any) => i.id === targetInstance.id);
+              if (updated) {
+                targetInstance = updated;
+                currentInstanceKey = updated.instance_key;
+                if (selectedInstance && selectedInstance.id === updated.id) {
+                  setSelectedInstance(updated);
+                }
+              }
+            }
+          }
+        }
+      }
+
       if ((company?.whatsapp_type === 'local' || company?.whatsapp_type === 'api_plus') && targetInstance) {
         try {
           // Conectar a API local (Mini-Evo)
@@ -268,8 +328,6 @@ const QrCodePage = () => {
                 if (data.status === 'error') {
                   setError(data.error);
                   setErrorDetails(data.details);
-                  // Not clearing interval yet, maybe it's a temporary connectivity issue?
-                  // Actually, if it's a hard error, let's clear it.
                   if (data.error.includes('fora do ar')) clearInterval(pollInterval);
                 } else if (data.qr) {
                   console.log("[QrCode] QR manual recebido com sucesso!");
@@ -286,7 +344,6 @@ const QrCodePage = () => {
                   setErrorDetails(null);
                   clearInterval(pollInterval);
                 } else if (data.status === 'connecting') {
-                  // Still waiting, message is in data.message if needed
                   console.log("[QrCode] Polling status: connecting...");
                 }
               }
@@ -303,71 +360,6 @@ const QrCodePage = () => {
           setError(error.message || "Houve um erro conectando à API Interna.");
           setIsLoading(false);
           return;
-        }
-      }
-
-      // If we need to save the instance first, do it
-      if (company?.whatsapp_type === 'evolution' && !skipSave) {
-        // Build a proper allInstances array
-        const maxSlots = Number(company?.whatsapp_limit || 1);
-        const allInstances: any[] = [];
-
-        for (let i = 0; i < maxSlots; i++) {
-          const existingInst = instances[i];
-          // If we're editing this slot and it matches, use the updated version
-          if (targetInstance && (!targetInstance.id && targetInstance.slot_index === i) || (targetInstance.id && existingInst?.id === targetInstance.id)) {
-            allInstances.push(targetInstance);
-          } else if (existingInst) {
-            allInstances.push(existingInst);
-          }
-        }
-
-        const saveRes = await fetch(`/api/companies/${targetId}`, {
-          method: "PUT",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`
-          },
-          body: JSON.stringify({
-            ...company,
-            instanceDefinitions: allInstances
-          })
-        });
-
-        if (saveRes.ok) {
-          if (targetInstance.id) {
-            await fetch(`/api/companies/${targetId}/instances/${targetInstance.id}`, {
-              method: "PUT",
-              headers: {
-                "Content-Type": "application/json",
-                Authorization: `Bearer ${token}`
-              },
-              body: JSON.stringify({
-                name: targetInstance.name,
-                instance_key: targetInstance.instance_key,
-                api_key: targetInstance.api_key,
-                color: targetInstance.color
-              })
-            });
-            // Refresh instances to get any sanitized versions if needed
-            const instRes = await fetch(`/api/companies/${targetId}/instances`, {
-              headers: { "Authorization": `Bearer ${token}` }
-            });
-            if (instRes.ok) {
-              const instData = await instRes.json();
-              setInstances(instData);
-              const updated = instData.find((i: any) => i.id === targetInstance.id);
-              if (updated) {
-                // IMPORTANT: Update local targetInstance and key for the next step
-                targetInstance = updated;
-                currentInstanceKey = updated.instance_key;
-                // Only update React state if we are still viewing this instance
-                if (selectedInstance && selectedInstance.id === updated.id) {
-                  setSelectedInstance(updated);
-                }
-              }
-            }
-          }
         }
       }
 
