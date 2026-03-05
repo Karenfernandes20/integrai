@@ -1590,7 +1590,7 @@ const AtendimentoPage = () => {
   const getMediaUrl = (msg: Message) => {
     if (!msg.media_url) {
       // If it's a media message type, we can try to fetch it via our proxy
-      if (['image', 'audio', 'video', 'document', 'sticker', 'stickerMessage'].includes(msg.message_type || msg.type || '')) {
+      if (['image', 'audio', 'audioMessage', 'video', 'document', 'sticker', 'stickerMessage'].includes(msg.message_type || msg.type || '')) {
         return `/api/evolution/media/${msg.id}?token=${token}`;
       }
       return "";
@@ -2338,7 +2338,7 @@ const AtendimentoPage = () => {
                 id: convId || c.id,
                 last_message: messageContent,
                 last_message_at: new Date().toISOString(),
-                status: 'PENDING' as 'PENDING' // User Request: All messages go to PENDING
+                status: c.status || 'OPEN' as any // Keep current status (don't revert to PENDING)
               };
             }
             return c;
@@ -2362,7 +2362,7 @@ const AtendimentoPage = () => {
           id: convId || prev.id,
           last_message: messageContent,
           last_message_at: new Date().toISOString(),
-          status: 'PENDING' as 'PENDING'
+          status: prev.status || 'OPEN' as any // Keep current status (don't revert to PENDING)
         } : null);
       }
     } catch (err) {
@@ -4084,7 +4084,7 @@ const AtendimentoPage = () => {
                                       )}
 
 
-                                      {(msg.type === 'audio' || msg.message_type === 'audio') && getMediaUrl(msg) && (
+                                      {(msg.type === 'audio' || msg.message_type === 'audio' || msg.type === 'audioMessage' || msg.message_type === 'audioMessage') && getMediaUrl(msg) && (
                                         <div className={cn(
                                           "mb-2 p-2 rounded-xl flex flex-col gap-2 min-w-[240px]",
                                           isOutbound ? "bg-[#DBEAFE]/30" : "bg-[#F1F5F9]"

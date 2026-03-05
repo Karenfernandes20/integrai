@@ -2415,7 +2415,10 @@ export const getEvolutionMedia = async (req: Request, res: Response) => {
 
     // Set content type based on message type if possible
     if (message_type === 'image' || message_type === 'sticker' || message_type === 'stickerMessage') res.setHeader('Content-Type', 'image/webp');
-    else if (message_type === 'audio') res.setHeader('Content-Type', 'audio/mp3'); // or ogg
+    else if (message_type === 'audio' || message_type === 'audioMessage') {
+      res.setHeader('Content-Type', 'audio/ogg; codecs=opus');
+      res.setHeader('Accept-Ranges', 'bytes');
+    }
     else if (message_type === 'video') res.setHeader('Content-Type', 'video/mp4');
     else res.setHeader('Content-Type', 'application/octet-stream');
 

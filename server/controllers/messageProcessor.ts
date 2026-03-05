@@ -115,7 +115,18 @@ export const processIncomingMessage = async (companyId: number, instanceName: st
 
         const externalId = key.id;
         const pushName = msg.pushName; // This is the SENDER name (even in groups)
-        const messageType = msg.messageType || (msg.message ? Object.keys(msg.message)[0] : 'unknown');
+        const rawMessageType = msg.messageType || (msg.message ? Object.keys(msg.message)[0] : 'unknown');
+        // Normalize message type to consistent short names
+        const messageTypeMap: Record<string, string> = {
+            audioMessage: 'audio',
+            imageMessage: 'image',
+            videoMessage: 'video',
+            documentMessage: 'document',
+            stickerMessage: 'sticker',
+            extendedTextMessage: 'text',
+            conversation: 'text',
+        };
+        const messageType = messageTypeMap[rawMessageType] || rawMessageType;
 
         // For groups, the sender is the participant
         const participant = isGroup ? (key.participantAlt || msg.participantAlt || key.participant || msg.participant || remoteJid) : remoteJid;
